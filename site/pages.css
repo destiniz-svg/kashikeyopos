@@ -150,3 +150,9 @@ section.card { border-radius: 16px; }
 pre { background: color-mix(in srgb, var(--code-bg) 82%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 
 /* The look is committed — one dark ramp in every theme, like the terminal. */
+
+/* WHERE THE KEYBOARD IS. These pages carried no focus rule, so tabbing through
+   the docs nav and the legal pages moved focus invisibly. :focus-visible, so a
+   pointer never draws it. */
+:focus-visible{outline:2px solid var(--accent, #c2321c);outline-offset:3px;border-radius:inherit}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1px}

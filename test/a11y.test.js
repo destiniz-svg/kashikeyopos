@@ -213,3 +213,200 @@ test('the guest portal and member card meet the same bar', { skip }, async (t) =
     }
   } finally { await b.close(); }
 });
+
+
+/* ═══ BEYOND THE LANDING STATE ══════════════════════════════════════════════
+   The sweeps above visit each app as it opens, and the readiness audit said so:
+   modals, sheets and forms were not visited, and no accessible NAME was ever
+   computed for anything. Both are closed here.
+
+   A name is the whole of what a screen reader announces for a control. A button
+   whose only content is an icon announces nothing at all — the operator hears
+   "button" and has to guess. This walks every interactive element on every rail
+   screen and inside every modal that opens, and demands one. */
+const NAMED = `(() => {
+  const named = (el) => {
+    const lab = (el.getAttribute('aria-label') || '').trim();
+    if (lab) return lab;
+    const by = el.getAttribute('aria-labelledby');
+    if (by) {
+      const t = by.split(/\\s+/).map((id) => {
+        const n = document.getElementById(id);
+        return n ? (n.textContent || '').trim() : '';
+      }).join(' ').trim();
+      if (t) return t;
+    }
+    const title = (el.getAttribute('title') || '').trim();
+    if (title) return title;
+    if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+      if (el.id) {
+        const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        if (l && (l.textContent || '').trim()) return (l.textContent || '').trim();
+      }
+      const wrap = el.closest('label');
+      if (wrap && (wrap.textContent || '').trim()) return (wrap.textContent || '').trim();
+      const ph = (el.getAttribute('placeholder') || '').trim();
+      if (ph) return ph;
+      if (el.type === 'submit' || el.type === 'button') return (el.value || '').trim();
+      return '';
+    }
+    const text = (el.textContent || '').trim();
+    if (text) return text;
+    // An image with alt text names the control it is the whole content of.
+    const img = el.querySelector('img[alt], svg[aria-label], svg title');
+    if (img) return (img.getAttribute('alt') || img.getAttribute('aria-label')
+      || (img.textContent || '')).trim();
+    return '';
+  };
+  const out = [];
+  document.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')
+    .forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;                    // not on screen
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') return;
+      if (el.type === 'hidden' || el.disabled) return;
+      if (el.getAttribute('aria-hidden') === 'true') return;
+      if (!named(el)) out.push({
+        tag: el.tagName, type: el.type || '', cls: (el.className || '').toString().slice(0, 40),
+        html: el.outerHTML.slice(0, 110)
+      });
+    });
+  return out;
+})()`;
+
+test('every control a person can reach announces what it is', { skip }, async (t) => {
+  if (!(await reachable())) return t.skip('no server on ' + BASE);
+  const b = await chromium.launch({ executablePath: PW });
+  try {
+    const page = await b.newPage({ viewport: { width: 1280, height: 900 } });
+    await open(page, '/');
+
+    const unnamed = [];
+    const gather = async (where) => {
+      const bad = await page.evaluate(NAMED);
+      bad.forEach((x) => unnamed.push(where + ' · ' + x.tag
+        + (x.type ? '[' + x.type + ']' : '') + ' ' + x.html));
+    };
+    await gather('/');
+
+    // Every rail screen...
+    const rails = await page.evaluate(() => document.querySelectorAll('aside button').length);
+    for (let i = 0; i < rails; i++) {
+      const label = await page.evaluate((k) => {
+        const btns = document.querySelectorAll('aside button');
+        if (k >= btns.length) return null;
+        const t = (btns[k].getAttribute('aria-label') || btns[k].textContent || '').trim().slice(0, 20);
+        btns[k].click(); return t || ('rail ' + k);
+      }, i);
+      if (label === null) break;
+      await page.waitForTimeout(420);
+      await gather(label);
+
+      /* ...and every modal that screen can open. A modal is where the unnamed
+         icon button hides: it is built once, opened rarely, and never seen by a
+         sweep that only visits landing states. */
+      /* Not the rail — those navigate, and every one of them is already walked
+         above. What is wanted here is the buttons ON the screen, which is where
+         an icon-only control with no name hides. */
+      const opens = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')]
+          .filter((x) => { const r = x.getBoundingClientRect();
+            return r.width > 8 && r.height > 8 && !x.closest('aside'); });
+        return b.length;
+      });
+      for (let m = 0; m < Math.min(opens, 6); m++) {
+        const opened = await page.evaluate((k) => {
+          const b = [...document.querySelectorAll('button')]
+            .filter((x) => { const r = x.getBoundingClientRect();
+            return r.width > 8 && r.height > 8 && !x.closest('aside'); });
+          if (k >= b.length) return null;
+          const t = (b[k].textContent || '').trim().slice(0, 22);
+          b[k].click(); return t;
+        }, m);
+        if (opened === null) break;
+        await page.waitForTimeout(300);
+        /* A modal in this app is a panel carrying the kmodal or ksheet entrance
+           animation — that is what its style string is built with, and it is a
+           far more reliable signal than hunting for position:fixed, which the
+           top bar and the rail also use. */
+        const isModal = await page.evaluate(() =>
+          !!document.querySelector('[style*="kmodal"], [style*="ksheet"]'));
+        if (isModal) {
+          await gather(label + ' → ' + opened);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(200);
+        }
+      }
+    }
+
+    assert.deepStrictEqual(unnamed, [],
+      unnamed.length + ' controls announce nothing to a screen reader:\n  '
+      + unnamed.slice(0, 25).join('\n  '));
+  } finally { await b.close(); }
+});
+
+
+/* ═══ THE OTHER TWO SERVICES ═════════════════════════════════════════════════
+   site/ and panel/ are separate Express services from the same image, on their
+   own ports, and the readiness audit said plainly that they were outside this
+   suite. A seller signs into Mission Control every day and a customer meets the
+   website before anything else, so "outside the suite" is not a reason for
+   either to be less legible than the till.
+
+   Same three properties, same code: contrast against what is really behind the
+   text, a visible keyboard focus ring, and a name on every control. Skips when
+   the service is not running rather than pretending. */
+const OTHERS = [
+  ['Mission Control', process.env.PANEL_URL || 'http://127.0.0.1:4101'],
+  ['the website', process.env.SITE_URL || 'http://127.0.0.1:4102']
+];
+
+OTHERS.forEach(([what, base]) => {
+  test(what + ' meets the same bar as the till', { skip }, async (t) => {
+    let up = false;
+    try {
+      const r = await fetch(base + '/', { signal: AbortSignal.timeout(1500) });
+      up = r.ok;
+    } catch (e) { up = false; }
+    if (!up) return t.skip('not running on ' + base);
+
+    const b = await chromium.launch({ executablePath: PW });
+    try {
+      const page = await b.newPage({ viewport: { width: 1280, height: 900 } });
+      await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1200);
+
+      const bad = await page.evaluate(CONTRAST);
+      assert.deepStrictEqual(bad, [], what + ' has text below AA:\n' + bad.map((x) =>
+        '  ' + x.got + ':1 (needs ' + x.need + ') ' + x.size + 'px/' + x.weight
+        + ' ' + x.color + ' — "' + x.text + '"').join('\n'));
+
+      const unnamed = await page.evaluate(NAMED);
+      assert.deepStrictEqual(unnamed, [],
+        what + ' has controls that announce nothing:\n  '
+        + unnamed.map((x) => x.tag + ' ' + x.html).join('\n  '));
+
+      // And the keyboard: focus must move and be seen.
+      let seen = 0, invisible = [];
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press('Tab');
+        const at = await page.evaluate(() => {
+          const el = document.activeElement;
+          if (!el || el === document.body) return null;
+          const cs = getComputedStyle(el);
+          const ring = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0
+            && (el.matches(':focus-visible') || el.matches(':focus'));
+          return { ring: !!ring, tag: el.tagName,
+            label: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30) };
+        });
+        if (!at) continue;
+        seen++;
+        if (!at.ring) invisible.push(at.tag + ' "' + at.label + '"');
+      }
+      assert.ok(seen >= 3, what + ' reached only ' + seen + ' controls by keyboard');
+      assert.deepStrictEqual(invisible, [],
+        what + ' draws no visible focus on:\n  ' + invisible.join('\n  '));
+    } finally { await b.close(); }
+  });
+});

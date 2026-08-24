@@ -34,6 +34,33 @@ const PIN = String(args.pin || '');
 const WORKERS = Number(args.workers || 8);
 const SECONDS = Number(args.seconds || 30);
 const VERIFY = args.verify !== 'no';
+/* A till that has been offline does not push one bill at a time — it drains,
+   and the whole evening arrives as one batch inside one transaction. That is a
+   different shape of load from the same number of bills trickling in, and the
+   audit's spike stage is exactly it. */
+const BURST = Math.max(1, Number(args.burst || 1));
+const LABEL = args.label ? String(args.label) : '';
+
+/* The server is another process, so its memory is read where the operating
+   system keeps it rather than guessed. Absent (a remote target, a non-Linux
+   box), the soak reports what it can and says the rest is unknown. */
+function serverRss() {
+  try {
+    const fs = require('fs');
+    const me = String(process.pid);
+    const pid = fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d) && d !== me)
+      .find((d) => {
+        try {
+          const cmd = fs.readFileSync('/proc/' + d + '/cmdline', 'utf8');
+          return /node[^\0]*\0?server\.js/.test(cmd) || /server\.js/.test(cmd);
+        } catch (e) { return false; }
+      });
+    if (!pid) return null;
+    const st = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
+    const m = st.match(/VmRSS:\s+(\d+) kB/);
+    return m ? Math.round(Number(m[1]) / 1024) : null;
+  } catch (e) { return null; }
+}
 
 const uuid = () => require('crypto').randomUUID();
 const r2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -102,9 +129,31 @@ function pick() {
   return 'refundable';
 }
 
+/* The four money figures, read the same way before and after. */
+async function snapshot() {
+  const db = require('../db');
+  return db.withOutletRead({ outletId: OUTLET, rank: 5, actor: null }, async (c) => {
+    const q = (sql) => c.query(sql).then((x) => x.rows[0]);
+    const legs = await q("SELECT coalesce(sum(l.cr),0)::numeric v FROM journal j"
+      + " JOIN journal_line l ON l.journal_id = j.id"
+      + " WHERE j.source = 'sale' AND l.account_code IN ('4000','4100')");
+    const rev = await q('SELECT coalesce(sum(net + discount),0)::numeric v FROM sale'
+      + ' WHERE voided_at IS NULL');
+    const unbal = await q('SELECT count(*)::int n FROM (SELECT j.id FROM journal j'
+      + ' JOIN journal_line l ON l.journal_id = j.id GROUP BY j.id'
+      + ' HAVING abs(coalesce(sum(l.dr),0) - coalesce(sum(l.cr),0)) > 0.005) x');
+    const stamped = await q('SELECT count(*)::int n FROM sale'
+      + ' WHERE server_audit IS NOT NULL');
+    return { legs: Number(legs.v), rev: Number(rev.v),
+      unbal: unbal.n, stamped: stamped.n };
+  });
+}
+
 async function main() {
-  console.log('[load] ' + URL_BASE + ' outlet ' + OUTLET
-    + ' · ' + WORKERS + ' workers · ' + SECONDS + 's');
+  console.log('[load] ' + (LABEL ? LABEL + ' — ' : '') + URL_BASE + ' outlet ' + OUTLET
+    + ' · ' + WORKERS + ' workers · ' + SECONDS + 's'
+    + (BURST > 1 ? ' · ' + BURST + ' ops per push' : ''));
+  const rss0 = serverRss();
 
   const auth = await call('POST', '/api/auth/pin', { outletId: OUTLET, pin: PIN });
   if (auth.status !== 200) {
@@ -112,6 +161,14 @@ async function main() {
     process.exit(1);
   }
   const token = auth.body.token;
+
+  /* The ledger checks below compare totals across the whole outlet, and an
+     install that has been developed against carries rows no handler wrote —
+     isolation probes inserted straight into the table, seed data, a fixture
+     with no journal. Measuring the gap BEFORE the run and asserting the DELTA
+     is zero keeps both facts: what this run did, and what was already there.
+     Netting them out silently would hide exactly the defect being looked for. */
+  const baseline = await snapshot();
 
   const lat = [];
   const errs = new Map();
@@ -122,30 +179,36 @@ async function main() {
   async function worker(w) {
     let table = 0;
     while (Date.now() < until) {
-      const kind = pick();
-      table = (table + 1) % 3;
-      const opId = uuid();
-      const payload = bill(kind === 'refundable' ? 'simple' : kind, 'T0' + (table + 1));
+      const batch = Array.from({ length: BURST }, () => {
+        table = (table + 1) % 3;
+        const k = pick();
+        return { opId: uuid(), kind: 'sale',
+          payload: bill(k === 'refundable' ? 'simple' : k, 'T0' + (table + 1)) };
+      });
       const r = await call('POST', '/api/outlet/' + OUTLET + '/sync/push',
-        { ops: [{ opId, kind: 'sale', payload }] }, token);
+        { ops: batch }, token);
       http++;
       lat.push(r.ms);
       if (r.status !== 200) {
         errs.set('HTTP ' + r.status, (errs.get('HTTP ' + r.status) || 0) + 1);
         continue;
       }
-      const res = (r.body.results || [])[0] || {};
-      if (res.error) {
-        errs.set(String(res.error).slice(0, 60), (errs.get(String(res.error).slice(0, 60)) || 0) + 1);
-        continue;
-      }
-      bills++; ops++;
-      opIds.push(opId);
+      let landed = null;
+      (r.body.results || []).forEach((res, i) => {
+        if (res && res.error) {
+          const k = String(res.error).slice(0, 60);
+          errs.set(k, (errs.get(k) || 0) + 1);
+          return;
+        }
+        bills++; ops++;
+        opIds.push(batch[i].opId);
+        landed = batch[i];
+      });
       // A replay of the same op, exactly as a flaky link produces — this is the
       // duplicate-sale question asked under load rather than in isolation.
-      if (bills % 10 === 0) {
+      if (landed && bills % 10 < BURST) {
         const again = await call('POST', '/api/outlet/' + OUTLET + '/sync/push',
-          { ops: [{ opId, kind: 'sale', payload }] }, token);
+          { ops: [landed] }, token);
         http++;
         if (again.status === 200) ops++;
       }
@@ -163,6 +226,13 @@ async function main() {
   console.log('  p50 / p95 / p99   ' + pct(lat, 50).toFixed(0) + ' / ' + pct(lat, 95).toFixed(0)
     + ' / ' + pct(lat, 99).toFixed(0) + ' ms');
   console.log('  slowest           ' + Math.max(...lat).toFixed(0) + ' ms');
+  const rss1 = serverRss();
+  if (rss0 !== null && rss1 !== null) {
+    console.log('  server memory     ' + rss0 + ' → ' + rss1 + ' MB ('
+      + (rss1 - rss0 >= 0 ? '+' : '') + (rss1 - rss0) + ')');
+  } else {
+    console.log('  server memory     not readable from here');
+  }
   const errN = Array.from(errs.values()).reduce((a, b) => a + b, 0);
   console.log('  errors            ' + errN + ' (' + (errN / http * 100).toFixed(2) + '%)');
   errs.forEach((n, k) => console.log('      ' + n + '× ' + k));
@@ -185,22 +255,23 @@ async function main() {
     say('every accepted bill has exactly one sale row', Number(sales[0].n) >= bills,
       sales[0].n + ' sales for ' + bills + ' bills');
 
-    const unbal = await q('SELECT j.id FROM journal j JOIN journal_line l ON l.journal_id = j.id'
-      + ' GROUP BY j.id HAVING abs(coalesce(sum(l.dr),0) - coalesce(sum(l.cr),0)) > 0.005');
-    say('every journal balances', unbal.length === 0, unbal.length + ' unbalanced');
+    const now = await snapshot();
+    say('every journal this run wrote balances', now.unbal === baseline.unbal,
+      (now.unbal - baseline.unbal) + ' newly unbalanced');
 
-    const legs = await q("SELECT coalesce(sum(l.cr),0)::numeric v FROM journal j"
-      + " JOIN journal_line l ON l.journal_id = j.id"
-      + " WHERE j.source = 'sale' AND l.account_code IN ('4000','4100')");
-    const rev = await q('SELECT coalesce(sum(net + discount),0)::numeric v FROM sale'
-      + ' WHERE voided_at IS NULL');
-    const gap = Math.abs(Number(legs[0].v) - Number(rev[0].v));
+    /* The DELTA, not the total: what this run added to the ledger must equal
+       what it added to the sales, whatever the install was carrying already. */
+    const gap = Math.abs((now.legs - baseline.legs) - (now.rev - baseline.rev));
     say('revenue posted ties to the sales that made it', gap < 0.05,
       'off by ' + gap.toFixed(2));
+    const stood = Math.abs(baseline.legs - baseline.rev);
+    if (stood >= 0.05) {
+      console.log('    (this install already stood ' + stood.toFixed(2)
+        + ' apart before the run — not from this load, and not netted out)');
+    }
 
-    const stamped = await q("SELECT count(*)::int n FROM sale WHERE server_audit IS NOT NULL");
-    say('no sale needed repairing', Number(stamped[0].n) === 0,
-      stamped[0].n + ' carry a server_audit stamp');
+    say('no sale this run made needed repairing', now.stamped === baseline.stamped,
+      (now.stamped - baseline.stamped) + ' carry a server_audit stamp');
 
     function say(what, ok, detail) {
       console.log('  ' + (ok ? '✓' : '✗') + ' ' + what + (ok ? '' : '  — ' + detail));

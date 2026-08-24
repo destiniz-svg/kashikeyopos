@@ -59,10 +59,16 @@
   function gateCard(title, sub, fields, ctaLabel, onSubmit) {
     var err = el("div", { class: "err", style: "display:none" });
     var inputs = {};
-    var form = el("form", {}, [err].concat(fields.map(function (f) {
-      inputs[f.name] = el("input", { type: f.type || "text", placeholder: f.ph || "",
-        autocomplete: f.auto || "off", required: "" });
-      return el("div", { class: "field" }, [el("label", { text: f.label }), inputs[f.name]]);
+    /* The label has to be ASSOCIATED with its field, not merely next to it. A
+       <label> sibling with no `for` is a caption a sighted person reads and a
+       screen reader never mentions — so the seller signing in hears "edit text,
+       edit text" and has to guess which is the password. */
+    var form = el("form", {}, [err].concat(fields.map(function (f, i) {
+      var id = "mc-" + f.name + "-" + i;
+      inputs[f.name] = el("input", { id: id, type: f.type || "text",
+        placeholder: f.ph || "", autocomplete: f.auto || "off", required: "" });
+      return el("div", { class: "field" },
+        [el("label", { for: id, text: f.label }), inputs[f.name]]);
     })).concat([el("button", { class: "cta", type: "submit", text: ctaLabel })]));
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();

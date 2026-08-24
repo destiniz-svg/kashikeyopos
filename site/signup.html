@@ -16,7 +16,7 @@
   --bg:#0b0c0e;--bg-1:#111214;--bg-2:#17181b;
   --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
   --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#6f747d;
-  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--accent-btn:#c2321c;--on-accent:#fff4f0;
   --go:#34c77b;--danger:#ff7b8e;
   --mono:'JetBrains Mono',ui-monospace,monospace;
 }
@@ -52,7 +52,7 @@ textarea{resize:vertical;min-height:74px}
 @media (max-width:460px){.row{flex-direction:column;gap:0}}
 button.primary{width:100%;margin-top:24px;padding:14px;border-radius:999px;border:none;
   font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;min-height:48px;
-  background:var(--accent);color:var(--on-accent);
+  background:var(--accent-btn);color:var(--on-accent);
   box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 8px 24px rgba(244,85,60,.35);
   transition:background .15s,transform .15s}
 button.primary:hover{background:var(--accent-deep)}
@@ -72,6 +72,14 @@ button.primary:disabled{opacity:.55;cursor:default}
 .done p{color:var(--mute);font-size:14px;line-height:1.6}
 .done p b{color:var(--dim)}
 .hide{display:none}
+
+/* WHERE THE KEYBOARD IS. This page had no focus rule at all, so tabbing
+   through the screen tabs and the trial CTA moved focus invisibly — the one
+   thing a keyboard user needs to know is which control they are about to
+   activate. :focus-visible so a pointer never draws it; the accent at 2px,
+   which clears 3:1 on every surface here. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:inherit}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1px}
 </style>
 </head>
 <body>

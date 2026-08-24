@@ -14,7 +14,7 @@
 :root{
   --bg:#0b0c0e;--bg-1:#111214;--line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
   --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#6f747d;
-  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--accent-btn:#c2321c;--on-accent:#fff4f0;
   --mono:'JetBrains Mono',ui-monospace,monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -40,6 +40,14 @@ p.sub b{color:var(--dim)}
 .hintbox .mono{font-family:var(--mono);font-size:12px;color:var(--accent-2)}
 .foot{margin-top:20px;text-align:center;font-size:13px;color:var(--mute)}
 .foot a{color:var(--accent-2);text-decoration:none;font-weight:600}
+
+/* WHERE THE KEYBOARD IS. This page had no focus rule at all, so tabbing
+   through the screen tabs and the trial CTA moved focus invisibly — the one
+   thing a keyboard user needs to know is which control they are about to
+   activate. :focus-visible so a pointer never draws it; the accent at 2px,
+   which clears 3:1 on every surface here. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:inherit}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1px}
 </style>
 </head>
 <body>

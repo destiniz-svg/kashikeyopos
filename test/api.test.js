@@ -1543,6 +1543,177 @@ test('COGS that disagrees with the stock it moved is recorded and flagged', opts
   assert.notStrictEqual(Number(row.cogs), 40, 'which is not what it claimed');
 });
 
+/* ═══ A SHIFT, RECONCILED FROM THE RAW TABLES ═══════════════════════════════
+   The one check an operator does on their first night, and the one the audit
+   left NOT TESTED: ring a day's trade, close the drawer, and reconcile
+   gross → net → tax → cash variance → COGS against the tables the sales wrote,
+   independently of any screen that reports them. If this does not tie there is
+   no point discussing anything else.
+
+   Deliberately not a clean shift. It carries the things that break naive
+   reconciliations: a discount, a service charge, cash rounding, a tip that is
+   NOT revenue, a card sale that does not touch the drawer, a split bill paying
+   two ways, and stock actually leaving the shelf. */
+test('a full shift ties: gross to net to tax to cash to COGS', opts, async () => {
+  const R = (n) => Math.round(Number(n) * 100) / 100;
+  const ing = await one('SELECT id, avg_cost FROM ingredient WHERE avg_cost > 0'
+    + ' ORDER BY avg_cost DESC LIMIT 1');
+  const day = '2026-04-02';
+  const FLOAT = 1500;
+
+  // A drawer of its own, so the cash arithmetic is this shift's alone.
+  await push([{ opId: uuid(), kind: 'close_register', payload: { counted: 0 } }]);
+  await push([{ opId: uuid(), kind: 'open_register', payload: { float: FLOAT } }]);
+
+  /* Take a delivery first. Earlier tests in this file deliberately oversell to
+     prove the shortfall is named, so the shelf starts negative — and a shift
+     run on a negative shelf is not a clean shift, it is the oversell case
+     again. Reconciling wants the ordinary evening. */
+  const onHand = Number((await one('SELECT on_hand FROM ingredient WHERE id = $1',
+    [ing.id])).on_hand);
+  await push([{ opId: uuid(), kind: 'stock_adjust', payload: {
+    ing: ing.id, qty: Math.max(0, -onHand) + 50, cost: Number(ing.avg_cost),
+    value: 0, note: 'opening the shelf for the shift test'
+  } }]);
+
+  // What the till would send: two units a bill at the cost it knows. Sending a
+  // figure that does NOT match is the cogs_mismatch case, tested elsewhere.
+  const COGS = R(2 * Number(ing.avg_cost));
+
+  // ── the trade ───────────────────────────────────────────────────────────
+  const bill = (o) => ({ opId: uuid(), kind: 'sale', payload: Object.assign({
+    bizDate: day, covers: 2, taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8,
+    sold: [{ id: 'm1', name: 'Dish', qty: 1, price: o.net, amount: o.net }],
+    stockMoves: [{ ing: ing.id, qty: 2, cost: 0, value: 0 }]
+  }, o) });
+
+  // 1 · plain cash bill, service and tax on top, rounded to the 50-laari coin
+  const b1 = { sub: 200, disc: 0, net: 200, svc: 20, tax: 17.6, round: -0.1,
+    total: 237.5, tip: 0, cogs: COGS,
+    payments: [{ method: 'cash', amt: 237.5, tendered: 250, chg: 12.5 }] };
+  // 2 · discounted cash bill WITH A TIP — the tip is held, never revenue
+  /* The till's claimed `total` is what the GUEST HANDED OVER — bill plus tip —
+     because that is the note that enters the drawer and the figure the count
+     reconciles against. The server stores the bare bill on sale.total and the
+     tip beside it. 297 + 20. */
+  const b2 = { sub: 300, disc: 50, net: 250, svc: 25, tax: 22, round: 0,
+    total: 317, tip: 20, cogs: COGS,
+    payments: [{ method: 'cash', amt: 317, tendered: 320, chg: 3, tip: 20 }] };
+  // 3 · card bill — money the drawer never sees
+  const b3 = { sub: 400, disc: 0, net: 400, svc: 40, tax: 35.2, round: 0,
+    total: 475.2, tip: 0, cogs: COGS,
+    payments: [{ method: 'card', amt: 475.2, ref: 'AUTH-9001' }] };
+  // 4 · split bill, half cash half card, to the laari
+  const b4 = { sub: 100, disc: 0, net: 100, svc: 10, tax: 8.8, round: 0,
+    total: 118.8, tip: 0, cogs: COGS,
+    payments: [{ method: 'cash', amt: 59.4, tendered: 60, chg: 0.6 },
+      { method: 'card', amt: 59.4, ref: 'AUTH-9002' }] };
+
+  const rung = await push([bill(b1), bill(b2), bill(b3), bill(b4)]);
+  rung.body.results.forEach((x, i) => assert.ok(!x.error,
+    'bill ' + (i + 1) + ' rang: ' + JSON.stringify(x)));
+  const ids = rung.body.results.map((x) => x.result.saleId);
+
+  // ── what the SALES say ──────────────────────────────────────────────────
+  const sale = await one('SELECT sum(net) net, sum(service) svc, sum(tax) tax,'
+    + ' sum(rounding) rnd, sum(total) total, sum(tip) tip, sum(pts_value) pts,'
+    + ' sum(cogs) cogs, count(*)::int n,'
+    + ' count(*) FILTER (WHERE server_audit IS NOT NULL)::int flagged'
+    + ' FROM sale WHERE id = ANY($1)', [ids]);
+  assert.strictEqual(sale.n, 4, 'four bills');
+  const why = await one('SELECT server_audit FROM sale WHERE id = ANY($1)'
+    + ' AND server_audit IS NOT NULL LIMIT 1', [ids]);
+  assert.strictEqual(sale.flagged, 0,
+    'and none needed repairing — nothing was quietly corrected under this shift: '
+    + JSON.stringify(why && why.server_audit));
+
+  // The bill's own identity, summed across the shift.
+  assert.strictEqual(
+    R(Number(sale.net) + Number(sale.svc) + Number(sale.tax) + Number(sale.rnd)
+      - Number(sale.pts)),
+    R(sale.total),
+    'net + service + tax + rounding − points = total');
+
+  // ── what the LEDGER says, read back independently ───────────────────────
+  const leg = async (code) => Number((await one(
+    'SELECT coalesce(sum(jl.dr),0) dr, coalesce(sum(jl.cr),0) cr FROM journal_line jl'
+    + ' JOIN journal j ON j.id = jl.journal_id'
+    + ' WHERE j.source_id = ANY($1) AND jl.account_code = $2', [ids, code]))
+    .cr) - Number((await one(
+    'SELECT coalesce(sum(jl.dr),0) dr, coalesce(sum(jl.cr),0) cr FROM journal_line jl'
+    + ' JOIN journal j ON j.id = jl.journal_id'
+    + ' WHERE j.source_id = ANY($1) AND jl.account_code = $2', [ids, code]))
+    .dr);
+
+  /* Revenue is credited GROSS and the discount debited beside it — a discount
+     is a thing the business gave away, not revenue it never earned, and a P&L
+     that nets them cannot say how much was given away. So the identity is
+     4000 − 4200 = net, which is what the sale row carries. */
+  const disc = await one('SELECT coalesce(sum(discount),0) d FROM sale WHERE id = ANY($1)',
+    [ids]);
+  assert.strictEqual(R(await leg('4000')), R(Number(sale.net) + Number(disc.d)),
+    '4000 carries the goods at menu price');
+  assert.strictEqual(R(-(await leg('4200'))), R(disc.d),
+    '4200 carries what was given away, where somebody can see it');
+  assert.strictEqual(R((await leg('4000')) + (await leg('4200'))), R(sale.net),
+    'and the two net to the goods figure the guest was charged');
+  assert.strictEqual(R(await leg('2200')), R(sale.tax), '2200 carries the tax charged');
+  assert.strictEqual(R(await leg('2300')), R(sale.svc), '2300 the service billed');
+  assert.strictEqual(R(await leg('2450')), R(sale.tip),
+    '2450 holds the tip for the team — it is not revenue and never was');
+
+  // ── the drawer ──────────────────────────────────────────────────────────
+  const cash = await one("SELECT coalesce(sum(amount),0) amt FROM payment"
+    + " WHERE sale_id = ANY($1) AND method = 'cash'", [ids]);
+  assert.strictEqual(R(-(await leg('1010'))), R(cash.amt),
+    '1010 is debited with exactly the notes that entered the drawer, tips included');
+  const card = await one("SELECT coalesce(sum(amount),0) amt FROM payment"
+    + " WHERE sale_id = ANY($1) AND method = 'card'", [ids]);
+  assert.strictEqual(R(-(await leg('1030'))), R(card.amt),
+    'and card money sits in the acquirer receivable, not the drawer');
+  assert.strictEqual(R(Number(cash.amt) + Number(card.amt)),
+    R(Number(sale.total) + Number(sale.tip)),
+    'every tender accounted for: the bills plus the tips');
+
+  // ── cost of sales against the stock that moved ──────────────────────────
+  const moved = await one('SELECT coalesce(sum(value),0) v, coalesce(sum(qty),0) q'
+    + ' FROM stock_move WHERE sale_id = ANY($1)', [ids]);
+  assert.strictEqual(R(moved.q), -8, 'four bills took two units each, signed out');
+  // leg() reads credits-minus-debits, and a sale CREDITS 1200 (stock leaves).
+  assert.strictEqual(R(await leg('1200')), R(moved.v),
+    '1200 is relieved by the value of the stock that left the shelf');
+  assert.strictEqual(R(await leg('5000') * -1), R(moved.v),
+    'and 5000 is charged the same figure — one number, not two');
+  assert.strictEqual(R(sale.cogs), R(moved.v),
+    'and the sale rows agree with both');
+
+  // ── close the drawer and reconcile the count ────────────────────────────
+  const SHORT = 5;
+  const counted = R(FLOAT + Number(cash.amt) - SHORT);
+  const close = await push([{ opId: uuid(), kind: 'close_register',
+    payload: { counted: counted, note: 'shift reconciliation test' } }]);
+  const z = close.body.results[0].result;
+  assert.strictEqual(R(z.expected), R(FLOAT + Number(cash.amt)),
+    'the register expects the float plus the cash it took');
+  assert.strictEqual(R(z.variance), -SHORT, 'and the count is short by exactly that');
+
+  const shortLeg = await one("SELECT coalesce(sum(dr),0) dr FROM journal_line jl"
+    + " JOIN journal j ON j.id = jl.journal_id"
+    + " WHERE j.source_id = $1 AND jl.account_code = '6300'", [z.id]);
+  assert.strictEqual(R(shortLeg.dr), SHORT,
+    'a short drawer is a real cost, booked the day it happened');
+
+  // ── and the whole shift balances ────────────────────────────────────────
+  const tb = await one('SELECT coalesce(sum(jl.dr),0) dr, coalesce(sum(jl.cr),0) cr'
+    + ' FROM journal_line jl JOIN journal j ON j.id = jl.journal_id'
+    + ' WHERE j.source_id = ANY($1) OR j.source_id = $2', [ids, z.id]);
+  assert.strictEqual(R(tb.dr), R(tb.cr),
+    'the shift trial balance: ' + R(tb.dr) + ' = ' + R(tb.cr));
+
+  // Leave a register open for whatever runs next.
+  await push([{ opId: uuid(), kind: 'open_register', payload: { float: 0 } }]);
+});
+
 /* HIDING A DISH AND 86-ING ONE ARE DIFFERENT DECISIONS, and neither round trip
    closed. The bootstrap published `offMenu` and `soldOutReason`; the terminal
    reads `hidden` and `off`. So both controls wrote a local flag, queued an op,
@@ -1972,6 +2143,98 @@ test('a short settlement batch books what actually happened, once', opts, async 
   assert.strictEqual(Number(adj.bank), 985, '970 originally, +15 corrected — never restated');
 });
 
+/* ═══ A SALE CANNOT HAPPEN TWICE ═══════════════════════════════════════════
+   The one failure this build is least allowed to have. A till pushes, the
+   connection drops before the answer arrives, and the outbox — which cannot
+   know whether the op landed — pushes the same op again. If that mints a
+   second sale, the guest is charged twice, the drawer is over, the stock is
+   double-consumed and the ledger says both are correct.
+
+   The fence is `op_log.op_id` as the PRIMARY KEY with `ON CONFLICT DO NOTHING
+   RETURNING`: a seen op short-circuits BEFORE the handler runs, so nothing
+   downstream needs to be idempotent on its own. This asserts it end to end —
+   sale row, payment, stock move, journal and the member's points — across
+   both shapes a duplicate actually arrives in: twice inside one batch (the
+   till retried while the first was still in flight), and again hours later
+   (the outbox drained after a reconnect). */
+test('a sale replayed is one sale, one payment, one journal', opts, async () => {
+  const opId = uuid();
+  const before = await one('SELECT count(*)::int AS n FROM sale');
+  const op = { opId, kind: 'sale', payload: {
+    bizDate: today(), covers: 2, sub: 200, disc: 0, net: 200, svc: 0, tax: 0,
+    round: 0, total: 200, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 200, amount: 200 }],
+    payments: [{ method: 'cash', amt: 200, tendered: 200 }], stockMoves: []
+  } };
+
+  // SHAPE ONE: the same op twice inside one batch. A duplicate inside a batch
+  // must not abort its neighbours either — that is what the savepoint is for.
+  const r = await push([op, op]);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.results.length, 2);
+  r.body.results.forEach((x) => assert.ok(!x.error, JSON.stringify(x)));
+
+  const mid = await one('SELECT count(*)::int AS n FROM sale');
+  assert.strictEqual(mid.n, before.n + 1,
+    'two identical ops in one batch made exactly one sale');
+
+  // SHAPE TWO: hours later, from a drained outbox that never saw the answer.
+  const again = await push([op]);
+  assert.strictEqual(again.status, 200);
+  assert.ok(!again.body.results[0].error, JSON.stringify(again.body.results[0]));
+
+  const after = await one('SELECT count(*)::int AS n FROM sale');
+  assert.strictEqual(after.n, before.n + 1, 'and still exactly one sale');
+
+  /* One sale is not enough on its own — the money and the goods have to be
+     single too. A handler that ran twice against one sale row would leave the
+     row looking right and the drawer wrong. */
+  const sid = await one("SELECT id FROM sale WHERE total = 200 AND covers = 2"
+    + ' ORDER BY id DESC LIMIT 1');
+  const legs = await one('SELECT'
+    + ' (SELECT count(*)::int FROM payment WHERE sale_id = $1) AS pays,'
+    + ' (SELECT coalesce(sum(amount), 0) FROM payment WHERE sale_id = $1) AS taken,'
+    + ' (SELECT count(*)::int FROM journal WHERE source = $2'
+    + '    AND source_id = $1::text) AS journals', [sid.id, 'sale']);
+  assert.strictEqual(legs.pays, 1, 'one tender, not three');
+  assert.strictEqual(Number(legs.taken), 200, 'and 200 taken, not 600');
+  assert.strictEqual(legs.journals, 1, 'one journal — a second would double revenue');
+
+  // The op log holds it once, which is the mechanism itself.
+  const log = await one('SELECT count(*)::int AS n FROM op_log WHERE op_id = $1',
+    [opId]);
+  assert.strictEqual(log.n, 1);
+});
+
+test('a replayed sale does not award its points a second time', opts, async () => {
+  /* Loyalty is the accrual most likely to survive a duplicate quietly: points
+     are added rather than set, so a handler that ran twice reads as a generous
+     evening rather than as a fault, and 2350 drifts from the member balances
+     it is supposed to tie to. */
+  const phone = '960' + String(Date.now()).slice(-7);
+  await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Replay Probe', phone, email: null } }]);
+  const m = await one('SELECT id, points FROM chain.member WHERE phone = $1', [phone]);
+  assert.ok(m, 'the customer exists');
+
+  const opId = uuid();
+  const op = { opId, kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 500, disc: 0, net: 500, svc: 0, tax: 0,
+    round: 0, total: 500, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    member: m.id,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 500, amount: 500 }],
+    payments: [{ method: 'cash', amt: 500, tendered: 500 }], stockMoves: []
+  } };
+  await push([op]);
+  const once = await one('SELECT points FROM chain.member WHERE id = $1', [m.id]);
+  await push([op]);
+  await push([op]);
+  const thrice = await one('SELECT points FROM chain.member WHERE id = $1', [m.id]);
+  assert.strictEqual(Number(thrice.points), Number(once.points),
+    'the balance is what one visit earned, however many times the op arrived');
+  assert.ok(Number(once.points) > Number(m.points), 'and it did earn on the first');
+});
+
 test('a tip is held for the team, not booked as rounding', opts, async () => {
   // The guest hands over 100 for a 90 bill: the payment carries the whole
   // note, the bill total stays 90, and the 10 is a liability from the moment
@@ -2195,6 +2458,108 @@ test('isolation holds — the leak test runs in the pipeline', opts, async () =>
   assert.strictEqual(out.leaks, 0,
     out.results.filter((r) => r.leaked).map((r) => r.name).join(', '));
   assert.ok(out.results.length >= 12, 'every crossing attempt was made');
+});
+
+/* ═══ THE SECOND BELT, READ RATHER THAN TRUSTED ════════════════════════════
+   `npm run leak-test` proves thirteen specific crossings fail. That is the
+   right test for the crossings somebody thought of; it says nothing about the
+   table added next year. This is the other half — the INVARIANT, asked of the
+   catalog itself, so a new `chain.*` table cannot arrive unprotected and pass.
+
+   There are exactly two ways a control-plane table may be safe, and every one
+   of them is one or the other:
+
+     BY POLICY — `FORCE ROW LEVEL SECURITY` and at least one policy, so even
+     the table's owner is filtered. Eleven tables.
+
+     BY ABSENCE OF GRANT — no privilege of any kind to any outlet login role,
+     which is what migration 011 does to the account plane. There is no policy
+     to get wrong because there is no way in. Six tables.
+
+   A table with neither is reachable and unfiltered, which is the cross-tenant
+   exposure this whole build is arranged to make impossible. */
+test('every control-plane table is either policied or ungranted', opts, async () => {
+  const q = await db.owner().query(`
+    SELECT c.relname AS t, c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
+      (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid)::int AS policies,
+      coalesce((SELECT array_agg(DISTINCT g.privilege_type::text ORDER BY g.privilege_type::text)
+        FROM information_schema.role_table_grants g
+        WHERE g.table_schema = 'chain' AND g.table_name = c.relname
+          AND g.grantee ~ '^outlet_[0-9]+_app$'), '{}'::text[]) AS granted
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'chain' AND c.relkind = 'r' ORDER BY 1`);
+
+  assert.ok(q.rows.length >= 15, 'the control plane was actually read');
+  let policied = 0; let ungranted = 0;
+  q.rows.forEach((r) => {
+    const grants = r.granted || [];
+    if (!grants.length) { ungranted++; return; }
+    policied++;
+    assert.ok(r.rls && r.forced,
+      'chain.' + r.t + ' is granted to outlet roles (' + grants.join(', ')
+      + ') and does not FORCE row level security — an outlet could read another'
+      + " outlet's rows, or the table's own owner could");
+    assert.ok(r.policies > 0,
+      'chain.' + r.t + ' forces RLS with no policy at all, which denies every'
+      + ' row to every outlet: a table nobody can read is a broken feature,'
+      + ' not a secure one');
+    // DELETE is never granted anywhere on the control plane. A till corrects by
+    // writing, never by removing — and a compromised one must not be able to
+    // shred the row that proves what it did.
+    assert.ok(!grants.includes('DELETE') && !grants.includes('TRUNCATE'),
+      'chain.' + r.t + ' lets an outlet role remove rows');
+  });
+  assert.ok(policied >= 10 && ungranted >= 4,
+    'both halves of the belt are in use: ' + policied + ' policied, '
+    + ungranted + ' ungranted');
+
+  // The trail is append-only from the floor, by grant rather than by policy —
+  // an outlet role that could UPDATE chain.audit could rewrite what it did.
+  const audit = q.rows.find((r) => r.t === 'audit');
+  assert.deepStrictEqual(audit.granted, ['INSERT'],
+    'chain.audit is written and never edited from an outlet');
+});
+
+test('no policy on the control plane is unconditional', opts, async () => {
+  /* A policy is only worth having if it asks the transaction who it is. One
+     written `USING (true)` — the easy shape to reach for when a query comes
+     back empty during development — is FORCE RLS that filters nothing, and it
+     reads as protected from every angle except this one. */
+  const q = await db.owner().query(`
+    SELECT c.relname AS t, p.polname AS name, p.polcmd AS cmd,
+      coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS qual,
+      coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS chk
+    FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'chain' ORDER BY 1, 2`);
+
+  assert.ok(q.rows.length >= 18, 'every policy was read');
+  const asks = /app\.current_outlet\(\)|app\.current_rank\(\)|app\.group_scope\(\)/;
+  q.rows.forEach((r) => {
+    const body = [r.qual, r.chk].filter(Boolean).join(' AND ');
+    assert.ok(body, 'chain.' + r.t + '.' + r.name + ' has no expression at all');
+    assert.ok(asks.test(body),
+      'chain.' + r.t + '.' + r.name + ' never reads the transaction context: '
+      + body);
+    assert.ok(!/^\(?true\)?$/i.test(r.qual.trim()),
+      'chain.' + r.t + '.' + r.name + ' is USING (true)');
+  });
+
+  /* And the context it reads is transaction-scoped, so a pooled connection
+     cannot carry one request's identity into the next. Proven rather than
+     read: set it, leave, come back on the same pool. */
+  const c = await db.owner().connect();
+  try {
+    await c.query('BEGIN');
+    await c.query("SELECT set_config('app.outlet_id', '424242', true)");
+    const inside = await c.query('SELECT app.current_outlet() AS o');
+    assert.strictEqual(Number(inside.rows[0].o), 424242);
+    await c.query('COMMIT');
+    const after = await c.query('SELECT app.current_outlet() AS o');
+    assert.strictEqual(after.rows[0].o, null,
+      'the identity died at COMMIT — a SET LOCAL that outlived its transaction'
+      + ' is one outlet answering with another\'s context');
+  } finally { c.release(); }
 });
 
 /* ═══ A STORE HAS AN ADDRESS ══════════════════════════════════════════════

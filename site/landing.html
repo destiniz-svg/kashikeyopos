@@ -21,8 +21,8 @@
 :root{
   --bg:#0a0b0d;--bg-1:#101114;--bg-2:#16171b;--bg-3:#1d1f24;
   --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.13);
-  --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#70757e;
-  --accent:#f4553c;--accent-2:#ff8a5c;--accent-3:#ffd9a3;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#949aa3;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-3:#ffd9a3;--accent-deep:#d63f27;--accent-btn:#c2321c;--on-accent:#fff4f0;
   --go:#34c77b;--go-b:#5fe09a;--fwd:#7c92f5;--warn:#f2a43a;
   --mono:'JetBrains Mono',ui-monospace,monospace;
   --r:20px;
@@ -67,7 +67,7 @@ nav.links a:hover{color:var(--text);background:rgba(255,255,255,.05)}
   padding:11px 18px;min-height:44px;border-radius:999px;font-size:14px;font-weight:600;
   white-space:nowrap;transition:transform .16s,background .16s,box-shadow .16s}
 .btn:active{transform:scale(.97)}
-.btn-primary{background:var(--accent);color:var(--on-accent);
+.btn-primary{background:var(--accent-btn);color:var(--on-accent);
   box-shadow:0 0 0 1px rgba(255,255,255,.1) inset,0 8px 26px rgba(244,85,60,.38)}
 .btn-primary:hover{background:var(--accent-deep);transform:translateY(-1px)}
 .btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--line-2)}
@@ -162,7 +162,7 @@ h1 .grad{background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 40%,
 .li.total{font-weight:700;color:var(--text);border-top:1px solid var(--line);margin-top:auto;padding-top:9px}
 .li.total .p{color:var(--accent-2);font-size:14px}
 .li.tender .p{color:var(--go-b)}
-.paybtn{margin-top:10px;background:var(--accent);color:var(--on-accent);border-radius:11px;
+.paybtn{margin-top:10px;background:var(--accent-btn);color:var(--on-accent);border-radius:11px;
   text-align:center;font-size:12.5px;font-weight:700;padding:10px;opacity:.35;transition:all .4s}
 .paybtn.armed{opacity:1;box-shadow:0 6px 20px rgba(244,85,60,.4)}
 .paybtn.done{background:var(--go);color:#04180d}
@@ -209,8 +209,13 @@ h2{font-size:clamp(27px,5vw,44px);letter-spacing:-.025em;line-height:1.07;font-w
   scrollbar-width:none;-ms-overflow-style:none}
 .mtabs::-webkit-scrollbar{display:none}
 .mtab{flex-shrink:0;padding:11px 17px;min-height:44px;border-radius:999px;font-size:13.5px;font-weight:600;
-  color:var(--mute);border:1px solid var(--line-2);background:var(--bg-1);transition:all .2s;position:relative;overflow:hidden}
-.mtab.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent);
+  color:var(--mute);border:1px solid var(--line-2);background:var(--bg-1);position:relative;overflow:hidden;
+  /* NOT `transition:all` — that includes outline-width, so the focus ring
+     faded in over 200ms and a keyboard user got nothing at the moment focus
+     landed. A focus indicator is the one thing on a page that has to be
+     instant. The named properties are what the tab is actually animating. */
+  transition:color .2s,background .2s,border-color .2s,box-shadow .2s}
+.mtab.on{color:var(--on-accent);background:var(--accent-btn);border-color:var(--accent-btn);
   box-shadow:0 8px 24px rgba(244,85,60,.3)}
 .mstage{margin-top:18px;border-radius:var(--r);border:1px solid var(--line);background:var(--bg-1);
   overflow:hidden;position:relative}
@@ -371,6 +376,14 @@ html.js-reveal .rv.d3{transition-delay:.24s}
   .marq .track,.orb,.pill .dot,.tiercard::after,.chip .b,.bars i,.net.off .pip{animation:none !important}
   h1 .grad{animation:none}
 }
+
+/* WHERE THE KEYBOARD IS. This page had no focus rule at all, so tabbing
+   through the screen tabs and the trial CTA moved focus invisibly — the one
+   thing a keyboard user needs to know is which control they are about to
+   activate. :focus-visible so a pointer never draws it; the accent at 2px,
+   which clears 3:1 on every surface here. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:inherit}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1px}
 </style>
 </head>
 <body>
