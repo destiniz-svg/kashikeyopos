@@ -1646,7 +1646,11 @@ class Component extends DCLogic {
       V.signInTitle = onOtp ? "Ask for your code"
         : jn ? "Welcome back, " + (jn.first || "there")
           : lapsed ? "That link has expired"
-            : (((this.K() || {}).CHAIN || {}).name || "Kashikeyo") + " Rewards";
+            /* The OUTLET'S name, not the company's. CHAIN.name is the legal
+               entity — "Test Trading Pvt Ltd Rewards" greeted guests with a
+               registration certificate. The guest knows the room they ate
+               in; the holding company is the accountant's business. */
+            : ((this.outlet().name || ((this.K() || {}).CHAIN || {}).name || "Kashikeyo") + " Rewards");
       V.signInSub = onOtp
         ? "A four-digit code for " + this.maskedTarget()
           + " is on your server's screen. It lasts ten minutes."
@@ -1754,7 +1758,9 @@ class Component extends DCLogic {
 
     if (!this.K()) return V;
     const k = this.K(), o = this.outlet();
-    V.chainName = (k.CHAIN.name || "Kashikeyo").toUpperCase();
+    // The tier card's small-caps line: the outlet the guest actually visits,
+    // falling back to the chain only when no outlet has resolved yet.
+    V.chainName = (this.outlet().name || k.CHAIN.name || "Kashikeyo").toUpperCase();
     V.poweredLine = k.CHAIN.brand.poweredBy ? "Powered by KashikeyoPOS™" : k.CHAIN.brand.name;
 
     // ── member ─────────────────────────────────────────────────────────────
