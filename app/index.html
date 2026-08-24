@@ -256,8 +256,8 @@
                     <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ c.title }}</span>
                     <span style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:2px">{{ c.sub }}</span>
                   </span>
-                  <button onClick="{{ c.go }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-dim);padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--bg-2)">Open table</button>
-                  <button onClick="{{ c.ack }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:7px 12px;border-radius:999px">On my way</button>
+                  <button onClick="{{ c.go }}" style="{{ c.goStyle }}">{{ c.goLabel }}</button>
+                  <button onClick="{{ c.ack }}" style="{{ c.ackStyle }}">{{ c.ackLabel }}</button>
                 </div>
               </sc-for>
               <button onClick="{{ elsewhereRow.go }}" style="{{ elsewhereRow.style }}">
@@ -5040,23 +5040,49 @@ class Component extends DCLogic {
       tip: s.tip, dismissTip: () => this.setState({ tip: false }),
       // Guest calls sit above the 86 list and above the floor itself: a raised
       // hand outranks everything else a server is looking at.
-      calls: this.signals().map((x) => {
-        const mins = Math.max(0, Math.round((Date.now() - x.at) / 60000));
-        const urgent = mins >= 3;
-        const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
-          : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
-            : x.kind === "member" ? (x.memberName || "A member") + " is at the counter"
-              : x.kind === "reward" ? (x.memberName || "A member") + " redeemed " + (x.code || "a reward")
-                : "T" + x.table + " ordered from the QR menu";
-        return {
-          title: title,
-          sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
-          style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
-          dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
-          go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); },
-          ack: () => { this.ackSignal(x.id); this.toast("Acknowledged — T" + x.table); }
-        };
-      }),
+      /* THREE ROWS, LONGEST-WAITING FIRST, and an honest overflow line. The
+         strip used to render every open call above the floor plan — seven
+         stale rows filled a phone's whole screen and the cashier scrolled
+         past them to reach a table, on every single interaction. A raised
+         hand outranks the floor; a backlog does not get to bury it. */
+      calls: (() => {
+        const open = this.signals();
+        const GOS = "flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-dim);padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--bg-2)";
+        const ACKS = "flex-shrink:0;font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:7px 12px;border-radius:999px";
+        const rows = open.slice(0, 3).map((x) => {
+          const mins = Math.max(0, Math.round((Date.now() - x.at) / 60000));
+          const urgent = mins >= 3;
+          const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
+            : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
+              : x.kind === "member" ? (x.memberName || "A member") + " is at the counter"
+                : x.kind === "reward" ? (x.memberName || "A member") + " redeemed " + (x.code || "a reward")
+                  : "T" + x.table + " ordered from the QR menu";
+          return {
+            title: title,
+            sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
+            style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
+            dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
+            go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); },
+            goLabel: "Open table", goStyle: GOS,
+            ack: () => { this.ackSignal(x.id); this.toast("Acknowledged — T" + x.table); },
+            ackLabel: "On my way", ackStyle: ACKS
+          };
+        });
+        if (open.length > 3) {
+          const extra = open.length - 3;
+          rows.push({
+            title: extra + " more waiting",
+            sub: "Longest-waiting are shown first — the full list is on Requests",
+            style: "display:flex;align-items:center;gap:11px;padding:9px 13px;border-radius:11px;background:var(--bg-2);border:1px dashed var(--line)",
+            dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:var(--text-faint)",
+            go: () => this.setState({ view: "requests" }),
+            goLabel: "Open Requests", goStyle: GOS,
+            ack: () => this.setState({ view: "requests" }),
+            ackLabel: "", ackStyle: "display:none"
+          });
+        }
+        return rows;
+      })(),
       hasCalls: this.signals().length > 0 || this.elsewhere().length > 0,
 
       // ── Unanswered bookings ────────────────────────────────────────────────
@@ -7758,7 +7784,29 @@ class Component extends DCLogic {
         }
       });
     } catch (e) { /* private mode: the local half is simply absent */ }
-    return out.sort((a, b) => (a.at || 0) - (b.at || 0));
+    /* THE BOARD DECAYS, because a request is a moment, not a record. A
+       sign-in code is dead ten minutes after it was minted — the row expires
+       at twelve, a little grace so it cannot vanish mid-read-out. Everything
+       else expires at forty-five: a raised hand still up after that was
+       answered without anyone tapping the board, and rows that never leave
+       teach the floor to stop reading the board at all — which is how seven
+       stale requests ended up burying the floor plan on every terminal.
+       Exact duplicates (same kind, same table, same words) collapse to the
+       newest. The audit trail keeps every event; this is the LIVE board. */
+    const nowT = Date.now();
+    const sorted = out.sort((a, b) => (a.at || 0) - (b.at || 0));
+    const seenRow = {};
+    const live2 = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {   // newest first, so it wins the dedupe
+      const x = sorted[i];
+      const age = nowT - new Date(x.at || 0).getTime();
+      if (age > (x.kind === "member_code" ? 12 * 60e3 : 45 * 60e3)) continue;
+      const k = x.kind + "|" + x.table + "|" + (x.detail || "");
+      if (seenRow[k]) continue;
+      seenRow[k] = 1;
+      live2.unshift(x);                              // back to oldest-first queue order
+    }
+    return live2;
   }
   signals() { return this.allSignals().filter((x) => x.outlet === this.state.outletId); }
   // Calls for other outlets are never actionable here, but silence is worse
