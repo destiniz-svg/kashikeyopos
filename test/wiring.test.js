@@ -1245,3 +1245,76 @@ test('the outbox waits rather than pushing into an install it cannot name', () =
     + ' fence used to sit out');
   assert.ok(/_heldFor/.test(flush), 'and says why it is holding rather than doing nothing');
 });
+
+/* ═══ A YIELD IS AN OUTLET FACT ══════════════════════════════════════════════
+   grossQty = net / (yield × (1 − waste)) decides how much stock every sale
+   deducts. That factor lived in `state.local` — per-device, never synced — with
+   a regex on the ingredient's NAME as the fallback, and the op meant to carry a
+   measurement was queued with no payload at all. Three invisible consequences:
+   two tills deducted different quantities for one dish, clearing a browser
+   reverted a measurement to a guess, and the server could never reproduce what
+   a sale consumed. */
+test('a measured yield leaves the browser it was measured in', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const AP = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+
+  assert.ok(/queue\("yield_test",[\s\S]{0,400}?\{ ing: String\(id\), y: y, w: w/.test(IDX),
+    'the op carries its measurement — it used to be queued bare, so the trail'
+    + ' recorded a yield of zero against no ingredient');
+
+  const h = AP.slice(AP.indexOf('H.yield_test'), AP.indexOf('H.grn_receive'));
+  assert.ok(/UPDATE ingredient SET yield_pct/.test(h),
+    'and the outlet writes it down rather than only logging it');
+  assert.ok(/y > 0 && y <= 1/.test(h) && /w >= 0 && w < 1/.test(h),
+    'a figure that is not a measurement is refused, not stored');
+
+  assert.ok(/r\.yield_pct == null \? null : num\(r\.yield_pct\)/.test(BOOT),
+    'the bootstrap publishes it — null when unassessed, never 1, because a'
+    + ' guess must not be published as a measurement');
+
+  const y = IDX.slice(IDX.indexOf('yieldOf(id) {'), IDX.indexOf('netFactor(id)'));
+  assert.ok(y.indexOf('it[13]') > y.indexOf('state.local.yields'),
+    'a local measurement is read first (it may not have synced yet)');
+  assert.ok(y.indexOf('it[13]') < y.indexOf('YIELD_TABLE'),
+    'but the OUTLET\'s figure beats the shipped estimate — that is the fix');
+
+  assert.ok(/const held = this\.state\.local\.yields/.test(IDX)
+    && /if \(it && it\[13\] != null\) \{ dropped\+\+; return; \}/.test(IDX),
+    'and the local copy is a holding pen: dropped once the outlet publishes'
+    + ' one, so a stale override cannot fork the stock ledger');
+});
+
+/* ═══ THE PROVISIONING TEMPLATE IS A format() STRING ═════════════════════════
+   003 builds every outlet's schema by passing one enormous SQL body through
+   PL/pgSQL's format(), so `%` is not a character in it — it is a directive. A
+   single stray one (a comment saying "100%", most naturally) makes
+   provision_outlet() raise "unrecognized format() type specifier" and a new
+   outlet cannot be created at all.
+
+   Nothing about the file looks like a format string while you are editing the
+   table definitions in the middle of it, which is exactly why this is a test
+   rather than a note. Only %1$I (the schema name) and %% (an escaped sign) are
+   legal. */
+test('nothing in the outlet template is mistaken for a format directive', () => {
+  const P = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '003_outlet_provision.sql'), 'utf8');
+  /* Only the $ddl$-quoted bodies — the rest of the file is ordinary PL/pgSQL
+     with its own format() calls, whose %I and %L are correct where they are. */
+  const bad = [];
+  const blocks = P.split(/\$ddl\$/);
+  let at = 0;
+  blocks.forEach((block, n) => {
+    const lineNo = P.slice(0, at).split('\n').length;
+    at += block.length + 5;
+    if (n % 2 === 0) return;                       // outside a $ddl$ body
+    block.split('\n').forEach((line, i) => {
+      // Consume the legal forms; anything left is a directive by accident.
+      const rest = line.replace(/%1\$I/g, '').replace(/%%/g, '');
+      if (rest.includes('%')) bad.push((lineNo + i) + ': ' + line.trim().slice(0, 90));
+    });
+  });
+  assert.deepStrictEqual(bad, [],
+    'a bare % in the provisioning template breaks provision_outlet() for every'
+    + ' future outlet — use %% or reword:\n  ' + bad.join('\n  '));
+});

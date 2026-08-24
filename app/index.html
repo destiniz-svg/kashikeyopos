@@ -2776,7 +2776,30 @@ class Component extends DCLogic {
         stage: n, of: steps.length, label: steps[n], steps: steps, source: "outlet"
       });
     });
-    this.setState({ tickets: mine, fulfil: fulfil }, () => this.writeSession());
+    /* THE YIELD HOLDING PEN EMPTIES ITSELF. A measurement taken on this
+       terminal is kept locally so the kitchen sees its own figure straight
+       away, including offline — but it is a holding pen, not a private copy.
+       The moment the outlet publishes an assessment for that ingredient the
+       local one is dropped, so this terminal reads the same number as every
+       other one and a stale override cannot quietly fork the stock ledger.
+
+       Dropped on the ID, not on the value: if the outlet's figure differs from
+       what this device measured, somebody re-measured elsewhere and the
+       outlet's answer is the later one. */
+    const held = this.state.local.yields || {};
+    const stillMine = {};
+    let dropped = 0;
+    Object.keys(held).forEach((id) => {
+      const it = this.item(id);
+      if (it && it[13] != null) { dropped++; return; }
+      stillMine[id] = held[id];
+    });
+    const local = dropped
+      ? Object.assign({}, this.state.local, { yields: stillMine })
+      : this.state.local;
+
+    this.setState({ tickets: mine, fulfil: fulfil, local: local },
+      () => this.writeSession());
   }
   rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
@@ -3366,9 +3389,30 @@ class Component extends DCLogic {
       [/milk|cream|yoghurt|butter|cheese|egg/i, 0.98, 0.02, "chilled, portioned"]
     ];
   }
+  /* WHAT A KILO AS PURCHASED ACTUALLY PLATES. Three sources, in this order,
+     and the order is the whole of it:
+
+       1 · a measurement THIS terminal took that has not reached the outlet yet
+           — offline, or queued and not replayed. It is dropped the moment the
+           outlet publishes one for the same ingredient (see seed()), so the
+           holding pen cannot become a private fork;
+       2 · the OUTLET's assessment, published in the bootstrap. This is the fix:
+           a yield measured on the kitchen till is now the figure every other
+           till deducts by, and it survives a browser's storage being cleared;
+       3 · the shipped estimate, matched on the ingredient's name, which says
+           out loud that it is an estimate.
+
+     It used to be 1 then 3, with 1 being device-local and never synced — so two
+     tills at one counter deducted different quantities for the same dish and
+     nobody could see it from any screen. */
   yieldOf(id) {
     const ov = (this.state.local.yields || {})[String(id)];
-    if (ov) return { y: ov.y, w: ov.w, why: ov.why || "set by the kitchen", set: true };
+    if (ov) return { y: ov.y, w: ov.w, why: ov.why || "set by the kitchen", set: true, mine: true };
+    const it = this.item(id);
+    if (it && it[13] != null) {
+      return { y: +it[13], w: it[14] == null ? 0 : +it[14],
+        why: "measured at this outlet", set: true };
+    }
     const name = this.itemName(id);
     const hit = this.YIELD_TABLE().find((r) => r[0].test(name));
     // An ingredient nobody has assessed is assumed whole with a token trim loss.
@@ -13802,7 +13846,12 @@ class Component extends DCLogic {
     const L = Object.assign({}, this.state.local);
     L.yields = Object.assign({}, L.yields || {}, { [String(id)]: { y: y, w: w, why: v.why || "measured here" } });
     this.setState({ local: L, modal: null });
-    this.queue("yield_test", this.itemName(id) + " · yield " + Math.round(y * 100) + "% · trim " + Math.round(w * 100) + "% · " + this.me(), "items");
+    // WITH ITS PAYLOAD. This op used to be queued bare, so the server recorded
+    // a yield of zero against no ingredient and the measurement never left this
+    // browser — while every sale on every other till went on deducting stock at
+    // a figure guessed from the ingredient's name.
+    this.queue("yield_test", this.itemName(id) + " · yield " + Math.round(y * 100) + "% · trim " + Math.round(w * 100) + "% · " + this.me(), "items",
+      { ing: String(id), y: y, w: w, why: v.why || "measured here" });
     // A yield test that does not visibly move a margin is a yield test nobody
     // repeats, so the consequence is shown at once.
     const moved = before.map((b) => {

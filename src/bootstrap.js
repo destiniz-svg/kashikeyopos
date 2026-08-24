@@ -286,7 +286,16 @@ async function buildBootstrap(ctx) {
         r.id, r.category || '', r.name, r.stock_unit,
         num(r.avg_cost) * (num(r.stock_factor) || 1),
         r.producible ? 'prep' : 'raw', r.id, r.base_unit, r.stock_unit,
-        String(num(r.avg_cost)), num(r.par), num(r.min_stock), r.sellable ? 1 : 0
+        String(num(r.avg_cost)), num(r.par), num(r.min_stock), r.sellable ? 1 : 0,
+        /* 13 and 14: what a kilo as purchased actually plates, and the trim
+           lost getting there. APPENDED, because every reader of this row is
+           positional and inserting would silently re-map twelve fields.
+
+           null, not 1, when nobody has assessed it — the till has a shipped
+           estimate for that case and says on screen that it is an estimate.
+           Publishing 1 would present a guess as a measurement. */
+        r.yield_pct == null ? null : num(r.yield_pct),
+        r.waste_pct == null ? null : num(r.waste_pct)
       ]),
       units: (setting.units || []).map((u) => [u.code, u.name, u.base, u.base, u.factor, 0]),
       unitsFor: unitsByIng,

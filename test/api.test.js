@@ -1543,6 +1543,60 @@ test('COGS that disagrees with the stock it moved is recorded and flagged', opts
   assert.notStrictEqual(Number(row.cogs), 40, 'which is not what it claimed');
 });
 
+/* WHAT A KILO AS PURCHASED ACTUALLY PLATES decides how much stock every sale
+   deducts — grossQty = net / (yield x (1 - waste)) — and it lived in ONE
+   BROWSER's local state, falling back to a regex matched on the ingredient's
+   name. Two tills at a counter deducted different quantities for the same dish;
+   clearing storage reverted a measurement to a guess; and the op that was meant
+   to carry it was queued with no payload at all, so the trail recorded a yield
+   of zero against no ingredient while the screen said "Yield recorded". */
+test('a measured yield becomes the outlet\'s figure, not one browser\'s',
+  opts, async () => {
+  const ing = await one('SELECT id, name FROM ingredient ORDER BY name LIMIT 1');
+  const before = await one('SELECT yield_pct, waste_pct FROM ingredient WHERE id = $1',
+    [ing.id]);
+  assert.strictEqual(before.yield_pct, null,
+    'nobody has assessed it yet — which is a different fact from 100%');
+
+  const r = await push([{ opId: uuid(), kind: 'yield_test',
+    payload: { ing: ing.id, y: 0.62, w: 0.05, why: 'filleted and trimmed' } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+
+  const after = await one('SELECT yield_pct, waste_pct, yield_by, yield_at'
+    + ' FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(after.yield_pct), 0.62, 'the outlet holds the measurement');
+  assert.strictEqual(Number(after.waste_pct), 0.05);
+  assert.strictEqual(after.yield_by, 'filleted and trimmed', 'and why it was taken');
+  assert.ok(after.yield_at, 'and when');
+
+  // Every OTHER terminal reads it, which is the whole point: it reaches them
+  // through the bootstrap rather than staying on the till that measured.
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const row = (boot.body.raw.items || []).find((x) => x[0] === ing.id);
+  assert.ok(row, 'the ingredient is published');
+  assert.strictEqual(Number(row[13]), 0.62, 'with its yield at index 13');
+  assert.strictEqual(Number(row[14]), 0.05, 'and its trim at 14');
+
+  // An unassessed ingredient publishes NULL, never 1 — the till has a shipped
+  // estimate for that case and says on screen that it is an estimate.
+  const un = (boot.body.raw.items || []).find((x) => x[0] !== ing.id);
+  if (un) assert.strictEqual(un[13], null, 'a guess is never published as a measurement');
+});
+
+test('a yield that is not a measurement is refused by name', opts, async () => {
+  const ing = await one('SELECT id FROM ingredient ORDER BY name LIMIT 1');
+  for (const [y, w, what] of [[0, 0.1, 'a yield of nothing'],
+    [1.4, 0.1, 'a yield above 100%'], [0.5, 1.2, 'trim of more than everything']]) {
+    const r = await push([{ opId: uuid(), kind: 'yield_test',
+      payload: { ing: ing.id, y: y, w: w } }]);
+    assert.ok(r.body.results[0].error, what + ' is refused');
+  }
+  // And the good figure from the test above is still standing — a refusal must
+  // not half-write over a measurement somebody took.
+  const still = await one('SELECT yield_pct FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(still.yield_pct), 0.62, 'the real measurement survives');
+});
+
 /* A CAFE THAT COSTS ITS MENU AT A FLAT PERCENTAGE has no recipes and moves no
    stock — an ordinary way to run one. It sends a COGS estimate and no moves,
    every sale, for ever. Comparing them there would flag every bill in the shop,

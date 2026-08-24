@@ -403,6 +403,15 @@ BEGIN
       sell_price  numeric(12,2),
       product_id  text,
       producible  boolean NOT NULL DEFAULT false,
+      -- What a kilo as purchased actually plates. NULL is a real answer —
+      -- "nobody has assessed this" is not the same fact as "measured, and it
+      -- plates whole" — and only the first may fall through to a guess.
+      -- (No literal per-cent sign here: this whole block is a format() string.)
+      -- See migration 031.
+      yield_pct   numeric(6,4) CHECK (yield_pct IS NULL OR (yield_pct > 0 AND yield_pct <= 1)),
+      waste_pct   numeric(6,4) CHECK (waste_pct IS NULL OR (waste_pct >= 0 AND waste_pct < 1)),
+      yield_by    text,
+      yield_at    timestamptz,
       active      boolean NOT NULL DEFAULT true
     );
     CREATE TABLE IF NOT EXISTS %1$I.ingredient_unit (

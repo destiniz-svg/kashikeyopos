@@ -40,6 +40,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        025 retention · 026 install identity
                        027 reserve panel · 028 credit outstanding
                        029 void a sale · 030 the polled tables
+                       031 yield is an outlet fact
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -357,7 +358,41 @@ margin figure it is, so the food-cost card still reads.
 
 Quantities still come from the till's recipe expansion. Re-deriving those
 server-side — addons, modifiers, sub-recipes — is the remaining half, and it is
-open.
+open; the yield factor it needs is now an outlet fact rather than a device one,
+which is what had made the comparison impossible to do without crying wolf.
+
+**What a kilo actually plates is an OUTLET fact.** A recipe says how much of an
+ingredient reaches the plate; what has to LEAVE THE SHELF to put it there is a
+different figure, and the till divides by it on every sale —
+`grossQty = net / (yield × (1 − waste))`. That factor lived in one browser's
+`state.local`, never synced, with a regex matched against the ingredient's NAME
+as the fallback. Three consequences, none visible from any screen: two tills at
+one counter deducted DIFFERENT quantities for the same dish; clearing a
+browser's storage reverted a measurement to a guess; and the server could never
+reproduce what a sale consumed. The op meant to carry the measurement,
+`yield_test`, was queued with **no payload at all**, so the trail recorded a
+yield of zero against no ingredient while the screen said "Yield recorded".
+
+Migration 031 puts it on `ingredient` (`yield_pct`, `waste_pct`, and who and
+when). **NULL is a real answer** and is why they are nullable: "nobody has
+assessed this" and "somebody measured it and it plates at 100%" are different
+facts, and only the first may fall through to the shipped estimate. The
+bootstrap publishes them at indices 13 and 14 — appended, because every reader
+of that row is positional — as `null` rather than 1 where unassessed, so a
+guess is never published as a measurement. A figure that is not a measurement
+(zero, above 1, trim of more than everything) is refused by name rather than
+stored.
+
+`yieldOf()` reads three sources in order: this terminal's own un-synced
+measurement, then the OUTLET's, then the shipped estimate. The local copy is a
+**holding pen, not a private fork** — `seed()` drops it the moment the outlet
+publishes an assessment for that ingredient, so a terminal that measured
+offline keeps its figure until it syncs and then reads the same number as
+everybody else.
+
+This is also what was blocking the server from deriving consumed QUANTITIES for
+itself: the factor the till divides by was not a fact the server held. That
+derivation is still open — it now has its input.
 
 **Selling what is not there is named, never blocked.** Two tills offline at one
 counter can each sell the last portion, and on replay the second used to drive
@@ -1544,7 +1579,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 255 tests
+npm test                          # 259 tests
 npm run leak-test                 # isolation, on its own
 ```
 

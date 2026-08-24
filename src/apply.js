@@ -969,10 +969,38 @@ H.par_set = async (c, p) => {
 
 H.recipe_recost = async (c, p) => ({ items: arr(p.items).length });
 H.recost_items = H.recipe_recost;
+/* A YIELD IS AN OUTLET FACT, NOT A DEVICE ONE. It decides how much stock every
+   sale deducts, and it used to be written into one browser's local state while
+   this op carried no payload at all — so the trail recorded a yield of zero
+   against no ingredient, and the till beside the one that measured went on
+   deducting a figure guessed from the ingredient's name.
+
+   Refused rather than half-recorded: a yield of 0, or above 1, is not a
+   measurement, and writing it would make every dish using that ingredient cost
+   something absurd. The old handler would have taken either silently. */
 H.yield_test = async (c, p, ctx) => {
-  await log(c, 'yield_test', 'ingredient', p.ing, null,
-    { yield: num(p.y), waste: num(p.w), why: p.why });
-  return { ok: true };
+  if (!p.ing) return { skipped: 'a yield belongs to an ingredient' };
+  const y = num(p.y), w = num(p.w);
+  if (!(y > 0 && y <= 1)) {
+    throw Object.assign(new Error('A yield is what a kilo as purchased actually'
+      + ' plates — between 1% and 100%, not ' + p.y), { status: 400 });
+  }
+  if (!(w >= 0 && w < 1)) {
+    throw Object.assign(new Error('Trim loss is a fraction of what is left,'
+      + ' below 100% — not ' + p.w), { status: 400 });
+  }
+  const was = await one(c, 'SELECT yield_pct, waste_pct, name FROM ingredient'
+    + ' WHERE id = $1', [p.ing]);
+  if (!was) return { skipped: 'no such ingredient' };
+  await c.query('UPDATE ingredient SET yield_pct = $2, waste_pct = $3,'
+    + ' yield_by = $4, yield_at = now() WHERE id = $1',
+  [p.ing, y, w, p.why || null]);
+  await log(c, 'yield_test', 'ingredient', p.ing,
+    { yield: was.yield_pct == null ? null : num(was.yield_pct),
+      waste: was.waste_pct == null ? null : num(was.waste_pct) },
+    { name: was.name, yield: y, waste: w, usable: r2(y * (1 - w) * 100),
+      why: p.why || null, by: ctx.actor });
+  return { ing: p.ing, yield: y, waste: w };
 };
 
 // ═══ PURCHASING ════════════════════════════════════════════════════════════
