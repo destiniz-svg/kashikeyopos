@@ -218,11 +218,13 @@ footer .fine{font-size:12px;color:var(--faint);margin-top:14px}
 #statusPill.ok .dot{background:var(--go)}
 #statusPill.ok{color:var(--go)}
 
-/* reveal on scroll — CSS-only fallback stays visible */
-.rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
-.rv.in{opacity:1;transform:none}
+/* Reveal on scroll — hidden ONLY once the script has armed the observer
+   (html.js-reveal), so a browser with no JS, a blocked script or a failed
+   IntersectionObserver shows the whole page rather than a black void. */
+html.js-reveal .rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+html.js-reveal .rv.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){
-  .rv{opacity:1;transform:none;transition:none}
+  html.js-reveal .rv{opacity:1;transform:none;transition:none}
   .marq .track{animation:none}
 }
 </style>
@@ -470,14 +472,14 @@ footer .fine{font-size:12px;color:var(--faint);margin-top:14px}
 <script>
 (function () {
   "use strict";
-  // Reveal on scroll. Content is never hidden from a browser without IO.
+  // Reveal on scroll. The hidden state exists only after the observer is
+  // armed, so nothing is ever hidden from a browser this cannot run in.
   if ("IntersectionObserver" in window) {
+    document.documentElement.classList.add("js-reveal");
     var io = new IntersectionObserver(function (es) {
       es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
     }, { threshold: 0.12 });
     document.querySelectorAll(".rv").forEach(function (el) { io.observe(el); });
-  } else {
-    document.querySelectorAll(".rv").forEach(function (el) { el.classList.add("in"); });
   }
   // The marquee loops by doubling its own row — content written once.
   var t = document.getElementById("marqTrack");
