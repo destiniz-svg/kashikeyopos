@@ -1530,11 +1530,118 @@ test('COGS that disagrees with the stock it moved is recorded and flagged', opts
     stockMoves: []
   } }]);
   assert.ok(!r.body.results[0].error, 'not rejected — the sale happened');
-  const row = await one('SELECT server_audit FROM sale WHERE id = $1',
+  const row = await one('SELECT cogs, server_audit FROM sale WHERE id = $1',
     [r.body.results[0].result.saleId]);
   assert.ok(row.server_audit && row.server_audit.cogs_mismatch, 'the gap is stamped');
   assert.strictEqual(Number(row.server_audit.cogs_mismatch.cogs), 40);
   assert.strictEqual(Number(row.server_audit.cogs_mismatch.stockValue), 0);
+  // And the SALE is repaired to what actually moved, so the P&L and the stock
+  // ledger cannot disagree even while the flag is waiting to be answered.
+  assert.strictEqual(Number(row.cogs), 0,
+    'the sale is booked at the stock it moved, not at the figure it claimed');
+});
+
+/* THE GL AND THE STOCK LEDGER WERE FED BY TWO DIFFERENT CLIENT NUMBERS. 1200
+   was credited with the till's `cogs`, while stock_move carried the till's
+   per-move `value`, and nothing ever compared them — so an outlet whose till
+   had been offline across a price rise valued its evening at last week's cost
+   in one place and this week's in the other, for ever. Both are the server's
+   own weighted-average cost now, which is what makes them the same number by
+   construction rather than by luck. */
+test('the stock ledger and account 1200 are one figure, not two', opts, async () => {
+  const ing = await one("SELECT id, avg_cost FROM ingredient WHERE avg_cost > 0"
+    + ' ORDER BY avg_cost DESC LIMIT 1');
+  assert.ok(ing, 'the seeded outlet has a costed ingredient');
+  const qty = 3;
+  const real = round(qty * Number(ing.avg_cost));
+
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    // The till's own valuation is deliberately nonsense in both fields.
+    cogs: 999,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: [{ ing: ing.id, qty: qty, cost: 999, value: 999 }]
+  } }]);
+  const saleId = r.body.results[0].result.saleId;
+
+  const mv = await one('SELECT value FROM stock_move WHERE sale_id = $1', [saleId]);
+  assert.strictEqual(Number(mv.value), real,
+    'the move is valued at the outlet\'s own weighted-average cost');
+
+  const gl = await one("SELECT sum(cr)::numeric AS cr FROM journal_line jl"
+    + ' JOIN journal j ON j.id = jl.journal_id'
+    + " WHERE j.source_id = $1 AND jl.account_code = '1200'", [saleId]);
+  assert.strictEqual(Number(gl.cr), real, '1200 is credited with exactly that');
+
+  const sale = await one('SELECT cogs, server_audit FROM sale WHERE id = $1', [saleId]);
+  assert.strictEqual(Number(sale.cogs), real, 'and so is the sale');
+  assert.strictEqual(Number(sale.server_audit.cogs_mismatch.cogs), 999,
+    'while what the till claimed is kept, to be answered for');
+});
+
+/* SELLING WHAT IS NOT THERE. Two tills offline at one counter can each sell
+   the last portion, and the second one used to drive on_hand negative in
+   silence. Blocking is the wrong answer — the food left the kitchen and the
+   money is in the drawer — so the shortfall is NAMED. */
+test('a sale that oversells says which ingredient went short', opts, async () => {
+  const ing = await one('SELECT id, name, on_hand FROM ingredient'
+    + ' WHERE on_hand IS NOT NULL ORDER BY on_hand DESC LIMIT 1');
+  const take = Number(ing.on_hand) + 5;
+
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
+    tax: 0, round: 0, total: 50, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 50, amount: 50 }],
+    payments: [{ method: 'cash', amt: 50, tendered: 50 }],
+    stockMoves: [{ ing: ing.id, qty: take, cost: 1, value: take }]
+  } }]);
+  assert.ok(!r.body.results[0].error, 'the sale is never rejected for it');
+
+  const sale = await one('SELECT server_audit FROM sale WHERE id = $1',
+    [r.body.results[0].result.saleId]);
+  const short = sale.server_audit && sale.server_audit.stock_short;
+  assert.ok(short, 'the shortfall is stamped on the sale');
+  assert.strictEqual(short.items[0].name, ing.name, 'and names the ingredient');
+  assert.ok(Number(short.items[0].onHand) < 0, 'with the balance it left behind');
+
+  // asOwner: an outlet's login role has INSERT on chain.audit and nothing else,
+  // which is the point of the trail — reading it back is a support job.
+  const trail = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'stock_negative' AND entity_id = $1", [ing.id]);
+  assert.ok(trail.n > 0, 'and it is on the trail, where a manager can find it');
+
+  // Put the shelf back so later tests are not standing on a negative balance.
+  await push([{ opId: uuid(), kind: 'stock_adjust', payload: {
+    ing: ing.id, qty: take, cost: 1, value: 0, note: 'test restock'
+  } }]);
+});
+
+/* 2350 is what the outstanding points are WORTH, and it was fed by the sale
+   path alone: a manager granting goodwill points moved what the business owes
+   its customers and left the account saying otherwise. The tie held only as
+   long as nobody used the screen, which is a hope rather than a guarantee. */
+test('points granted by hand move the liability too', opts, async () => {
+  const m = await one('SELECT id FROM chain.member ORDER BY id LIMIT 1');
+  const before = await one("SELECT coalesce(sum(cr) - sum(dr), 0)::numeric AS bal"
+    + " FROM journal_line WHERE account_code = '2350'");
+
+  await push([{ opId: uuid(), kind: 'loyalty_update',
+    payload: { member: m.id, points: 200, why: 'goodwill' } }]);
+
+  const after = await one("SELECT coalesce(sum(cr) - sum(dr), 0)::numeric AS bal"
+    + " FROM journal_line WHERE account_code = '2350'");
+  const moved = round(Number(after.bal) - Number(before.bal));
+  assert.ok(moved > 0, 'granting points raises the liability, not just the balance');
+
+  // And taking them back releases it again — by the same rate, both ways.
+  await push([{ opId: uuid(), kind: 'loyalty_update',
+    payload: { member: m.id, points: -200, why: 'reversed' } }]);
+  const back = await one("SELECT coalesce(sum(cr) - sum(dr), 0)::numeric AS bal"
+    + " FROM journal_line WHERE account_code = '2350'");
+  assert.strictEqual(round(Number(back.bal)), round(Number(before.bal)),
+    'and withdrawing them puts it back exactly');
 });
 
 test('a sale with no member accrues nothing', opts, async () => {

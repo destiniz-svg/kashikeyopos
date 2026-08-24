@@ -305,6 +305,50 @@ sweep — repair-and-flag, never reject, because the money is already taken.
 them stamps `server_audit.cogs_mismatch` (full recipe-and-WAC re-derivation of
 COGS server-side is the deeper follow-up this leaves open).
 
+## Stock and the ledger are one figure, not two
+
+Account **1200** and the physical stock ledger were fed by two independent
+client numbers: the journal credited 1200 with the till's `cogs`, while
+`stock_move` carried the till's per-move `value`, and nothing compared them. A
+till offline across a price rise valued its evening at last week's cost in one
+place and this week's in the other, permanently, and the only symptom was a
+margin that was quietly wrong.
+
+**What a consumed portion is worth is the server's answer now.** `moveStock()`
+re-values a `sale` move at the outlet's own weighted-average cost — the same
+`avg_cost` a delivery re-averages — and everything downstream reads that one
+figure: `stock_move.value`, the credit to 1200, and `sale.cogs`, which is
+repaired to it. The till's claim survives in `server_audit.cogs_mismatch`, to be
+answered for. Only a SALE is re-valued: a delivery's value is what the invoice
+says, a write-off's is what somebody decided to write off, and a count variance
+is valued by the count — those are facts the till was told, not estimates it
+made. A sale's was the only one nobody was ever told.
+
+The journal sums the **rounded** move values rather than rounding a sum, so it
+agrees with the rows in `stock_move` to the laari. A tenth of a laari per move,
+unchecked, is how a valuation and a ledger part company over a year.
+
+Quantities still come from the till's recipe expansion. Re-deriving those
+server-side — addons, modifiers, sub-recipes — is the remaining half, and it is
+open.
+
+**Selling what is not there is named, never blocked.** Two tills offline at one
+counter can each sell the last portion, and on replay the second used to drive
+`on_hand` negative in silence: no block, no warning, no trail. Blocking is the
+wrong answer — the food left the kitchen and the money is in the drawer — so
+the move is recorded and the SHORTFALL is stamped (`server_audit.stock_short`,
+`stock_negative` on the trail), naming the ingredient and the balance it left
+behind. What a manager needs is not a refusal three hours later; it is to be
+told which ingredient the books now believe they have less than none of.
+
+**Points granted by hand move the liability too.** `loyalty_update` changed
+`chain.member.points` and journalled nothing, so 2350 tied to the member
+balances only as long as nobody used the screen — a hope, not a guarantee.
+It now posts `Dr 6550 / Cr 2350` for a grant and the reverse for a withdrawal,
+at the same published redemption rate the sale path accrues at, and follows the
+BALANCE rather than the request: `greatest(0, …)` means the points that moved
+are not always the points asked for.
+
 ## Credit is a balance the server keeps
 
 A house account has a limit, and it used to be decoration. The till told the
@@ -1390,7 +1434,7 @@ separate services on their own ports and are not in this suite.
 ## Tests
 
 ```
-npm test                          # 241 tests
+npm test                          # 244 tests
 npm run leak-test                 # isolation, on its own
 ```
 

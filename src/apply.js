@@ -158,28 +158,9 @@ async function applySale(c, p, ctx) {
     }
   }
 
-  /* COGS and the stock it moved are the SAME money — the cost of what was sold
-     is the value of the stock that left the shelf — so the two figures the till
-     sends must agree. The server does not yet re-derive COGS from the recipe
-     and the weighted-average cost (that is the deeper work), but it refuses to
-     let the ledger's stock valuation and the P&L's COGS disagree in silence:
-     a gap between them is stamped for reconciliation, which is where the two
-     stock valuations used to drift apart with nothing watching. */
+  // What the till claimed the sale cost. Kept so the flag below can name it;
+  // it is no longer what anything is booked at.
   const cogsClaimed = r2(p.cogs);
-  const stockValue = r2(arr(p.stockMoves).reduce((a, m) => a + num(m.value), 0));
-  const cogsAudit = Math.abs(cogsClaimed - stockValue) > 0.05
-    ? { cogs: cogsClaimed, stockValue,
-      note: 'the cost of goods sold does not equal the value of the stock moved;'
-        + ' the sale is recorded and the difference is flagged' }
-    : null;
-
-  const audit = (tied || unregisteredAudit || creditAudit || taxAudit || cogsAudit)
-    ? Object.assign({ at: new Date().toISOString() }, tied || {},
-      unregisteredAudit ? { unregistered: unregisteredAudit } : {},
-      taxAudit ? { tax_mismatch: taxAudit } : {},
-      cogsAudit ? { cogs_mismatch: cogsAudit } : {},
-      creditAudit ? { credit_over: creditAudit } : {})
-    : null;
 
   const sale = await one(c,
     'INSERT INTO sale (receipt_no, ticket_id, at, business_date, channel, covers,'
@@ -199,9 +180,12 @@ async function applySale(c, p, ctx) {
       p.discBy || null, net, service, taxCode,
       registered ? (p.taxLabel || 'GST') : '', taxRate, tax, rounding, total,
       Math.max(0, Math.trunc(num(p.pts))), redeemed, r2(p.tip),
-      r2(p.cogs), p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
+      // Repaired below, once the stock has actually moved and the server knows
+      // what it was worth. Inserting the till's claim here and correcting it
+      // there means the row is never briefly wrong in a way a trigger could see.
+      cogsClaimed, p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
       p.member || null, p.customer || null, p.server || null,
-      ctx.actor, ctx.deviceId, claimed, audit ? JSON.stringify(audit) : null]);
+      ctx.actor, ctx.deviceId, claimed, null]);
 
   for (const l of arr(p.sold)) {
     await c.query('INSERT INTO sale_line (sale_id, item_id, name, qty, unit_price,'
@@ -222,12 +206,57 @@ async function applySale(c, p, ctx) {
         ctx.actor, ctx.deviceId]);
   }
 
-  // Stock and COGS move at the moment of sale, not in a nightly batch.
+  /* Stock and COGS move at the moment of sale, not in a nightly batch — and
+     what they cost is the SERVER's figure, at the weighted-average cost it
+     maintains. That single change is what makes 1200 and the stock ledger the
+     same number by construction: they are now fed by one figure instead of two
+     client ones that nothing compared. */
+  let stockValue = 0;
+  const oversold = [];
   for (const m of arr(p.stockMoves)) {
-    await moveStock(c, ctx, {
+    const mv = await moveStock(c, ctx, {
       ing: m.ing, qty: -Math.abs(num(m.qty)), cost: num(m.cost),
       value: r2(m.value), reason: 'sale', saleId: sale.id, loc: m.loc || null
     });
+    if (!mv) continue;
+    // Summing the ROUNDED move values, not rounding a sum: the journal has to
+    // agree with the rows in stock_move to the laari, and those rows are what
+    // they are. A tenth of a laari of drift per move, unchecked, is how a
+    // valuation and a ledger part company over a year.
+    stockValue = r2(stockValue + r2(mv.value));
+    if (mv.short) oversold.push(mv.short);
+  }
+
+  const cogsAudit = Math.abs(cogsClaimed - stockValue) > 0.05
+    ? { cogs: cogsClaimed, stockValue,
+      note: 'the till valued this sale differently from the stock it moved;'
+        + ' the ledger is posted at the outlet\'s own weighted-average cost'
+        + ' and the till\'s figure is kept here' }
+    : null;
+  const shortAudit = oversold.length
+    ? { items: oversold,
+      note: 'this sale took stock the books did not have — two terminals'
+        + ' offline on the same portion, or a count that has not been done;'
+        + ' the sale stands and the shortfall is named' }
+    : null;
+
+  // What the sale COST is the value of the stock it moved. The till's claim is
+  // in server_audit, where a difference can be answered for.
+  if (Math.abs(cogsClaimed - stockValue) > 0.005) {
+    await c.query('UPDATE sale SET cogs = $2 WHERE id = $1', [sale.id, stockValue]);
+  }
+
+  const audit = (tied || unregisteredAudit || creditAudit || taxAudit || cogsAudit || shortAudit)
+    ? Object.assign({ at: new Date().toISOString() }, tied || {},
+      unregisteredAudit ? { unregistered: unregisteredAudit } : {},
+      taxAudit ? { tax_mismatch: taxAudit } : {},
+      cogsAudit ? { cogs_mismatch: cogsAudit } : {},
+      shortAudit ? { stock_short: shortAudit } : {},
+      creditAudit ? { credit_over: creditAudit } : {})
+    : null;
+  if (audit) {
+    await c.query('UPDATE sale SET server_audit = $2 WHERE id = $1',
+      [sale.id, JSON.stringify(audit)]);
   }
 
   /* The loyalty programme, read ONCE and before the journal is built,
@@ -262,7 +291,10 @@ async function applySale(c, p, ctx) {
 
   // The ledger legs. Derived from the sale that just happened, never keyed.
   await postJournal(c, ctx, saleJournal(p, {
-    net, service, tax, rounding, total, tip, discount, cogs: r2(p.cogs),
+    // The value of the stock that actually left the shelf, so 1200 and the
+    // stock ledger cannot part company — not the till's claim, which is now
+    // only evidence in server_audit.
+    net, service, tax, rounding, total, tip, discount, cogs: stockValue,
     ptsValue: redeemed, earnedValue,
     payments: arr(p.payments), stock: arr(p.stockMoves), channel: p.channel
   }), 'sale', sale.id, p.bizDate || today(ctx), 'Sale ' + sale.receipt_no);
@@ -400,21 +432,46 @@ async function ensurePeriodOpen(c, date) {
   }
 }
 
-/* ── stock: the immutable signed ledger, plus its cached balance ─────────── */
+/* ── stock: the immutable signed ledger, plus its cached balance ───────────
+   Returns what the move actually cost and where it left the shelf, because
+   two things upstream need those and used to guess at them: the journal, which
+   must credit 1200 with the value the stock ledger really carries, and the
+   sale, which has to say out loud when it sold something that was not there. */
 async function moveStock(c, ctx, m) {
   if (!m.ing) return null;
   const qty = num(m.qty);
   if (!qty && m.reason !== 'audit') return null;
+
+  /* WHAT A CONSUMED PORTION IS WORTH IS THE SERVER'S ANSWER, NOT THE TILL'S.
+     Stock leaving on a sale is valued at the weighted-average cost this server
+     maintains — the same figure `avg_cost` is re-averaged to on every delivery.
+     The till sent its own `value`, computed against whatever costs its last
+     bootstrap happened to carry, and the ledger booked the till's number while
+     the stock ledger carried it too: two client figures with nothing checking
+     either. A till that has been offline across a price rise valued the whole
+     evening at last week's cost.
+
+     Only a SALE is re-valued. A delivery's value is what the invoice says, a
+     write-off's is what somebody decided to write off, and a count variance is
+     valued by the count — those are facts the till was told, not estimates it
+     made. A sale's is the only one nobody was ever told. */
+  let value = r2(m.value);
+  if (qty < 0 && m.reason === 'sale') {
+    const cost = await one(c, 'SELECT avg_cost, name FROM ingredient WHERE id = $1', [m.ing]);
+    if (cost) value = r2(Math.abs(qty) * num(cost.avg_cost));
+  }
+
   const row = await one(c,
     'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason,'
     + ' location_id, sale_id, batch_id, note, business_date, by_staff, device_id)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10, current_date),$11,$12)'
     + ' RETURNING id',
-    [m.ing, qty, num(m.cost), r2(m.value), m.reason, m.loc || null,
+    [m.ing, qty, num(m.cost), value, m.reason, m.loc || null,
       m.saleId || null, m.batchId || null, m.note || null, m.date || null,
       ctx.actor, ctx.deviceId]);
   // The cache follows the ledger, never the other way round.
-  await c.query('UPDATE ingredient SET on_hand = on_hand + $2 WHERE id = $1', [m.ing, qty]);
+  const after = await one(c, 'UPDATE ingredient SET on_hand = on_hand + $2'
+    + ' WHERE id = $1 RETURNING on_hand, name', [m.ing, qty]);
   // Receiving re-averages the cost. Weighted, so a big cheap delivery moves it
   // more than a small expensive one — which is what a plate actually costs.
   if (qty > 0 && num(m.cost) > 0 && (m.reason === 'purchase' || m.reason === 'produce')) {
@@ -424,7 +481,23 @@ async function moveStock(c, ctx, m) {
       + ' / nullif(greatest(on_hand - $3, 0) + $3, 0) END WHERE id = $1',
       [m.ing, num(m.cost), qty]);
   }
-  return row.id;
+  /* SELLING WHAT IS NOT THERE. Two tills offline at the same counter can each
+     sell the last portion, and on replay the second one drove `on_hand`
+     negative with nothing said: no block, no warning, no trail. Blocking is
+     the wrong answer — the food left the kitchen and the money is in the
+     drawer — so the move is recorded and the SHORTFALL is named, here, where
+     every path through stock passes. What a manager needs is not a refusal
+     three hours later; it is to be told which ingredient the books now believe
+     they have less than none of. */
+  const left = after ? num(after.on_hand) : 0;
+  const short = left < -0.0001
+    ? { ing: m.ing, name: (after && after.name) || '', onHand: r2(left), took: r2(qty) }
+    : null;
+  if (short) {
+    await log(c, 'stock_negative', 'ingredient', m.ing, null,
+      Object.assign({ reason: m.reason }, short));
+  }
+  return { id: row.id, value: value, short: short };
 }
 
 /* ── the handler table ──────────────────────────────────────────────────── */
@@ -783,10 +856,11 @@ H.stock_adjust = async (c, p, ctx) => {
   // An equipment failure writes off VALUE with no single item to move — the
   // journal legs are the truth there, and forcing an item row would invent
   // one. With an item, the movement and the money travel together as ever.
-  const id = p.ing ? await moveStock(c, ctx, {
+  const mv = p.ing ? await moveStock(c, ctx, {
     ing: p.ing, qty: num(p.qty), cost: num(p.cost), value: r2(p.value),
     reason: p.reason === 'waste' ? 'waste' : 'manual', note: p.note, loc: p.loc
   }) : null;
+  const id = mv && mv.id;
   if (r2(p.value)) {
     await postJournal(c, ctx, [
       { acct: '5100', dr: Math.abs(r2(p.value)), memo: p.note || 'Stock adjustment' },
@@ -1799,8 +1873,40 @@ H.loyalty_update = async (c, p, ctx) => {
     // Points move; the tier follows from them wherever it is read. It used to
     // be written here too, which is how a member could hold a tier their
     // balance had not earned and nobody could say which was right.
-    await c.query('UPDATE chain.member SET points = greatest(0, points + $2)'
-      + ' WHERE id = $1', [p.member, num(p.points)]);
+    const before = await one(c, 'SELECT points FROM chain.member WHERE id = $1',
+      [p.member]);
+    const after = await one(c, 'UPDATE chain.member SET points = greatest(0, points + $2)'
+      + ' WHERE id = $1 RETURNING points', [p.member, num(p.points)]);
+    /* AND THE LIABILITY MOVES WITH THEM. 2350 is what the outstanding points
+       are WORTH, and it used to be fed by the sale path alone: a manager
+       granting a goodwill hundred points, or docking a disputed award, changed
+       what the business owes its customers and left the account saying
+       otherwise. 2350 could only tie to the member balances as long as nobody
+       used this screen — which is not a guarantee, it is a hope.
+
+       Booked at the same published redemption rate the sale path accrues at,
+       and by the same clamp: `greatest(0, ...)` means the points actually
+       moved are not always the points asked for, so the accrual follows the
+       BALANCE, never the request. */
+    const moved = Math.trunc(num(after && after.points)) - Math.trunc(num(before && before.points));
+    if (moved !== 0) {
+      const cfg = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
+      const v = (cfg.rows[0] || {}).value || {};
+      const worth = r2(Math.abs(moved) / (Number(v.redeemPts) || 100)
+        * (Number(v.redeemValue) || 25));
+      if (worth > 0) {
+        await postJournal(c, ctx, moved > 0
+          ? [{ acct: '6550', dr: worth, memo: 'Points granted by hand' },
+            { acct: '2350', cr: worth }]
+          : [{ acct: '2350', dr: worth, memo: 'Points withdrawn by hand' },
+            { acct: '6550', cr: worth }],
+        'loyalty', p.member, today(ctx),
+        'Points adjusted by hand \u00b7 ' + (moved > 0 ? '+' : '') + moved);
+      }
+      await log(c, 'points_adjusted', 'member', p.member,
+        { points: Math.trunc(num(before && before.points)) },
+        { points: Math.trunc(num(after && after.points)), moved, worth, why: p.why || null });
+    }
   }
   if (p.rules) await setSetting(c, ctx, 'loyalty_rules', p.rules);
   return { ok: true };
