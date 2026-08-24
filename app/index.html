@@ -5613,7 +5613,9 @@ class Component extends DCLogic {
         });
         this.setState({ modal: { kind: "kot", lines: going, table: s.activeTable, at: Date.now() } });
       },
-      fireLabel: unfired ? "Fire " + unfired + " to KDS" : "All fired",
+      // When nothing is left to fire the slot holds a STATUS, and it says so
+      // with a check rather than dressing up as a button that will not press.
+      fireLabel: unfired ? "Fire " + unfired + " to KDS" : "\u2713 All fired \u00b7 in the kitchen",
       // Fire advances the order but moves no money, so it takes the blue forward
       // slot and stays outlined — Pay is the only filled button in this pane.
       fireStyle: this.btn(unfired ? "tonal-fwd" : "ghost", { size: "lg", full: 1, fs: 12.5, disabled: !unfired }),
@@ -10139,6 +10141,25 @@ class Component extends DCLogic {
       else if ((" " + x.words).indexOf(" " + t) >= 0) sc = 50;
       else if (x.words.indexOf(t) >= 0) sc = 35;
       else if (t.length > 2 && L.replace(/[^a-z]/g, "").indexOf(t.replace(/[^a-z]/g, "")) >= 0) sc = 20;
+      else if (t.length >= 4) {
+        // One typo's grace: "synk" still finds Sync, "vendrs" still finds
+        // vendors. A word within one edit of the query counts, scored below
+        // every exact match so it never outranks one.
+        const words = (L + " " + x.words).toLowerCase().split(/\s+/);
+        const near = (a, b) => {
+          if (Math.abs(a.length - b.length) > 1) return false;
+          let i = 0, j = 0, edits = 0;
+          while (i < a.length && j < b.length) {
+            if (a[i] === b[j]) { i++; j++; continue; }
+            if (++edits > 1) return false;
+            if (a.length > b.length) i++;
+            else if (b.length > a.length) j++;
+            else { i++; j++; }
+          }
+          return edits + (a.length - i) + (b.length - j) <= 1;
+        };
+        if (words.some((w) => w.length >= 4 && near(t, w))) sc = 15;
+      }
       return sc ? Object.assign({ sc: sc }, x) : null;
     }).filter(Boolean).sort((a, b) => b.sc - a.sc || (a.kind === b.kind ? 0 : a.kind === "go" ? -1 : 1)).slice(0, 12);
   }

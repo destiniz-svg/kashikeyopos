@@ -34,6 +34,10 @@ a{color:#f4553c;text-decoration:none}
 a:hover{color:#d33d26}
 .qs::-webkit-scrollbar{height:0;width:0}
 .qs{scrollbar-width:none}
+/* The chip rows hide their scrollbar, so the RIGHT EDGE has to say
+   "there is more": a clipped half-chip with no fade reads as a layout
+   bug, not an invitation to swipe. The mask dissolves the last 18px. */
+.qs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent)}
 @keyframes qrise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
 @keyframes qriseb{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
 @keyframes qsheet{from{transform:translateY(100%)}to{transform:none}}
