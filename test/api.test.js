@@ -1365,6 +1365,73 @@ test('a redemption releases the liability, and hides in no rounding line',
     assert.strictEqual(Number(after.points), 325);
   });
 
+/* The outlet is registered for GGST at 8%. A till that strikes tax at the RIGHT
+   rate ties and is stamped with nothing; a till carrying a stale WRONG rate is
+   recorded as charged — the money is taken — and the divergence is flagged for
+   an accountant. A sale that charged NO tax is left alone: zero-rated and
+   exempt supplies are real, and flagging every one would cry wolf. */
+test('a tax figure struck at the wrong rate is recorded and flagged', opts, async () => {
+  // Right rate: 100 net + 8% = 8.00 tax. Ties, nothing to answer for.
+  const ok = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 8, round: 0, total: 108, taxCode: 'GGST', taxLabel: 'GST', taxRate: 8,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 108, tendered: 108 }], stockMoves: []
+  } }]);
+  const okRow = await one('SELECT server_audit FROM sale WHERE id = $1',
+    [ok.body.results[0].result.saleId]);
+  assert.strictEqual(okRow.server_audit, null, 'the right rate leaves no stamp');
+
+  // Wrong rate: the till struck 6% (6.00) on a bill the outlet taxes at 8%.
+  const bad = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 6, round: 0, total: 106, taxCode: 'GGST', taxLabel: 'GST', taxRate: 6,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 106, tendered: 106 }], stockMoves: []
+  } }]);
+  assert.ok(!bad.body.results[0].error, 'the sale is NOT rejected: money was taken');
+  const badRow = await one('SELECT tax, server_audit FROM sale WHERE id = $1',
+    [bad.body.results[0].result.saleId]);
+  assert.strictEqual(Number(badRow.tax), 6, 'the row carries what was actually charged');
+  assert.ok(badRow.server_audit && badRow.server_audit.tax_mismatch, 'and the divergence is stamped');
+  assert.strictEqual(Number(badRow.server_audit.tax_mismatch.expected), 8, 'against the outlet’s own 8%');
+  assert.strictEqual(Number(badRow.server_audit.tax_mismatch.rate), 8);
+
+  // Zero tax on the same registered outlet is a business assertion, not a bug —
+  // it is left unflagged.
+  const zero = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }], stockMoves: []
+  } }]);
+  const zeroRow = await one('SELECT server_audit FROM sale WHERE id = $1',
+    [zero.body.results[0].result.saleId]);
+  assert.strictEqual(zeroRow.server_audit, null, 'a zero-rated sale is not second-guessed');
+});
+
+/* COGS and the value of stock moved are the same money. When the till's two
+   figures disagree, the sale is still recorded — the money was taken — but the
+   gap is stamped, because a GL COGS and a stock-ledger valuation that drift
+   apart in silence is exactly how a month's margin goes quietly wrong. */
+test('COGS that disagrees with the stock it moved is recorded and flagged', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    // The till claims COGS of 40 but moves no stock at all — inconsistent.
+    cogs: 40,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100, cost: 40 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: []
+  } }]);
+  assert.ok(!r.body.results[0].error, 'not rejected — the sale happened');
+  const row = await one('SELECT server_audit FROM sale WHERE id = $1',
+    [r.body.results[0].result.saleId]);
+  assert.ok(row.server_audit && row.server_audit.cogs_mismatch, 'the gap is stamped');
+  assert.strictEqual(Number(row.server_audit.cogs_mismatch.cogs), 40);
+  assert.strictEqual(Number(row.server_audit.cogs_mismatch.stockValue), 0);
+});
+
 test('a sale with no member accrues nothing', opts, async () => {
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,

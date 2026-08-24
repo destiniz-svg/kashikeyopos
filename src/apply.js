@@ -91,6 +91,45 @@ async function applySale(c, p, ctx) {
   const tied = Math.abs(claimed - r2(total + tip)) > 0.005
     ? { claimed, computed: total, note: 'terminal total did not tie to its own components' }
     : null;
+  /* THE OUTLET'S OWN RATE IS THE CHECK ON THE TILL'S TAX ARITHMETIC.
+     The registration flag is already the outlet's fact, not the till's — but
+     the RATE was taken on trust. A stale build carries yesterday's rate through
+     a change, and a GST figure struck at the wrong rate ties its own total and
+     hides — a mis-stated liability to MIRA. So when the till charged tax, the
+     rate it implies is checked against the outlet's own effective-dated rate on
+     the same base the till uses (net less any redemption, plus the service
+     billed), and a WRONG rate is STAMPED — not rewritten, because a mid-day
+     change is the till's to assert and an accountant's to reconcile.
+
+     A sale that charged NO tax is left alone: a registered business has
+     zero-rated and exempt supplies, and second-guessing every one would cry
+     wolf until nobody reads the flag. What this catches is the rate applied
+     WRONG, which has no honest explanation. */
+  let taxAudit = null;
+  if (registered && tax > 0.005) {
+    const rateRow = await one(c,
+      'SELECT rate FROM chain.tax_version WHERE outlet_id = $1 AND code = $2'
+      + ' AND effective_from <= $3 AND (effective_to IS NULL OR effective_to >= $3)'
+      + ' ORDER BY effective_from DESC LIMIT 1',
+      [ctx.outletId, taxCode, p.bizDate || today(ctx)]);
+    const rate = rateRow ? Number(rateRow.rate) : 0;
+    if (rate > 0) {
+      const denom = r2(Math.max(0, net - redeemed) + service);
+      const expTax = r2(denom * rate / 100);
+      // Tolerance scales with the bill: half a percent of the base absorbs the
+      // laari-level rounding of a correct rate; a wrong rate is a whole
+      // percentage point or more and clears it easily.
+      const tol = Math.max(0.05, r2(denom * 0.005));
+      if (denom > 0 && Math.abs(tax - expTax) > tol) {
+        taxAudit = { charged: tax, expected: expTax, rate, code: taxCode,
+          applied: r2(tax / denom * 100), base: denom,
+          note: 'the terminal applied a tax rate that does not match this'
+            + ' outlet’s own effective rate; the sale is recorded as charged'
+            + ' and the difference is flagged for reconciliation' };
+      }
+    }
+  }
+
   /* A credit tender draws down a house account that has a LIMIT, and the till's
      own pay screen blocks a charge past it. But an offline terminal charges
      against a stale balance — two of them can each believe there is headroom —
@@ -119,9 +158,26 @@ async function applySale(c, p, ctx) {
     }
   }
 
-  const audit = (tied || unregisteredAudit || creditAudit)
+  /* COGS and the stock it moved are the SAME money — the cost of what was sold
+     is the value of the stock that left the shelf — so the two figures the till
+     sends must agree. The server does not yet re-derive COGS from the recipe
+     and the weighted-average cost (that is the deeper work), but it refuses to
+     let the ledger's stock valuation and the P&L's COGS disagree in silence:
+     a gap between them is stamped for reconciliation, which is where the two
+     stock valuations used to drift apart with nothing watching. */
+  const cogsClaimed = r2(p.cogs);
+  const stockValue = r2(arr(p.stockMoves).reduce((a, m) => a + num(m.value), 0));
+  const cogsAudit = Math.abs(cogsClaimed - stockValue) > 0.05
+    ? { cogs: cogsClaimed, stockValue,
+      note: 'the cost of goods sold does not equal the value of the stock moved;'
+        + ' the sale is recorded and the difference is flagged' }
+    : null;
+
+  const audit = (tied || unregisteredAudit || creditAudit || taxAudit || cogsAudit)
     ? Object.assign({ at: new Date().toISOString() }, tied || {},
       unregisteredAudit ? { unregistered: unregisteredAudit } : {},
+      taxAudit ? { tax_mismatch: taxAudit } : {},
+      cogsAudit ? { cogs_mismatch: cogsAudit } : {},
       creditAudit ? { credit_over: creditAudit } : {})
     : null;
 
