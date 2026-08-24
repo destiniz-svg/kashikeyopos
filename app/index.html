@@ -2072,7 +2072,8 @@ class Component extends DCLogic {
     search: "",
     toast: null,
     modal: null,
-    tip: this.props.showHint !== false,
+    tip: this.props.showHint !== false && !this._saved.tipHidden,
+    tipHidden: !!this._saved.tipHidden,
     sel: null,
     aiPrompt: "",
     aiRunning: false,
@@ -2136,7 +2137,7 @@ class Component extends DCLogic {
     const body = {
       v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox), conflicts: s.conflicts,
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pairedDevices: s.pairedDevices, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
-      local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide,
+      local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
       fulfil: s.fulfil,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, permOverride: s.permOverride, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
@@ -4228,8 +4229,15 @@ class Component extends DCLogic {
         const d = this.outletDay(o);
         const act = d.sales ? (d.cogs / d.sales) * 100 : 0;
         const th = this.blendedCost();
+        /* Two figures, each named. "Actual · recipes say 47.1%" put an
+           unexplained second number beside the headline — the reader could
+           not tell whether 47.1 was a target, a forecast or a mistake. The
+           headline is what today's SELLING MIX actually cost; the comparator
+           is what the MENU is priced at by its recipes. The dashboard's own
+           tile compares against the configured target; that is a third
+           question and it stays there. */
         return card("Food cost", d.sales ? act.toFixed(1) + "%" : "—",
-          d.sales ? "Actual · recipes say " + th.toFixed(1) + "%" : "Nothing sold yet",
+          d.sales ? "Today's mix · menu priced at " + th.toFixed(1) + "% by recipe" : "Nothing sold yet",
           d.sales && act > th + 3 ? big + ";color:var(--red-bright)" : big);
       })()
     ];
@@ -5049,7 +5057,16 @@ class Component extends DCLogic {
     const canPay = tk && tk.lines.length > 0;
 
     return {
-      tip: s.tip, dismissTip: () => this.setState({ tip: false }),
+      /* ONE banner at a time, and the coach-mark retires itself. Three
+         strips used to stack before the content — Try-it, the set-up bar,
+         then the calls — and the Try-it reappeared on every reload because
+         its dismissal was never persisted. Now: the set-up bar outranks it
+         (real steps beat a rehearsal), the first settled sale retires it for
+         good (a till that has taken money no longer needs telling how), and
+         Dismiss actually sticks. */
+      tip: s.tip && !this.setupOn()
+        && !(s.settled || []).some((x) => x.outletId === s.outletId),
+      dismissTip: () => this.setState({ tip: false, tipHidden: true }),
       // Guest calls sit above the 86 list and above the floor itself: a raised
       // hand outranks everything else a server is looking at.
       /* THREE ROWS, LONGEST-WAITING FIRST, and an honest overflow line. The
