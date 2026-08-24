@@ -233,6 +233,16 @@ async function boot() {
     console.warn('[db] to pin this database, set PGSSL_CA to the certificate'
       + ' below (then PGSSL=verify):\n' + ca);
   }).catch(function () {});
+  /* What install did this boot land on? One line, because "is production
+     clean" must never require a database client to answer. It also catches
+     the surprise the promote just met: a database everyone believed empty
+     that an earlier build had already migrated. */
+  owner().query('SELECT name FROM chain.company LIMIT 1').then(async (co) => {
+    const ou = await owner().query('SELECT count(*)::int AS n FROM chain.outlet');
+    console.log(co.rows.length
+      ? '[install] company "' + co.rows[0].name + '" \u00b7 ' + ou.rows[0].n + ' outlet(s)'
+      : '[install] no company yet \u2014 onboarding is open');
+  }).catch((e) => console.error('[install] state unreadable: ' + e.message));
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();
   ['SIGTERM', 'SIGINT'].forEach(function (sig) {
