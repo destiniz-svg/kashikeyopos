@@ -5052,20 +5052,35 @@ class Component extends DCLogic {
         const rows = open.slice(0, 3).map((x) => {
           const mins = Math.max(0, Math.round((Date.now() - x.at) / 60000));
           const urgent = mins >= 3;
-          const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
-            : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
-              : x.kind === "member" ? (x.memberName || "A member") + " is at the counter"
-                : x.kind === "reward" ? (x.memberName || "A member") + " redeemed " + (x.code || "a reward")
-                  : "T" + x.table + " ordered from the QR menu";
+          /* A sign-in code is a PERSON at the counter, not a table event: it
+             used to fall through this map to "T0 ordered from the QR menu",
+             with the one thing that mattered — the code — buried in the
+             sub-line, an "Open table" button that opened table 1, and "On my
+             way" as the verb for reading four digits across a counter. */
+          const code = x.kind === "member_code"
+            ? (/Sign-in code for (.+): (\d+)/.exec(x.detail || "") || [])
+            : null;
+          const title = x.kind === "assist" || x.kind === "server" || x.kind === "help"
+            ? "T" + x.table + " is asking for a server"
+            : x.kind === "water" ? "T" + x.table + " has asked for water"
+              : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
+                : x.kind === "member_code" ? ((code && code[1]) || "A guest") + " needs their sign-in code"
+                  : x.kind === "member" ? (x.memberName || "A member") + " is at the counter"
+                    : x.kind === "reward" ? (x.memberName || "A member") + " redeemed " + (x.code || "a reward")
+                      : "T" + x.table + " ordered from the QR menu";
+          const isCode = x.kind === "member_code";
           return {
             title: title,
-            sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
+            sub: isCode
+              ? "Code " + ((code && code[2]) || "\u2014") + " \u00b7 " + (mins ? mins + " min ago" : "just now") + " \u00b7 read it out, then tap Done"
+              : (mins ? mins + " min ago" : "just now") + (x.detail ? " \u00b7 " + x.detail : ""),
             style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
             go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); },
-            goLabel: "Open table", goStyle: GOS,
-            ack: () => { this.ackSignal(x.id); this.toast("Acknowledged — T" + x.table); },
-            ackLabel: "On my way", ackStyle: ACKS
+            goLabel: "Open table",
+            goStyle: isCode ? "display:none" : GOS,
+            ack: () => { this.ackSignal(x.id); this.toast(isCode ? "Done \u2014 their code was read out" : "Acknowledged \u2014 T" + x.table); },
+            ackLabel: isCode ? "Done \u2014 read out" : "On my way", ackStyle: ACKS
           };
         });
         if (open.length > 3) {
@@ -7801,7 +7816,11 @@ class Component extends DCLogic {
       const x = sorted[i];
       const age = nowT - new Date(x.at || 0).getTime();
       if (age > (x.kind === "member_code" ? 12 * 60e3 : 45 * 60e3)) continue;
-      const k = x.kind + "|" + x.table + "|" + (x.detail || "");
+      // A reissued sign-in code replaces the person's previous row — the old
+      // code stopped working the moment the new one was minted.
+      const k = x.kind === "member_code"
+        ? x.kind + "|" + String(x.detail || "").split(":")[0]
+        : x.kind + "|" + x.table + "|" + (x.detail || "");
       if (seenRow[k]) continue;
       seenRow[k] = 1;
       live2.unshift(x);                              // back to oldest-first queue order
