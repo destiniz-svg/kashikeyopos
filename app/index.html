@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -43,7 +43,7 @@
     <div style="{{ palWrapStyle }}">
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-muted)"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
-        <input value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit"/>
+        <input aria-label="Go anywhere, or say what you want to do…" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit"/>
         <span style="flex-shrink:0;font-size:10px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
       </div>
       <sc-if value="{{ planOpen }}">
@@ -159,7 +159,7 @@
 
         <div style="{{ searchStyle }}" onClick="{{ openSearch }}" title="Filter this screen — press /">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
-          <input value="{{ search }}" onChange="{{ onSearch }}" onBlur="{{ blurSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ searchRef }}" style="{{ searchInputStyle }}"/>
+          <input aria-label="Search…" value="{{ search }}" onChange="{{ onSearch }}" onBlur="{{ blurSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ searchRef }}" style="{{ searchInputStyle }}"/>
         </div>
 
         <button onClick="{{ toggleTheme }}" title="{{ themeTitle }}" style="{{ themeBtnStyle }}">
@@ -375,7 +375,7 @@
             <div style="{{ menuHeadStyle }}">
               <div style="{{ menuSearchWrapStyle }}">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" style="position:absolute;left:13px;top:50%;margin-top:-7px;color:var(--text-muted);pointer-events:none"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
-                <input value="{{ search }}" onChange="{{ onSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ menuSearchRef }}" title="Filter the menu — press / to jump here" style="{{ menuSearchStyle }}" style-focus="{{ menuSearchFocus }}"/>
+                <input aria-label="Search…" value="{{ search }}" onChange="{{ onSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ menuSearchRef }}" title="Filter the menu — press / to jump here" style="{{ menuSearchStyle }}" style-focus="{{ menuSearchFocus }}"/>
                 <button onClick="{{ clearMenuSearch }}" title="Clear the search" style="{{ menuClearStyle }}">&#215;</button>
               </div>
               <div class="krail" style="{{ catRailStyle }}">
@@ -811,7 +811,7 @@
           </div>
 
           <div style="{{ cfoAskStyle }}">
-            <input value="{{ cfoQ }}" onChange="{{ onCfoQ }}" onKeyDown="{{ cfoKey }}" placeholder="Ask the CFO — where is my margin going?" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;color:var(--text);font-size:12px;outline:none;min-height:44px"/>
+            <input aria-label="Ask the CFO — where is my margin going?" value="{{ cfoQ }}" onChange="{{ onCfoQ }}" onKeyDown="{{ cfoKey }}" placeholder="Ask the CFO — where is my margin going?" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;color:var(--text);font-size:12px;outline:none;min-height:44px"/>
             <button onClick="{{ runCfo }}" style="{{ cfoBtnStyle }}">{{ cfoBtnLabel }}</button>
           </div>
           <sc-if value="{{ hasCfoAnswer }}">
@@ -906,7 +906,7 @@
         <sc-if value="{{ askOn }}">
           <div style="margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden">
             <div style="display:flex;gap:9px;padding:12px 14px;flex-wrap:wrap;align-items:center">
-              <input value="{{ askQ }}" onChange="{{ onAskQ }}" onKeyDown="{{ askKey }}" placeholder="{{ askPlaceholder }}" style="flex:1;min-width:160px;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 15px;font-size:12.5px;color:var(--text);outline:none;font-family:inherit"/>
+              <input value="{{ askQ }}" onChange="{{ onAskQ }}" aria-label="Ask a question about the business" onKeyDown="{{ askKey }}" placeholder="{{ askPlaceholder }}" style="flex:1;min-width:160px;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 15px;font-size:12.5px;color:var(--text);outline:none;font-family:inherit"/>
               <button onClick="{{ askRun }}" style="{{ askBtnStyle }}">{{ askBtnLabel }}</button>
             </div>
             <div class="krail" style="display:flex;gap:6px;padding:0 14px 12px;overflow-x:auto">
@@ -1158,7 +1158,7 @@
                 <div style="{{ refWrap }}">
                   <label style="display:block">
                     <span style="display:block;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
-                    <input value="{{ refValue }}" onChange="{{ onRef }}" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
+                    <input value="{{ refValue }}" onChange="{{ onRef }}" aria-label="Payment reference from the processor" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
                   </label>
                   <div style="{{ refNoteStyle }}">{{ refNote }}</div>
                 </div>
@@ -1215,7 +1215,7 @@
               </div>
               <div style="{{ nameWrapStyle }}">
                 <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Name on the bill</div>
-                <input value="{{ guestNameVal }}" onChange="{{ onGuestName }}" placeholder="Guest 1" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
+                <input aria-label="Guest 1" value="{{ guestNameVal }}" onChange="{{ onGuestName }}" placeholder="Guest 1" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               </div>
               <div style="{{ memberWrapStyle }}">
                 <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Link a customer</div>
@@ -1254,7 +1254,7 @@
             <div>
               <sc-if value="{{ rbPicking }}">
                 <div>
-                  <input value="{{ rbQ }}" onChange="{{ onRbQ }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 16px;font-size:12.5px;color:var(--text);outline:none"/>
+                  <input value="{{ rbQ }}" onChange="{{ onRbQ }}" aria-label="{{ rbPlaceholder }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 16px;font-size:12.5px;color:var(--text);outline:none"/>
                   <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px;min-width:0;max-height:min(430px,52dvh);overflow-y:auto;overflow-x:hidden">
                     <sc-for list="{{ rbDishes }}" as="d" hint-placeholder-count="6">
                       <button onClick="{{ d.go }}" style="display:flex;align-items:center;gap:12px;width:100%;min-width:0;text-align:left;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:var(--bg-2)" style-hover="border-color:var(--text);background:var(--bg-3)">
@@ -1307,7 +1307,7 @@
                   </div>
 
                   <div>
-                    <input value="{{ rbQ }}" onChange="{{ onRbQ }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:12.5px;color:var(--text);outline:none"/>
+                    <input value="{{ rbQ }}" onChange="{{ onRbQ }}" aria-label="{{ rbPlaceholder }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:12.5px;color:var(--text);outline:none"/>
                     <div style="{{ rbResultsStyle }}">
                       <sc-for list="{{ rbResults }}" as="r" hint-placeholder-count="4">
                         <button onClick="{{ r.add }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg-1)" style-hover="border-color:var(--text);background:var(--bg-2)">
@@ -1322,7 +1322,7 @@
                     <div style="{{ rbNewStyle }}">
                       <div style="font-size:11.5px;color:var(--text-dim);line-height:1.55">{{ rbNewSay }}</div>
                       <div style="display:flex;gap:7px;margin-top:9px">
-                        <input value="{{ rbNewCost }}" onChange="{{ onRbNewCost }}" inputmode="decimal" placeholder="Cost" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--text);outline:none"/>
+                        <input aria-label="Cost" value="{{ rbNewCost }}" onChange="{{ onRbNewCost }}" inputmode="decimal" placeholder="Cost" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--text);outline:none"/>
                         <select value="{{ rbNewUnit }}" onChange="{{ onRbNewUnit }}" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);outline:none">
                           <sc-for list="{{ rbUnitOpts }}" as="u" hint-placeholder-count="3">
                             <option value="{{ u.v }}" label="{{ u.l }}"></option>
@@ -1349,8 +1349,8 @@
               <div style="display:flex;gap:13px;align-items:flex-start">
                 <span style="{{ dbArtStyle }}">{{ dbArtText }}</span>
                 <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
-                  <input value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
-                  <input value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
+                  <input aria-label="Dish name" value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
+                  <input aria-label="One line a guest reads — what it is, how it eats" value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
                   <span style="display:flex;justify-content:space-between;gap:10px;font-size:10.5px;color:var(--text-muted);line-height:1.5">
                     <span style="min-width:0">{{ dbArtNote }}</span>
                     <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ dbDescCount }}</span>
@@ -1370,7 +1370,7 @@
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
                 <div style="width:150px;flex-shrink:0">
                   <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Chain price MVR</span>
-                  <input value="{{ dbPrice }}" onChange="{{ onDbPrice }}" inputMode="decimal" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+                  <input value="{{ dbPrice }}" onChange="{{ onDbPrice }}" aria-label="Menu price" inputMode="decimal" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                 </div>
                 <div style="flex:1;min-width:230px">
                   <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Kitchen station</span>
@@ -1441,7 +1441,7 @@
             <div style="display:flex;flex-direction:column;gap:15px">
               <div>
                 <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section name</span>
-                <input value="{{ cbName }}" onChange="{{ onCbName }}" placeholder="Starters, From the Grill, Cold drinks…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
+                <input aria-label="Starters, From the Grill, Cold drinks…" value="{{ cbName }}" onChange="{{ onCbName }}" placeholder="Starters, From the Grill, Cold drinks…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
               </div>
               <div>
                 <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Colour</span>
@@ -1530,7 +1530,7 @@
                   <button onClick="{{ q.pick }}" style="font-size:11.5px;padding:6px 12px;border-radius:20px;border:1px solid var(--line);background:var(--bg);color:var(--text-dim)">{{ q.label }}</button>
                 </sc-for>
               </div>
-              <input value="{{ noteVal }}" onChange="{{ onNoteChange }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
+              <input aria-label="Allergy, doneness, course order…" value="{{ noteVal }}" onChange="{{ onNoteChange }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               <button onClick="{{ saveNote }}" style="margin-top:12px;width:100%;padding:11px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Attach to the line and re-fire</button>
             </div>
           </sc-if>
@@ -1785,7 +1785,7 @@
                       <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
                       <span style="font-size:10px;color:var(--text-muted)">{{ c.sub }}</span>
                     </span>
-                    <input value="{{ c.val }}" onChange="{{ c.set }}" placeholder="0" inputMode="decimal" style="width:86px;flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;text-align:right;min-height:42px"/>
+                    <input aria-label="0" value="{{ c.val }}" onChange="{{ c.set }}" placeholder="0" inputMode="decimal" style="width:86px;flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;text-align:right;min-height:42px"/>
                     <span style="flex-shrink:0;font-size:10.5px;color:var(--text-muted);width:30px">{{ c.unit }}</span>
                   </div>
                 </sc-for>
@@ -1801,7 +1801,7 @@
                 <div style="{{ f.wrap }}">
                   <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">{{ f.label }}</div>
                   <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
-                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
+                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
                     <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
@@ -1820,10 +1820,10 @@
                               <option value="{{ o.v }}" label="{{ o.l }}"></option>
                             </sc-for>
                           </select>
-                          <input value="{{ r.qty }}" onChange="{{ r.onQty }}" title="Quantity" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
+                          <input value="{{ r.qty }}" onChange="{{ r.onQty }}" aria-label="Quantity" title="Quantity" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
                           <span style="font-size:10.5px;color:var(--text-muted);align-self:center;white-space:nowrap">{{ r.unit }}</span>
                           <sc-if value="{{ f.costed }}" hint-placeholder-val="{{ false }}">
-                            <input value="{{ r.rate }}" onChange="{{ r.onRate }}" title="Rate per unit" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
+                            <input value="{{ r.rate }}" onChange="{{ r.onRate }}" aria-label="Unit rate" title="Rate per unit" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
                           </sc-if>
                           <sc-if value="{{ f.costed }}" hint-placeholder-val="{{ false }}">
                             <span style="font-size:12px;font-weight:700;text-align:right;align-self:center;white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ r.amount }}</span>

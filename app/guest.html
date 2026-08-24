@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <!-- These pages are served under /g/<handle> and /m/<handle>, so every relative
      asset path has to resolve against the root rather than against the handle.
@@ -103,13 +103,13 @@ a:hover{color:#d33d26}
                   {{ tableLabel }}
                 </div>
               </div>
-              <button onClick="{{ goYou }}" style="{{ avatarStyle }}">{{ avatarText }}</button>
+              <button onClick="{{ goYou }}" aria-label="Your orders and card" style="{{ avatarStyle }}">{{ avatarText }}</button>
             </div>
 
             <div style="margin-top:16px;height:46px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#f5f5f6">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#b4b4b9" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Search the menu" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
-              <button onClick="{{ clearQ }}" style="{{ clearQStyle }}">&#215;</button>
+              <input value="{{ q }}" onChange="{{ setQ }}" aria-label="Search the menu" placeholder="Search the menu" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
+              <button onClick="{{ clearQ }}" aria-label="Clear the search" style="{{ clearQStyle }}">&#215;</button>
             </div>
           </div>
 
@@ -229,11 +229,11 @@ a:hover{color:#d33d26}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
                 <span style="display:flex;align-items:center;gap:12px">
-                  <button onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                  <button onClick="{{ splitLess }}" aria-label="Fewer people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
                   <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
-                  <button onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <button onClick="{{ splitMore }}" aria-label="More people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
@@ -259,7 +259,7 @@ a:hover{color:#d33d26}
               <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
               <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
                 <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
-                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" aria-label="Amount to pay" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
               </div>
               <div style="{{ customWarnStyle }}">{{ customWarn }}</div>
             </div>
@@ -300,12 +300,12 @@ a:hover{color:#d33d26}
           <div style="{{ identFormStyle }}">
             <div style="margin-top:18px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR NAME</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;background:#fff">
-              <input value="{{ identName }}" onChange="{{ setIdentName }}" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
+              <input value="{{ identName }}" onChange="{{ setIdentName }}" aria-label="Your name" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
             </div>
             <div style="margin-top:14px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">MOBILE</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
               <span style="font-size:14.5px;color:#9c9ca1;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
-              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
+              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" aria-label="Your mobile number" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
             </div>
             <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.3)">{{ saveIdentLabel }}</button>
             <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
@@ -448,7 +448,7 @@ a:hover{color:#d33d26}
 
             <div style="margin-top:16px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PROMO CODE</div>
             <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:#fff">
-              <input value="{{ promo }}" onChange="{{ setPromo }}" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
+              <input value="{{ promo }}" onChange="{{ setPromo }}" aria-label="Promotion code" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
               <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:#f4553c;font-weight:700;flex-shrink:0">Apply</button>
             </div>
             <div style="{{ promoMsgStyle }}">{{ promoMsg }}</div>

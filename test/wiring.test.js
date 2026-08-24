@@ -199,6 +199,32 @@ test('the settle button cannot book the same sale twice', () => {
   assert.strictEqual(F.state.modal.kind, 'settled', 'the modal settled, and stayed settled');
 });
 
+/* A GUEST WITH A SCREEN READER ORDERS FROM THE SAME QR AS EVERYONE ELSE. The
+   two public portals shipped with no aria, no labels and no document language:
+   every control announced as "button", and the reader guessed the language of
+   a page full of Maldivian names. This pins the labelling so it cannot quietly
+   rot back — it is a floor, not a certificate: real assistive-technology
+   testing is still outstanding and is recorded as such. */
+test('the public portals name their controls and declare their language', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8');
+  for (const f of ['guest.html', 'member.html', 'index.html']) {
+    const src = read(f);
+    assert.match(src, /<html lang="[a-z]{2}"/,
+      f + ' does not say what language it is in');
+    // Every input carries an accessible name. A placeholder is not one: it
+    // vanishes the moment the guest types.
+    const inputs = src.match(/<input\b[^>]*>/g) || [];
+    const nameless = inputs.filter((t) => !/aria-label=|aria-labelledby=/.test(t));
+    assert.deepStrictEqual(nameless.map((t) => t.slice(0, 60)), [],
+      f + ' has inputs a screen reader cannot name');
+  }
+  // And the guest portal's glyph-only controls say what they do.
+  const g = read('guest.html');
+  ['Clear the search', 'Fewer people sharing the bill', 'More people sharing the bill']
+    .forEach((label) => assert.ok(g.indexOf('aria-label="' + label + '"') > 0,
+      'the guest portal lost the label: ' + label));
+});
+
 /* THE HALF-BUILT RECIPE USED TO BE THE PRICE OF A MISSING INGREDIENT. When the
    search found nothing there was no way to create the item without leaving the
    modal — and the lines entered so far live in that modal, so leaving discarded
