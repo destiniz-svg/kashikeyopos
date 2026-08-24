@@ -411,8 +411,8 @@
               </sc-for>
               <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
                 <button onClick="{{ m.add }}" style="{{ m.style }}" style-hover="{{ m.hover }}">
-                  <span style="position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0">
-                    <span style="{{ m.photoStyle }}"></span>
+                  <span style="{{ m.mediaStyle }}">
+                    <span style="{{ m.photoStyle }}">{{ m.initial }}</span>
                     <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
                     <span style="{{ m.vegStyle }}"></span>
                   </span>
@@ -4956,7 +4956,19 @@ class Component extends DCLogic {
         const showCost = this.can("recipes");
         return {
           name: m.name, desc: m.desc, price: MVRc(price),
-          photoStyle: "position:absolute;inset:0;background-image:url(" + m.img + ");background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : ""),
+          /* A photo earns the full media area; the absence of one does not. A
+             new outlet's menu has no photographs, and a grid of tall grey
+             voids reads as broken rather than plain — so a photo-less card
+             collapses its media to a short band tinted with the section's own
+             hue, carrying the dish's initials. The band keeps the grid's
+             rhythm and the 86 tag its home. */
+          mediaStyle: m.img
+            ? "position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0"
+            : "position:relative;width:100%;height:30px;overflow:hidden;display:block;border-radius:9px 9px 0 0;background:color-mix(in srgb, " + this.catHue(m.cat) + " 13%, var(--bg-2))",
+          photoStyle: m.img
+            ? "position:absolute;inset:0;background-image:url(" + m.img + ");background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : "")
+            : "position:absolute;inset:0;display:grid;place-items:center;font-size:11.5px;font-weight:800;letter-spacing:.07em;color:" + this.catHue(m.cat) + (off ? ";filter:grayscale(1);opacity:.6" : ""),
+          initial: m.img ? "" : String(m.name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase(),
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
           // 3px of the section's hue down the left edge. Twenty cards deep, the
           // grid sorts itself into bands the hand can aim at pre-verbally.

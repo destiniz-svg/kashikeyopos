@@ -127,7 +127,7 @@ a:hover{color:#d33d26}
             <sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
               <button onClick="{{ it.tap }}" style="{{ it.cardStyle }}">
                 <span style="position:relative;display:block">
-                  <span style="{{ it.imgStyle }}"></span>
+                  <span style="{{ it.imgStyle }}">{{ it.initial }}</span>
                   <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
                 </span>
                 <span style="display:block;margin-top:9px;font-size:13.5px;font-weight:600;color:#1a1a1a;line-height:1.3;letter-spacing:-.015em">{{ it.name }}</span>
@@ -789,6 +789,18 @@ class Component extends DCLogic {
     const k = this.K(); if (!k || !m) return [];
     return (k.MODIFIERS || []).filter((x) => !x.cats || x.cats.indexOf(m.cat) >= 0);
   }
+  // A stable hue from the name, so Garlic Rice is the same colour on every
+  // visit and every device — decoration, but consistent decoration.
+  hueOf(name) {
+    let h = 0;
+    const t = String(name || "");
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 360;
+    return h;
+  }
+  initialsOf(name) {
+    return String(name || "?").trim().split(/\s+/).slice(0, 2)
+      .map((w) => w[0] || "").join("").toUpperCase();
+  }
   allergensOf(m) {
     const k = this.K();
     return (k && k.dishAllergens) ? k.dishAllergens(m) : [];
@@ -1162,8 +1174,20 @@ class Component extends DCLogic {
         tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
           ? "display:block;margin-top:4px;font-size:11px;color:#a8a8ad;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
           : "display:none",
-        imgStyle: "display:block;width:100%;aspect-ratio:1/1;border-radius:13px;background:#f1f1f3 center/cover url('" + (m.img || "") + "');"
-          + (dead ? "filter:grayscale(1);opacity:.5" : ""),
+        /* A photo earns a square; the ABSENCE of one does not. Menus start
+           life unphotographed — every card used to spend half its height on
+           a blank grey block, which makes a plain menu read as a broken one.
+           No photo now collapses the media to a short tinted band carrying
+           the dish's initials, hued stably from its name so the grid keeps
+           rhythm without pretending a photograph is on its way. */
+        imgStyle: m.img
+          ? "display:block;width:100%;aspect-ratio:1/1;border-radius:13px;background:#f1f1f3 center/cover url('" + m.img + "');"
+            + (dead ? "filter:grayscale(1);opacity:.5" : "")
+          : "display:grid;place-items:center;width:100%;height:54px;border-radius:13px;"
+            + "background:hsl(" + this.hueOf(m.name) + " 42% 94%);color:hsl(" + this.hueOf(m.name) + " 34% 46%);"
+            + "font-size:17px;font-weight:800;letter-spacing:.04em;"
+            + (dead ? "filter:grayscale(1);opacity:.5" : ""),
+        initial: m.img ? "" : this.initialsOf(m.name),
         badge: dead ? "Sold out" : "",
         badgeStyle: dead
           ? "position:absolute;left:7px;top:7px;font-size:10px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
@@ -1189,7 +1213,9 @@ class Component extends DCLogic {
       const al = this.allergensOf(d);
       V.dishName = d.name;
       V.dishDesc = d.desc || "";
-      V.dishImgStyle = "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;background:#f1f1f3 center/cover url('" + (d.img || "") + "')";
+      V.dishImgStyle = d.img
+        ? "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;background:#f1f1f3 center/cover url('" + d.img + "')"
+        : "display:none";
       V.dishAllergens = al;
       V.dishAllergenStyle = al.length ? "margin-top:15px;padding:13px 14px;border-radius:15px;background:#fff9f0;border:1px solid #f3e3cc" : "display:none";
       V.allergenFoot = "Worked out from this dish's recipe. Tell your server about any allergy — a shared fryer or grill will not show up in an ingredient list.";
