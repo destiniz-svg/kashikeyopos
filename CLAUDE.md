@@ -697,9 +697,19 @@ with the handle it settled on; every call after that is by handle again.
 
 `server.js` resolves `req.storeHandle` once, before anything routes on it.
 `express.static` is `index: false` so `/` is decided by host, not by a file, and
-the 404 falls back to whichever app owns the hostname. The till's own paths
-(`/pos`, `/kds`, `/admin`, `/onboarding`, `/account`) 308 back to the apex: one
-sign-in, one set of cookies, not one per store.
+the 404 falls back to whichever app owns the hostname.
+
+**The till's own home is the host of `PUBLIC_URL`** — `app.kashikeyopos.com` in
+production, because the APEX belongs to the product's website. `appHost()` in
+`src/handle.js` is the one place that knows it: `hostHandle()` refuses to read
+it as a store called "app" (also reserved, migration 012/027), and the till's
+own paths (`/pos`, `/kds`, `/admin`, `/onboarding`, `/account`) 308 from a
+store's subdomain back to it — one sign-in, one set of cookies, not one per
+store. The bare base domain and `www.` still resolve to the till when they
+reach it, so a deploy mid-domain-move keeps working. The website, owning the
+apex, forwards those same paths (plus the printed `/g/`, `/m/`, `/join/`
+forms) 308 to `APP_URL`, and 301s `www.` onto the bare domain; `/signup` stays
+on the site, where signing up means asking for a store.
 
 A handle the business **chose** is honoured or refused **by name** — never
 quietly swapped for a free one, because they are about to print it. A handle
@@ -1234,7 +1244,7 @@ website — they set their own on their own install's `/account`.
 ## Tests
 
 ```
-npm test                          # 223 tests
+npm test                          # 225 tests
 npm run leak-test                 # isolation, on its own
 ```
 

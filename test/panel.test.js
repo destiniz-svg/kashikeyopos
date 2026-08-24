@@ -36,6 +36,10 @@ test('a fresh registry database', opts, async () => {
     + '/' + DBNAME;
   process.env.PANEL_SECRET = 'panel-test-secret-0123456789abcdef!!';
   delete process.env.PANEL_SETUP_TOKEN;
+  // The apex belongs to the website; the till's paths forward to its home.
+  // Read at module load, so set before the require.
+  process.env.APP_URL = 'https://app.example.test';
+  process.env.CANONICAL_HOST = 'example.test';
 
   panel = require('../panel/server');
   site = require('../site/server');
@@ -173,6 +177,39 @@ test('a request provisioned in the panel stays linked to its install', opts, asy
   assert.strictEqual(again.status, 200);
   const n = await panel.pool.query("SELECT count(*)::int AS n FROM panel.signup WHERE email = 'person@example.mv'");
   assert.strictEqual(n.rows[0].n, 2, 'a decided request does not block a new one');
+});
+
+test("the website forwards the till's paths and keeps its own", opts, async () => {
+  // The bare domain served the terminal for months: its paths are typed,
+  // bookmarked and printed. Moved, not killed — path and query intact.
+  for (const p of ['/pos', '/kds', '/admin', '/onboarding', '/account', '/g/reef-grill?t=4', '/join/MV-abc-123']) {
+    const r = await fetch(siteBase + p, { redirect: 'manual' });
+    assert.strictEqual(r.status, 308, p + ' forwards to the till');
+    assert.strictEqual(r.headers.get('location'),
+      'https://app.example.test' + p, p);
+  }
+  // /signup is the website's own now: on the product's site, signing up
+  // means asking for a store, not opening a terminal's account page.
+  const signup = await fetch(siteBase + '/signup', { redirect: 'manual' });
+  assert.strictEqual(signup.status, 200, 'the signup stays on the site');
+  // A lookalike prefix is not a till path.
+  const look = await fetch(siteBase + '/membership-terms', { redirect: 'manual' });
+  assert.notStrictEqual(look.status, 308, 'prefix lookalikes stay on the site');
+
+  // www is the site under another name, and 301s to the bare domain.
+  const http = require('http');
+  const u = new URL(siteBase + '/docs?x=1');
+  const www = await new Promise((resolve, reject) => {
+    const rq = http.request({ host: u.hostname, port: u.port, method: 'GET',
+      path: u.pathname + u.search, headers: { host: 'www.example.test' } }, (rs) => {
+      rs.resume();
+      rs.on('end', () => resolve({ status: rs.statusCode, location: rs.headers.location }));
+    });
+    rq.on('error', reject);
+    rq.end();
+  });
+  assert.strictEqual(www.status, 301);
+  assert.strictEqual(www.location, 'https://example.test/docs?x=1');
 });
 
 test('shut down cleanly', opts, async () => {

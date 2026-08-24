@@ -76,15 +76,30 @@ function clean(v) {
     .replace(/^https?:\/\//, '').replace(/[/:].*$/, '').replace(/^\*\./, '');
 }
 
-/* The handle this request is addressed to, or null for the apex app. `www` is
-   the apex under another name and never a store. An unknown subdomain IS
-   treated as a store host: the portal then says the address names no store,
-   which is the truth, where serving the till would not be. */
+/* The till's OWN hostname — the host of PUBLIC_URL. It used to be assumed
+   equal to the base domain, which was true while the software sat on the
+   apex; now the apex is the product's website and the till lives at
+   app.<base>, so the two are different names and this is the only place
+   that knows the till's. Configuration, never the request's Host header. */
+function appHost() {
+  const pub = String(process.env.PUBLIC_URL || '').trim();
+  if (!pub) return '';
+  try { return new URL(pub).hostname.toLowerCase(); } catch (e) { return ''; }
+}
+
+/* The handle this request is addressed to, or null for the till itself.
+   The till answers on its own host (PUBLIC_URL), on the bare base domain and
+   on `www.` — the latter two so a deploy whose apex still points here keeps
+   working through a domain move. An unknown subdomain IS treated as a store
+   host: the portal then says the address names no store, which is the truth,
+   where serving the till would not be. */
 function hostHandle(host) {
   const base = baseDomain();
   if (!base) return null;
   const h = String(host || '').toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
   if (!h || h === base || h === 'www.' + base) return null;
+  const own = appHost();
+  if (own && h === own) return null;             // the till's own address
   if (h.slice(-(base.length + 1)) !== '.' + base) return null;
   const label = h.slice(0, h.length - base.length - 1);
   if (label.indexOf('.') >= 0) return null;      // a.b.base is nobody's store
@@ -162,4 +177,4 @@ function joinUrl(handle, token) {
 }
 
 module.exports = { MIN, MAX, SHAPE, normalise, shapeError, ok,
-  baseDomain, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl, portalOrigin };
+  baseDomain, appHost, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl, portalOrigin };

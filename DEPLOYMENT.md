@@ -297,6 +297,22 @@ every future deploy wipes the environment. The pre-deploy runs before the new
 container starts, so the sequence in a single deploy is: wipe, then migrate
 from nothing, then serve.
 
+## The address map
+
+```
+kashikeyopos.com            the website — landing, docs, signup   (site/)
+www.kashikeyopos.com        301 → kashikeyopos.com
+app.kashikeyopos.com        the till, back office, /account       (PUBLIC_URL)
+<handle>.kashikeyopos.com   one store's QR portal + member card   (wildcard)
+panel.kashikeyopos.com      Mission Control                       (panel/)
+```
+
+The POS service sets `PUBLIC_URL=https://app.kashikeyopos.com` and
+`PORTAL_BASE_DOMAIN=kashikeyopos.com` — the till's own host and the domain
+stores hang off are different names now, so both are stated. The website
+service sets `APP_URL=https://app.kashikeyopos.com` (where it forwards the
+till's old apex paths) and `CANONICAL_HOST=kashikeyopos.com`.
+
 ## Mission Control — the seller's panel
 
 The product is sold one install per customer: each customer gets their own app

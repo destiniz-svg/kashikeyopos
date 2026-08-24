@@ -1709,6 +1709,25 @@ test('a store answers on its own address; the apex answers with the terminal', o
     assert.strictEqual(r.status, 308, p + ' redirects off the store address');
     assert.strictEqual(r.headers.location, 'https://kashikeyopos.com' + p);
   }
+
+  // And that home follows PUBLIC_URL: with the apex given to the product's
+  // website, the till lives at app.<base> — served there as itself, never
+  // mistaken for a store called "app", and the 308s follow it.
+  const pub = process.env.PUBLIC_URL;
+  process.env.PUBLIC_URL = 'https://app.kashikeyopos.com';
+  try {
+    const till = await callHost('app.kashikeyopos.com', 'GET', '/');
+    assert.strictEqual(till.status, 200);
+    assert.ok(/kpos-bridge\.js/.test(till.text), 'the till answers on its own host');
+    assert.ok(!/guest-bridge\.js/.test(till.text), 'and it is not a portal for a store "app"');
+    const off = await callHost(handle + '.kashikeyopos.com', 'GET', '/pos');
+    assert.strictEqual(off.headers.location, 'https://app.kashikeyopos.com/pos',
+      'the store-host 308 follows the till home');
+    const still = await callHost(handle + '.kashikeyopos.com', 'GET', '/');
+    assert.ok(/guest-bridge\.js/.test(still.text), 'store portals stay on the base domain');
+  } finally {
+    if (pub) process.env.PUBLIC_URL = pub; else delete process.env.PUBLIC_URL;
+  }
 });
 
 test('the host mints the same table token the path does', opts, async () => {

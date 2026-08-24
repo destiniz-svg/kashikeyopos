@@ -79,6 +79,23 @@ test('the hostname names the store, and only where it can', () => {
     assert.strictEqual(H.hostHandle(host), want, host + ' -> ' + want));
 });
 
+test("the till's own host is never a store, wherever PUBLIC_URL puts it", () => {
+  process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
+  const pub = process.env.PUBLIC_URL;
+  process.env.PUBLIC_URL = 'https://app.kashikeyopos.com';
+  try {
+    assert.strictEqual(H.appHost(), 'app.kashikeyopos.com');
+    assert.strictEqual(H.hostHandle('app.kashikeyopos.com'), null,
+      'the terminal answers on its own address');
+    assert.strictEqual(H.hostHandle('reef-grill.kashikeyopos.com'), 'reef-grill',
+      'store portals stay on the base domain');
+    assert.strictEqual(H.storeUrl('reef-grill', ''), 'https://reef-grill.kashikeyopos.com',
+      'a printed store address never moves with the till');
+  } finally {
+    if (pub) process.env.PUBLIC_URL = pub; else delete process.env.PUBLIC_URL;
+  }
+});
+
 test('an EMPTY base domain switches store subdomains off on purpose', () => {
   // Not the same as unset. A staging box on a vendor domain with no wildcard
   // record would otherwise inherit that apex from PUBLIC_URL and start handing

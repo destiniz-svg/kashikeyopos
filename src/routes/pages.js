@@ -14,7 +14,7 @@
    printed QR should carry the store's own address rather than a path on
    somebody else's. So the host decides first, and the path decides after. */
 const path = require('path');
-const { baseDomain } = require('../handle');
+const { baseDomain, appHost } = require('../handle');
 
 module.exports = function (app, APP) {
   const send = (file) => (req, res) => {
@@ -28,12 +28,15 @@ module.exports = function (app, APP) {
     send(req.storeHandle ? storeFile : apexFile)(req, res);
 
   /* The business's own software has one home, and it is not a store's
-     subdomain. Sending someone back to the apex keeps a single sign-in and a
-     single set of cookies, rather than one per store. */
+     subdomain. Sending someone back there keeps a single sign-in and a
+     single set of cookies, rather than one per store. That home is the host
+     of PUBLIC_URL (app.kashikeyopos.com in production — the apex belongs to
+     the product's website now), falling back to the base domain for a deploy
+     whose PUBLIC_URL still sits on the apex. */
   const apexOnly = (file) => (req, res) => {
-    const base = baseDomain();
-    if (req.storeHandle && base) {
-      return res.redirect(308, 'https://' + base + req.originalUrl);
+    const home = appHost() || baseDomain();
+    if (req.storeHandle && home) {
+      return res.redirect(308, 'https://' + home + req.originalUrl);
     }
     return send(file)(req, res);
   };

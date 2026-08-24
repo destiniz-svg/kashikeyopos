@@ -103,6 +103,29 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ── the apex belongs to this website; the till lives at APP_URL ────────────
+   The bare domain used to serve the terminal, so its paths are typed,
+   bookmarked and printed. They forward permanently to the till's own home
+   (app.kashikeyopos.com), path and query intact — a moved address answers,
+   it never 404s. `/g/<slug>`, `/m/<slug>` and `/join/<token>` are the PRINTED
+   path forms: a QR card made before a store took its handle keeps working
+   for as long as it is stuck to the table. `/signup` deliberately stays here —
+   on the product's website, signing up means asking for a store.
+   `www.` is the site under another name and 301s to the bare domain. */
+const APP_URL = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+const CANONICAL = String(process.env.CANONICAL_HOST || '').trim().toLowerCase();
+const TILL_PATHS = /^\/(pos|kds|admin|onboarding|account|signin|member|card)(\/|$)|^\/(g|m|join)\//;
+app.use((req, res, next) => {
+  const host = String(req.hostname || '').toLowerCase();
+  if (CANONICAL && host === 'www.' + CANONICAL) {
+    return res.redirect(301, 'https://' + CANONICAL + req.originalUrl);
+  }
+  if (APP_URL && TILL_PATHS.test(req.path)) {
+    return res.redirect(308, APP_URL + req.originalUrl);
+  }
+  next();
+});
+
 /* The landing page's footer pill asks; answer for THIS site honestly. */
 app.get('/api/health', async (req, res) => {
   try { await pool.query('SELECT 1'); res.json({ ok: true }); }
