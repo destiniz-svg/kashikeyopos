@@ -1276,10 +1276,59 @@ pre-fills the install sheet (trial pre-set to 14 days) and links the request
 to the install it became. The customer's credentials are never taken by the
 website — they set their own on their own install's `/account`.
 
+## Reachable, and measured rather than judged
+
+Two accessibility properties are computable, so they are computed in a real
+browser against the shipped pages — `test/a11y.test.js`, no axe, because this
+repo ships two runtime dependencies and no dev ones.
+
+**Contrast.** Every visible run of text against the background it is really
+drawn on, walked up the ancestors. The walk stops at the first ancestor that
+PAINTS — and a gradient paints exactly as opaquely as a colour does, which is
+the trap: `/account`'s panel is a dark gradient with a transparent
+`background-color`, so a naive walk fell through it to the light `body` and
+reported near-white text at 1.08:1. Opaque gradient stops are collected and the
+text is judged against the worst of them, which is a conservative bound rather
+than a simulation.
+
+What that measurement then found was real, and none of it was reachable by
+reading the code: the two phone apps carried a muted ink ramp — `#8a8a8f`,
+`#a8a8ad`, `#b0b0b5`, `#9c9ca1`, `#b6b6bb`, the `::placeholder` — sitting on
+white sheets at **3.44:1 down to 1.89:1**. Every one of them is copy a guest
+has to read: the table number, the tip note, the receipt lines, the reason
+their code was refused. The ramp is now `#62626a` · `#6a6a72` · `#6e6e77`,
+which clears AA on both the white sheets and the `#f5f5f6` cards and keeps
+three perceptible steps. **AA on white simply does not permit light greys** —
+if a step wants to be lighter, the surface under it has to get darker.
+
+**The keyboard.** Tabbing must move focus, land on something visible, and never
+trap. `button:focus-visible` had a ring; nothing else did, because every input,
+select and textarea carries `outline:none` in its inline style and an inline
+declaration beats a plain stylesheet rule. So tabbing into the top-bar search
+put a keyboard user on a control they could not see. One `!important` rule
+reaches past 22 inline styles without editing 22 inline styles, drawn inside
+the field because a field sits in a bordered pill with no room outside it. The
+two phone apps had no focus rule at all and now carry the same one in their own
+accent.
+
+The check itself is stricter than it started: the first version counted **any**
+`box-shadow` as a focus ring, which passed every button in the app on the
+strength of its decorative drop shadow. A shadow that is there whether focus is
+or not indicates nothing. It now requires an outline AND `:focus-visible`.
+
+`test/wiring.test.js` pins the rule statically as well, because the browser
+measurement skips clean where there is no browser — which is most CI runs — and
+a deleted focus block takes the keyboard's only cue with it silently.
+
+**Still open, and stated as open:** the browser sweep visits each app's landing
+state and every rail screen; it does not open every modal, sheet and form, and
+no screen reader has been driven over any of it. `site/` and `panel/` are
+separate services on their own ports and are not in this suite.
+
 ## Tests
 
 ```
-npm test                          # 245 tests
+npm test                          # 239 tests
 npm run leak-test                 # isolation, on its own
 ```
 

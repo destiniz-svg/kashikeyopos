@@ -1037,3 +1037,36 @@ test('every form the terminal can open is on the list the harness sweeps', () =>
   assert.deepStrictEqual(stale, [],
     'these are swept but no longer exist: ' + stale.join(', '));
 });
+
+/* ═══ FOCUS IS DRAWN, AND THE MEASUREMENT IS NOT ALWAYS AVAILABLE ═══════════
+   test/a11y.test.js measures this properly, in a real browser against a live
+   server — and skips clean where neither exists, which is most CI runs. So the
+   one thing that cannot be allowed to silently disappear is pinned statically:
+   the rule itself. Every control in all three apps carries `outline:none` in
+   its inline style for layout reasons, so a deleted `:focus-visible` block
+   takes the keyboard's only visible cue with it and nothing else notices. */
+test('every app draws a keyboard focus ring', () => {
+  const files = {
+    'app/kashikeyo.css': '!important',   // must beat 22 inline outline:none
+    'app/guest.html': null,
+    'app/member.html': null,
+    'app/onboarding.html': null,
+    'app/account.html': null
+  };
+  Object.entries(files).forEach(([f, needs]) => {
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    // The SELECTOR, not the word: every one of these files explains itself
+    // in a comment that mentions :focus-visible, and a comment styles nothing.
+    const at = src.search(/:focus-visible\s*\{/);
+    assert.ok(at > -1, f + ' draws no :focus-visible ring — a keyboard user '
+      + 'cannot see what they are about to activate');
+    if (needs) {
+      // Somewhere in the file, a focus ring that WINS. The terminal's fields
+      // each carry outline:none inline, and an inline declaration beats a
+      // plain stylesheet rule — which is exactly how this app shipped with a
+      // :focus-visible block that drew nothing on any input for months.
+      assert.ok(/:focus-visible[^{]*\{[^}]*!important/.test(src),
+        f + ' declares a focus ring that its own inline outline:none overrides');
+    }
+  });
+});

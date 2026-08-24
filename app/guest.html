@@ -30,6 +30,16 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;tex
 button:active:not(:disabled){transform:scale(.975)}
 input,textarea,select{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
 textarea{resize:none}
+/* WHERE THE KEYBOARD IS. Neither phone app drew a focus indicator: `input`
+   carries `outline:none` and `button` resets everything, so a person using a
+   keyboard — or a switch, or voice control, which drives the same focus — had
+   no way to see what they were about to activate. `:focus-visible` is the
+   browser's own judgement that focus arrived by key, so a guest tapping never
+   sees a ring and a guest tabbing always does. The accent is the app's own,
+   at 2px with an offset, and it clears 3:1 on both the white sheets and the
+   dark backdrop. */
+:focus-visible{outline:2px solid #f4553c;outline-offset:2px}
+input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:-2px}
 a{color:#f4553c;text-decoration:none}
 a:hover{color:#d33d26}
 .qs::-webkit-scrollbar{height:0;width:0}
@@ -65,12 +75,12 @@ a:hover{color:#d33d26}
       <sc-if value="{{ linkDead }}">
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:22px 26px 40px;animation:qfade .2s">
           <div style="width:52px;height:52px;border-radius:17px;background:#f4f4f5;display:grid;place-items:center">
-            <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#8a8a8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3zM12 9v4M12 16h.01"></path></svg>
+            <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#62626a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3zM12 9v4M12 16h.01"></path></svg>
           </div>
           <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">This code does not open a menu</div>
-          <div style="margin-top:9px;font-size:14px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
+          <div style="margin-top:9px;font-size:14px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
           <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:#f7f7f8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#6a6a70;overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
-          <div style="margin-top:18px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">Ask a member of staff for the card on your table — they can also take the order at the counter.</div>
+          <div style="margin-top:18px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">Ask a member of staff for the card on your table — they can also take the order at the counter.</div>
         </div>
       </sc-if>
 
@@ -80,15 +90,15 @@ a:hover{color:#d33d26}
             <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
           </div>
           <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ welcomeTitle }}</div>
-          <div style="margin-top:9px;font-size:14px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ welcomeSub }}</div>
+          <div style="margin-top:9px;font-size:14px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ welcomeSub }}</div>
 
-          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR TABLE</div>
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">YOUR TABLE</div>
           <div style="margin-top:11px;display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:9px">
             <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="12">
               <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
             </sc-for>
           </div>
-          <div style="margin-top:18px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ welcomeFoot }}</div>
+          <div style="margin-top:18px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">{{ welcomeFoot }}</div>
         </div>
       </sc-if>
 
@@ -153,7 +163,7 @@ a:hover{color:#d33d26}
       <sc-if value="{{ onTrack }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f">{{ trackSub }}</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#62626a">{{ trackSub }}</div>
 
           <div style="{{ trackWrapStyle }}">
             <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
@@ -166,19 +176,19 @@ a:hover{color:#d33d26}
                 </span>
                 <span style="display:block;padding-bottom:16px;min-width:0;flex:1">
                   <span style="{{ st.labelStyle }}">{{ st.label }}</span>
-                  <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:3px;line-height:1.5;text-wrap:pretty">{{ st.sub }}</span>
+                  <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px;line-height:1.5;text-wrap:pretty">{{ st.sub }}</span>
                 </span>
               </div>
             </sc-for>
           </div>
 
           <div style="{{ roundsWrapStyle }}">
-            <div style="font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">ROUNDS SENT</div>
+            <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">ROUNDS SENT</div>
             <sc-for list="{{ rounds }}" as="r" hint-placeholder-count="1">
               <div style="margin-top:11px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:14px 15px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
                 <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
                   <span style="font-size:14px;font-weight:700;color:#111">{{ r.title }}</span>
-                  <span style="font-size:12px;color:#9c9ca1;font-family:'JetBrains Mono',monospace">{{ r.at }}</span>
+                  <span style="font-size:12px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ r.at }}</span>
                 </div>
                 <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="2">
                   <div style="margin-top:7px;display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#4a4a4f">
@@ -198,7 +208,7 @@ a:hover{color:#d33d26}
       <sc-if value="{{ onBill }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">The bill</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
 
           <div style="{{ billBodyStyle }}">
             <div style="margin-top:18px;border:1px solid #efefef;border-radius:18px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
@@ -215,7 +225,7 @@ a:hover{color:#d33d26}
               </div>
             </div>
 
-            <div style="margin-top:20px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
+            <div style="margin-top:20px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <sc-for list="{{ splitModes }}" as="m" hint-placeholder-count="4">
                 <button onClick="{{ m.tap }}" style="{{ m.style }}">
@@ -242,7 +252,7 @@ a:hover{color:#d33d26}
             </div>
 
             <div style="{{ splitItemStyle }}">
-              <div style="font-size:12.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table's bill for whoever is paying it.</div>
+              <div style="font-size:12.5px;color:#62626a;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table's bill for whoever is paying it.</div>
               <sc-for list="{{ pickLines }}" as="l" hint-placeholder-count="3">
                 <button onClick="{{ l.tap }}" style="{{ l.style }}">
                   <span style="{{ l.box }}">
@@ -264,15 +274,15 @@ a:hover{color:#d33d26}
               <div style="{{ customWarnStyle }}">{{ customWarn }}</div>
             </div>
 
-            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">ADD A TIP FOR THE TEAM</div>
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">ADD A TIP FOR THE TEAM</div>
             <div style="margin-top:10px;display:flex;gap:8px">
               <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
               </sc-for>
             </div>
-            <div style="margin-top:9px;font-size:12px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+            <div style="margin-top:9px;font-size:12px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
 
-            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PAYING WITH</div>
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">PAYING WITH</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="3">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -295,20 +305,20 @@ a:hover{color:#d33d26}
       <sc-if value="{{ onYou }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">{{ youTitle }}</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
 
           <div style="{{ identFormStyle }}">
-            <div style="margin-top:18px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR NAME</div>
+            <div style="margin-top:18px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">YOUR NAME</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;background:#fff">
               <input value="{{ identName }}" onChange="{{ setIdentName }}" aria-label="Your name" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
             </div>
-            <div style="margin-top:14px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">MOBILE</div>
+            <div style="margin-top:14px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">MOBILE</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
-              <span style="font-size:14.5px;color:#9c9ca1;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
+              <span style="font-size:14.5px;color:#6a6a72;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
               <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" aria-label="Your mobile number" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
             </div>
             <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.3)">{{ saveIdentLabel }}</button>
-            <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
+            <div style="margin-top:12px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
           </div>
 
           <div style="{{ identCardStyle }}">
@@ -320,11 +330,11 @@ a:hover{color:#d33d26}
                 <span style="{{ ptsStyle }}">{{ ptsLabel }}</span>
               </div>
             </div>
-            <button onClick="{{ forgetMe }}" style="margin-top:14px;width:100%;padding:13px;border-radius:14px;background:#f5f5f6;color:#8a8a8f;font-size:13px;font-weight:600;text-align:center;min-height:46px">Forget me on this phone</button>
+            <button onClick="{{ forgetMe }}" style="margin-top:14px;width:100%;padding:13px;border-radius:14px;background:#f5f5f6;color:#62626a;font-size:13px;font-weight:600;text-align:center;min-height:46px">Forget me on this phone</button>
           </div>
 
           <div style="{{ rateWrapStyle }}">
-            <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">HOW WAS IT?</div>
+            <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW WAS IT?</div>
             <div style="margin-top:11px;display:flex;gap:8px">
               <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
                 <button onClick="{{ st.tap }}" style="{{ st.style }}">
@@ -339,15 +349,15 @@ a:hover{color:#d33d26}
             <div style="{{ rateDoneStyle }}">{{ rateDone }}</div>
           </div>
 
-          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">THIS TABLE</div>
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">THIS TABLE</div>
           <div style="margin-top:11px;display:flex;flex-direction:column;gap:8px">
             <sc-for list="{{ tableActions }}" as="a" hint-placeholder-count="3">
               <button onClick="{{ a.tap }}" style="{{ a.style }}">
                 <span style="flex:1;min-width:0;display:block">
                   <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ a.label }}</span>
-                  <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:2px;line-height:1.4">{{ a.sub }}</span>
+                  <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px;line-height:1.4">{{ a.sub }}</span>
                 </span>
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#c8c8cc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 6 6 6-6 6"></path></svg>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#8a8a90" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 6 6 6-6 6"></path></svg>
               </button>
             </sc-for>
           </div>
@@ -361,7 +371,7 @@ a:hover{color:#d33d26}
           <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 18px" class="qs">
             <span style="{{ dishImgStyle }}"></span>
             <div style="margin-top:15px;font-size:21px;font-weight:700;color:#111;letter-spacing:-.03em;line-height:1.2">{{ dishName }}</div>
-            <div style="margin-top:7px;font-size:13.5px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ dishDesc }}</div>
+            <div style="margin-top:7px;font-size:13.5px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ dishDesc }}</div>
 
             <div style="{{ dishAllergenStyle }}">
               <div style="font-size:11.5px;font-weight:700;color:#b0682c;letter-spacing:.05em">CONTAINS</div>
@@ -383,7 +393,7 @@ a:hover{color:#d33d26}
                   <div style="height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px">
                     <span style="min-width:0;font-size:14px;color:#1a1a1a">{{ a.name }}</span>
                     <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-                      <span style="font-size:13px;color:#9c9ca1;font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                      <span style="font-size:13px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
                       <button onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                       </button>
@@ -423,7 +433,7 @@ a:hover{color:#d33d26}
           <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:#e0e0e3;display:block"></span></div>
           <div style="flex-shrink:0;padding:6px 20px 12px">
             <div style="font-size:20px;font-weight:700;color:#111;letter-spacing:-.03em">This round</div>
-            <div style="margin-top:4px;font-size:13px;color:#8a8a8f">{{ cartSub }}</div>
+            <div style="margin-top:4px;font-size:13px;color:#62626a">{{ cartSub }}</div>
           </div>
           <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 14px" class="qs">
             <sc-for list="{{ cart }}" as="l" hint-placeholder-count="2">
@@ -446,7 +456,7 @@ a:hover{color:#d33d26}
               </div>
             </sc-for>
 
-            <div style="margin-top:16px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PROMO CODE</div>
+            <div style="margin-top:16px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">PROMO CODE</div>
             <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:#fff">
               <input value="{{ promo }}" onChange="{{ setPromo }}" aria-label="Promotion code" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
               <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:#f4553c;font-weight:700;flex-shrink:0">Apply</button>
@@ -455,10 +465,10 @@ a:hover{color:#d33d26}
           </div>
           <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:#fff">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-              <span style="font-size:13.5px;color:#8a8a8f">{{ cartTotalLabel }}</span>
+              <span style="font-size:13.5px;color:#62626a">{{ cartTotalLabel }}</span>
               <span style="font-size:19px;font-weight:800;color:#111;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
             </div>
-            <div style="margin-top:6px;font-size:11.5px;color:#a8a8ad;line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
+            <div style="margin-top:6px;font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
             <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(244,85,60,.32)">Send to the kitchen</button>
           </div>
         </div>
@@ -1125,7 +1135,7 @@ class Component extends DCLogic {
     V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
     V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
     V.avatarStyle = "width:44px;height:44px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
-      + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#b0b0b5");
+      + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#6e6e77");
     V.goYou = () => self.setState({ tab: "you" });
 
     // ── menu ───────────────────────────────────────────────────────────────
@@ -1163,7 +1173,7 @@ class Component extends DCLogic {
     V.filterNote = s.diet.length
       ? "Showing dishes that suit " + s.diet.map((d) => (k.DIETS.filter((x) => x.k === d)[0] || {}).label.toLowerCase()).join(" and ") + ". Worked out from each recipe, not from a label."
       : "";
-    V.filterNoteStyle = s.diet.length ? "margin:10px 20px 0;font-size:11.5px;color:#a8a8ad;line-height:1.5;text-wrap:pretty" : "display:none";
+    V.filterNoteStyle = s.diet.length ? "margin:10px 20px 0;font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty" : "display:none";
     // Two identical keyframes alternated by filter state: an animation restarts
     // only when its NAME changes, so the grid lifts in each time the guest
     // narrows the menu and it is obvious the list is now different.
@@ -1176,7 +1186,7 @@ class Component extends DCLogic {
         name: m.name, price: this.fmt(this.price(m)),
         tags: al.length ? al.map((a) => a.label).join(" · ") : (k.dishHasMeat && !k.dishHasMeat(m) ? "Vegetarian" : ""),
         tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
-          ? "display:block;margin-top:4px;font-size:11px;color:#a8a8ad;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          ? "display:block;margin-top:4px;font-size:11px;color:#6a6a72;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
           : "display:none",
         /* A photo earns a square; the ABSENCE of one does not. Menus start
            life unphotographed — every card used to spend half its height on
@@ -1197,7 +1207,7 @@ class Component extends DCLogic {
           ? "position:absolute;left:7px;top:7px;font-size:10px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
           : "display:none",
         plusStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + (dead ? "background:#e8e8ea;color:#b0b0b5" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(244,85,60,.34)"),
+          + (dead ? "background:#e8e8ea;color:#6e6e77" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(244,85,60,.34)"),
         cardStyle: "background:#fff;border:1px solid #efeff1;border-radius:18px;padding:8px 8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.045);display:block;"
           + (dead ? "opacity:.72" : ""),
         tap: () => dead
@@ -1208,7 +1218,7 @@ class Component extends DCLogic {
     V.emptyMsg = q
       ? "Nothing matches \u201c" + s.q.trim() + "\u201d" + (s.diet.length ? " with those filters." : ".")
       : "Nothing on the menu suits those filters right now. Clear one and try again.";
-    V.emptyStyle = list.length ? "display:none" : "padding:54px 30px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+    V.emptyStyle = list.length ? "display:none" : "padding:54px 30px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
 
     // ── dish sheet ─────────────────────────────────────────────────────────
     const d = s.dish ? this.item(s.dish) : null;
@@ -1229,7 +1239,7 @@ class Component extends DCLogic {
         const n = s.addons[a.id] || 0;
         return {
           name: a.name, price: "+" + this.fmt(a.price), qty: String(n),
-          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#c8c8cc"),
+          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
           decStyle: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
             + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
           inc: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: n + 1 }) }),
@@ -1276,7 +1286,7 @@ class Component extends DCLogic {
       return {
         name: m ? m.name : "Item", qty: String(l.qty),
         opt: [l.opt, l.note].filter(Boolean).join(" · "),
-        optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:#9c9ca1;margin-top:2px;line-height:1.4" : "display:none",
+        optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:#6a6a72;margin-top:2px;line-height:1.4" : "display:none",
         amt: this.fmt(((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty),
         imgStyle: "display:block;width:52px;height:52px;border-radius:13px;flex-shrink:0;background:#f1f1f3 center/cover url('" + ((m && m.img) || "") + "')",
         inc: () => { const c = s.cart.slice(); c[i] = Object.assign({}, c[i], { qty: c[i].qty + 1 }); self.setState({ cart: c }); },
@@ -1344,7 +1354,7 @@ class Component extends DCLogic {
       }
     }));
     V.trackEmpty = "Your order will appear here the moment you send it, and the steps above follow what the kitchen is actually doing.";
-    V.trackEmptyStyle = s.sent.length ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+    V.trackEmptyStyle = s.sent.length ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
 
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
@@ -1363,7 +1373,7 @@ class Component extends DCLogic {
         + ". Thank you — we hope to see you again."
       : "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
     V.billEmptyStyle = b ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:"
-      + (paid ? "#1f7a3d" : "#a8a8ad") + ";line-height:1.65;text-wrap:pretty";
+      + (paid ? "#1f7a3d" : "#6a6a72") + ";line-height:1.65;text-wrap:pretty";
     const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
     V.billLines = b ? b.lines : [];
     V.billTotals = b ? [
@@ -1532,7 +1542,7 @@ class Component extends DCLogic {
     ].map((x) => ({
       label: x.label, icon: x.icon, dotStyle: dot(x.on),
       style: "position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;border-radius:13px;min-height:52px;color:"
-        + (s.tab === x.k ? "#f4553c" : "#b0b0b5"),
+        + (s.tab === x.k ? "#f4553c" : "#6e6e77"),
       tap: () => self.setState({ tab: x.k })
     }));
 

@@ -183,6 +183,17 @@ button:active:not(:disabled){transform:translateY(1px)}
 /* Keyboard focus only. A till is driven by touch and the ring would otherwise
    sit under every finger; :focus-visible keeps it for the people who need it. */
 button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--fwd);outline-offset:2px;border-radius:inherit}
+/* A BUTTON was all that rule ever covered. Every input, select and textarea in
+   the terminal carries `outline:none` in its inline style — a layout decision
+   each one has its own reason for — and an inline declaration beats a plain
+   stylesheet rule, so the fields drew nothing at all: tabbing into the top-bar
+   search landed a keyboard user on a control they could not see. `!important`
+   is the only thing that reaches past 22 inline styles without editing 22
+   inline styles. The ring draws INSIDE a field, because a field sits in a
+   bordered pill with no room outside it for one. */
+input:focus-visible,textarea:focus-visible,select:focus-visible,
+a:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--fwd) !important;outline-offset:-2px}
 button:disabled{cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){button{transition:none}button:active:not(:disabled){transform:none}}
 input,select,textarea{font-family:inherit}
@@ -265,3 +276,4 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
   /* Skeleton gradients stop travelling; the block still breathes. */
   [style*="kshimmer"]{background-image:none !important;background:var(--bg-2) !important}
 }
+
