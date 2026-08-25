@@ -436,11 +436,20 @@
         .sort(function (a, b) { return (a.lamport || 0) - (b.lamport || 0); });
       if (!ops.length) return null;
       this._flushing = true;
+      var delivered = 0;
       try {
+        /* ONE PUSH IS ONE BOUNDED PIECE OF WORK. This sliced 100, and the
+           server applied the lot inside a single transaction — which is where
+           the only error in the whole load campaign came from: eight outboxes
+           draining 80 ops each held pooled connections for up to 16.9 s and
+           starved every other till in the shop. The server chunks internally
+           now, so the ceiling is closed for any client; asking for less per
+           request closes it here too, and keeps a single request short enough
+           that a flaky link retries seconds of work rather than minutes. */
         var r = await this._fetch("/api/outlet/" + this.outletId + "/sync/push", {
           method: "POST",
           appVersion: this.appVersion || null,
-          body: { ops: ops.slice(0, 100).map(function (o) {
+          body: { ops: ops.slice(0, KashikeyoAPI.PUSH_CHUNK).map(function (o) {
             return { opId: o.opId, kind: o.kind, label: o.label, entity: o.entity,
               payload: o.payload, lamport: o.lamport, at: o.at };
           }) }
@@ -452,6 +461,7 @@
           // Only ops the server acknowledged leave the outbox. An op that
           // errored stays put and is visible to the operator rather than
           // silently lost.
+          delivered++;
           await tx(db, "readwrite", function (os) { os.delete(x.opId); });
         }
         if (failed.length) {
@@ -484,7 +494,21 @@
       } finally {
         this._flushing = false;
         var left = (await this.pending()).filter(function (o) { return !o.parked; });
-        if (left.length && this._online) setTimeout(() => this.flush(), 5000);
+        /* A DRAIN IS NOT A RETRY, AND THE TWO WANT DIFFERENT PACES. This waited
+           a flat five seconds either way, so a till back from a dark evening
+           took 4,000 ops ÷ 100 × 5 s ≈ three minutes to come back into step,
+           most of it spent idle. Five seconds is the right politeness after a
+           REFUSAL; it is only a tax on a drain that is working.
+
+           So the gap is decided by whether the last push actually delivered
+           anything. It did → keep going now. It did not → the outlet said no,
+           or the link is down, and the only ops left are ones that just
+           failed: back off, exactly as before. Without that distinction a
+           poison op would spin at the fast interval, which is the hot outbox
+           the parking lane exists to stop. */
+        if (left.length && this._online) {
+          setTimeout(() => this.flush(), delivered > 0 ? KashikeyoAPI.DRAIN_MS : 5000);
+        }
       }
     }
 
@@ -621,6 +645,10 @@
   // payload the server will never accept does not, and holding the whole
   // outbox hot for it is the failure this lane exists to end.
   KashikeyoAPI.DEAD_TRIES = 8;
+  // Ops per push, and the gap between pushes while a drain is delivering. See
+  // flush(): the first bounds one transaction, the second paces a backlog.
+  KashikeyoAPI.PUSH_CHUNK = 25;
+  KashikeyoAPI.DRAIN_MS = 250;
 
   if (typeof module !== "undefined" && module.exports) module.exports = { KashikeyoAPI };
 })(typeof window !== "undefined" ? window : globalThis);

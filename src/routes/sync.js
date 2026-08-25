@@ -12,28 +12,68 @@ const r = express.Router({ mergeParams: true });
    is its own savepoint: one bad op does not roll back the sale in front of it,
    and it stays in the client's outbox where an operator can see it rather than
    disappearing.
+
+   AND THE WHOLE BATCH IS NOT ONE TRANSACTION. It was, and that is where the
+   only error in the entire load campaign came from. A till that has been
+   offline does not push one bill at a time — it drains, and the evening
+   arrives at once. At 80 ops a batch with eight outboxes draining together,
+   one transaction held a pooled connection for up to 16.9 s: past the 8 s
+   checkout bound the other seven were waiting on, and inside touching
+   distance of the 15 s statement timeout. One request in ~4,000 failed. No
+   money defect — that run balanced every journal and produced no duplicates —
+   but the ceiling is real and it scales with how long a device was dark.
+
+   So the batch is sorted ONCE, whole, and then applied in bounded chunks,
+   each its own transaction. The connection goes back to the pool between
+   them, so a long drain queues behind itself rather than starving every other
+   till in the shop. Three things make that safe, and all three were already
+   true: op_log is keyed by opId with ON CONFLICT DO NOTHING, so a chunk that
+   committed before a later one failed replays as a no-op rather than a
+   double; each op was ALREADY its own savepoint, so per-batch atomicity was
+   never what the guarantee rested on; and the sort happens before the split,
+   so chunk two can only ever carry ops that come after chunk one.
+
+   The cap stays at 200. Lowering it would 413 every terminal in the field
+   still slicing 100, and an op that cannot be delivered is not safer than one
+   applied in two transactions.
    ═══════════════════════════════════════════════════════════════════════ */
+const CHUNK = 25;
+
 r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
   const ops = (req.body || {}).ops;
   if (!Array.isArray(ops)) return res.status(400).json({ error: 'ops[] required' });
   if (ops.length > 200) return res.status(413).json({ error: 'send at most 200 ops per push' });
   try {
-    const results = await withOutlet(req.ctx, async function (c) {
+    /* Lamport first, then the position the device sent them in — because a
+       device that has not yet been raised by a poll can send several ops
+       carrying the same number (an outbox that has never been polled numbers
+       from its own high-water mark, and a batch of unstamped ops carries
+       zero), and Array.prototype.sort is not required to be stable about
+       what it then does with them. The batch's own order is the only
+       tiebreak that MEANS anything: it is the order the operator did the
+       work in. Open the ticket, add the line, fire the course — sorted by
+       anything else, the line is added to a ticket that does not exist.
+
+       Sorted here, over the WHOLE batch, before it is split. */
+    const ordered = ops.map((op, i) => ({ op, i })).sort((a, b) =>
+      ((a.op && a.op.lamport) || 0) - ((b.op && b.op.lamport) || 0) || a.i - b.i);
+
+    const chunks = [];
+    for (let i = 0; i < ordered.length; i += CHUNK) chunks.push(ordered.slice(i, i + CHUNK));
+    // An empty push still proves the device reached its outlet, so it still
+    // gets a transaction — one that does nothing but stamp it.
+    if (!chunks.length) chunks.push([]);
+
+    /* Spans the whole push, not one chunk: the same op arriving twice in one
+       delivery is a duplicate whichever chunks it lands in. */
+    const inThisBatch = new Set();
+    const results = [];
+    let n = 0;
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const part = await withOutlet(req.ctx, async function (c) {
       const out = [];
-      const inThisBatch = new Set();
-      let n = 0;
-      /* Lamport first, then the position the device sent them in — because a
-         device that has not yet been raised by a poll can send several ops
-         carrying the same number (an outbox that has never been polled numbers
-         from its own high-water mark, and a batch of unstamped ops carries
-         zero), and Array.prototype.sort is not required to be stable about
-         what it then does with them. The batch's own order is the only
-         tiebreak that MEANS anything: it is the order the operator did the
-         work in. Open the ticket, add the line, fire the course — sorted by
-         anything else, the line is added to a ticket that does not exist. */
-      const ordered = ops.map((op, i) => ({ op, i })).sort((a, b) =>
-        ((a.op && a.op.lamport) || 0) - ((b.op && b.op.lamport) || 0) || a.i - b.i);
-      for (const { op } of ordered) {
+      for (const { op } of chunks[ci]) {
         if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
         if (!op.kind) { out.push({ opId: op.opId, error: 'kind required' }); continue; }
 
@@ -106,8 +146,11 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
       /* The delivery itself is worth recording, whatever was in it — even a
          batch of pure replays proves the device can reach its outlet. This is
          what lets any OTHER screen answer "which till has not delivered in an
-         hour", which matters precisely when that till cannot be asked. */
-      if (req.ctx.deviceId) {
+         hour", which matters precisely when that till cannot be asked.
+
+         On the LAST chunk, so a long drain is stamped when its work is
+         actually done rather than when it started. */
+      if (req.ctx.deviceId && ci === chunks.length - 1) {
         /* The build this terminal is running, reported where it is already
            identifying itself (036). A push is the one moment the device is
            certainly the device; asking it anywhere else would be a second
@@ -119,8 +162,10 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
           + ' WHERE id = $1 AND outlet_id = $2',
           [req.ctx.deviceId, req.ctx.outletId, ver]);
       }
-      return out;
-    });
+        return out;
+      });
+      results.push(...part);
+    }
     res.json({ results, at: Date.now() });
   } catch (e) { next(e); }
 });

@@ -3218,6 +3218,68 @@ test('the providers list says WHY a provider is off', opts, async () => {
    So none of it survived a refresh either, and the second tablet on the floor
    never learned any of it.
    ═══════════════════════════════════════════════════════════════════════ */
+/* ═══ A BATCH IS APPLIED IN BOUNDED PIECES, AND THE PIECES STAY IN ORDER ═══
+   The whole push used to be one transaction, which is where the only error in
+   the load campaign came from: eight outboxes draining 80 ops each held pooled
+   connections up to 16.9 s — past the 8 s checkout bound the others were
+   waiting on, and past the 15 s statement timeout, which is what cancelled it.
+   Measured again here on this box before the change: p99 17,615 ms, one
+   request in 132 cancelled by the statement timeout. After: p99 7,798 ms and
+   no errors, across two runs, with live serving unchanged.
+
+   The split is only safe if order survives it, and order is the whole contract
+   — open the ticket, add the line, fire the course. Sorted or split wrongly, a
+   line is added to a ticket that does not exist yet. So this sends a run
+   LONGER than one chunk whose ops depend on each other across the boundary,
+   and asks the outlet what it ended up holding. */
+test('a push longer than one chunk keeps every op and their order', opts, async () => {
+  const table = 'T29';
+  // Comfortably past the chunk size, so the dependency chain is split.
+  const N = 60;
+  const lids = Array.from({ length: N }, () => uuid());
+  const ops = [{ opId: uuid(), kind: 'open_ticket', lamport: 1,
+    payload: { table: table, split: 0, covers: 2 } }];
+  lids.forEach((lid, i) => ops.push({ opId: uuid(), kind: 'add_line', lamport: i + 2,
+    payload: { table: table, split: 0, lid: lid, item: 'm1',
+      name: 'Line ' + (i + 1), qty: 1, price: 10 } }));
+
+  const r = await push(ops);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual((r.body.results || []).length, ops.length, 'every op is answered');
+  const errs = (r.body.results || []).filter((x) => x.error);
+  assert.strictEqual(errs.length, 0, 'and none refused: ' + JSON.stringify(errs.slice(0, 3)));
+
+  /* The ticket the FIRST op opened is the one every later chunk added to. If
+     the split had reordered anything, add_line would have found no ticket and
+     ticketRef() would have created a second one under the same table. */
+  const tks = await all2("SELECT id FROM ticket WHERE table_no = $1 AND status = 'open'", [table]);
+  assert.strictEqual(tks.length, 1, 'one ticket, not one per chunk');
+
+  const n = await one('SELECT count(*)::int AS n FROM ticket_line WHERE ticket_id = $1', [tks[0].id]);
+  assert.strictEqual(n.n, N, 'and every line landed on it');
+
+  // Replayed whole, it is a no-op — op_log is keyed by opId, and a chunk that
+  // committed before a later one failed must come back as a replay, never a
+  // double.
+  const again = await push(ops);
+  assert.strictEqual(again.status, 200);
+  assert.ok((again.body.results || []).every((x) => x.replay), 'a re-push is all replays');
+  const n2 = await one('SELECT count(*)::int AS n FROM ticket_line WHERE ticket_id = $1', [tks[0].id]);
+  assert.strictEqual(n2.n, N, 'and nothing was added twice');
+
+  // The same op twice in ONE delivery is still caught, whichever chunks it
+  // lands in — the seen-set spans the push, not the piece.
+  const dup = { opId: uuid(), kind: 'sign_in', label: 'chunk dup probe' };
+  const spread = [dup].concat(
+    Array.from({ length: 40 }, () => ({ opId: uuid(), kind: 'sign_in', label: 'filler' })),
+    [dup]);
+  const d = await push(spread);
+  assert.strictEqual(d.status, 200);
+  const dupes = (d.body.results || []).filter((x) => x.opId === dup.opId);
+  assert.strictEqual(dupes.length, 2, 'both copies are answered');
+  assert.ok(dupes.some((x) => x.replay), 'and the second is named a replay');
+});
+
 test('the pass finishing the food moves the order everyone reads', opts, async () => {
   const table = 'T07';
   const lidA = uuid(), lidB = uuid();

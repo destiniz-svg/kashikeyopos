@@ -2303,6 +2303,73 @@ test('the claims a screen makes are the ones the server keeps', () => {
     'switching outlet says what it actually takes');
 });
 
+/* A DRAIN IS BOUNDED WORK, NOT ONE LONG TRANSACTION.
+
+   The only error in the whole load campaign, and the only measured performance
+   defect in the build. A push applied the entire batch inside ONE transaction,
+   so a till back from a dark evening asked the server to hold a pooled
+   connection for as long as the batch took: at 80 ops with eight outboxes
+   draining together, up to 16.9 s — past the 8 s checkout bound the other
+   seven were waiting on, and past the 15 s statement timeout, which is what
+   cancelled it. Measured on one box before and after: p99 17,615 ms with one
+   request in 132 cancelled, against p99 7,798 ms and zero errors, twice, with
+   live serving unchanged at 30 terminals.
+
+   Two halves. The server sorts the whole batch ONCE and then applies it in
+   bounded chunks, each its own transaction, so the connection goes back to the
+   pool between them — that closes the ceiling for any client, including a
+   terminal in the field still slicing 100. The client asks for less per
+   request and paces a working drain by whether the last push delivered
+   anything, because five seconds is the right politeness after a refusal and a
+   pure tax on a drain that is succeeding.
+
+   The cap stays 200: lowering it would 413 every deployed terminal, and an op
+   that cannot be delivered is not safer than one applied in two transactions. */
+test('a push is applied in bounded chunks, and a drain paces itself', () => {
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+
+  // The server splits, and each piece is its own transaction.
+  assert.match(sync, /const CHUNK = \d+;/, 'the chunk size is named');
+  const size = Number((/const CHUNK = (\d+);/.exec(sync) || [])[1]);
+  assert.ok(size > 0 && size <= 50, 'and bounded — ' + size + ' ops is one transaction');
+  assert.match(sync, /for \(let ci = 0; ci < chunks\.length; ci\+\+\) \{\s*\n\s*const part = await withOutlet\(/,
+    'one withOutlet per chunk, so the connection is returned between them');
+
+  /* The sort happens BEFORE the split, over the whole batch — otherwise chunk
+     two could carry an op that belongs in front of chunk one, and a line is
+     added to a ticket that does not exist yet. */
+  assert.ok(sync.indexOf('const ordered = ops.map') < sync.indexOf('const chunks = []'),
+    'the whole batch is ordered before it is split');
+  assert.ok(sync.indexOf('const chunks = []') < sync.indexOf('for (let ci = 0'),
+    'and split before it is applied');
+
+  // The seen-set spans the push. A duplicate opId across two chunks is still a
+  // duplicate; declaring it inside the loop would let one through.
+  assert.ok(sync.indexOf('const inThisBatch = new Set()') < sync.indexOf('for (let ci = 0'),
+    'the duplicate check spans the delivery, not one piece of it');
+
+  // An empty push still proves the device reached its outlet.
+  assert.match(sync, /if \(!chunks\.length\) chunks\.push\(\[\]\);/,
+    'an empty delivery still gets a transaction, so the device is still stamped');
+  assert.match(sync, /ci === chunks\.length - 1/, 'and it is stamped when the work is done');
+
+  // The cap is unchanged: a deployed terminal must not start getting 413s.
+  assert.match(sync, /ops\.length > 200/, 'the outer bound still admits what the field sends');
+
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  assert.match(api, /KashikeyoAPI\.PUSH_CHUNK = \d+;/, 'the client asks for a bounded piece');
+  assert.match(api, /ops\.slice\(0, KashikeyoAPI\.PUSH_CHUNK\)/, 'and slices by it');
+  assert.ok(Number((/PUSH_CHUNK = (\d+);/.exec(api) || [])[1]) <= 200,
+    'within what the server will accept');
+
+  /* Paced by delivery, not by the clock. Without that distinction a poison op
+     spins at the fast interval — the hot outbox the parking lane exists to
+     stop — so the fast gap must be conditional on something having left. */
+  assert.match(api, /delivered > 0 \? KashikeyoAPI\.DRAIN_MS : 5000/,
+    'a working drain keeps going; a refusal backs off');
+  assert.match(api, /delivered\+\+;/, 'and "delivered" counts ops the outlet accepted');
+});
+
 /* THE RESOLVER THAT THREW THE WRITE AWAY AND SAID IT HAD WON.
 
    The worst thing the copy sweep turned up, and it was a control, not a

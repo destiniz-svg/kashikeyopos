@@ -534,6 +534,56 @@ was given up, why it was refused and who decided replays in its place — it is
 in `AUDIT_ONLY`). Network failures never count toward the eight: a dead link
 says nothing about the op. `test/wiring.test.js` pins the whole loop.
 
+### A drain is bounded work, not one long transaction
+
+The only measured performance defect in the build, and the only error in the
+whole load campaign. A push applied the ENTIRE batch inside one transaction, so
+a till back from a dark evening asked the server to hold a pooled connection
+for as long as the batch took. At 80 ops with eight outboxes draining together:
+up to **16.9 s** — past the 8 s checkout bound the other seven tills were
+waiting on, and past the 15 s statement timeout, which is what cancelled it.
+One request in ~4,000 failed. Never a money defect (that run balanced every
+journal and produced no duplicates), but the ceiling was real and it scaled
+with how long a device had been dark.
+
+Both halves are fixed, and the fix was measured on one box, before and after,
+on the same data:
+
+| | before | after |
+| --- | --- | --- |
+| p50 | 3,047 ms | 3,312 ms |
+| p95 | 8,681 ms | 6,174 ms |
+| **p99** | **17,615 ms** | **7,798 ms** |
+| slowest | 17,615 ms | 7,798 ms |
+| errors | 1 (statement timeout) | **0**, twice |
+
+- **The server sorts the whole batch ONCE and then applies it in chunks of 25,
+  each its own transaction**, so the connection goes back to the pool between
+  them and a long drain queues behind itself rather than starving the shop.
+  Three things already made that safe: `op_log` is keyed by `opId` with `ON
+  CONFLICT DO NOTHING`, so a chunk that committed before a later one failed
+  replays as a no-op rather than a double; each op was ALREADY its own
+  savepoint, so per-batch atomicity was never what the guarantee rested on; and
+  the sort happens before the split, so chunk two can only carry ops that come
+  after chunk one. The seen-set spans the whole push, not one chunk — a
+  duplicate `opId` is a duplicate whichever pieces it lands in.
+- **The client asks for less per request and paces a working drain by whether
+  the last push delivered anything.** Five seconds is the right politeness
+  after a REFUSAL and a pure tax on a drain that is succeeding — it used to
+  wait that long either way, so 4,000 ops took about three minutes, most of it
+  idle. The fast gap is conditional on something having actually left the
+  outbox, because without that a poison op spins at the fast interval, which is
+  the hot outbox the parking lane exists to stop.
+
+**The 200-op cap is unchanged on purpose.** Lowering it would 413 every
+terminal in the field still slicing 100, and an op that cannot be delivered is
+not safer than one applied in two transactions. The server's chunking closes
+the ceiling for every client, old builds included.
+
+p50 is ~9% worse, and that is the honest trade: the same work now commits in
+more transactions, so the median request pays a little more. Live serving is
+unaffected — 30 terminals at p50 147 / p95 293 / p99 383 ms, zero errors.
+
 ### The clock that orders one outlet's work
 
 A Lamport clock means nothing unless it is RECEIVED as well as sent, and this
@@ -2225,7 +2275,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 319 tests
+npm test                          # 321 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
