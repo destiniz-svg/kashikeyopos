@@ -114,8 +114,43 @@ test('every install gets its own secrets, and the three are three', () => {
 test('the app is handed a reference to the database, never a password', () => {
   const v = RW.appVariables(RW.mintSecrets());
   assert.strictEqual(v.DATABASE_URL, '${{Postgres.DATABASE_URL}}',
-    'Railway resolves this at deploy time, so this process never sees the password');
-  assert.ok(!/postgres:\/\//.test(JSON.stringify(v)), 'and no literal connection string anywhere');
+    'Railway resolves this at deploy time, so the app config holds no credential');
+  assert.ok(!/postgres:\/\/[^$]/.test(JSON.stringify(v)),
+    'and no literal connection string anywhere');
+});
+
+/* THE CORRECTION THE THROWAWAY REHEARSAL FORCED.
+
+   This module first assumed Railway's Postgres image publishes DATABASE_URL by
+   itself. It does not. A service created bare from
+   ghcr.io/railwayapp-templates/postgres-ssl:18 comes up with ONLY Railway's own
+   injected variables — RAILWAY_ENVIRONMENT, RAILWAY_PRIVATE_DOMAIN and their
+   siblings. DATABASE_URL, POSTGRES_USER, POSTGRES_PASSWORD and PGDATA all come
+   from the TEMPLATE. Verified on a disposable project against the real API:
+   every provisioning run would otherwise have polled three minutes at step four
+   and failed, and nothing in a stubbed suite could have found it. */
+test('the database is created with the template wiring the image does not carry', () => {
+  const secrets = RW.mintSecrets();
+  const v = RW.pgVariables(secrets);
+
+  // The four the image does not set, and without which nothing downstream works.
+  assert.strictEqual(v.POSTGRES_USER, 'postgres');
+  assert.strictEqual(v.POSTGRES_DB, 'railway');
+  assert.strictEqual(v.POSTGRES_PASSWORD, secrets.POSTGRES_PASSWORD);
+  assert.match(v.DATABASE_URL, /^postgresql:\/\/\$\{\{PGUSER\}\}/,
+    'composed from references, so Railway resolves it rather than this process');
+
+  /* PGDATA is a SUBDIRECTORY of the mount. initdb refuses a data directory that
+     is not empty, and a mounted volume already has lost+found — pointing PGDATA
+     at the mount itself is the classic way to get a Postgres that never boots. */
+  assert.strictEqual(v.PGDATA, '/var/lib/postgresql/data/pgdata');
+  assert.ok(v.PGDATA.startsWith(RW._internal.PG_MOUNT + '/'),
+    'inside the volume, not at its root');
+
+  // URL-safe, so DATABASE_URL composes without escaping.
+  assert.ok(!/[^A-Za-z0-9_-]/.test(secrets.POSTGRES_PASSWORD),
+    'a password with punctuation would break the connection string it rides in');
+  assert.ok(secrets.POSTGRES_PASSWORD.length >= 20);
 });
 
 /* ── the happy path ──────────────────────────────────────────────────────── */
@@ -150,6 +185,9 @@ test('the app service is created WITH its secrets, not bare and patched after', 
     const s = stub(happy());
     try {
       await RW.provision(Object.assign({ name: 'Store' }, NOWAIT));
+      const pg = s.calls.filter((c) => c.op === 'serviceCreate')[0];
+      assert.ok(pg.vars.input.variables && pg.vars.input.variables.DATABASE_URL,
+        'the database is created WITH its wiring — the image carries none');
       const app = s.calls.filter((c) => c.op === 'serviceCreate')[1];
       const v = app.vars.input.variables;
       /* The app refuses to migrate without its secrets and in production exits

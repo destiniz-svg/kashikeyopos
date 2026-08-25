@@ -437,10 +437,11 @@ infrastructure, which stays registrable for ever.
 
 What it does NOT do, on purpose:
 
-- **It never handles the database password.** The app's `DATABASE_URL` is set
-  to the reference `${{Postgres.DATABASE_URL}}`, which Railway resolves at
-  deploy time. The panel never reads it, never stores it, and never has to know
-  how their Postgres image composed it.
+- **The database password is minted and never read back.** The app's
+  `DATABASE_URL` is the reference `${{Postgres.DATABASE_URL}}`, resolved by
+  Railway at deploy time, so the app's own configuration holds no credential.
+  The panel does set the Postgres service's own wiring, because the image does
+  not carry it — see the note below.
 - **It never rounds a partial run up to a failure.** Each step is written to
   the install row *before* it runs, so a panel that dies mid-run leaves a row
   saying how far it got and every id it made. An orphaned service costs money
@@ -450,11 +451,22 @@ What it does NOT do, on purpose:
   created, and only when a person asked for it on a screen that said what would
   be destroyed.
 
-**Rehearse it once against a throwaway project before a customer is waiting.**
+**What the rehearsal already found.** Railway's Postgres image does NOT
+publish `DATABASE_URL` on its own: a service created bare from it comes up with
+only Railway's injected `RAILWAY_*` variables, because `DATABASE_URL`,
+`POSTGRES_USER`, `POSTGRES_PASSWORD` and `PGDATA` belong to the template rather
+than the image. Verified on a disposable project against the real API. The
+panel sets that wiring itself now (`pgVariables()` in `panel/railway.js`), with
+`PGDATA` pointed at a subdirectory of the mount — initdb refuses a data
+directory that is not empty, and a mounted volume already has a `lost+found`.
+
+**Still worth one live run before a customer is waiting.**
 `test/provision.test.js` covers composition, ordering and every failure branch
-against a stubbed transport — which proves what is sent and what is decided,
-never that Railway accepts it. The live call path is verified the first time
-you run it, and that is worth doing on purpose rather than in front of someone.
+against a stubbed transport, and the whole sequence has been driven end to end
+against a stand-in API. That proves what is sent and what is decided, never
+that Railway accepts all of it. Two calls remain unexercised against the real
+platform — `serviceCreate` from a GitHub repo carrying inline variables, and
+`volumeCreate` — so make the first real run a disposable one.
 
 ### Provision, by hand
 

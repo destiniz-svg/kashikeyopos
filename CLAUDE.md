@@ -2031,12 +2031,19 @@ usually goes wrong:
 - **The token never reaches a browser.** It can create and destroy
   infrastructure, so it is held exactly like `PLATFORM_KEY` already is —
   server-side, never rendered, never in a response.
-- **It never handles the database password.** The app's `DATABASE_URL` is set
-  to the reference `${{Postgres.DATABASE_URL}}`, resolved by Railway at deploy
-  time. The panel never reads it and never has to know how their Postgres image
-  composed it. The parts most likely to be got wrong are the parts it declines
-  to do — which is also why the Postgres image and mount path were read off a
-  running one rather than reconstructed from memory.
+- **The database password is minted and never read back.** The app's
+  `DATABASE_URL` is the reference `${{Postgres.DATABASE_URL}}`, resolved by
+  Railway at deploy time, so the app's own configuration holds no credential.
+  This was going to be "never handled at all" — the first version assumed
+  Railway's Postgres image publishes `DATABASE_URL` by itself. **It does not**,
+  and a throwaway rehearsal against the real API is what found that: a service
+  created bare from `ghcr.io/railwayapp-templates/postgres-ssl:18` comes up with
+  only Railway's own `RAILWAY_*` variables. `DATABASE_URL`, `POSTGRES_USER`,
+  `POSTGRES_PASSWORD` and `PGDATA` all come from the TEMPLATE. Every run would
+  have polled three minutes at step four and failed, and no stubbed suite could
+  have found it. `pgVariables()` is the template's own wiring now, with `PGDATA`
+  a SUBDIRECTORY of the mount — initdb refuses a data directory that is not
+  empty, and a mounted volume already has a `lost+found`.
 - **Progress is recorded BEFORE it is made.** Every step writes the install row
   first, so a panel that dies mid-run leaves a row saying how far it got and
   every id it created. The expensive failure here is not an error, it is an
@@ -2330,7 +2337,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 336 tests
+npm test                          # 337 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

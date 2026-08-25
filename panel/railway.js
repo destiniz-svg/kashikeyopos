@@ -16,11 +16,23 @@
    infrastructure, so it is treated exactly like PLATFORM_KEY already is: held
    by the panel, never rendered, never returned.
 
-   TWO · NEVER HANDLE THE DATABASE PASSWORD. The app's DATABASE_URL is set to a
-   variable REFERENCE — ${{Postgres.DATABASE_URL}} — which Railway resolves at
-   deploy time. We never read the password, never store it, and never have to
-   know how their Postgres image composed it. This is why the wiring below is
-   short: the parts most likely to be got wrong are the parts we decline to do.
+   TWO · THE PASSWORD IS MINTED AND NEVER READ BACK. The app's DATABASE_URL is
+   set to a variable REFERENCE — ${{Postgres.DATABASE_URL}} — which Railway
+   resolves at deploy time, so the app's own configuration never contains a
+   credential and this process never reads one.
+
+   It does MINT the Postgres password, and that is a correction. This module
+   first assumed Railway's Postgres image publishes DATABASE_URL by itself, so
+   the panel would never touch it at all. It does not: a bare service created
+   from that image gets only Railway's own RAILWAY_* variables — DATABASE_URL,
+   POSTGRES_USER, POSTGRES_PASSWORD and PGDATA all come from the TEMPLATE, not
+   the image. Proved on a throwaway project, which is exactly why that
+   rehearsal was worth doing: every provisioning run would otherwise have
+   polled for three minutes at step four and failed.
+
+   So pgVariables() below is the template's own wiring, and the password is
+   generated here with the other secrets. Everything downstream is still a
+   reference chain Railway resolves.
 
    THREE · PROGRESS IS RECORDED BEFORE IT IS MADE. Every step reports through
    `onStep` before and after it runs, and the caller writes that down. A crash
@@ -241,12 +253,38 @@ function mintSecrets() {
     SESSION_SECRET: b(32),
     PORTAL_SECRET: b(32),
     PLATFORM_KEY: b(32),
-    ONBOARDING_CLAIM_TOKEN: b(9)      // read aloud and typed by a person
+    ONBOARDING_CLAIM_TOKEN: b(9),     // read aloud and typed by a person
+    // Postgres rejects some punctuation in a URL-embedded password, and
+    // base64url is already URL-safe, so DATABASE_URL composes without escaping.
+    POSTGRES_PASSWORD: b(24)
+  };
+}
+
+/* WHAT RAILWAY'S POSTGRES TEMPLATE SETS, and the image does not. Every value
+   below except the password is a reference Railway resolves, so this is the
+   template's own shape rather than a connection string assembled here.
+
+   PGDATA is a SUBDIRECTORY of the mount, not the mount itself: initdb refuses
+   a data directory that is not empty, and a mounted volume has a lost+found. */
+function pgVariables(secrets) {
+  return {
+    POSTGRES_USER: 'postgres',
+    POSTGRES_PASSWORD: secrets.POSTGRES_PASSWORD,
+    POSTGRES_DB: 'railway',
+    PGDATA: PG_MOUNT + '/pgdata',
+    PGHOST: '${{RAILWAY_PRIVATE_DOMAIN}}',
+    PGPORT: '5432',
+    PGUSER: '${{POSTGRES_USER}}',
+    PGPASSWORD: '${{POSTGRES_PASSWORD}}',
+    PGDATABASE: '${{POSTGRES_DB}}',
+    DATABASE_URL: 'postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}'
+      + '@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}',
+    SSL_CERT_DAYS: '820'
   };
 }
 
 /* Railway resolves ${{Service.VAR}} at deploy time, so the app is handed a
-   reference rather than a password this process ever saw. */
+   reference rather than a password this process ever reads back. */
 function appVariables(secrets, extra) {
   return Object.assign({
     DATABASE_URL: '${{' + PG_NAME + '.DATABASE_URL}}',
@@ -302,12 +340,11 @@ async function provision(opts) {
     });
 
     await run('database', 'Creating the database', async () => {
-      /* No POSTGRES_* variables are set here. The image's own defaults and
-         Railway's template wiring compose DATABASE_URL, and the next step
-         VERIFIES that it did rather than assuming. Writing them ourselves
-         would be reconstructing somebody else's template from memory — and
-         getting one wrong yields a database that boots and cannot be reached. */
-      made.pgServiceId = await createService(made.projectId, PG_NAME, { image: PG_IMAGE });
+      /* With its wiring, at creation. This is the step the throwaway rehearsal
+         corrected: the image alone publishes nothing, so a service created bare
+         here would never have produced a DATABASE_URL for the app to reference. */
+      made.pgServiceId = await createService(made.projectId, PG_NAME,
+        { image: PG_IMAGE }, pgVariables(secrets));
     });
 
     await run('volume', 'Attaching its disk', async () => {
@@ -315,8 +352,12 @@ async function provision(opts) {
         made.pgServiceId, PG_MOUNT);
     });
 
-    await run('database-url', 'Waiting for the database to publish its address', async () => {
-      await until('the database to publish DATABASE_URL', async () => {
+    await run('database-url', 'Checking the database is addressable', async () => {
+      /* Kept after the wiring moved to creation, because it is now a CHECK
+         rather than a wait: it asks the outlet whether what we set actually
+         landed, and refuses to build an app against a database that cannot be
+         reached. It passes on the first ask when all is well. */
+      await until('the database to report DATABASE_URL', async () => {
         const vars = await readVariables(made.projectId, made.environmentId, made.pgServiceId);
         return vars && vars.DATABASE_URL ? true : false;
       }, { everyMs: o.pollMs || 5000, timeoutMs: o.dbTimeoutMs || 180000,
@@ -387,7 +428,7 @@ async function provision(opts) {
 }
 
 module.exports = {
-  ready, provision, mintSecrets, appVariables,
+  ready, provision, mintSecrets, appVariables, pgVariables,
   // exported for the tests, which exercise composition rather than the network
   _internal: { gql, until, createProject, createService, createVolume,
     setVariables, readVariables, updateInstance, createDomain, deploy,
