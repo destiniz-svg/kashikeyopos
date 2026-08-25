@@ -68,6 +68,40 @@ const REGION = () => String(process.env.INSTALL_REGION || '').trim();
 const TOKEN = () => String(process.env.RAILWAY_API_TOKEN || '').trim();
 const WORKSPACE = () => String(process.env.RAILWAY_WORKSPACE_ID || '').trim();
 
+/* THE EMAIL TRANSPORT AN INSTALL INHERITS. Every install sends from the
+   seller's own Resend account and sending domain — one seller, one sending
+   identity — so these default to the panel's own. An explicit INSTALL_* pair
+   overrides that where a seller wants stores to send from somewhere else.
+
+   Getting this wrong is not a degraded feature, it is a dead one: with no
+   transport the account plane writes the verification code to the audit trail
+   and says so, and a customer who cannot verify their address cannot claim
+   their install. Found exactly that way — a provisioned install had neither
+   variable, so the first person to sign up never got a code. */
+const MAIL_KEY = () => String(process.env.INSTALL_RESEND_API_KEY
+  || process.env.RESEND_API_KEY || '').trim();
+const MAIL_FROM = () => String(process.env.INSTALL_EMAIL_FROM
+  || process.env.EMAIL_FROM || '').trim();
+
+/* Where a store's guests are sent. On a Railway-generated hostname there is no
+   wildcard, so `<handle>.<that host>` resolves nowhere — and src/handle.js
+   would otherwise inherit that apex from PUBLIC_URL and hand out QR addresses
+   that answer nothing. An EMPTY value is the meaningful one: it turns store
+   subdomains off and uses the path forms, which DO resolve. Set
+   INSTALL_PORTAL_BASE_DOMAIN once a real wildcard domain exists. */
+const PORTAL_DOMAIN = () => String(process.env.INSTALL_PORTAL_BASE_DOMAIN || '').trim();
+
+/* A service name becomes the hostname, so it is the store's, not the
+   product's. Every install was called `kashikeyopos` and every address came
+   out `kashikeyopos-production.up.railway.app` — indistinguishable across
+   customers, and Railway starts suffixing once they collide. */
+function slug(name) {
+  const s = String(name || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+    .replace(/-+$/, '');
+  return s || 'kashikeyopos';
+}
+
 /* Is the automated path available at all? Two answers, not one: "off" is a
    deployment that never configured it, and the panel must offer the manual
    sheet rather than a button that 500s. `why` is rendered next to the disabled
@@ -76,6 +110,13 @@ const WORKSPACE = () => String(process.env.RAILWAY_WORKSPACE_ID || '').trim();
 function ready() {
   if (!TOKEN()) return { ok: false, why: 'RAILWAY_API_TOKEN is not set on this panel' };
   if (!REPO()) return { ok: false, why: 'INSTALL_REPO is not set — name the repository a new install deploys from, as owner/name' };
+  /* Not a refusal: an install with no email still works, its customer just has
+     to be read their code. But it is worth saying BEFORE the run rather than
+     discovering it when the first person cannot sign up. */
+  if (!MAIL_KEY() || !MAIL_FROM()) {
+    return { ok: true, warn: 'no email transport to pass on — set RESEND_API_KEY and'
+      + ' EMAIL_FROM on this panel, or the install cannot send a verification code' };
+  }
   return { ok: true };
 }
 
@@ -286,7 +327,7 @@ function pgVariables(secrets) {
 /* Railway resolves ${{Service.VAR}} at deploy time, so the app is handed a
    reference rather than a password this process ever reads back. */
 function appVariables(secrets, extra) {
-  return Object.assign({
+  const v = {
     DATABASE_URL: '${{' + PG_NAME + '.DATABASE_URL}}',
     NODE_ENV: 'production',
     PORT: '8080',
@@ -294,8 +335,20 @@ function appVariables(secrets, extra) {
     SESSION_SECRET: secrets.SESSION_SECRET,
     PORTAL_SECRET: secrets.PORTAL_SECRET,
     PLATFORM_KEY: secrets.PLATFORM_KEY,
-    ONBOARDING_CLAIM_TOKEN: secrets.ONBOARDING_CLAIM_TOKEN
-  }, extra || {});
+    ONBOARDING_CLAIM_TOKEN: secrets.ONBOARDING_CLAIM_TOKEN,
+    /* Explicitly empty unless a real wildcard domain is named: an install on a
+       Railway hostname must use the path forms, not subdomains that resolve
+       nowhere. src/handle.js reads "set but empty" as a decision, which is
+       what this is. */
+    PORTAL_BASE_DOMAIN: PORTAL_DOMAIN()
+  };
+  // Without both, the install has no email at all and a customer cannot verify
+  // the address they are claiming it with.
+  if (MAIL_KEY() && MAIL_FROM()) {
+    v.RESEND_API_KEY = MAIL_KEY();
+    v.EMAIL_FROM = MAIL_FROM();
+  }
+  return Object.assign(v, extra || {});
 }
 
 /* ── the sequence ────────────────────────────────────────────────────────── */
@@ -370,8 +423,8 @@ async function provision(opts) {
          boot — the app refuses to migrate without them, and in production it
          exits rather than serve on a half-built schema, which is correct
          behaviour that would look like a provisioning bug. */
-      made.appServiceId = await createService(made.projectId, o.serviceName || 'kashikeyopos',
-        { repo: REPO() }, appVariables(secrets));
+      made.appServiceId = await createService(made.projectId,
+        o.serviceName || slug(name), { repo: REPO() }, appVariables(secrets));
     });
 
     await run('domain', 'Generating its address', async () => {
@@ -428,7 +481,7 @@ async function provision(opts) {
 }
 
 module.exports = {
-  ready, provision, mintSecrets, appVariables, pgVariables,
+  ready, provision, mintSecrets, appVariables, pgVariables, slug,
   // exported for the tests, which exercise composition rather than the network
   _internal: { gql, until, createProject, createService, createVolume,
     setVariables, readVariables, updateInstance, createDomain, deploy,

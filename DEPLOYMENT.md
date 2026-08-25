@@ -428,6 +428,8 @@ setup code.
 | `INSTALL_REGION` | Optional, e.g. `asia-southeast1-eqsg3a`. Applied to the app and the database volume. |
 | `INSTALL_PG_IMAGE` | Optional, default `ghcr.io/railwayapp-templates/postgres-ssl:18` — read off a running Railway Postgres rather than guessed. An image tag moves; this is why it is a variable. |
 | `RAILWAY_WORKSPACE_ID` | Optional. Which workspace new projects belong to; the account default otherwise. |
+| `RESEND_API_KEY` · `EMAIL_FROM` | **Passed on to every install.** Without them the install has no transport, so the account plane writes the verification code to the audit trail and says so — and a customer who cannot verify their address cannot claim their install. Override per install with `INSTALL_RESEND_API_KEY` / `INSTALL_EMAIL_FROM`. |
+| `INSTALL_PORTAL_BASE_DOMAIN` | Optional. The wildcard domain a store's guests are sent to. **Left unset it is passed on EMPTY, which is correct**: a Railway-generated hostname has no wildcard, so `<handle>.<that host>` resolves nowhere, and empty turns store subdomains off in favour of the path forms, which do. Set it once a real wildcard domain exists. |
 | `RAILWAY_API_URL` | Optional. For rehearsing the whole path against a stub. |
 
 **Leave `RAILWAY_API_TOKEN` unset and nothing changes** — the panel reports

@@ -350,8 +350,14 @@ async function boot() {
   // Prints only while nothing is pinned, so it silences itself once acted on.
   peerCaPem().then(function (ca) {
     if (!ca) return;
+    /* The ADVICE is a warning; the certificate is not. console.warn goes to
+       stderr, which a hosting platform classifies as an error — so printing
+       both together painted ~25 red lines across every healthy first boot,
+       which is how an operator learns to ignore red in that log. One warning
+       line, then the ingredient at ordinary level. */
     console.warn('[db] to pin this database, set PGSSL_CA to the certificate'
-      + ' below (then PGSSL=verify):\n' + ca);
+      + ' below (then PGSSL=verify):');
+    console.log(ca);
   }).catch(function () {});
   /* What install did this boot land on? One line, because "is production
      clean" must never require a database client to answer. It also catches

@@ -153,6 +153,76 @@ test('the database is created with the template wiring the image does not carry'
   assert.ok(secrets.POSTGRES_PASSWORD.length >= 20);
 });
 
+/* AN INSTALL WITH NO EMAIL IS AN INSTALL NOBODY CAN CLAIM.
+
+   The first live run provisioned successfully and the customer still could not
+   sign up: appVariables() carried no transport, so src/email.js took its
+   "not configured" path, wrote the verification code to the audit trail and
+   said so. Everything behaved exactly as designed and the outcome was a dead
+   end — the account plane is how an install is claimed, and it is reached by
+   email. Confirmed from the other side too: nothing arrived at Resend that
+   day, because nothing was ever sent. */
+test('an install inherits an email transport, or it cannot be claimed', () =>
+  withEnv(Object.assign({}, ENV, {
+    RESEND_API_KEY: 're_seller_key', EMAIL_FROM: 'KashikeyoPOS <no-reply@example.com>'
+  }), () => {
+    const v = RW.appVariables(RW.mintSecrets());
+    assert.strictEqual(v.RESEND_API_KEY, 're_seller_key');
+    assert.strictEqual(v.EMAIL_FROM, 'KashikeyoPOS <no-reply@example.com>');
+  }));
+
+test('a panel with no transport says so before the run, not after', () =>
+  withEnv(Object.assign({}, ENV, { RESEND_API_KEY: '', EMAIL_FROM: '' }), () => {
+    const g = RW.ready();
+    // Still allowed — an install with no email works, its customer just has to
+    // be read the code. But it is named up front rather than discovered.
+    assert.strictEqual(g.ok, true, 'not a refusal');
+    assert.match(g.warn, /RESEND_API_KEY/, 'and the gap is named');
+    const v = RW.appVariables(RW.mintSecrets());
+    assert.ok(!('RESEND_API_KEY' in v),
+      'half a transport is worse than none — an empty key reads as configured');
+  }));
+
+/* A RAILWAY HOSTNAME HAS NO WILDCARD, so `<handle>.<that host>` resolves
+   nowhere. Left unset, src/handle.js inherits the apex from PUBLIC_URL and
+   hands out QR addresses that answer nothing — printed onto table cards before
+   anyone scans one. Explicitly EMPTY is the meaningful value: subdomains off,
+   path forms on, and those do resolve. */
+test('a provisioned install is told which address form actually resolves', () =>
+  withEnv(ENV, () => {
+    const v = RW.appVariables(RW.mintSecrets());
+    assert.ok('PORTAL_BASE_DOMAIN' in v, 'set, because unset means "inherit the apex"');
+    assert.strictEqual(v.PORTAL_BASE_DOMAIN, '', 'and empty means "use the path forms"');
+    return withEnv({ INSTALL_PORTAL_BASE_DOMAIN: 'kashikeyopos.com' }, () => {
+      assert.strictEqual(RW.appVariables(RW.mintSecrets()).PORTAL_BASE_DOMAIN,
+        'kashikeyopos.com', 'and a real wildcard domain is honoured once there is one');
+    });
+  }));
+
+/* THE SERVICE NAME BECOMES THE HOSTNAME, so it is the store's, not the
+   product's. Every install was called `kashikeyopos`, so every address came out
+   `kashikeyopos-production.up.railway.app` — indistinguishable between
+   customers, and Railway suffixes once they collide. */
+test('the store names its own address', () => {
+  assert.strictEqual(RW.slug('Kanamadhu Cafe'), 'kanamadhu-cafe');
+  assert.strictEqual(RW.slug("Sephora Cafe'"), 'sephora-cafe', 'punctuation is dropped');
+  assert.strictEqual(RW.slug('  --Reef & Palm--  '), 'reef-palm', 'and never leads or trails');
+  assert.strictEqual(RW.slug('ދިވެހި'), 'kashikeyopos',
+    'a name with no latin letters still needs a hostname');
+  assert.ok(RW.slug('x'.repeat(80)).length <= 40);
+  assert.ok(!/^-|-$/.test(RW.slug('!!!Cafe!!!')));
+});
+
+test('the app service is named after the store, not the product', () =>
+  withEnv(ENV, async () => {
+    const s = stub(happy());
+    try {
+      await RW.provision(Object.assign({ name: 'Kanamadhu Cafe' }, NOWAIT));
+      const app = s.calls.filter((c) => c.op === 'serviceCreate')[1];
+      assert.strictEqual(app.vars.input.name, 'kanamadhu-cafe');
+    } finally { s.restore(); }
+  }));
+
 /* ── the happy path ──────────────────────────────────────────────────────── */
 
 test('one run creates the project, database, disk, app, domain and deploy — in that order', () =>
