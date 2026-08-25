@@ -2404,6 +2404,25 @@ See `DEPLOYMENT.md`. Short version: Railway builds the Dockerfile, `/readyz` is
 the health check, migrations run at boot inside the process, and **production
 exits rather than serving on a schema it could not finish migrating**.
 
+**One boot migrates at a time.** A platform starts the replacement container
+before it stops the old one, so two processes run `migrate()` at once on every
+ordinary deploy — and the install provisioned after the ordering fix proved it
+in its own log: both raced into 001 and one died on `duplicate key value
+violates unique constraint "pg_extension_name_index"`, because `CREATE
+EXTENSION IF NOT EXISTS` is not atomic against a concurrent creator. It
+recovered only because the process exits and the restart found the extension
+already there — luck, and production exits on a migration failure. Three more
+collisions sat in the same window: the check-then-`CREATE ROLE` for
+`kashikeyo_report`, the bare INSERT into `chain.migration`, and two boots
+re-applying a changed file over each other. `panel/server.js` and
+`site/server.js` both already hold an advisory lock for exactly this ("seen in
+anger" is in one of those comments) and the runner every install boots through
+never got one. It does now — session-scoped, held across the whole run on ONE
+connection, because `pool.query` takes a different one per statement and holds
+nothing. A holder that dies releases it, so a killed container cannot wedge the
+next boot. `test/migrate.test.js` runs the real runner twice at once against a
+cold database; without the lock it fails the way the install did.
+
 **A database that has not come up yet is not a broken schema.** That second
 failed install printed `MIGRATION FAILED — the schema is not what this build
 expects: getaddrinfo ENOTFOUND postgres.railway.internal`, which sends whoever

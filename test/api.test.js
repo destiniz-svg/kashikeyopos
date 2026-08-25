@@ -4342,9 +4342,20 @@ test('shut down cleanly', opts, async () => {
 
 /* ── plumbing ───────────────────────────────────────────────────────────── */
 function uuid() { return require('crypto').randomUUID(); }
-function today() { return new Date().toISOString().slice(0, 10); }
 function round(n) { return Math.round(n * 100) / 100; }
-function today() { return new Date().toISOString().slice(0, 10); }
+
+/* The business date belongs to the OUTLET, and the fixture outlet is in Malé.
+   This was `toISOString()` — the container's UTC date — twice, in two copies of
+   the same function. Every caller uses it as a business date, which the server
+   files on the outlet's own calendar, so from 19:00 UTC the fixture and the
+   server were a day apart. It only ever SHOWED on the trial countdown, which
+   does arithmetic across the boundary: that test failed for the five hours
+   before midnight UTC, every day, with an assertion message about exactly this.
+   A suite that is red every evening is a suite people stop reading. */
+const FIXTURE_TZ = 'Indian/Maldives';
+function today() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: FIXTURE_TZ });
+}
 
 /* `fetch` refuses to set a Host header, and Host is the whole question here. */
 function callHost(host, method, path) {
