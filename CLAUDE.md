@@ -42,6 +42,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        029 void a sale · 030 the polled tables
                        031 yield is an outlet fact · 032 a batch is an item
                        033 the licence plane · 034 reserve the mail names
+                       035 an account belongs to no outlet
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -150,6 +151,19 @@ outlet's **owner** and keeps the rank-5 staff record it created for the floor.
 Email goes through `src/email.js` — one seam, Resend as the driver. With no
 transport configured the code is written to the audit trail and the call
 **says so** (`sent: false`); it never pretends.
+
+That fallback had never worked, and it is the one the whole doctrine rests on.
+`chain.audit.outlet_id` was `NOT NULL`, and account events are written with
+`NULL` — the account plane sits ABOVE every outlet, and the events that matter
+most happen before one exists — so the insert failed on the constraint, was
+swallowed by a `.catch(() => {})`, and **not one account event ever reached the
+trail**. The code was not in the payload either. Both halves were false while
+`/account` told the customer exactly where to look. Migration 035 makes the
+column nullable (a NULL row is invisible to an outlet role and readable at
+group scope, which is the account plane's own visibility), and the code is
+attached **only where it could not be sent** — a delivered credential written
+to a second place is a second place to steal it from. Found by creating an
+account on a fresh install and going to fetch the code the screen promised.
 
 ## Ranks
 
@@ -1779,7 +1793,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 295 tests
+npm test                          # 296 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

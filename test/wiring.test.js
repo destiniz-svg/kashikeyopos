@@ -1705,3 +1705,40 @@ test('a store cannot take a name the mail transport needs', () => {
   assert.ok(!/DELETE FROM chain\.outlet|UPDATE chain\.outlet SET slug/.test(mig),
     'and nothing renames or removes a live store');
 });
+
+/* ═══ THE FALLBACK THE WHOLE DOCTRINE RESTS ON ══════════════════════════════
+   "A fallback is not a failure" is stated in src/email.js and shown to the
+   person waiting: with no transport, the code is written where an
+   administrator can read it out, and the screen says so.
+
+   It had never worked. `chain.audit.outlet_id` was NOT NULL and account events
+   are written with NULL — the account plane sits ABOVE every outlet, and the
+   events that matter most happen before one exists — so the insert failed on
+   the constraint, was swallowed by a `.catch(() => {})`, and not one account
+   event ever reached the trail. The code was not in the payload either. Both
+   halves were false while /account told the customer where to look.
+
+   Found by creating an account on a fresh install and going to fetch the code
+   the screen promised. */
+test('an account code that could not be sent is where the screen says it is', () => {
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '035_an_account_belongs_to_no_outlet.sql'), 'utf8');
+  assert.match(mig, /ALTER TABLE chain\.audit ALTER COLUMN outlet_id DROP NOT NULL/,
+    'an account event belongs to no outlet, and the column now says so');
+
+  const acc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'account.js'), 'utf8');
+  const issue = acc.slice(acc.indexOf('async function issueCode'), acc.indexOf('function ackCode'));
+  assert.ok(issue.length > 200, 'found issueCode');
+
+  /* The code goes on the trail ONLY where it went nowhere else. A delivered
+     credential written to a second place is a second place to steal it from,
+     and the trail is read by more people than an inbox is. */
+  assert.match(issue, /out\.sent \? \{\} : \{/,
+    'the code is attached only when the send did not happen');
+  assert.ok(/code: value/.test(issue), 'and it is the code itself, not a note about one');
+
+  // The screen and the server have to agree about where to look.
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  assert.ok(/audit trail/.test(page),
+    'the sign-in screen still points at the trail — which is now true');
+});

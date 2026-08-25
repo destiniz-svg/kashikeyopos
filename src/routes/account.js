@@ -82,11 +82,28 @@ async function issueCode(account, purpose, brand) {
       to: account.email, code: value, mins: CODE_MINS, purpose: purpose, brand: brand
     }));
   } catch (e) {
-    // A transport that answered and refused is worth recording; the code is
-    // still valid, and an administrator can still read it from the trail.
+    out = { sent: false, via: 'none', reason: e.message };
     await logAccount('account_code_failed', account.id, { error: e.message });
   }
-  await logAccount('account_code', account.id, { purpose: purpose, sent: out.sent, via: out.via });
+
+  /* THE CODE GOES ON THE TRAIL ONLY WHERE IT WENT NOWHERE ELSE.
+     This is the fallback the whole "a fallback is not a failure" doctrine
+     rests on: with no transport — a fresh install, a local run, a staging box
+     — the code exists in exactly one place, as a salted hash nobody can read
+     back, and the person waiting cannot verify the account that will OWN THE
+     BUSINESS. The install is dead at its first screen.
+
+     So where it could not be sent, it is written where an administrator can
+     read it out, and the sign-in screen says so. Where it WAS sent it is not
+     written at all: a delivered credential in a second place is a second place
+     to steal it from, and the trail is read by more people than an inbox is. */
+  await logAccount('account_code', account.id, Object.assign(
+    { purpose: purpose, sent: out.sent, via: out.via },
+    out.sent ? {} : {
+      code: value,
+      note: 'no transport could send this, so it is here to be read out —'
+        + ' it expires in ' + CODE_MINS + ' minutes and can be used once'
+    }));
   return { delivery: out, code: value };
 }
 
