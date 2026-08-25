@@ -974,7 +974,7 @@ BEGIN
   EXECUTE format('REVOKE ALL ON chain.account, chain.account_identity,'
     || ' chain.account_outlet FROM %I', r);
 
-  EXECUTE format('GRANT SELECT ON chain.company, chain.outlet, chain.staff,'
+  EXECUTE format('GRANT SELECT ON chain.company, chain.outlet,'
     || ' chain.device, chain.tax_version, chain.supplier, chain.member,'
     || ' chain.setting TO %I', r);
   EXECUTE format('GRANT INSERT ON chain.audit TO %I', r);
@@ -984,14 +984,30 @@ BEGIN
   EXECUTE format('GRANT SELECT ON chain.licence TO %I', r);
   EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON chain.licence FROM %I', r);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.session, chain.doc_series,'
-    || ' chain.member, chain.staff, chain.device, chain.supplier, chain.setting,'
+    || ' chain.member, chain.device, chain.supplier, chain.setting,'
     || ' chain.tax_version, chain.company, chain.outlet TO %I', r);
+  /* chain.staff writes whole and reads by column: a PIN reset generates a hash
+     and stores it, which is ordinary, and it is READING somebody else's that
+     turns one compromise into every PIN at the outlet (038). This line sat
+     below the column grant above and handed the whole table back — which is
+     what a second grant of the same table always does, and why the two now sit
+     together where the next reader will see both. */
+  EXECUTE format('GRANT INSERT, UPDATE ON chain.staff TO %I', r);
+  EXECUTE format('GRANT SELECT (%s) ON chain.staff TO %I',
+    (SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
+       FROM information_schema.columns
+      WHERE table_schema = 'chain' AND table_name = 'staff'
+        AND column_name NOT IN ('pin_hash', 'pin_salt')), r);
   EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.audit_id_seq,'
     || ' chain.tax_version_id_seq TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.next_doc_no(text),'
     || ' chain.log(text,text,text,jsonb,jsonb),'
     || ' chain.log_anon(int,text,text,text,jsonb),'
-    || ' chain.pin_candidates(int), chain.pin_failed(int,int,int),'
+    -- A PIN hash never leaves the database (038): the app is handed salts
+    -- and offers back hashes, and the comparison happens in there.
+    || ' chain.pin_salts(int), chain.pin_match(int, uuid[], text[]),'
+    || ' chain.roster(int),'
+    || ' chain.pin_failed(int,int,int),'
     || ' chain.pin_ok(uuid),'
     -- Your own PIN is yours to change (037): a SECURITY DEFINER pair, one
     -- row, the caller's own, and only against the hash they already know.

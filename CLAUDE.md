@@ -46,6 +46,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        035 an account belongs to no outlet
                        036 a device says what it runs
                        037 your own PIN is yours to change
+                       038 a PIN hash never leaves the database
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -1640,6 +1641,60 @@ are same-origin, so `*` buys nothing and hands every website the answers to
 this install's anonymous endpoints. The wildcard is dropped and the boot log
 says so — not a boot failure, because a CORS setting is not a half-migrated
 schema and taking a restaurant off the air over one is worse than the setting.
+
+## The three that were "accepted with reasons"
+
+A reason is not an impossibility. The security audit listed three properties as
+knowing trades; all three are closed.
+
+**A PIN hash never leaves the database** (migration 038). `pin_candidates()`
+handed the application every staff member's `pin_hash` and `pin_salt` at that
+outlet on every sign-in attempt, and the comparison happened in Node. Not a
+hole on its own — it is the outlet's own role reading its own rows — but a
+four-digit PIN is ten thousand candidates, so anything that read this process's
+memory or logs recovered every PIN at that outlet in seconds. The hash is what
+makes a leak survivable; handing it out on every keypress spent that protection
+before it was needed.
+
+Two facts make the comparison movable without changing how a PIN is hashed. A
+SALT is not a secret — it exists so two people with the same PIN do not share a
+hash. And sign-in does not know WHO is signing in, so it has to try every
+candidate, which it already did. So the app is handed the salts, hashes the
+typed PIN once per salt, and asks `chain.pin_match()` which row matches. It
+learns one id. scrypt stays in `src/secrets.js`: Postgres has no scrypt, and
+swapping the KDF would mean re-hashing every PIN, which cannot be done without
+the plaintext.
+
+**And the COLUMN, or the function was theatre.** Every outlet role held SELECT
+on `chain.staff` and `staff_scoped` returns the whole row, so the hashes were
+one plain `SELECT pin_hash FROM chain.staff` away — verified by connecting AS
+the role, before and after. Postgres has column-level privileges, so it is
+exact: SELECT on every column but the two, INSERT and UPDATE left whole, since
+writing a hash you generated is what a PIN reset does and reading somebody
+else's is the amplifier. Two grants of the same table in `provision_outlet`
+were the trap — the second handed it all back, which is what a second grant
+always does, so they now sit together where the next reader sees both.
+
+The anonymous **roster** was reading the sign-in function too, picking four
+columns out of a row that also carried a hash. It has its own narrow view now:
+the widest-open door in the build cannot reach a credential even by mistake.
+
+**The print relay dials the shop LAN and nothing else.** The fence was a
+DENY-list — it blocked what somebody had thought of and let the rest through,
+which meant `0.0.0.0` (on Linux, loopback) and every public address on the
+internet. A printer is never on a public address, so the question is turned
+round: inside `10/8`, `172.16/12`, `192.168/16`, `100.64/10` or `fc00::/7`, or
+refused. Link-local is deliberately not "private" here — `169.254.169.254` is
+every cloud's metadata service. The whole SSRF surface is closed rather than
+fenced, and an IPv4-mapped v6 address is unwrapped BEFORE it is judged, with
+the unwrapped address the one that is dialled.
+
+**`'unsafe-eval'` is a property of three pages, not of the product.** The
+template runtime compiles with `new Function`, so the till and both phone apps
+need it. `/account` and `/onboarding` are vanilla DOM, have never loaded the
+runtime, and are the pages a stranger reaches first — the sign-up form and the
+panel that claims an install. They get a header without it. Verified in a
+browser: both render fully with no policy violations.
 
 ## A token says what plane it is for
 

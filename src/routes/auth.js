@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const { owner, withOutlet } = require('../db');
-const { sign, pinMatches, hashPin, pairCode } = require('../secrets');
+const { sign, hashPin, pairCode } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { forget } = require('../revoked');
 const { take, room, gate } = require('../limit');
@@ -114,7 +114,11 @@ r.get('/roster',
   if (!oid) return res.status(400).json({ error: 'outletId required' });
   try {
     const rows = await withOutlet({ outletId: oid, rank: 0 }, (c) =>
-      c.query('SELECT id, name, rank, role_key, locked_until FROM chain.pin_candidates($1)',
+      // Its own narrow view (038). This read the sign-in function's rows and
+      // picked four columns out of a row that also carried a PIN hash — which
+      // left the one anonymous roster endpoint a single edited SELECT away
+      // from serving credentials to the internet.
+      c.query('SELECT * FROM chain.roster($1)',
         [oid]).then((q) => q.rows));
     res.set('cache-control', 'no-store').json({
       staff: rows.map((s) => ({
@@ -143,13 +147,30 @@ async function pinSignIn(oid, pin, deviceId, caller) {
         + ' AND outlet_id = $2', [deviceId, oid]);
       if (d.rows[0] && d.rows[0].revoked) return { refused: true, device: true };
     }
-    const q = await c.query('SELECT * FROM chain.pin_candidates($1)', [oid]);
+    /* SALTS OUT, HASHES BACK, COMPARISON IN THERE (038). This used to read
+       every staff member's pin_hash at the outlet and compare in Node. Not a
+       hole on its own — it is the outlet's own role reading its own rows — but
+       a four-digit PIN is ten thousand candidates, so anything that read this
+       process's memory or logs recovered every PIN at that outlet in seconds.
+       The hash is what makes a leak survivable; handing it out on every
+       keypress spent that protection before it was needed.
+
+       A salt is not a secret, and sign-in does not know who is signing in, so
+       it hashes the typed PIN once per salt — exactly the work it already did
+       — and asks the database which row matches. It learns one id. */
+    const salts = await c.query('SELECT * FROM chain.pin_salts($1)', [oid]);
     const now = Date.now();
     let anyLocked = false;
-    for (const s of q.rows) {
-      if (s.locked_until && new Date(s.locked_until).getTime() > now) { anyLocked = true; continue; }
-      if (!pinMatches(pin, s.pin_hash, s.pin_salt)) continue;
-
+    const ids = [], hashes = [];
+    for (const row of salts.rows) {
+      if (row.locked_until && new Date(row.locked_until).getTime() > now) { anyLocked = true; continue; }
+      ids.push(row.id);
+      hashes.push(hashPin(pin, row.pin_salt).hash);
+    }
+    const hit = ids.length
+      ? await c.query('SELECT * FROM chain.pin_match($1,$2,$3)', [oid, ids, hashes])
+      : { rows: [] };
+    for (const s of hit.rows) {
       await c.query('SELECT chain.pin_ok($1)', [s.id]);
       const hours = Number(process.env.SESSION_TTL_HOURS || 12);
       const sess = await c.query(

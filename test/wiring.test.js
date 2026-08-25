@@ -2043,18 +2043,10 @@ test('a token carries its plane, and the guest plane has its own key', () => {
    It blocked 127.x, ::1 and 169.254.x and let 0.0.0.0 through — and on Linux a
    connect to 0.0.0.0 goes to loopback. Proved: host "0.0.0.0" delivered bytes
    to a listener on 127.0.0.1:9100 and the endpoint answered {"sent":true}. */
-test('the print relay blocks every spelling of loopback', () => {
-  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
-  const fence = out.slice(out.indexOf('const flat = String(address)'),
-    out.indexOf('port: 9100') + 40);
-  assert.ok(fence.length > 200, 'found the fence');
-  assert.match(fence, /\^0\+\(\\\.0\+\)\{0,3\}\$/, 'the unspecified address is loopback by another name');
-  assert.match(fence, /flat === '::'/, 'and so is its v6 spelling');
-  assert.match(fence, /replace\(\/\^::ffff:\/i, ''\)/,
-    'an IPv4-mapped v6 address is unwrapped before it is judged');
-  assert.match(fence, /net\.connect\(\{ host: flat/,
-    'and the address dialled is the one that was judged');
-
+test('the anonymous table-token mint has a doorman', () => {
+  // (the relay fence has its own test below, now that it is an allow-list)
+  const guest0 = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  assert.ok(guest0.length > 100, 'read the guest router');
   // The one anonymous door that reaches the database had no doorman.
   const guest = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
   assert.match(guest, /r\.get\('\/token', gate\('table-mint'/, 'the host-routed mint is gated');
@@ -2142,4 +2134,77 @@ test('the copy on Users & Roles describes this build', () => {
 
   assert.match(SRC, /lands on the audit trail as a permission_change/,
     'and the trail is named for the table it is actually written to');
+});
+
+/* THE THREE THAT WERE "ACCEPTED WITH REASONS" — closed, because a reason is
+   not the same as an impossibility. */
+test('a PIN hash never leaves the database', () => {
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '038_a_pin_hash_never_leaves_the_database.sql'), 'utf8');
+
+  // Salts out (a salt is not a secret), hashes back, comparison in there.
+  assert.match(mig, /FUNCTION chain\.pin_salts\(p_outlet int\)/, 'the salts are handed out');
+  assert.ok(!/pin_hash/.test(mig.slice(mig.indexOf('chain.pin_salts'),
+    mig.indexOf('chain.pin_match'))), 'and no hash travels with them');
+  assert.match(mig, /FUNCTION chain\.pin_match\(/, 'the comparison happens in the database');
+  assert.match(mig, /s\.pin_hash = t\.h/, 'against the hashes the caller offered');
+  assert.match(mig, /s\.locked_until IS NULL OR s\.locked_until <= now\(\)/,
+    'and a locked account never matches, so the caller cannot ignore the lockout');
+  assert.match(mig, /DROP FUNCTION IF EXISTS chain\.pin_candidates\(int\)/,
+    'the function that returned hashes is dropped, not left for the next shortcut');
+
+  /* And the COLUMN, or the function was theatre: every outlet role holds
+     SELECT on chain.staff and the policy returns the whole row, so the hashes
+     were one plain SELECT away. Verified by connecting as the role. */
+  assert.match(mig, /REVOKE SELECT ON chain\.staff FROM %I/, 'the blanket grant comes off');
+  assert.match(mig, /column_name NOT IN \('pin_hash', 'pin_salt'\)/,
+    'and goes back column by column, without the two');
+  const prov = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '003_outlet_provision.sql'), 'utf8');
+  assert.match(prov, /GRANT SELECT \(%s\) ON chain\.staff TO %I/,
+    'a newly provisioned outlet gets the column grant too, not the old one');
+
+  const auth = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'auth.js'), 'utf8');
+  assert.ok(!/pin_candidates/.test(auth), 'sign-in no longer asks for candidates');
+  assert.match(auth, /chain\.pin_match\(\$1,\$2,\$3\)/, 'it asks which row matches');
+  assert.ok(!/pinMatches/.test(auth), 'and compares nothing itself');
+});
+
+test('the print relay dials the shop LAN and nothing else', () => {
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const fence = out.slice(out.indexOf('AN ALLOW-LIST, NOT A DENY-LIST'),
+    out.indexOf('port: 9100') + 40);
+  assert.ok(fence.length > 400, 'found the fence');
+
+  /* It blocked the addresses somebody had thought of and let everything else
+     through — including 0.0.0.0, which on Linux reaches loopback, and every
+     public address on the internet. The question is turned round. */
+  assert.match(fence, /o\[0\] === 10/, '10/8 is a printer network');
+  assert.match(fence, /o\[0\] === 172 && o\[1\] >= 16 && o\[1\] <= 31/, 'so is 172.16/12');
+  assert.match(fence, /o\[0\] === 192 && o\[1\] === 168/, 'and 192.168/16');
+  assert.match(fence, /if \(!privateV4 && !privateV6 && !allowLoop\)/,
+    'everything outside a private range is refused without anyone naming it');
+  assert.match(fence, /replace\(\/\^::ffff:\/i, ''\)/,
+    'an IPv4-mapped v6 address is unwrapped before it is judged');
+  assert.match(fence, /net\.connect\(\{ host: flat/, 'and the address dialled is the one judged');
+});
+
+test("'unsafe-eval' is a property of three pages, not of the product", () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(srv, /const EVAL_FREE = \/\^\\\/\(account\|onboarding\)/,
+    'the two front doors are named');
+  assert.match(srv, /EVAL_FREE\.test\(req\.path\) \? csp\(\)\.strict : csp\(\)\.eval/,
+    'and served the strict header');
+
+  /* They are vanilla DOM — the template runtime is what needs new Function,
+     and they do not load it. They are also the pages a stranger reaches first:
+     the sign-up form and the panel that claims an install. */
+  ['account', 'onboarding'].forEach((f) => {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'app', f + '.html'), 'utf8');
+    assert.ok(page.indexOf('support.js') < 0, f + '.html does not load the runtime');
+  });
+  ['index', 'guest', 'member'].forEach((f) => {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'app', f + '.html'), 'utf8');
+    assert.ok(page.indexOf('support.js') >= 0, f + '.html does, so it keeps the directive');
+  });
 });

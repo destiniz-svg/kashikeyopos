@@ -4185,16 +4185,52 @@ test('a token from one plane is refused by every other', opts, async () => {
   else process.env.PORTAL_SECRET = had;
 });
 
-/* THE PRINT RELAY'S FENCE, dialled rather than read. 0.0.0.0 reached a
-   listener on 127.0.0.1:9100 and the endpoint reported {"sent":true}. */
-test('the print relay refuses every spelling of loopback', opts, async () => {
-  const spellings = ['0.0.0.0', '0', '0000', '00.0.0.0', '127.0.0.1', '169.254.169.254'];
-  for (const host of spellings) {
+/* THE PRINT RELAY'S FENCE, dialled rather than read. It began as a deny-list
+   and let through both 0.0.0.0 — which on Linux reaches loopback, proved by
+   delivering bytes to a listener on 127.0.0.1:9100 — and every public address
+   on the internet. A printer is never on a public address, so the question is
+   turned round: inside a private range, or refused. */
+test('the print relay dials the shop LAN and nothing else', opts, async () => {
+  const refused = ['0.0.0.0', '0', '0000', '00.0.0.0', '127.0.0.1', '169.254.169.254',
+    '8.8.8.8', '172.32.0.1', '::1'];
+  for (const host of refused) {
     const r = await post('/api/outlet/' + outletId + '/print',
       { host: host, data: Buffer.from('x').toString('base64') }, token);
     assert.strictEqual(r.status, 400, host + ' must be refused');
     assert.match(r.body.error, /not a printer/, host + ' is named as not a printer');
   }
+  /* And a LAN address is dialled — it will not answer in this environment, and
+     that is the point: the refusal is different from the timeout, so the fence
+     is measurably not just refusing everything. */
+  const lan = await post('/api/outlet/' + outletId + '/print',
+    { host: '192.168.199.199', data: Buffer.from('x').toString('base64') }, token);
+  assert.ok(!/not a printer/.test(lan.body.error || ''),
+    'a LAN address gets past the fence and fails on the wire instead');
+});
+
+/* A PIN HASH NEVER LEAVES THE DATABASE — asked as the outlet role itself,
+   which is the only question that matters. Closing the function while the
+   column stayed readable would have been theatre. */
+test('the outlet role cannot read a PIN hash', opts, async () => {
+  const asOutlet = (sql) => db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query(sql));
+
+  await assert.rejects(() => asOutlet('SELECT pin_hash FROM chain.staff LIMIT 1'),
+    /permission denied/, 'the column is not readable');
+  await assert.rejects(() => asOutlet('SELECT * FROM chain.staff LIMIT 1'),
+    /permission denied/, 'nor by the lazy way in');
+  await assert.rejects(() => asOutlet('SELECT * FROM chain.pin_candidates(1)'),
+    /does not exist/, 'and the function that handed them out is gone');
+
+  // What it can still read is everything a screen needs.
+  const ok = await asOutlet('SELECT name, rank, active FROM chain.staff LIMIT 1');
+  assert.ok(ok.rows.length >= 1, 'names, ranks and active still read');
+
+  // And sign-in still works, which is the whole point of moving the comparison.
+  const good = await post('/api/auth/pin', { outletId: outletId, pin: '4718' });
+  assert.strictEqual(good.status, 200, 'the right PIN still signs in');
+  const bad = await post('/api/auth/pin', { outletId: outletId, pin: '0000' });
+  assert.strictEqual(bad.status, 401, 'and the wrong one still does not');
 });
 
 test('shut down cleanly', opts, async () => {

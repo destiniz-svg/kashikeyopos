@@ -552,26 +552,47 @@ r.post('/print', sameOutlet, atLeast('kitchen'), async function (req, res, next)
   try {
     const dns = require('dns');
     const { address } = await dns.promises.lookup(host);
-    /* The fence blocked 127.x and ::1 and let 0.0.0.0 through — and on Linux
-       a connect to 0.0.0.0 goes to loopback. Proved: host "0.0.0.0" delivered
-       bytes to a listener on 127.0.0.1:9100 and the endpoint answered
-       {"sent":true}. `0` and `0x7f000001` resolve the same way. An
-       IPv4-mapped IPv6 address (::ffff:127.0.0.1) is the same address wearing
-       a different spelling, so it is unwrapped before it is judged rather
-       than pattern-matched twice. */
+    /* AN ALLOW-LIST, NOT A DENY-LIST. This blocked the addresses somebody had
+       thought of — 127.x, ::1, 169.254.x — and let everything else through,
+       which meant two things. It let 0.0.0.0 through, and on Linux a connect
+       to the unspecified address goes to loopback: proved by dialling it, the
+       bytes arrived at a listener on 127.0.0.1:9100 and this endpoint answered
+       {"sent":true}. And it let PUBLIC addresses through, so a signed-in
+       cashier could ask the server to open a socket to any host on the
+       internet, one port at a time.
+
+       A printer is never on a public address. So the question is turned round:
+       the resolved address must be inside a PRIVATE range, and everything
+       outside one is refused without anybody having to have thought of it
+       first. That is the whole of the SSRF surface closed rather than fenced.
+
+       An IPv4-mapped IPv6 address is the same address wearing a different
+       spelling, so it is unwrapped BEFORE it is judged rather than
+       pattern-matched twice — and the address dialled below is the unwrapped
+       one, so what was judged is what is reached. */
     const flat = String(address).replace(/^::ffff:/i, '');
-    const loopback = /^127\./.test(flat) || flat === '::1'
-      // The unspecified address is loopback by another name.
-      || /^0+(\.0+){0,3}$/.test(flat) || flat === '::' || flat === '0.0.0.0';
-    const linkLocal = /^169\.254\./.test(flat) || /^fe80:/i.test(flat)
-      // fc00::/7, the IPv6 unique-local range, is the v6 side of "private".
-      // Left OPEN like 10/8 and 192.168/16 — that is where printers live —
-      // but named here so the omission is a decision, not an oversight.
-      || false;
+    const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(flat);
+    const o = v4 ? v4.slice(1, 5).map(Number) : null;
+    const privateV4 = !!o && o.every((n) => n >= 0 && n <= 255) && (
+      o[0] === 10                                   // 10/8
+      || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)  // 172.16/12
+      || (o[0] === 192 && o[1] === 168)              // 192.168/16
+      || (o[0] === 100 && o[1] >= 64 && o[1] <= 127) // 100.64/10, carrier NAT
+    );
+    // fc00::/7 is the v6 side of "private", and the only v6 range a printer
+    // is plausibly on. Link-local (fe80::/10, and 169.254 on the v4 side) is
+    // deliberately NOT private here: 169.254.169.254 is every cloud's
+    // metadata service.
+    const privateV6 = /^f[cd][0-9a-f]{2}:/i.test(flat);
     const allowLoop = process.env.NODE_ENV !== 'production'
-      && process.env.PRINT_ALLOW_LOOPBACK === '1';
-    if ((loopback && !allowLoop) || linkLocal) {
-      return res.status(400).json({ error: 'that address is not a printer' });
+      && process.env.PRINT_ALLOW_LOOPBACK === '1'
+      && (/^127\./.test(flat) || flat === '::1');
+
+    if (!privateV4 && !privateV6 && !allowLoop) {
+      return res.status(400).json({
+        error: 'that is not a printer on this network — a receipt printer sits'
+             + ' on the shop\'s own LAN, and only those addresses are dialled'
+      });
     }
     const net = require('net');
     await new Promise(function (resolve, reject) {

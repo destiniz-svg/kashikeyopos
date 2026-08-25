@@ -79,9 +79,10 @@ function csp() {
       }
     }
   } catch (e) { /* an unreadable app dir already fails louder elsewhere */ }
-  cspHeader = [
+  const build = (evalOk) => [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' " + Array.from(hashes).join(' '),
+    "script-src 'self'" + (evalOk ? " 'unsafe-eval'" : '') + ' '
+      + Array.from(hashes).join(' '),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
@@ -91,9 +92,20 @@ function csp() {
     "form-action 'self'",
     "frame-ancestors 'self'"
   ].join('; ');
+  cspHeader = { eval: build(true), strict: build(false) };
   cspBuiltAt = Date.now();
   return cspHeader;
 }
+
+/* 'unsafe-eval' IS NOT A PROPERTY OF THE PRODUCT, IT IS A PROPERTY OF THREE
+   PAGES. The template runtime compiles with `new Function`, so the till and
+   both phone apps need it and shipping hand-written HTML with no build step is
+   what buys. The two FRONT DOORS — /account and /onboarding — are vanilla DOM
+   and have never needed it, and they are the pages a stranger reaches first:
+   the sign-up form and the panel that claims an install. Handing them the
+   weakest directive in the policy for a runtime they do not load was a habit,
+   not a decision. They get the strict header. */
+const EVAL_FREE = /^\/(account|onboarding)(\/|$)/;
 
 app.use(function (req, res, next) {
   const o = req.get('origin');
@@ -104,7 +116,8 @@ app.use(function (req, res, next) {
     res.set('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     res.set('access-control-max-age', '600');
   }
-  res.set('content-security-policy', csp());
+  res.set('content-security-policy',
+    EVAL_FREE.test(req.path) ? csp().strict : csp().eval);
   res.set('x-content-type-options', 'nosniff');
   res.set('referrer-policy', 'no-referrer');
   res.set('x-frame-options', 'SAMEORIGIN');
