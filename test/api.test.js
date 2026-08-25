@@ -4147,6 +4147,56 @@ test('readiness fails when an outlet cannot be reached with its own role', opts,
   else process.env.READY_TTL_MS = ttlWas;
 });
 
+/* CROSS-PLANE TOKEN USE, behaviourally. The static pin is in wiring; this is
+   the proof that the doors actually refuse. */
+test('a token from one plane is refused by every other', opts, async () => {
+  const S = require('../src/secrets');
+
+  // Each plane mints its own, and each verifies only its own.
+  const staff = S.sign({ o: outletId, r: 5, s: null, exp: Date.now() + 60e3 });
+  const table = S.signTable({ o: outletId, tb: '1', sl: 'x', exp: Date.now() + 60e3 });
+  const member = S.signMember({ m: uuid(), o: outletId, sl: 'x', exp: Date.now() + 60e3 });
+  const account = S.signAccount({ a: uuid(), exp: Date.now() + 60e3 });
+
+  assert.ok(S.verify(staff), 'a staff token verifies as staff');
+  assert.ok(S.verifyTable(table), 'a table token verifies as a table token');
+  assert.ok(S.verifyMember(member), 'a member token verifies as a member token');
+  assert.ok(S.verifyAccount(account), 'an account token verifies as an account token');
+
+  // Every crossing, including the two that were live.
+  assert.strictEqual(S.verify(table), null, 'a table token is not a staff session');
+  assert.strictEqual(S.verify(member), null, 'nor is a member token');
+  assert.strictEqual(S.verify(account), null, 'nor is an account token');
+  assert.strictEqual(S.verifyTable(member), null,
+    'a member token is not a table token — it ordered onto any table before this');
+  assert.strictEqual(S.verifyTable(staff), null, 'nor is a staff token');
+  assert.strictEqual(S.verifyMember(table), null, 'a table token reads no member card');
+  assert.strictEqual(S.verifyAccount(staff), null, 'a staff session is not an account');
+
+  /* And the guest plane's key is its own even when PORTAL_SECRET is unset,
+     which is the configuration the whole exposure needed. */
+  const had = process.env.PORTAL_SECRET;
+  delete process.env.PORTAL_SECRET;
+  const derived = S.signTable({ o: outletId, tb: '1', sl: 'x', exp: Date.now() + 60e3 });
+  assert.ok(S.verifyTable(derived), 'a derived-key table token still works');
+  assert.strictEqual(S.verify(derived), null,
+    'and it is refused as a staff session — it read the whole bootstrap before this');
+  if (had === undefined) delete process.env.PORTAL_SECRET;
+  else process.env.PORTAL_SECRET = had;
+});
+
+/* THE PRINT RELAY'S FENCE, dialled rather than read. 0.0.0.0 reached a
+   listener on 127.0.0.1:9100 and the endpoint reported {"sent":true}. */
+test('the print relay refuses every spelling of loopback', opts, async () => {
+  const spellings = ['0.0.0.0', '0', '0000', '00.0.0.0', '127.0.0.1', '169.254.169.254'];
+  for (const host of spellings) {
+    const r = await post('/api/outlet/' + outletId + '/print',
+      { host: host, data: Buffer.from('x').toString('base64') }, token);
+    assert.strictEqual(r.status, 400, host + ' must be refused');
+    assert.match(r.body.error, /not a printer/, host + ' is named as not a printer');
+  }
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();

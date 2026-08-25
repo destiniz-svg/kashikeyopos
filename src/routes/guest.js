@@ -30,6 +30,12 @@ const askedToken = (req) => INVITE.cleanToken((req.body || {}).token);
 const codeIssue = { id: [3, 10 * 60e3], ip: [20, 10 * 60e3] };
 const codeGuess = { id: [10, 10 * 60e3], ip: [40, 10 * 60e3] };
 const tokenLook = { ip: [30, 10 * 60e3] };
+/* The table-token mint is the one anonymous door that reaches the database and
+   was the one with no doorman. Nobody signs in to scan a QR, so the budget is
+   generous — a room full of guests all scanning at once is the ordinary case,
+   and forty a minute from one address is not. Every other open door on this
+   router has had one since the rate-limit pass; this one was simply missed. */
+const tableMint = { ip: [400, 10 * 60e3] };
 
 // A QR encodes the outlet handle and the table. The token is minted here, not
 // carried in the URL, so a guest cannot retype it onto another table.
@@ -63,7 +69,7 @@ async function mintTable(req, res, want) {
    has no slug to send — and it must not guess one out of location.hostname,
    because only the server knows where the base domain ends. It answers with
    the handle it resolved, and every call after this one is by path again. */
-r.get('/token', async function (req, res, next) {
+r.get('/token', gate('table-mint', tableMint, null), async function (req, res, next) {
   try {
     const want = hostHandle(req.hostname || req.get('host') || '');
     if (!want) {
@@ -73,7 +79,7 @@ r.get('/token', async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
-r.get('/:slug/token', async function (req, res, next) {
+r.get('/:slug/token', gate('table-mint', tableMint, null), async function (req, res, next) {
   try { return await mintTable(req, res, req.params.slug); }
   catch (e) { next(e); }
 });

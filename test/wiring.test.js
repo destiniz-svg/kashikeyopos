@@ -1997,3 +1997,66 @@ test('readiness crosses the belts a real request crosses', () => {
   assert.match(block, /readyChecked = now\.unreachable\.length \? 0 : Date\.now\(\)/,
     'only a good answer is cached, so recovery needs no restart and no wait');
 });
+
+/* A TOKEN SAYS WHAT PLANE IT IS FOR.
+
+   Two findings from the security pass, one root cause: a signed blob with no
+   type is whichever credential the reader's field lookups happen to make it.
+
+     · `PORTAL_SECRET || SESSION_SECRET` meant an install that had not set the
+       portal secret signed a stranger's table token with the manager's key.
+       Proved on a live install: the token from GET /api/g/<slug>/token — which
+       needs no credential at all, it is what a QR scan does — verified as a
+       STAFF session and returned a 2.6 MB bootstrap carrying every recipe,
+       cost, sale, staff record and the install uuid;
+     · a MEMBER token satisfied the table check, because a table token is
+       recognised by having been signed rather than by saying what it is. A
+       member holds theirs for thirty days. Proved: it placed a guest order
+       onto table 7 while the table-1 token it was minted from correctly could
+       not.
+
+   Both are closed twice over: `typ` is checked on every verify, and the portal
+   secret is DERIVED rather than borrowed when it is not configured, so the two
+   keys are different by construction. */
+test('a token carries its plane, and the guest plane has its own key', () => {
+  const sec = fs.readFileSync(path.join(__dirname, '..', 'src', 'secrets.js'), 'utf8');
+
+  assert.match(sec, /if \(claims\.typ !== typ\) return null;/,
+    'the plane is checked, not inferred from which fields happen to be present');
+  assert.match(sec, /const TYPE = \{ staff: 's', account: 'a', table: 't', member: 'm' \}/,
+    'four planes, four letters');
+  ['sign = ', 'verify = '].forEach(() => {});
+  assert.match(sec, /signWith\(need\('SESSION_SECRET'\), TYPE\.staff/, 'staff tokens are stamped');
+  assert.match(sec, /signWith\(portalSecret\(\), TYPE\.table/, 'table tokens are stamped');
+  assert.match(sec, /signWith\(portalSecret\(\), TYPE\.member/, 'member tokens are stamped');
+  assert.match(sec, /signWith\(need\('SESSION_SECRET'\), TYPE\.account/, 'account tokens are stamped');
+
+  // Derived, never borrowed.
+  assert.ok(!/PORTAL_SECRET \|\| need\('SESSION_SECRET'\)/.test(sec),
+    'the guest plane must never fall back to the session secret');
+  assert.match(sec, /createHmac\('sha256', need\('SESSION_SECRET'\)\)[\s\S]{0,60}kashikeyo:portal:v1/,
+    'it is derived from it instead, so the two can never be equal');
+});
+
+/* THE PRINT RELAY IS AN SSRF PRIMITIVE, SO ITS FENCE HAS TO HOLD.
+
+   It blocked 127.x, ::1 and 169.254.x and let 0.0.0.0 through — and on Linux a
+   connect to 0.0.0.0 goes to loopback. Proved: host "0.0.0.0" delivered bytes
+   to a listener on 127.0.0.1:9100 and the endpoint answered {"sent":true}. */
+test('the print relay blocks every spelling of loopback', () => {
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const fence = out.slice(out.indexOf('const flat = String(address)'),
+    out.indexOf('port: 9100') + 40);
+  assert.ok(fence.length > 200, 'found the fence');
+  assert.match(fence, /\^0\+\(\\\.0\+\)\{0,3\}\$/, 'the unspecified address is loopback by another name');
+  assert.match(fence, /flat === '::'/, 'and so is its v6 spelling');
+  assert.match(fence, /replace\(\/\^::ffff:\/i, ''\)/,
+    'an IPv4-mapped v6 address is unwrapped before it is judged');
+  assert.match(fence, /net\.connect\(\{ host: flat/,
+    'and the address dialled is the one that was judged');
+
+  // The one anonymous door that reaches the database had no doorman.
+  const guest = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  assert.match(guest, /r\.get\('\/token', gate\('table-mint'/, 'the host-routed mint is gated');
+  assert.match(guest, /r\.get\('\/:slug\/token', gate\('table-mint'/, 'and the path form too');
+});

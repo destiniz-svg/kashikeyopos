@@ -1600,6 +1600,65 @@ by a screen that reports the thing was DONE.** `test/audit.test.js` already
 refused invented figures on the ribbons; this is the same rule for the cards
 behind them.
 
+## A token says what plane it is for
+
+A security pass found two holes with one root cause: a signed blob carrying no
+TYPE is whichever credential the reader's field lookups happen to make it.
+
+**`PORTAL_SECRET || SESSION_SECRET` collapsed two planes into one.** An install
+that had not set the portal secret signed a stranger's table token with the
+manager's key — and `GET /api/g/<slug>/token` needs no credential at all, it is
+what a QR scan does. Proved on a live install: that anonymous token presented
+as `Authorization: Bearer` verified as a **staff session** (`roleKey: Cashier`)
+and returned the whole 2.6 MB bootstrap — every recipe, every cost, 2,000
+settled sales, the staff roll, the device roll, the licence and the install
+uuid. Production sets `PORTAL_SECRET`, so this needed a self-hosted, staging or
+development install; the fallback was silent, which is what made it dangerous.
+
+**A member token satisfied the table check.** A table token was recognised by
+having been signed, not by saying what it is, so a member's thirty-day portal
+token was an unrestricted table token for that outlet: it placed a guest order
+onto table 7 while the table-1 token it was minted from correctly could not.
+The stated guarantee — "a guest cannot retype a URL onto another table's bill"
+— held for guests and not for members.
+
+Closed twice over, because one fence is not a fence:
+
+- **`typ` is a claim, checked on every verify** — `s` staff, `a` account,
+  `t` table, `m` member. A token minted before this carries none and is
+  refused, which costs one sign-in each: a till keys a PIN, a guest rescans, a
+  member asks for a code. That is the right price;
+- **the guest plane's key is DERIVED, never borrowed** —
+  `hmac_sha256(SESSION_SECRET, "kashikeyo:portal:v1")` when `PORTAL_SECRET` is
+  unset — so the two keys differ by construction and no configuration mistake
+  can make them equal.
+
+**The print relay's fence had a spelling gap.** It blocked `127.x`, `::1` and
+`169.254.x` and let `0.0.0.0` through — and on Linux a connect to `0.0.0.0`
+goes to loopback. Proved by dialling it: bytes arrived at a listener on
+`127.0.0.1:9100` and the endpoint answered `{"sent": true}`. Every spelling of
+the unspecified address is loopback now, an IPv4-mapped v6 address is unwrapped
+BEFORE it is judged rather than pattern-matched twice, and the address dialled
+is the one that was judged. Private LAN ranges stay open on purpose — that is
+where printers live — and the port is still 9100 and not negotiable.
+
+**The table-token mint had no doorman.** Every other anonymous door on the
+guest router got one in the rate-limit pass; this one was missed, and it is the
+only one that reaches the database. Gated per IP, generously: a room full of
+guests all scanning at once is the ordinary case.
+
+What the same pass checked and found sound, so nobody re-derives it: no SQL is
+built from user input (every dynamic `SET` clause is hardcoded column names
+with parameterised values, every migration identifier goes through `%I`); a
+hostile item name and a hostile member name render as text, not markup — React
+escaping holds through the DC runtime, verified in a browser; there are no
+cookies anywhere, so CSRF is structurally absent; the error handler never
+returns a database message; `npm audit` is clean over two runtime dependencies;
+the security headers carry CSP, nosniff, no-referrer, SAMEORIGIN,
+permissions-policy and HSTS in production; cross-outlet requests are refused at
+the route (`outlet mismatch`, 403) and at the RLS belt underneath; and every
+secret comparison is `timingSafeEqual`.
+
 ## Ready means an outlet request can be served
 
 `/readyz` — the Railway healthcheck — asked the **owner** connection whether

@@ -552,8 +552,22 @@ r.post('/print', sameOutlet, atLeast('kitchen'), async function (req, res, next)
   try {
     const dns = require('dns');
     const { address } = await dns.promises.lookup(host);
-    const loopback = /^127\./.test(address) || address === '::1';
-    const linkLocal = /^169\.254\./.test(address) || /^fe80:/i.test(address);
+    /* The fence blocked 127.x and ::1 and let 0.0.0.0 through — and on Linux
+       a connect to 0.0.0.0 goes to loopback. Proved: host "0.0.0.0" delivered
+       bytes to a listener on 127.0.0.1:9100 and the endpoint answered
+       {"sent":true}. `0` and `0x7f000001` resolve the same way. An
+       IPv4-mapped IPv6 address (::ffff:127.0.0.1) is the same address wearing
+       a different spelling, so it is unwrapped before it is judged rather
+       than pattern-matched twice. */
+    const flat = String(address).replace(/^::ffff:/i, '');
+    const loopback = /^127\./.test(flat) || flat === '::1'
+      // The unspecified address is loopback by another name.
+      || /^0+(\.0+){0,3}$/.test(flat) || flat === '::' || flat === '0.0.0.0';
+    const linkLocal = /^169\.254\./.test(flat) || /^fe80:/i.test(flat)
+      // fc00::/7, the IPv6 unique-local range, is the v6 side of "private".
+      // Left OPEN like 10/8 and 192.168/16 — that is where printers live —
+      // but named here so the omission is a decision, not an oversight.
+      || false;
     const allowLoop = process.env.NODE_ENV !== 'production'
       && process.env.PRINT_ALLOW_LOOPBACK === '1';
     if ((loopback && !allowLoop) || linkLocal) {
@@ -561,7 +575,8 @@ r.post('/print', sameOutlet, atLeast('kitchen'), async function (req, res, next)
     }
     const net = require('net');
     await new Promise(function (resolve, reject) {
-      const sock = net.connect({ host: address, port: 9100 });
+      // Dial exactly what was judged, not the string DNS handed back.
+      const sock = net.connect({ host: flat, port: 9100 });
       const die = (msg) => { sock.destroy(); reject(new Error(msg)); };
       sock.setTimeout(4000, () => die('the printer did not answer in 4 seconds'));
       sock.on('error', (e) => die(e.code === 'ECONNREFUSED'

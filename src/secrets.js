@@ -32,13 +32,26 @@ function outletPassword(outletId) {
 
 function b64url(buf) { return Buffer.from(buf).toString('base64url'); }
 
-function signWith(secret, payload) {
-  const body = b64url(JSON.stringify(payload));
+/* EVERY TOKEN SAYS WHAT PLANE IT IS FOR, and every check demands the plane it
+   expects. Without that a token is only "a signed blob", and which credential
+   it IS gets decided by which fields the reader happens to look at — which is
+   how a member's 30-day portal token turned out to satisfy the table check and
+   order onto any table in the shop, and how a guest's table token — minted
+   anonymously by scanning a QR — read the entire back-office bootstrap on any
+   install where PORTAL_SECRET was not set.
+
+   `typ` is one letter, checked on the way in. A token minted before this
+   carries none and is refused, which costs everybody one sign-in: a till keys
+   a PIN, a guest rescans, a member asks for a code. That is the correct price. */
+const TYPE = { staff: 's', account: 'a', table: 't', member: 'm' };
+
+function signWith(secret, typ, payload) {
+  const body = b64url(JSON.stringify(Object.assign({ typ: typ }, payload)));
   const mac = crypto.createHmac('sha256', secret).update(body).digest('base64url');
   return body + '.' + mac;
 }
 
-function verifyWith(secret, token) {
+function verifyWith(secret, typ, token) {
   if (typeof token !== 'string' || token.indexOf('.') < 0) return null;
   const cut = token.lastIndexOf('.');
   const body = token.slice(0, cut), mac = token.slice(cut + 1);
@@ -49,17 +62,33 @@ function verifyWith(secret, token) {
   try { claims = JSON.parse(Buffer.from(body, 'base64url').toString()); }
   catch (e) { return null; }
   if (!claims || !claims.exp || claims.exp < Date.now()) return null;
+  // The plane is not negotiable and it is not inferred from the payload.
+  if (claims.typ !== typ) return null;
   return claims;
 }
 
-const sign = (p) => signWith(need('SESSION_SECRET'), p);
-const verify = (t) => verifyWith(need('SESSION_SECRET'), t);
+/* The guest plane's secret is DERIVED when it is not configured, never
+   borrowed. `PORTAL_SECRET || SESSION_SECRET` meant an install that had not
+   set one signed a stranger's table token with the same key as a manager's
+   session — proved on a live install: the anonymous token from a QR scan
+   verified as a staff session and returned a 2.6 MB bootstrap carrying every
+   recipe, cost, sale and staff record. Deriving costs no configuration and
+   makes the two keys different by construction, so `typ` is a second fence
+   rather than the only one. */
+function portalSecret() {
+  if (process.env.PORTAL_SECRET) return process.env.PORTAL_SECRET;
+  return crypto.createHmac('sha256', need('SESSION_SECRET'))
+    .update('kashikeyo:portal:v1').digest('hex');
+}
+
+const sign = (p) => signWith(need('SESSION_SECRET'), TYPE.staff, p);
+const verify = (t) => verifyWith(need('SESSION_SECRET'), TYPE.staff, t);
 
 // The guest portal never holds a staff session. A QR carries a table token
 // scoped to one outlet and one table, so a guest cannot post an order onto
 // somebody else's bill by editing a URL.
-const signTable = (p) => signWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), p);
-const verifyTable = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), t);
+const signTable = (p) => signWith(portalSecret(), TYPE.table, p);
+const verifyTable = (t) => verifyWith(portalSecret(), TYPE.table, t);
 
 /* An ACCOUNT token names the person who owns the business — the plane above
    the outlet. It is signed with the session secret because it is a first-party
@@ -67,14 +96,14 @@ const verifyTable = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION
    else: no rank, no outlet. What that account may reach is looked up per
    request, so revoking an outlet takes effect on the next call rather than
    whenever a token happens to expire. */
-const signAccount = (p) => signWith(need('SESSION_SECRET'), p);
-const verifyAccount = (t) => verifyWith(need('SESSION_SECRET'), t);
+const signAccount = (p) => signWith(need('SESSION_SECRET'), TYPE.account, p);
+const verifyAccount = (t) => verifyWith(need('SESSION_SECRET'), TYPE.account, t);
 
 // A member token is the same shape, minted only after a code is verified. It
 // carries a member id and nothing else, so a stolen one reads one card and
 // cannot order, price or settle.
-const signMember = (p) => signWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), p);
-const verifyMember = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), t);
+const signMember = (p) => signWith(portalSecret(), TYPE.member, p);
+const verifyMember = (t) => verifyWith(portalSecret(), TYPE.member, t);
 
 /* PINs are hashed with scrypt and a per-row salt. A PIN is short by nature, so
    the work factor and the sign-in lockout are what make it safe — never the
