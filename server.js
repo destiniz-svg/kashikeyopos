@@ -1,7 +1,7 @@
 'use strict';
 const path = require('path');
 const express = require('express');
-const { owner, shutdown, peerCaPem } = require('./src/db');
+const { owner, withOutletRead, shutdown, peerCaPem } = require('./src/db');
 const { migrate } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
 const directory = require('./src/directory');
@@ -102,14 +102,96 @@ app.get('/healthz', function (req, res) {
   res.json({ ok: true });
 });
 
-// Railway's healthcheck hits this: the service is only ready when the control
-// plane answers, otherwise a deploy that cannot see its database goes live.
+/* READY MEANS AN OUTLET REQUEST CAN BE SERVED.
+
+   This asked the OWNER connection whether `chain.outlet` had a row, and the
+   owner connection bypasses both isolation belts — so it could never detect
+   the one failure that actually takes an install off the air. Found by running
+   the restore drill DEPLOYMENT.md asks for: `pg_dump` of one database carries
+   no roles, so restoring into a fresh cluster leaves every `outlet_<n>_app`
+   missing. The app booted, this endpoint answered 200, Railway switched
+   traffic to it, and every single outlet request failed with
+   `role "outlet_1_app" does not exist`. A drill that stops at the health check
+   reports green on an install that cannot take an order.
+
+   So it checks out each active outlet's OWN login role and reads a table in
+   that outlet's own schema — which is the whole path a real request takes:
+   the derived password, the login, the pinned search_path and the grants. An
+   outlet that cannot be reached is NAMED, with the command that fixes it,
+   because a 503 saying "not ready" would leave whoever is holding the pager
+   exactly where the old 200 left them.
+
+   Two things it deliberately does not do:
+
+     · it does not fail an install with NO outlets. That is a fresh install on
+       its way to onboarding, and a probe that never goes green there is a
+       fresh install that can never be set up;
+     · it does not re-run on every probe while the answer is good. A healthy
+       answer is held for ten seconds (`READY_TTL_MS`, a test knob like
+       RATE_LIMIT_SCALE), so a health check every few seconds costs one round
+       of connections rather than one per request. A FAILING answer is never
+       cached, so an install goes green the moment the remedy is run.
+
+   A failing outlet takes the instance out of rotation, deliberately, in the
+   same spirit as production exiting rather than serving on a schema it could
+   not migrate: this is not a state a restart fixes, and it is not a state to
+   serve traffic in either. It should be loud. */
+// Read per probe rather than at load, so a test can turn the cache off
+// without a second process. `|| 10000` would read 0 as unset, which is the
+// trap: an explicit zero is a real setting.
+function readyTtl() {
+  const v = process.env.READY_TTL_MS;
+  return v === undefined || v === '' ? 10000 : Number(v);
+}
+let readyChecked = 0;
+let readyAnswer = null;
+
+async function readiness() {
+  const outlets = await owner().query(
+    'SELECT id, code FROM chain.outlet WHERE active ORDER BY id');
+  const unreachable = [];
+  for (const o of outlets.rows) {
+    try {
+      // The outlet's own role, its own schema, its own grants — every belt a
+      // real request crosses, and nothing the owner connection could stand in
+      // for.
+      await withOutletRead({ outletId: o.id, rank: 0, scope: 'outlet' },
+        (c) => c.query('SELECT 1 FROM item LIMIT 1'));
+    } catch (e) {
+      unreachable.push({ outlet: o.id, code: o.code, error: e.message });
+    }
+  }
+  return { outlets: outlets.rowCount, unreachable: unreachable };
+}
+
 app.get('/readyz', async function (req, res) {
   if (bootError) return res.status(503).json({ ok: false, migration: bootError });
   try {
-    await owner().query('SELECT 1 FROM chain.outlet LIMIT 1');
-    res.json({ ok: true, at: new Date().toISOString() });
+    /* Only a GOOD answer is held. Fail slow and recover fast: a healthy
+       instance is not re-probed for ten seconds, so a blip does not flap it;
+       a failing one is re-asked every time, so the moment somebody runs the
+       remedy the probe goes green without waiting out a cache. */
+    if (!readyAnswer || Date.now() - readyChecked > readyTtl()) {
+      const now = await readiness();
+      readyAnswer = now;
+      readyChecked = now.unreachable.length ? 0 : Date.now();
+    }
+    const bad = readyAnswer.unreachable;
+    if (bad.length) {
+      return res.status(503).json({
+        ok: false,
+        error: 'the control plane answers but ' + bad.length + ' of '
+          + readyAnswer.outlets + ' outlet(s) cannot be reached with their own'
+          + ' login role — no request for them can be served',
+        unreachable: bad,
+        remedy: 'npm run provision:outlet -- --all, with the install\'s own'
+          + ' OUTLET_ROLE_SECRET. Outlet login roles are cluster-wide and a'
+          + ' pg_dump of one database does not carry them.'
+      });
+    }
+    res.json({ ok: true, outlets: readyAnswer.outlets, at: new Date().toISOString() });
   } catch (e) {
+    readyAnswer = null;
     res.status(503).json({ ok: false, error: 'database not ready' });
   }
 });

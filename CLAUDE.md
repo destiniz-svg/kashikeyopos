@@ -1600,6 +1600,39 @@ by a screen that reports the thing was DONE.** `test/audit.test.js` already
 refused invented figures on the ribbons; this is the same rule for the cards
 behind them.
 
+## Ready means an outlet request can be served
+
+`/readyz` — the Railway healthcheck — asked the **owner** connection whether
+`chain.outlet` had a row. The owner connection bypasses both isolation belts,
+so it could never detect the one failure that takes an install off the air, and
+did not: in the restore drill the app booted, answered **200**, and failed every
+outlet request with `role "outlet_1_app" does not exist`. A drill that stops at
+the health check reports green on an install that cannot take an order.
+
+It checks out **each active outlet's own login role** now and reads a table in
+that outlet's own schema — the derived password, the login, the pinned
+`search_path` and the grants, which is the whole path a real request takes and
+nothing the owner connection can stand in for.
+
+- **A failing outlet is NAMED**, with `npm run provision:outlet -- --all` in the
+  body. A 503 saying "not ready" leaves whoever is holding the pager exactly
+  where the old 200 left them.
+- **No outlets is not a failure.** That is a fresh install on its way to
+  onboarding, and a probe that never goes green there is an install that can
+  never be set up.
+- **Fail slow, recover fast.** A good answer is held for ten seconds
+  (`READY_TTL_MS`, read per probe so a test can turn it off — `|| 10000` would
+  read an explicit 0 as unset, which is the trap). A failing answer is never
+  cached, so the probe goes green the moment the remedy runs, with no restart
+  and no wait.
+- Taking the instance out of rotation is deliberate, in the same spirit as
+  production exiting rather than serving on a schema it could not migrate: this
+  is not a state a restart fixes, and it is not a state to serve traffic in.
+
+`test/api.test.js` proves it by taking the schema grant away from a live
+outlet's role and asserting the 503, the named outlet and the remedy, then
+granting it back and asserting the instant recovery.
+
 ## A revoked token is refused, not merely recorded
 
 The sweep above found five screens claiming actions the build only recorded.

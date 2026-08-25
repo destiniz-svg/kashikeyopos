@@ -4099,6 +4099,54 @@ test('a killed idle connection is a log line, not an outage', opts, async () => 
   assert.strictEqual(q.rows[0].ok, 1, 'the next query gets a fresh connection');
 });
 
+/* READY MEANS AN OUTLET REQUEST CAN BE SERVED.
+
+   /readyz asked the OWNER connection whether chain.outlet had a row, and the
+   owner connection bypasses both isolation belts — so it could not detect the
+   one failure that takes an install off the air. Found by running the restore
+   drill: a pg_dump of one database carries no roles, so a restore into a fresh
+   cluster leaves every outlet_<n>_app missing; the app booted, /readyz
+   answered 200, and every outlet request failed with `role does not exist`.
+
+   Reproduced here by taking the grant away rather than the role, which is the
+   same wall from the request's side and is reversible inside one test. */
+test('readiness fails when an outlet cannot be reached with its own role', opts, async () => {
+  const role = 'outlet_' + outletId + '_app';
+  const schema = 'outlet_' + outletId;
+
+  /* The healthy answer is cached for ten seconds, which is right in
+     production and would make this test pass by staleness. Turn it off for
+     the duration; `READY_TTL_MS` is read per probe for exactly this. */
+  const ttlWas = process.env.READY_TTL_MS;
+  process.env.READY_TTL_MS = '0';
+
+  const good = await get('/readyz');
+  assert.strictEqual(good.status, 200, 'a healthy install is ready');
+  assert.ok(good.body.outlets >= 1, 'and it says how many outlets it checked');
+
+  await db.owner().query('REVOKE USAGE ON SCHEMA ' + schema + ' FROM ' + role);
+  try {
+    // A failing answer is never cached, so this needs no wait.
+    const bad = await get('/readyz');
+    assert.strictEqual(bad.status, 503, 'an unreachable outlet takes the instance out of rotation');
+    assert.strictEqual(bad.body.ok, false);
+    assert.ok(Array.isArray(bad.body.unreachable) && bad.body.unreachable.length >= 1,
+      'and it NAMES the outlet rather than saying "not ready"');
+    assert.strictEqual(bad.body.unreachable[0].outlet, outletId);
+    assert.match(bad.body.remedy, /provision:outlet -- --all/,
+      'with the command that fixes it — a 503 nobody can act on is the old 200');
+  } finally {
+    await db.owner().query('GRANT USAGE ON SCHEMA ' + schema + ' TO ' + role);
+  }
+
+  // Recovery is immediate: no cache to wait out once the remedy is run.
+  const back = await get('/readyz');
+  assert.strictEqual(back.status, 200, 'and it goes green again without a restart');
+
+  if (ttlWas === undefined) delete process.env.READY_TTL_MS;
+  else process.env.READY_TTL_MS = ttlWas;
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();

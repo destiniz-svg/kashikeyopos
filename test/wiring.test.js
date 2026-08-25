@@ -1958,3 +1958,42 @@ test('the devices screen shows the outlet roll, not seven invented terminals', (
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /x-app-version/, 'reported on the push, where the device already names itself');
 });
+
+/* READINESS IS NOT "DID A DATABASE ANSWER".
+
+   /readyz asked the OWNER connection whether chain.outlet had a row. The owner
+   connection bypasses both isolation belts, so it could never detect the one
+   failure that actually takes an install off the air — and did not, in the
+   restore drill: a pg_dump of one database carries no roles, so a restore into
+   a fresh cluster left every `outlet_<n>_app` missing, the app booted, this
+   endpoint answered 200, and every outlet request failed. The behavioural
+   proof is in test/api.test.js; this pins the shape, because the trap here is
+   a one-word edit back to owner(). */
+test('readiness crosses the belts a real request crosses', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const block = srv.slice(srv.indexOf('async function readiness()'),
+    srv.indexOf("app.get('/readyz'") + 1400);
+  assert.ok(block.length > 400, 'found the readiness block');
+
+  assert.match(block, /withOutletRead\(\{ outletId: o\.id/,
+    'each outlet is checked out with its OWN login role');
+  assert.match(block, /SELECT 1 FROM item LIMIT 1/,
+    'and reads a table in that outlet\'s own schema, which is where the grants are');
+  assert.ok(!/owner\(\)[\s\S]{0,80}unreachable/.test(block),
+    'the owner connection cannot stand in for an outlet role here');
+
+  // An install with no outlets is a FRESH install on its way to onboarding.
+  // A probe that never goes green there is an install that can never be set up.
+  assert.match(block, /outlets: readyAnswer\.outlets/,
+    'the count is reported rather than asserted');
+  assert.ok(!/if \(!outlets\.rowCount\) return res\.status\(503\)/.test(srv),
+    'zero outlets is not a failure');
+
+  // A 503 nobody can act on is the old 200 with a different number.
+  assert.match(block, /unreachable: bad/, 'the failing outlet is named');
+  assert.match(block, /provision:outlet -- --all/, 'with the command that fixes it');
+
+  // Fail slow, recover fast.
+  assert.match(block, /readyChecked = now\.unreachable\.length \? 0 : Date\.now\(\)/,
+    'only a good answer is cached, so recovery needs no restart and no wait');
+});

@@ -252,13 +252,23 @@ a backup nobody has restored is a hypothesis. A restore is:
 3. /readyz, then sign in and read a receipt you know the number of
 ```
 
-**Step 3 is not optional and `/readyz` is not enough.** Drilled: a `pg_dump`
-of one database carries no roles, so restoring into a fresh cluster leaves
-`pg_restore` reporting a non-zero exit and over a hundred failed GRANTs — and
-the app then boots, answers `/readyz` with **200**, serves the lock screen, and
-fails every outlet request with `role "outlet_1_app" does not exist`. A drill
-that stops at the health check reports green on an install that cannot take a
-single order. Sign in and read a receipt.
+**Step 3 is not optional.** Drilled: a `pg_dump` of one database carries no
+roles, so restoring into a fresh cluster leaves `pg_restore` reporting a
+non-zero exit and over a hundred failed GRANTs, and the app then boots, serves
+the lock screen, and fails every outlet request with
+`role "outlet_1_app" does not exist`. Sign in and read a receipt.
+
+**`/readyz` now catches that**, which it did not when the drill was run — it
+asked the OWNER connection whether the control plane answered, and the owner
+connection bypasses both isolation belts, so it returned 200 on an install that
+could not serve a single request. It checks out **each active outlet's own
+login role** and reads a table in that outlet's own schema, which is the whole
+path a real request takes: the derived password, the login, the pinned
+`search_path` and the grants. An outlet it cannot reach is named in the 503,
+with the command that fixes it. An install with **no outlets** stays ready —
+that is a fresh install on its way to onboarding. A healthy answer is cached
+for ten seconds (`READY_TTL_MS`); a failing one never is, so an install goes
+green the moment `provision:outlet -- --all` is run, with no restart.
 
 `npm run provision:outlet -- --all` closes it: the role password is derived
 from `OUTLET_ROLE_SECRET`, so the same secret rebuilds the same credential and
