@@ -1600,6 +1600,47 @@ by a screen that reports the thing was DONE.** `test/audit.test.js` already
 refused invented figures on the ribbons; this is the same rule for the cards
 behind them.
 
+## The matrix shows the ladder; it does not set it
+
+The last of the "a control does what it says" class, and the one that was most
+confidently wrong. Every cell on the permission matrix cycled on tap, wrote
+`state.permOverride` — one browser's local object — and queued
+`permission_change`, which is `AUDIT_ONLY`. Nothing per-ROLE is stored
+anywhere: `chain.staff.perm_override` is per PERSON and nothing writes it
+either. So a manager who took Purchasing away from Cashiers changed one tab
+until it reloaded, and every other terminal in the shop carried on unchanged.
+
+Worse than useless, because it implied a SECOND AUTHORITY. There is one gate
+and it is the rank: `atLeast()` reads it on the route and the RLS policies read
+it underneath. The note beside the matrix claimed each cell mapped to a policy
+predicate and that changing one rewrote the role's grant — neither has ever
+been true, and a screen saying so teaches an operator that access was withdrawn
+when it was not.
+
+It reads now, and says what it is reading. The local override layer is gone
+with the switches that wrote it, so `roleFor()` returns what shipped and no two
+screens can disagree with the server. To change what somebody reaches, change
+their rank in Users — which is a real write, since the previous commit.
+
+The copy around it went the same way, because fixing a control leaves the
+sentences beside it: the header read "Role matrix enforced by Postgres RLS"
+(the RANK is what Postgres enforces — a different sentence and the true one),
+the guide walked through an email invite and a link that "activates the account
+on a device" for a flow that has never existed, and the rank ladder listed
+taking and restoring backups as things an Admin and an Owner do here.
+
+Two more from the security pass closed at the same time. **A credential never
+rides in a query string** — this build's own rule, written when an unused
+`?at=` came off the account guard — and the guest guard still read
+`req.query.t`, where `?t=` on the QR portal is the TABLE NUMBER: one parameter
+meaning two things, which is the exact confusion that put a foreign credential
+into a membership lookup on the phone side. Every client has always sent the
+header. And **a wildcard `ALLOWED_ORIGINS` is refused in production**: the apps
+are same-origin, so `*` buys nothing and hands every website the answers to
+this install's anonymous endpoints. The wildcard is dropped and the boot log
+says so — not a boot failure, because a CORS setting is not a half-migrated
+schema and taking a restaurant off the air over one is worse than the setting.
+
 ## A token says what plane it is for
 
 A security pass found two holes with one root cause: a signed blob carrying no

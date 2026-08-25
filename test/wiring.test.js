@@ -2060,3 +2060,86 @@ test('the print relay blocks every spelling of loopback', () => {
   assert.match(guest, /r\.get\('\/token', gate\('table-mint'/, 'the host-routed mint is gated');
   assert.match(guest, /r\.get\('\/:slug\/token', gate\('table-mint'/, 'and the path form too');
 });
+
+/* THE MATRIX SHOWS THE LADDER; IT DOES NOT SET IT.
+
+   The last of the "a control does what it says" class, and the one that was
+   most confidently wrong. Every cell cycled on tap, wrote `state.permOverride`
+   — one browser's local object — and queued `permission_change`, which is
+   AUDIT_ONLY. Nothing per-ROLE is stored anywhere: `chain.staff.perm_override`
+   is per PERSON and nothing writes it either. A manager who took Purchasing
+   away from Cashiers changed one tab until it reloaded.
+
+   The note beside it claimed each cell "corresponds to a policy predicate on
+   the underlying table" and that changing one "rewrites the role's grant".
+   Neither has ever been true. The policies read the RANK, `atLeast()` reads the
+   rank, and there is exactly one gate. */
+test('the permission matrix reads the ladder rather than pretending to set it', () => {
+  ['permission_change', 'permission_reset'].forEach((k) => {
+    assert.ok(!new RegExp('queue\\(\\s*"' + k + '"').test(SRC),
+      k + ' is audit-only — nothing may queue it while reporting a change');
+    assert.ok(AUDIT_ONLY.indexOf(k) >= 0, k + ' keeps its handler for an outbox that holds one');
+  });
+
+  /* The local override layer is gone with the switches that wrote it: every
+     screen that read it rendered a different answer from the server's. */
+  assert.ok(!/this\.state\.permOverride/.test(SRC), 'no screen reads a local override');
+  assert.ok(!/permOverride: this\._saved/.test(SRC), 'and none is persisted');
+  assert.match(SRC, /roleFor\(key\) \{[\s\S]{0,180}return base \|\| \{ perms: \{\}, label: "" \};/,
+    'what a role reaches is what shipped');
+
+  // The claim that was false.
+  assert.ok(SRC.indexOf('corresponds to a policy predicate') < 0,
+    'the cells were never policy predicates');
+  assert.ok(SRC.indexOf("rewrites the role's grant") < 0, 'and tapping one rewrote nothing');
+  assert.match(SRC, /"The rank is the gate"/, 'the note names the one gate there is');
+});
+
+/* A CREDENTIAL NEVER RIDES IN A QUERY STRING — this build's own rule, written
+   when an unused `?at=` fallback came off the account guard. The guest guard
+   still read `req.query.t`, and on the QR portal `?t=` is the TABLE NUMBER, so
+   one parameter meant two things. Every client has always sent the header. */
+test('the guest guard takes its token from the header only', () => {
+  const g = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  assert.match(g, /const t = req\.get\('x-table-token'\) \|\| '';/,
+    'the header, and only the header');
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.match(bridge, /headers\["x-table-token"\] = state\.token/,
+    'which is what the client has always sent');
+
+  /* And a wildcard origin is refused in production: the apps are same-origin,
+     so `*` buys nothing and hands every website the answers to this install's
+     anonymous endpoints. Not a boot failure — a CORS setting is not a
+     half-migrated schema, and taking a restaurant off the air over one is
+     worse than the setting. */
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(srv, /raw\.indexOf\('\*'\) >= 0/, 'production notices the wildcard');
+  assert.match(srv, /return raw\.filter\(\(o\) => o !== '\*'\)/, 'and drops it');
+  assert.match(srv, /\[cors\] ALLOWED_ORIGINS contains "\*" — refused in production/,
+    'saying so by name');
+});
+
+/* AND THE COPY AROUND THEM. Fixing a control leaves the sentences beside it,
+   and on Users & Roles those sentences were the confident kind: the header
+   read "Role matrix enforced by Postgres RLS" (the RANK is what Postgres
+   enforces — a different sentence and the true one), the guide walked through
+   an email invite and a link that "activates the account on a device" for a
+   flow that has never existed, and the rank ladder listed taking and restoring
+   backups as things an Admin and an Owner can do here. */
+test('the copy on Users & Roles describes this build', () => {
+  assert.ok(SRC.indexOf('Role matrix enforced by Postgres RLS') < 0,
+    'the matrix is a picture of the ladder; the ladder is what is enforced');
+  assert.ok(SRC.indexOf('status Invited') < 0, 'no row waits on a link');
+  assert.ok(SRC.indexOf('activates only when the link is used') < 0,
+    'and no link activates anything');
+  assert.match(SRC, /Give them a name, a role and a four-digit PIN/,
+    'which is what creating an account actually needs');
+
+  // Backups are not a rank's power here; they are taken where the database lives.
+  const ranks = SRC.slice(SRC.indexOf('  RANKS() {'), SRC.indexOf('  RANKS() {') + 900);
+  assert.ok(ranks.indexOf('backups') < 0 && ranks.indexOf('Restore a backup') < 0,
+    'no rank restores a backup, because this app takes none');
+
+  assert.match(SRC, /lands on the audit trail as a permission_change/,
+    'and the trail is named for the table it is actually written to');
+});

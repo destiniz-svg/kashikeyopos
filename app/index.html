@@ -2058,7 +2058,6 @@ class Component extends DCLogic {
     loyalty: this._saved.loyalty || null,
     acks: this._saved.acks || {},
     revoked: this._saved.revoked || 0,
-    permOverride: this._saved.permOverride || {},
     chainOverride: this._saved.chainOverride || null,
     // Operating preferences. Every one of these changes real behaviour — a
     // settings screen full of switches that do nothing is worse than no
@@ -2152,7 +2151,7 @@ class Component extends DCLogic {
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
       local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
       fulfil: s.fulfil,
-      clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, permOverride: s.permOverride, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
+      clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
     };
     // Guest phones poll the promo key, not the session: publish alongside.
@@ -2851,12 +2850,13 @@ class Component extends DCLogic {
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
+  /* What a role reaches, as SHIPPED. The local `permOverride` layer is gone
+     with the switches that wrote it: it was one browser's private opinion,
+     never sent anywhere, and every screen that read it therefore rendered a
+     different answer from the one the server would give. */
   roleFor(key) {
     const base = (K().ROLES || []).find((r) => r.key === key);
-    if (!base) return { perms: {}, label: "" };
-    const ov = (this.state.permOverride || {})[key];
-    if (!ov) return base;
-    return Object.assign({}, base, { perms: Object.assign({}, base.perms, ov) });
+    return base || { perms: {}, label: "" };
   }
   // Role and ERD-group colours arrive from the data layer as literal hexes picked
   // against the dark ramp (#a88ad9, #2e7d32, #0074D9 …). A literal cannot follow
@@ -4046,7 +4046,9 @@ class Component extends DCLogic {
       branches: ["Outlets", "Locations, tax profiles, printers and stock sub-locations"],
       menu: ["Menu Master", "Chain price list with per-outlet overrides"],
       aimenu: ["AI Menu Builder", "Cost-engineered menus from the live item master"],
-      users: ["Users & Roles", "Role matrix enforced by Postgres RLS"],
+      // The matrix is a picture of the rank ladder; what Postgres enforces is
+      // the RANK, which is a different sentence and the true one.
+      users: ["Users & Roles", "Who works here, and what their rank reaches"],
       logs: ["Audit Log", "Append-only. Insert allowed, update and delete revoked"],
       inventory: ["Inventory", "On-hand by stock location"],
       counts: ["Stock Counts", "Automated cycle counts with variance posting"],
@@ -6752,45 +6754,36 @@ class Component extends DCLogic {
       };
     }
 
+    /* THE MATRIX SHOWS THE LADDER; IT DOES NOT SET IT.
+
+       Tapping a cell cycled a level, wrote `state.permOverride` — local to one
+       browser — and queued `permission_change`, which is AUDIT_ONLY. There is
+       no per-ROLE permission storage anywhere: `chain.staff.perm_override` is
+       per PERSON, and nothing writes it. So a manager who "removed Purchasing
+       from Cashiers" changed one tab until it was reloaded, and every other
+       terminal in the shop carried on exactly as before.
+
+       Worse than useless, because it implies a SECOND AUTHORITY. There is one
+       gate in this system and it is the rank: `atLeast()` reads it on the route
+       and the RLS policies read it underneath, so a matrix that appears to
+       overrule it teaches an operator to trust a control the database has never
+       heard of. It reads now, and says what it is reading. */
     if (m.kind === "perm") {
       const K0 = K(), mod = (K0.MODULES || []).find((x) => x.key === m.mod) || { key: m.mod, label: m.mod };
-      const LV = ["—", "R", "RW", "CRUD"];
-      const P = { "—": { v: 0, a: 0, e: 0, d: 0 }, "R": { v: 1, a: 0, e: 0, d: 0 }, "RW": { v: 1, a: 1, e: 1, d: 0 }, "CRUD": { v: 1, a: 1, e: 1, d: 1 } };
-      const lvlOf = (p) => !p || !p.v ? "—" : (p.a && p.e && p.d) ? "CRUD" : (p.a || p.e) ? "RW" : "R";
-      const words = { "—": "Hidden entirely", "R": "Read only", "RW": "Read, add and edit", "CRUD": "Full, including delete" };
-      const mayEdit = this.can("users", "e") && ["SuperAdmin", "ChainAdmin"].indexOf(s.roleKey) >= 0;
-      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
+      const lvlOf = (p) => !p || !p.v ? "\u2014" : (p.a && p.e && p.d) ? "CRUD" : (p.a || p.e) ? "RW" : "R";
+      const words = { "\u2014": "Never appears", "R": "Read only", "RW": "Read, add and edit", "CRUD": "Full, including delete" };
       const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
       return {
-        modalTitle: mod.label, modalSub: "Who reaches this module · tap a role to cycle its level",
+        modalTitle: mod.label, modalSub: "What each rank reaches here \u00b7 read-only",
         moreActions: (K0.ROLES || []).map((r) => {
-          const eff = this.roleFor(r.key).perms[mod.key] || {};
-          const cur = lvlOf(eff);
-          const locked = !mayEdit || r.key === s.roleKey || r.key === "SuperAdmin";
+          const cur = lvlOf(this.roleFor(r.key).perms[mod.key] || {});
+          const rk = this.rankOf(r.key);
           return {
-            label: r.label + " — " + cur,
-            sub: words[cur] + (r.key === s.roleKey ? " · your own role, read-only to you" : r.key === "SuperAdmin" ? " · break-glass role, fixed" : !mayEdit ? " · read-only for your role" : " · tap to change"),
-            style: cur === "—" ? btn : on,
-            go: () => {
-              if (locked) {
-                this.toast(r.key === s.roleKey ? "You cannot change your own role's permissions" : r.key === "SuperAdmin" ? "Super Admin is fixed" : "Only a chain administrator can change the matrix", "warn");
-                return;
-              }
-              const next = LV[(LV.indexOf(cur) + 1) % LV.length];
-              const mine = this.role().perms[mod.key] || {};
-              if (lvlOf(mine) !== "CRUD" && LV.indexOf(next) > LV.indexOf(lvlOf(mine))) {
-                this.toast("You cannot grant more on " + mod.label + " than you hold yourself", "warn"); return;
-              }
-              if (mod.key === "users" && next === "—") {
-                const others = (K0.ROLES || []).filter((x) => x.key !== r.key && (this.roleFor(x.key).perms.users || {}).e);
-                if (!others.length) { this.toast("At least one role must keep user administration", "warn"); return; }
-              }
-              const ov = Object.assign({}, s.permOverride || {});
-              ov[r.key] = Object.assign({}, ov[r.key] || {}, { [mod.key]: P[next] });
-              this.setState({ permOverride: ov });
-              this.queue("permission_change", r.label + " · " + mod.key + " · " + cur + " → " + next + " · by " + this.me(), "access_control");
-              this.toast(r.label + " · " + mod.label + " is now " + (next === "—" ? "hidden" : words[next].toLowerCase()));
-            }
+            label: r.label + " \u2014 " + cur,
+            sub: words[cur] + " \u00b7 rank " + rk + (r.key === s.roleKey ? " \u00b7 yours" : ""),
+            style: cur === "\u2014" ? btn : on,
+            go: () => this.toast("The rank decides this, and the server enforces it. Move somebody up or down in Users & Roles.")
           };
         })
       };
@@ -8341,8 +8334,11 @@ class Component extends DCLogic {
       { n: 1, key: "Kitchen", what: "Bump a line, move an order through the pass" },
       { n: 2, key: "Till", what: "Sell, settle, void before fire, 86 a dish, sign for a delivery" },
       { n: 3, key: "Manager", what: "Void after fire, discount, refund, close the day, edit the menu and customers, price a delivery, close a month" },
-      { n: 4, key: "Admin", what: "Settings, staff, roles, devices, backups, floor layout" },
-      { n: 5, key: "Owner", what: "Restore a backup, reopen a filed month, reset the store" }
+      // Backups and restores were on this ladder and are not this app's to do —
+      // they are taken and run where the database lives. Naming them as a rank's
+      // powers taught an operator to look for a control that does not exist.
+      { n: 4, key: "Admin", what: "Settings, staff, roles, devices, floor layout" },
+      { n: 5, key: "Owner", what: "Reopen a filed month, ask for a store reset, read the estate" }
     ];
   }
   // MVR is the book currency and the only one the ledger speaks. A resort guest
@@ -9945,49 +9941,54 @@ class Component extends DCLogic {
     const K0 = K(), s = this.state;
     const tab = s.tab.users || 0;
     if (tab === 2) {
+      /* READ-ONLY, AND HONEST ABOUT WHY. Every cell here used to cycle on tap,
+         writing `state.permOverride` — one browser's local object — and queuing
+         `permission_change`, which is AUDIT_ONLY. Nothing per-ROLE is stored
+         anywhere: `chain.staff.perm_override` is per PERSON and nothing writes
+         it either. So a manager who took Purchasing away from Cashiers changed
+         one tab until it reloaded.
+
+         The note beside it claimed each cell mapped to a policy predicate on
+         the underlying table, and that changing one rewrote the role's grant.
+         Neither has ever been true: the policies read the RANK, and the
+         rank is what `atLeast()` reads on the route. There is one gate, and a
+         screen implying a second is how somebody ends up believing a cashier
+         cannot reach a module the server will hand over on request. */
       const mods = K0.MODULES, roles = K0.ROLES;
-      const LV = ["—", "R", "RW", "CRUD"];
-      const perms = { "—": { v: 0, a: 0, e: 0, d: 0 }, "R": { v: 1, a: 0, e: 0, d: 0 }, "RW": { v: 1, a: 1, e: 1, d: 0 }, "CRUD": { v: 1, a: 1, e: 1, d: 1 } };
-      const lvlOf = (p) => !p || !p.v ? "—" : (p.a && p.e && p.d) ? "CRUD" : (p.a || p.e) ? "RW" : "R";
-      const mayEdit = this.can("users", "e") && ["SuperAdmin", "ChainAdmin"].indexOf(s.roleKey) >= 0;
-      const dirty = Object.keys(s.permOverride || {}).length;
+      const lvlOf = (p) => !p || !p.v ? "\u2014" : (p.a && p.e && p.d) ? "CRUD" : (p.a || p.e) ? "RW" : "R";
       return {
         tabs: [{ label: "Users" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
-        guideTitle: mayEdit ? "Changing a permission" : "Reading the matrix",
-        guide: mayEdit
-          ? ["Tap any cell to cycle it — hidden, read, read-write, full", "You cannot edit your own role, or grant more than you hold", "Super Admin is fixed; it is the break-glass account", "Every change is logged against your name"]
-          : ["R reads, RW adds and edits, CRUD also deletes", "A dash means the module never appears for that role", "Only a chain administrator can change these", "Changes take effect on the next screen a person opens"],
-        actions: dirty ? [{ label: "Reset to defaults", go: () => {
-          this.setState({ permOverride: {} });
-          this.queue("permission_reset", "Matrix reset to shipped defaults · by " + this.me(), "access_control");
-          this.toast("Matrix reset to the shipped defaults");
-        } }] : [],
+        guideTitle: "Reading the matrix",
+        guide: [
+          "R reads, RW adds and edits, CRUD also deletes",
+          "A dash means the module never appears at that rank",
+          "This is a picture of the ladder, not a second set of switches",
+          "To change what somebody reaches, change their rank in Users"
+        ],
         cols: [{ label: "Module", w: "1.4fr" }].concat(roles.map((r) => ({ label: r.label.split(" ")[0], w: "1fr", a: "center" }))),
         rows: mods.map((m) => ({
-          // The whole row opens the module's grants. A matrix of tappable cells
-          // would nest buttons and is unreadable on a phone anyway.
           go: () => this.setState({ modal: { kind: "perm", mod: m.key } }),
           cells: [{ t: m.label }].concat(roles.map((r) => {
-            const eff = this.roleFor(r.key).perms[m.key] || {};
-            const lvl = lvlOf(eff);
-            const changed = !!((s.permOverride || {})[r.key] || {})[m.key];
-            return { t: lvl + (changed ? " ·" : ""), chip: this.chip(lvl === "—" ? "mute" : lvl === "R" ? "info" : lvl === "RW" ? "warn" : "ok"), size: 9.5 };
+            const lvl = lvlOf(this.roleFor(r.key).perms[m.key] || {});
+            return { t: lvl, chip: this.chip(lvl === "\u2014" ? "mute" : lvl === "R" ? "info" : lvl === "RW" ? "warn" : "ok"), size: 9.5 };
           }))
         })),
         notes: [
-          ["How this is enforced", "The matrix is not a client-side gate. Each cell corresponds to a policy predicate on the underlying table; a role with — on a module gets zero rows back from Postgres even if the request is hand-crafted. Changing a cell here rewrites the role's grant, not the terminal's opinion of it."],
-          ["Why you cannot edit your own row", "Every privilege-escalation bug in a back office starts the same way: an account that can widen its own permissions. Your own role is read-only to you, Super Admin is fixed as the break-glass account, and no administrator can grant a level they do not already hold. Two people are always required to widen access."],
-          dirty ? ["Modified from defaults", dirty + " role" + (dirty > 1 ? "s" : "") + " differ from the shipped matrix, marked with a dot. The shipped defaults are the tested configuration — Reset returns to them, and the reset is itself logged."]
-            : ["Shipped defaults", "No role has been modified. These are the tested defaults: the cashier cannot see cost or other outlets, the accountant reads everything and writes only to the books, and the store keeper never reaches the till."]
+          ["The rank is the gate", "Kitchen 1 \u00b7 Till 2 \u00b7 Manager 3 \u00b7 Admin 4 \u00b7 Owner 5. That ladder is the only thing enforced: the API refuses on it and the database policies refuse on it underneath, so a hand-crafted request gets no further than a tapped button does. This table is the shape of that ladder, written out module by module."],
+          ["Why there is nothing to tap", "A per-role switch would need somewhere to live, and there is nowhere: the shipped roles ARE the ranks. Tapping a cell used to paint this browser and tell the server nothing, which is worse than no control at all \u2014 it taught an operator that access had been withdrawn when it had not."],
+          ["Changing what somebody reaches", "Open Users, edit the person, set their role. That carries the rank to the server, which is what every later refusal is measured against \u2014 and it takes effect on their next action, on every terminal, not just this one."],
+          ["What the shipped ladder assumes", "A cashier sees no cost and no other outlet, an accountant reads everything and writes only to the books, and a store keeper never reaches the till."]
         ]
       };
     }
     return {
       tabs: [{ label: "Users" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
-      guideTitle: "Adding a person", guide: ["Invite by email; the row is created with status Invited", "The account activates only when the link is used on a device", "Role decides which modules open and which rows come back", "Scope limits them to one outlet or the whole chain"],
+      // There is no magic link and there never was: a person signs in at this
+      // counter by tapping their face and keying four digits.
+      guideTitle: "Adding a person", guide: ["Give them a name, a role and a four-digit PIN", "They change that PIN themselves from Settings at their first shift", "The role carries a rank, and the rank is what the server enforces", "Scope limits them to one outlet or the whole chain"],
       actions: [{ label: "Add someone", primary: true, go: () => this.openForm("user") }],
       notes: [
-        ["Who grants access", "Only a role with edit rights on this module can change another person's role, outlet or status — Chain Admin and Super Admin. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change writes an access_control row naming both people."],
+        ["Who grants access", "Only a role with edit rights on this module can change another person's role, outlet or status — Chain Admin and Super Admin. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change lands on the audit trail as a permission_change, naming both people, written by the server in the same transaction as the change itself."],
         ["What a grant actually opens", "Role decides which modules appear. The person's home outlet plus any additional outlets decide which rows come back inside them. A cashier at one outlet cannot switch to another, and the outlet switcher only lists what they hold — but the switch itself is guarded again, because a list is not a permission."],
         ["Covering two sites", "An area manager gets extra outlet codes rather than a chain-scope role. Promoting them to chain scope to cover a second site would hand them the whole group, which is the most common over-grant in hospitality."],
         ["What your own sign-in carries", "You are signed in as " + this.me() + " · " + (this.roleFor(this.state.roleKey).label || this.state.roleKey) + " · " + this.rankName() + " rank. " + (this.RANKS().find((x) => x.n === this.rank()) || {}).what + ". Anything above that rank is refused with the reason rather than hidden, so you know whether to ask someone or whether it simply is not a thing this system does."],

@@ -19,8 +19,27 @@ app.use(express.json({ limit: '4mb' }));
    A till runs for months on the same tab in a browser nobody updates. The
    headers are therefore strict by default and the app is written to live
    inside them: no inline event handlers, no remote script, no remote font. */
-const origins = (process.env.ALLOWED_ORIGINS || '').split(',')
-  .map((s) => s.trim()).filter(Boolean);
+/* CROSS-ORIGIN IS A LIST, and in production it is never a wildcard. The apps
+   are same-origin — the till, both phone apps and the panel each serve their
+   own pages — so `*` buys nothing and hands every website on the internet the
+   ability to read the answers to this install's anonymous endpoints for any
+   store it can name. It is convenient in development and a mistake in
+   production, so production refuses the value BY NAME rather than honouring
+   it: the wildcard is dropped, same-origin still works, and the boot log says
+   what happened. Refusing to start would be disproportionate — a wildcard is
+   not a half-migrated schema, and taking a restaurant off the air over a CORS
+   setting is worse than the setting. */
+const origins = (function () {
+  const raw = (process.env.ALLOWED_ORIGINS || '').split(',')
+    .map((s) => s.trim()).filter(Boolean);
+  if (process.env.NODE_ENV === 'production' && raw.indexOf('*') >= 0) {
+    console.warn('[cors] ALLOWED_ORIGINS contains "*" — refused in production.'
+      + ' Same-origin requests are unaffected; name the origins you actually'
+      + ' need instead.');
+    return raw.filter((o) => o !== '*');
+  }
+  return raw;
+})();
 
 /* ── Content-Security-Policy ─────────────────────────────────────────────
    The apps are deliberately self-contained — local scripts, local fonts, no

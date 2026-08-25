@@ -85,7 +85,15 @@ r.get('/:slug/token', gate('table-mint', tableMint, null), async function (req, 
 });
 
 function guest(req, res, next) {
-  const t = req.get('x-table-token') || req.query.t || '';
+  /* The header, and only the header. This also read `req.query.t`, which this
+     build's own rule forbids — "a credential never rides in a query string",
+     written when an unused `?at=` fallback came off the account guard, because
+     a token in a URL is a token in the proxy log, the browser history and every
+     bookmark somebody shares. Worse here: on the QR portal `?t=` is the TABLE
+     NUMBER, so one parameter meant two things, which is exactly the confusion
+     that put a foreign credential into a membership lookup on the phone side.
+     Every client has always sent the header; nothing is being taken away. */
+  const t = req.get('x-table-token') || '';
   const claims = verifyTable(String(t));
   if (!claims || !claims.o) return res.status(401).json({ error: 'scan the code again' });
   req.guest = { outletId: claims.o, table: claims.tb || null, slug: claims.sl };
