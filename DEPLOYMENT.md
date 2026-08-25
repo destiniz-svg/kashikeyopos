@@ -73,24 +73,52 @@ routing switches off and every store link falls back to its path form
 (`/g/<handle>`). A link that is merely long is followable; a link on a hostname
 that does not resolve is not.
 
-## First deploy, into an empty database
+## First deploy, onto an empty cluster
 
-1. Set the environment variables. Do this **before** the first boot: the
-   service refuses to migrate without the secrets, and in production it exits
-   rather than serving on a half-built schema.
-2. Deploy. Migrations run at boot, inside the process, in name order, exactly
-   once each (`chain.migration` is the ledger). A migration whose contents
-   changed is re-applied — which is why every migration in this repo is
-   idempotent.
-3. Open the service URL. An empty install lands on `/onboarding`, not on a
-   sign-in screen it cannot answer.
-4. Work the fourteen steps. The last one hands you the floor, signed in as the
-   owner, with a PIN you set. **Write that PIN down before you close the tab.**
+This is the ordinary path, and the one to take unless an existing install holds
+customer data. **An install with no company holds nothing worth adopting** —
+its own boot log says `[install] no company yet — onboarding is open` — so
+starting clean is simpler and skips the one irreversible step in this document.
 
-There is no seed data and no demo. A new install has no outlets, no dishes, no
+1. **Create the registry** on the cluster the businesses will live on. It is
+   one database for the whole estate, and it is named rather than guessed:
+
+   ```bash
+   createdb kashikeyo_control
+   ```
+
+2. **Set the environment variables**, including `CONTROL_DB=kashikeyo_control`.
+   Do this **before** the first boot: the service refuses to migrate without
+   the secrets, and in production it exits rather than serving on a half-built
+   schema. The database user needs `CREATEDB` — signing up creates a database.
+3. **Deploy.** Boot migrates the registry, then every business database it
+   lists — none, on a first deploy. Migrations run in name order, exactly once
+   each (`chain.migration` is the ledger, per database). A migration whose
+   contents changed is re-applied, which is why every one here is idempotent.
+4. **Sign up on the website.** Confirm the email, and a database is created for
+   that business. No seller is in the loop and no infrastructure is provisioned
+   per customer.
+5. **Work the fourteen steps.** The last one hands you the floor, signed in as
+   the owner, with a PIN you set. **Write that PIN down before you close the
+   tab.**
+
+There is no seed data and no demo. A new business has no outlets, no dishes, no
 staff and no PIN until onboarding writes them.
 
+### Without a registry
+
+Leave `CONTROL_DB` unset and the app is what it always was: one database, one
+business, onboarding on first boot. Every install is that until its registry
+exists, and nothing about the till changes. What is missing is the account
+plane — which now lives in the registry — so `/account` cannot answer. Run
+single-database only for a local harness or a test box.
+
 ## Moving a live install onto the registry
+
+**Only for an install that has data.** If its boot log says `no company yet`,
+there is nothing here for it — delete it, or point it at a registry and let
+somebody sign up. Adoption rewrites primary keys on live data, and running it
+for nothing is all risk and no gain.
 
 **Do this BEFORE the new code reaches that install.** Migration 011 is now a
 tombstone: it drops `chain.account`, `chain.account_identity` and
