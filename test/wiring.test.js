@@ -1657,7 +1657,8 @@ test('a dangling platform reference is named, not sent with', async () => {
       process.env.EMAIL_FROM = f;
       return (await EMAIL.send({ to: 'x@example.com', subject: 's' })).reason;
     };
-    assert.match(await say('', ''), /no transport configured/,
+    // This reason is rendered on /account now, so it reads as a sentence.
+    assert.match(await say('', ''), /no email transport is configured/,
       'nothing set is still the ordinary, honest fallback');
     assert.match(await say('${{svc.RESEND_API_KEY}}', 'a@b.c'), /unresolved platform reference/,
       'a dangling key is named by what is actually wrong with it');

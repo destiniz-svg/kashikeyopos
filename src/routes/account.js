@@ -107,11 +107,20 @@ async function issueCode(account, purpose, brand) {
   return { delivery: out, code: value };
 }
 
-// The same answer whether or not the address is a customer here.
+/* The same answer whether or not the address is a customer here — and it was
+   not. `delivered` was attached only on the branches where an account EXISTS,
+   so its mere presence answered "is this address registered" to anybody who
+   asked, in the two endpoints this file promises twice over do not. Both
+   branches carry it now, and it is derived from the install's own transport
+   health rather than from this request's outcome, which is what makes the two
+   answers identical while still saying why nothing arrived. */
 function ackCode(res, extra) {
+  const h = email.health();
   res.json(Object.assign({
     ok: true, sent: true, mins: CODE_MINS,
-    note: 'If that address has an account, a code is on its way.'
+    note: 'If that address has an account, a code is on its way.',
+    delivered: h.ok ? 'email' : 'not-sent',
+    why: h.ok ? undefined : h.reason
   }, extra || {}));
 }
 
@@ -165,8 +174,7 @@ r.post('/signup', gate('acct-code', sendsMail, who), async function (req, res, n
     ackCode(res, {
       next: 'code',
       // Only ever present in development.
-      code: echoing() ? issued.code : undefined,
-      delivered: issued.delivery.sent ? 'email' : 'not-sent'
+      code: echoing() ? issued.code : undefined
     });
   } catch (e) { next(e); }
 });
@@ -183,8 +191,7 @@ r.post('/code', gate('acct-code', sendsMail, who), async function (req, res, nex
     const issued = await issueCode(account, account.verified_at ? 'signin' : 'verify', b.brand);
     ackCode(res, {
       next: 'code',
-      code: echoing() ? issued.code : undefined,
-      delivered: issued.delivery.sent ? 'email' : 'not-sent'
+      code: echoing() ? issued.code : undefined
     });
   } catch (e) { next(e); }
 });

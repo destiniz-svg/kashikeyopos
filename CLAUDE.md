@@ -157,6 +157,26 @@ Email goes through `src/email.js` — one seam, Resend as the driver. With no
 transport configured the code is written to the audit trail and the call
 **says so** (`sent: false`); it never pretends.
 
+**WHY a message did not go is an install-wide fact, and the screen needs it.**
+"not sent" collapsed three different situations into one word — no transport, a
+dangling `${{reference}}`, and a transport that ANSWERED AND REFUSED — and
+`/account` rendered all three as "No email is configured on this install yet".
+That is false for the last two and sends whoever reads it to check variables
+that are correct: a wrong key, an unverified From domain and a suppressed
+recipient all look like a missing setting. `email.health()` carries the
+transport's own words now, and the screen prints them.
+
+**And `delivered` was an account-enumeration oracle.** It was attached only on
+the branches where an account EXISTS, so its mere presence answered "is this
+address registered" to anybody who asked — in the two endpoints this file
+promises twice over do not. The test that guards this compared two answers that
+were BOTH missing it, and never compared either against the new-address answer
+that had it. Every answer carries `delivered` now, derived from
+`email.health()` — the install's own state, identical for every caller, which
+is what lets the two answers stay byte-identical while still saying why nothing
+arrived. A refusal is a property of the key and the domain, never of the
+address that triggered it.
+
 That fallback had never worked, and it is the one the whole doctrine rests on.
 `chain.audit.outlet_id` was `NOT NULL`, and account events are written with
 `NULL` — the account plane sits ABOVE every outlet, and the events that matter

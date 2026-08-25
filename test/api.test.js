@@ -2581,6 +2581,23 @@ test('an account signs up, and is never told whether an address is known',
     assert.strictEqual(again.body.note, never.body.note);
     assert.deepStrictEqual(Object.keys(again.body).sort().filter((k) => k !== 'code'),
       Object.keys(never.body).sort().filter((k) => k !== 'code'));
+
+    /* And the NEW-address answer must match them too. This comparison was
+       missing, and it is the one that mattered: `delivered` was attached only
+       where an account exists, so the two bodies above agreed with each other
+       precisely because NEITHER carried it. Its presence was the oracle —
+       ask for a code, look for the key, learn whether the address is
+       registered, in the endpoint this block is named after. */
+    const keys = (r) => Object.keys(r.body).sort().filter((k) => k !== 'code');
+    assert.deepStrictEqual(keys(mine), keys(again),
+      'a brand-new address answers exactly as a known one does');
+    assert.deepStrictEqual(keys(mine), keys(never),
+      'and exactly as one that has never been seen');
+    [mine, again, never].forEach((r) => {
+      assert.ok('delivered' in r.body,
+        'every answer says whether this install can deliver — that is a fact'
+        + ' about the install, and telling everyone leaks nothing about anyone');
+    });
   });
 
 test('a code signs an account in, and is spent on use', opts, async () => {

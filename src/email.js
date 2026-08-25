@@ -31,6 +31,34 @@ const unresolved = (v) => /\$\{\{[^}]*\}\}/.test(String(v || ''));
 const configured = () => !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
   && !unresolved(process.env.RESEND_API_KEY) && !unresolved(process.env.EMAIL_FROM);
 
+/* WHY A MESSAGE DID NOT GO IS AN INSTALL-WIDE FACT, and the screen needs it.
+   "not sent" collapsed three different situations into one word: no transport,
+   a dangling ${{reference}}, and a transport that ANSWERED AND REFUSED. The
+   sign-in screen rendered all three as "No email is configured on this install
+   yet", which is false for the third and sends whoever reads it to check
+   variables that are correct — a wrong key, an unverified From domain and a
+   suppressed recipient all look like a missing setting.
+
+   `last` is the most recent transport outcome. It is install-wide on purpose:
+   a refusal is a property of the key and the domain, never of the address that
+   happened to trigger it, so reporting it to every caller tells nobody
+   anything about anybody. That is what lets /signup and /code answer
+   identically whether or not an address is known while still saying why
+   nothing arrived. */
+let last = null;
+
+function health() {
+  if (!configured()) {
+    return { ok: false, reason: (unresolved(process.env.RESEND_API_KEY)
+      || unresolved(process.env.EMAIL_FROM))
+      ? 'RESEND_API_KEY or EMAIL_FROM is an unresolved platform reference on'
+        + ' this install — check the service name inside the braces'
+      : 'no email transport is configured on this install' };
+  }
+  if (last && !last.ok) return { ok: false, reason: last.reason };
+  return { ok: true };
+}
+
 /* Resend's REST API. No SDK: one POST, and a dependency we would have to keep
    patched forever is not worth the four lines it saves. */
 async function viaResend(msg) {
@@ -51,10 +79,13 @@ async function viaResend(msg) {
   });
   const body = await res.text();
   if (!res.ok) {
-    const err = new Error('email transport refused: ' + res.status + ' ' + body.slice(0, 200));
+    const err = new Error('the email transport refused this install: ' + res.status
+      + ' ' + body.slice(0, 200));
     err.status = 502;
+    last = { ok: false, reason: err.message };
     throw err;
   }
+  last = { ok: true };
   let id = null;
   try { id = (JSON.parse(body) || {}).id || null; } catch (e) { /* not JSON */ }
   return { sent: true, via: 'resend', id: id };
@@ -66,16 +97,15 @@ async function send(msg) {
   if (!msg || !msg.to || !msg.subject) {
     throw Object.assign(new Error('an email needs a recipient and a subject'), { status: 400 });
   }
-  if (!configured()) {
-    const dangling = unresolved(process.env.RESEND_API_KEY)
-      || unresolved(process.env.EMAIL_FROM);
-    return { sent: false, via: 'none',
-      reason: dangling
-        ? 'RESEND_API_KEY or EMAIL_FROM is an unresolved platform reference —'
-          + ' check the service name inside the braces'
-        : 'no transport configured' };
+  if (!configured()) return { sent: false, via: 'none', reason: health().reason };
+  try {
+    return await viaResend(msg);
+  } catch (e) {
+    // A transport that could not be REACHED is as install-wide as one that
+    // refused; viaResend records a refusal itself, this catches the rest.
+    if (!last || last.ok) last = { ok: false, reason: e.message };
+    throw e;
   }
-  return viaResend(msg);
 }
 
 /* ── the one message this build sends ──────────────────────────────────── */
@@ -116,4 +146,5 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-module.exports = { send, signInCode, configured };
+module.exports = { send, signInCode, configured, health,
+  _reset: () => { last = null; } };

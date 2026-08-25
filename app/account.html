@@ -411,7 +411,7 @@ button.link:hover{text-decoration:underline}
         .then(function (r) {
           pending = email; mode = "code"; paint();
           say("ok", r.delivered === "not-sent"
-            ? "No email is configured on this install yet — ask whoever runs it for your code. It is in the audit trail."
+            ? undelivered(r, " It is in the audit trail.")
             : "Code sent. It lasts ten minutes.");
           if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
         }));
@@ -424,6 +424,17 @@ button.link:hover{text-decoration:underline}
     run(api("/signin", { email: email, password: password }).then(land));
   }
 
+  /* The server says WHY, and it is not always "not configured". A transport
+     that answered and refused — a wrong key, a From domain nobody verified, a
+     suppressed recipient — used to render here as "No email is configured on
+     this install yet", which sent whoever read it to check variables that were
+     already correct. The reason is the install's own words when it has some. */
+  function undelivered(r, tail) {
+    var why = r && r.why ? String(r.why) : "";
+    return (why || "No email is configured on this install yet")
+      + " \u2014 ask whoever runs it for your code." + tail;
+  }
+
   function useCode() {
     var email = ($("email").value || "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
@@ -432,7 +443,7 @@ button.link:hover{text-decoration:underline}
     run(api("/code", { email: email }).then(function (r) {
       pending = email; mode = "code"; paint();
       say("ok", r.delivered === "not-sent"
-        ? "No email is configured on this install yet — ask whoever runs it for your code."
+        ? undelivered(r, "")
         : "Code sent. It lasts ten minutes.");
       if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
     }));
