@@ -8,6 +8,11 @@
   "use strict";
 
   var TOKEN = null;
+  /* Whether this panel can build an install by itself, answered by /api/state
+     before sign-in. Off is a deployment that never configured it — the manual
+     sheet is still the whole feature, and the reason is shown rather than the
+     control being greyed out for nothing. */
+  var AUTO = { ok: false, why: "" };
   try { TOKEN = localStorage.getItem("panel.token"); } catch (e) {}
   var root = document.getElementById("app");
   var timer = null;
@@ -121,9 +126,34 @@
   }
 
   /* ── the dashboard ────────────────────────────────────────────────────── */
+  // What each provisioning step is called on screen. The keys are the step
+  // keys panel/railway.js reports, so a step renamed there shows its raw key
+  // here rather than vanishing.
+  var STEP_WORDS = {
+    starting: "starting",
+    project: "creating the project",
+    database: "creating the database",
+    volume: "attaching its disk",
+    "database-url": "waiting for the database",
+    app: "building the app",
+    domain: "generating its address",
+    settings: "setting the health check",
+    live: "waiting for the first deploy"
+  };
+
   function statusOf(inst) {
     var l = inst.live || {};
     if (l.state === "archived") return { cls: "mute", label: "Archived" };
+    /* Being built. The step is the row's own progress column, written before
+       each piece is made, so a panel that died mid-run still says how far it
+       got rather than showing an unreachable install nobody can explain. */
+    if (l.state === "building") {
+      var st = String(l.step || "");
+      if (st.indexOf("failed") === 0) {
+        return { cls: "bad", label: "Provisioning failed", note: st.slice(7).trim() };
+      }
+      return { cls: "onb", label: "Building \u00b7 " + (STEP_WORDS[st] || st || "starting") };
+    }
     if (l.state === "live") {
       if (!l.summary || !l.summary.company) return { cls: "onb", label: "Onboarding open" };
       return { cls: "live", label: "Live" };
@@ -313,7 +343,9 @@
             var end = new Date(Date.now() + 14 * 86400e3);
             sheet(null, reload, {
               heading: "Provision " + s.store_name,
-              sub: "Create their app service and database first (DEPLOYMENT.md), set its PLATFORM_KEY, then enter them here. The trial is pre-set to 14 days from today.",
+              sub: AUTO.ok
+                ? "The panel builds the service, the database and the address, mints every secret, and emails them once it is live. The trial is pre-set to 14 days from today."
+                : "Create their app service and database first (DEPLOYMENT.md), set its PLATFORM_KEY, then enter them here. The trial is pre-set to 14 days from today.",
               prefill: { name: s.store_name, kind: "trial",
                 trialEnds: end.toISOString().slice(0, 10),
                 // Carried through so the handover message can be addressed and
@@ -493,14 +525,81 @@
       });
     } });
 
-    var kids = [err, field("Name", f.name), field("Base URL", f.baseUrl),
-      field("Platform key", f.platformKey),
-      field("Setup code", f.claimCode),
-      el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
-      field("Their email", f.contactEmail),
-      field("Note to the customer", f.customerNote),
-      field("Notes (private)", f.notes),
-      el("div", { class: "acts" }, [save])];
+    /* ── AUTOMATIC OR BY HAND ───────────────────────────────────────────────
+       On a new install where this panel is configured to build one, the three
+       fields that exist only because a human had to copy values out of Railway
+       — base URL, platform key, setup code — are not asked for at all. They
+       are outputs of the run, not inputs to it, and asking for an output is
+       how the setup code came to be typed twice into two places that nothing
+       compared.
+
+       By hand stays the whole feature underneath, because an install built
+       before this existed, or on somebody else's infrastructure, still has to
+       be registrable. */
+    var auto = isNew && AUTO.ok;
+    var manual = [field("Base URL", f.baseUrl), field("Platform key", f.platformKey),
+      field("Setup code", f.claimCode)];
+
+    var build = el("button", { class: "cta", text: "Provision it", onclick: function () {
+      build.disabled = true;
+      build.textContent = "Starting\u2026";
+      api("POST", "/api/installs/provision", {
+        name: f.name.value, kind: f.kind.value,
+        trialEnds: f.trialEnds.value || null, notes: f.notes.value,
+        contactEmail: f.contactEmail.value, customerNote: f.customerNote.value,
+        contactName: pre.contactName || "", signupId: pre.signupId || null
+      }).then(function (r) {
+        if (r.status !== 202) {
+          build.disabled = false;
+          build.textContent = "Provision it";
+          return fail((r.body && r.body.error) || "could not start");
+        }
+        /* Nobody waits here: a first deploy takes minutes. The install appears
+           on the dashboard immediately and reports each step as it lands. */
+        close();
+        reload();
+      });
+    } });
+
+    var toggle = el("button", { class: "mini", text: "I built this one by hand",
+      onclick: function () {
+        auto = !auto;
+        render();
+      } });
+
+    var body = el("div");
+    function render() {
+      body.textContent = "";
+      var kids = [err, field("Name", f.name)];
+      if (!auto) manual.forEach(function (x) { kids.push(x); });
+      kids.push(el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
+        field("Their email", f.contactEmail),
+        field("Note to the customer", f.customerNote),
+        field("Notes (private)", f.notes));
+
+      if (auto) {
+        kids.push(el("div", { class: "sub", style: "margin-top:10px;line-height:1.6" },
+          [el("span", { text: "Creates the project, the database and its disk, the app "
+            + "service and its address; mints every secret; waits for the first deploy; "
+            + "then emails the address and setup code. It spends money on your Railway "
+            + "account." })]));
+        kids.push(el("div", { class: "acts" }, [build]));
+        kids.push(el("div", { style: "margin-top:12px;text-align:center" }, [toggle]));
+      } else {
+        kids.push(el("div", { class: "acts" }, [save]));
+        if (isNew && AUTO.ok) {
+          kids.push(el("div", { style: "margin-top:12px;text-align:center" },
+            [el("button", { class: "mini", text: "Let the panel build it",
+              onclick: function () { auto = true; render(); } })]));
+        } else if (isNew && AUTO.why) {
+          kids.push(el("div", { class: "sub", style: "margin-top:12px;text-align:center" },
+            [el("span", { text: "Automatic provisioning is off: " + AUTO.why })]));
+        }
+      }
+      kids.forEach(function (k) { body.appendChild(k); });
+    }
+    render();
+    var kids = [body];
     if (!isNew) kids.push(el("div", { style: "margin-top:10px;text-align:center" },
       [reveal, codeOut]));
     if (!isNew) kids.push(el("div", { style: "margin-top:14px;text-align:center" }, [
@@ -577,6 +676,7 @@
 
   /* ── boot ─────────────────────────────────────────────────────────────── */
   api("GET", "/api/state").then(function (r) {
+    if (r.body) { AUTO = { ok: !!r.body.auto, why: r.body.autoWhy || "" }; }
     if (r.body && r.body.setup) return showSetup();
     if (TOKEN) return showDash();
     showSignin();

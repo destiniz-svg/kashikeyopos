@@ -103,6 +103,14 @@ async function migrate() {
     -- the room, which is a real case and not a missing field.
     ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS contact_email text NOT NULL DEFAULT '';
     ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS handed_over_at timestamptz;
+    -- WHAT THIS PANEL CREATED, so an orphan is impossible to create silently.
+    -- Written BEFORE the infrastructure it names, and updated as each piece
+    -- lands: a crash halfway through leaves a row saying exactly how far it
+    -- got, which is the difference between a cleanup and an archaeology dig.
+    -- Null everywhere = provisioned by hand, which stays a supported path.
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS provisioned boolean NOT NULL DEFAULT false;
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS provision_state text NOT NULL DEFAULT '';
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS railway jsonb;
     -- Written by the public website (site/server.js), decided here. The same
     -- CREATE IF NOT EXISTS lives on both sides so either service may boot first.
     CREATE TABLE IF NOT EXISTS panel.signup (
@@ -199,6 +207,7 @@ async function probe(inst) {
    to claim an install nobody has claimed yet — the one window in an install's
    life where that matters — and it is spent the moment they do. */
 const EMAIL = require('../src/email');
+const RAILWAY = require('./railway');
 
 function handoverMessage(o) {
   const days = o.trialEnds
@@ -306,11 +315,15 @@ app.get('/readyz', async (req, res) => {
   catch (e) { res.status(503).json({ ok: false }); }
 });
 
-/* Whether the panel is virgin decides which screen the page opens on. */
+/* Whether the panel is virgin decides which screen the page opens on, and
+   whether provisioning is automated decides which sheet Provision opens. Both
+   are facts about this deployment, so both are answered before sign-in — the
+   page needs them to render its first screen, and neither is a secret. */
 app.get('/api/state', async (req, res, next) => {
   try {
     const q = await pool.query('SELECT count(*)::int AS n FROM panel.admin');
-    res.json({ setup: q.rows[0].n === 0 });
+    const auto = RAILWAY.ready();
+    res.json({ setup: q.rows[0].n === 0, auto: auto.ok, autoWhy: auto.why || null });
   } catch (e) { next(e); }
 });
 
@@ -357,13 +370,16 @@ app.get('/api/overview', authed, async (req, res, next) => {
   try {
     const q = await pool.query(
       'SELECT id, name, base_url, kind, trial_ends, notes, customer_note,'
-      + ' contact_email, handed_over_at, archived, created_at'
+      + ' contact_email, handed_over_at, archived, created_at,'
+      + ' provisioned, provision_state, railway'
       + ' FROM panel.install ORDER BY archived, created_at');
     const keys = await pool.query('SELECT id, platform_key FROM panel.install');
     const keyOf = Object.fromEntries(keys.rows.map((r) => [r.id, r.platform_key]));
     const probes = await Promise.all(q.rows.map((r) =>
       r.archived ? Promise.resolve({ state: 'archived' })
-        : probe({ base_url: r.base_url, platform_key: keyOf[r.id] })));
+        : (r.provision_state && !r.provisioned)
+          ? Promise.resolve({ state: 'building', step: r.provision_state })
+          : probe({ base_url: r.base_url, platform_key: keyOf[r.id] })));
 
     /* Reconcile what each install believes with what this registry says. Only
        a LIVE install is worth pushing to — a dead one would just time out
@@ -482,6 +498,117 @@ app.post('/api/installs', authed, async (req, res, next) => {
    that grants ownership of an unclaimed install should have to be ASKED for,
    once, by a person who came looking — not ride along in a poll that refreshes
    every thirty seconds into a browser left open on a desk. */
+/* ═══ ONE BUTTON ═══════════════════════════════════════════════════════════
+   Creates the project, the database, its disk, the app service, the domain and
+   the health check; mints every secret; waits for the first deploy; then
+   records the install and hands it over. What used to be six manual acts and
+   two hand-copied secrets.
+
+   THE ROW IS WRITTEN FIRST, before any infrastructure exists, and updated at
+   every step. That ordering is the whole safety argument: a panel that crashes
+   mid-run leaves a row saying how far it got and what it made, rather than
+   infrastructure nobody knows about. An orphan costs money quietly for months;
+   a half-finished row is visible on the dashboard within thirty seconds.
+
+   It runs in the BACKGROUND. A first deploy can take minutes, and an HTTP
+   request held open that long dies to a proxy somewhere and tells the operator
+   nothing. The response is the install id; the dashboard already polls, and
+   the row is the progress. */
+app.post('/api/installs/provision', authed, async (req, res, next) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'the install needs a name' });
+  const gate2 = RAILWAY.ready();
+  if (!gate2.ok) return res.status(503).json({ error: gate2.why });
+
+  const kind = ['trial', 'paid', 'internal'].includes(b.kind) ? b.kind : 'trial';
+  try {
+    /* base_url and platform_key are NOT NULL and are not known yet — the
+       domain does not exist until step five. They are filled in on success;
+       until then the row is marked as building and the dashboard renders it
+       that way rather than probing an address that answers nothing. */
+    const ins = await pool.query(
+      'INSERT INTO panel.install (name, base_url, platform_key, kind, trial_ends,'
+      + ' notes, customer_note, contact_email, provision_state)'
+      + " VALUES ($1,'','',$2,$3,$4,$5,$6,'starting') RETURNING id",
+      [name, kind, kind === 'trial' ? (b.trialEnds || null) : null,
+        String(b.notes || ''), String(b.customerNote || '').slice(0, 400),
+        String(b.contactEmail || '').trim().toLowerCase()]);
+    const id = ins.rows[0].id;
+
+    if (b.signupId) {
+      await pool.query(
+        "UPDATE panel.signup SET status = 'provisioned', install_id = $1,"
+        + ' decided_at = now() WHERE id = $2', [id, b.signupId]).catch(() => {});
+    }
+
+    res.status(202).json({ id: id, state: 'starting' });
+
+    /* ── from here nobody is waiting on us ──────────────────────────────── */
+    const note = (state, made) => pool.query(
+      'UPDATE panel.install SET provision_state = $2, railway = $3 WHERE id = $1',
+      [id, state, made ? JSON.stringify(made) : null]).catch(() => {});
+
+    RAILWAY.provision({
+      name: name,
+      serviceName: b.serviceName || undefined,
+      rollback: b.rollback === true,
+      onStep: (ev) => {
+        note(ev.state === 'failed' ? 'failed: ' + ev.key : ev.key, ev.made);
+      }
+    }).then(async (out) => {
+      await pool.query(
+        'UPDATE panel.install SET base_url = $2, platform_key = $3, claim_code = $4,'
+        + " provisioned = true, provision_state = 'live', railway = $5 WHERE id = $1",
+        [id, out.baseUrl, out.secrets.PLATFORM_KEY, out.secrets.ONBOARDING_CLAIM_TOKEN,
+          JSON.stringify(out.made)]);
+
+      /* Telling the customer is part of provisioning, not a second step
+         somebody has to remember. It carries the address and the setup code
+         and deliberately no password. */
+      if (b.contactEmail) {
+        const msg = handoverMessage({
+          to: String(b.contactEmail).trim(),
+          contactName: String(b.contactName || '').trim(),
+          storeName: name,
+          baseUrl: out.baseUrl,
+          claimCode: out.secrets.ONBOARDING_CLAIM_TOKEN,
+          trialEnds: kind === 'trial' ? (b.trialEnds || null) : null
+        });
+        try {
+          const sent = await EMAIL.send(msg);
+          if (sent && sent.sent) {
+            await pool.query('UPDATE panel.install SET handed_over_at = now() WHERE id = $1', [id]);
+          }
+        } catch (e) { /* the install is live either way; Send again is on the sheet */ }
+      }
+    }).catch(async (e) => {
+      /* Never rounded up to "failed". The message names the step and what
+         exists, because the next question is always "what do I have to clean
+         up", and the answer must not be "look through the dashboard". */
+      const made = e.made || null;
+      const why = 'failed at ' + (e.failedAt || 'an unknown step') + ': ' + e.message
+        + (e.rolledBack ? ' \u00b7 rolled back'
+          : e.rollbackError ? ' \u00b7 rollback also failed: ' + e.rollbackError : '');
+      await note(why.slice(0, 500), made);
+    });
+  } catch (e) { next(e); }
+});
+
+/* What the automated path would use, so the sheet can say so before anybody
+   presses anything. Never the token itself. */
+app.get('/api/provision/config', authed, (req, res) => {
+  const gate3 = RAILWAY.ready();
+  res.json({
+    ok: gate3.ok,
+    why: gate3.why || null,
+    repo: process.env.INSTALL_REPO || null,
+    branch: process.env.INSTALL_BRANCH || 'main',
+    region: process.env.INSTALL_REGION || null,
+    workspace: process.env.RAILWAY_WORKSPACE_ID ? 'set' : 'account default'
+  });
+});
+
 app.get('/api/installs/:id/claim', authed, async (req, res, next) => {
   try {
     const q = await pool.query('SELECT name, claim_code FROM panel.install WHERE id = $1',

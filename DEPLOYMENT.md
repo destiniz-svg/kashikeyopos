@@ -410,9 +410,57 @@ PANEL_SETUP_TOKEN  gates the one-time first-run admin creation; spend it,
 Each customer install sets `PLATFORM_KEY` (≥32 chars, unique per customer).
 Unset, `/api/platform/summary` is a 404 — an install that was never sold has
 no platform. The panel holds each key in its registry and probes server-side;
-the browser gets figures, never keys. To onboard a customer: provision their
-app + database, set their `PLATFORM_KEY` **and `ONBOARDING_CLAIM_TOKEN`**, then
-register the install in the panel with its base URL, that key and that code.
+the browser gets figures, never keys.
+
+### Provision, automatically
+
+Set the two variables below on the **panel** service and **Provision** builds
+the whole install: the project, the Postgres and its disk, the app service, its
+address and its health check; it mints every secret; it waits for the first
+deploy; then it records the install and emails the customer their address and
+setup code.
+
+| Variable | |
+|---|---|
+| `RAILWAY_API_TOKEN` | **Required.** An account or workspace token from railway.com/account/tokens. It can create and destroy infrastructure, so it is held by the panel and never rendered — same discipline as `PLATFORM_KEY`. |
+| `INSTALL_REPO` | **Required.** What a new install deploys, as `owner/name`. |
+| `INSTALL_BRANCH` | Optional, default `main`. |
+| `INSTALL_REGION` | Optional, e.g. `asia-southeast1-eqsg3a`. Applied to the app and the database volume. |
+| `INSTALL_PG_IMAGE` | Optional, default `ghcr.io/railwayapp-templates/postgres-ssl:18` — read off a running Railway Postgres rather than guessed. An image tag moves; this is why it is a variable. |
+| `RAILWAY_WORKSPACE_ID` | Optional. Which workspace new projects belong to; the account default otherwise. |
+| `RAILWAY_API_URL` | Optional. For rehearsing the whole path against a stub. |
+
+**Leave `RAILWAY_API_TOKEN` unset and nothing changes** — the panel reports
+which variable is missing, by name, and the manual sheet below is still the
+whole feature. That matters for an install built on somebody else's
+infrastructure, which stays registrable for ever.
+
+What it does NOT do, on purpose:
+
+- **It never handles the database password.** The app's `DATABASE_URL` is set
+  to the reference `${{Postgres.DATABASE_URL}}`, which Railway resolves at
+  deploy time. The panel never reads it, never stores it, and never has to know
+  how their Postgres image composed it.
+- **It never rounds a partial run up to a failure.** Each step is written to
+  the install row *before* it runs, so a panel that dies mid-run leaves a row
+  saying how far it got and every id it made. An orphaned service costs money
+  quietly for months; a half-finished row is on the dashboard in thirty
+  seconds.
+- **It never cleans up silently.** Rollback deletes only a project *that run*
+  created, and only when a person asked for it on a screen that said what would
+  be destroyed.
+
+**Rehearse it once against a throwaway project before a customer is waiting.**
+`test/provision.test.js` covers composition, ordering and every failure branch
+against a stubbed transport — which proves what is sent and what is decided,
+never that Railway accepts it. The live call path is verified the first time
+you run it, and that is worth doing on purpose rather than in front of someone.
+
+### Provision, by hand
+
+Still supported and unchanged: create the app + database, set their
+`PLATFORM_KEY` **and `ONBOARDING_CLAIM_TOKEN`**, then register the install in
+the panel with its base URL, that key and that code.
 
 ### `ONBOARDING_CLAIM_TOKEN` — who gets to claim a fresh install
 

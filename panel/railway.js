@@ -1,0 +1,395 @@
+'use strict';
+/* ═══ PROVISIONING AN INSTALL, WITHOUT A HUMAN TYPING NINE SECRETS ══════════
+   Standing a store up used to be six manual acts before the panel was even
+   opened: create a service, create a database, generate three secrets and two
+   keys, set nine variables, point a domain — and then type two of those values
+   back into Mission Control by hand, where nothing checked they matched what
+   was actually set. A secret typed twice is a secret that diverges, and the
+   only symptom is a customer refused at step one holding a code the panel
+   swears is right.
+
+   So the panel does it. This module is the whole of the machinery, and it is
+   built around four rules.
+
+   ONE · THE TOKEN NEVER REACHES A BROWSER. Every call here runs server-side
+   from the panel process. RAILWAY_API_TOKEN can create and destroy
+   infrastructure, so it is treated exactly like PLATFORM_KEY already is: held
+   by the panel, never rendered, never returned.
+
+   TWO · NEVER HANDLE THE DATABASE PASSWORD. The app's DATABASE_URL is set to a
+   variable REFERENCE — ${{Postgres.DATABASE_URL}} — which Railway resolves at
+   deploy time. We never read the password, never store it, and never have to
+   know how their Postgres image composed it. This is why the wiring below is
+   short: the parts most likely to be got wrong are the parts we decline to do.
+
+   THREE · PROGRESS IS RECORDED BEFORE IT IS MADE. Every step reports through
+   `onStep` before and after it runs, and the caller writes that down. A crash
+   halfway through must never leave infrastructure that nothing knows about —
+   the most expensive failure mode here is not an error, it is an orphan.
+
+   FOUR · A PARTIAL RUN IS NAMED, NEVER ROUNDED UP. If step five fails, the
+   result says which five succeeded and what they created, by id. Rollback is
+   offered only for a project THIS RUN created: deleting a project that already
+   existed because our own later step failed is how automation earns its
+   reputation.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const crypto = require('crypto');
+
+/* Railway's own endpoint. Overridable so the whole path can be driven against
+   a stub — the alternative is a feature whose only rehearsal is a customer's
+   first store. It is an environment variable, so it is set by whoever already
+   holds the token; a value here is not a new trust boundary. */
+const API = process.env.RAILWAY_API_URL || 'https://backboard.railway.com/graphql/v2';
+
+/* Railway's own Postgres, read off a running one rather than guessed: the
+   image their template deploys and the path it requires a volume at. Both are
+   overridable, because an image tag is a moving target and a guide that has to
+   be edited to change one is a guide that goes stale. */
+const PG_IMAGE = process.env.INSTALL_PG_IMAGE || 'ghcr.io/railwayapp-templates/postgres-ssl:18';
+const PG_MOUNT = '/var/lib/postgresql/data';
+const PG_NAME = 'Postgres';
+
+const REPO = () => String(process.env.INSTALL_REPO || '').trim();
+const BRANCH = () => String(process.env.INSTALL_BRANCH || 'main').trim();
+const REGION = () => String(process.env.INSTALL_REGION || '').trim();
+const TOKEN = () => String(process.env.RAILWAY_API_TOKEN || '').trim();
+const WORKSPACE = () => String(process.env.RAILWAY_WORKSPACE_ID || '').trim();
+
+/* Is the automated path available at all? Two answers, not one: "off" is a
+   deployment that never configured it, and the panel must offer the manual
+   sheet rather than a button that 500s. `why` is rendered next to the disabled
+   control, because a control that is greyed out for an unstated reason teaches
+   an operator that the app is broken. */
+function ready() {
+  if (!TOKEN()) return { ok: false, why: 'RAILWAY_API_TOKEN is not set on this panel' };
+  if (!REPO()) return { ok: false, why: 'INSTALL_REPO is not set — name the repository a new install deploys from, as owner/name' };
+  return { ok: true };
+}
+
+/* ── the transport ───────────────────────────────────────────────────────── */
+
+/* GraphQL answers 200 with an `errors` array, so a bare `res.ok` check reports
+   success on a refusal. Both shapes are collapsed into one thrown Error whose
+   message is the thing a human needs to read. */
+async function gql(query, variables, opts) {
+  const o = opts || {};
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), o.timeoutMs || 30000);
+  let res;
+  try {
+    res = await fetch(process.env.RAILWAY_API_URL || API, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer ' + TOKEN()
+      },
+      body: JSON.stringify({ query: query, variables: variables || {} }),
+      signal: ctl.signal
+    });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError'
+      ? 'Railway did not answer within ' + Math.round((o.timeoutMs || 30000) / 1000) + 's'
+      : 'could not reach Railway: ' + e.message);
+  } finally { clearTimeout(t); }
+
+  const text = await res.text();
+  let body = null;
+  try { body = JSON.parse(text); } catch (e) { /* fall through to the raw text */ }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('Railway refused the API token (' + res.status + ') — check RAILWAY_API_TOKEN');
+  }
+  if (res.status === 429) {
+    throw new Error('Railway rate-limited this token; retry after '
+      + (res.headers.get('retry-after') || 'a minute'));
+  }
+  if (!body) throw new Error('Railway answered ' + res.status + ' with something that is not JSON');
+  if (body.errors && body.errors.length) {
+    throw new Error(body.errors.map((e) => e && e.message).filter(Boolean).join('; ')
+      || 'Railway refused the request and gave no reason');
+  }
+  if (!res.ok) throw new Error('Railway answered ' + res.status);
+  return body.data;
+}
+
+/* ── the pieces ──────────────────────────────────────────────────────────── */
+
+async function createProject(name) {
+  const input = { name: name };
+  if (WORKSPACE()) input.workspaceId = WORKSPACE();
+  const d = await gql(
+    'mutation projectCreate($input: ProjectCreateInput!) {'
+    + ' projectCreate(input: $input) { id environments { edges { node { id name } } } } }',
+    { input: input });
+  const p = d.projectCreate;
+  const envs = ((p.environments || {}).edges || []).map((e) => e.node);
+  // A fresh project has exactly one environment and it is called production.
+  // Taking the first unconditionally would silently pick whatever came back
+  // first if that ever changes.
+  const env = envs.find((e) => e && e.name === 'production') || envs[0];
+  if (!env) throw new Error('the project was created but reported no environment');
+  return { projectId: p.id, environmentId: env.id };
+}
+
+async function createService(projectId, name, source, variables) {
+  const input = { projectId: projectId, name: name, source: source };
+  if (source && source.repo && BRANCH()) input.branch = BRANCH();
+  if (variables) input.variables = variables;
+  const d = await gql(
+    'mutation serviceCreate($input: ServiceCreateInput!) { serviceCreate(input: $input) { id name } }',
+    { input: input });
+  return d.serviceCreate.id;
+}
+
+async function createVolume(projectId, environmentId, serviceId, mountPath) {
+  const input = { projectId: projectId, serviceId: serviceId, mountPath: mountPath,
+    environmentId: environmentId };
+  if (REGION()) input.region = REGION();
+  const d = await gql(
+    'mutation volumeCreate($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }',
+    { input: input });
+  return d.volumeCreate.id;
+}
+
+async function setVariables(projectId, environmentId, serviceId, variables, skipDeploys) {
+  await gql(
+    'mutation variableCollectionUpsert($input: VariableCollectionUpsertInput!) {'
+    + ' variableCollectionUpsert(input: $input) }',
+    { input: { projectId: projectId, environmentId: environmentId, serviceId: serviceId,
+      variables: variables, skipDeploys: !!skipDeploys } });
+}
+
+async function readVariables(projectId, environmentId, serviceId) {
+  const d = await gql(
+    'query variables($projectId: String!, $environmentId: String!, $serviceId: String) {'
+    + ' variables(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId) }',
+    { projectId: projectId, environmentId: environmentId, serviceId: serviceId });
+  return d.variables || {};
+}
+
+async function updateInstance(serviceId, environmentId, input) {
+  await gql(
+    'mutation serviceInstanceUpdate($serviceId: String!, $environmentId: String!,'
+    + ' $input: ServiceInstanceUpdateInput!) {'
+    + ' serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }',
+    { serviceId: serviceId, environmentId: environmentId, input: input });
+}
+
+async function createDomain(serviceId, environmentId, targetPort) {
+  const input = { serviceId: serviceId, environmentId: environmentId };
+  if (targetPort) input.targetPort = targetPort;
+  const d = await gql(
+    'mutation serviceDomainCreate($input: ServiceDomainCreateInput!) {'
+    + ' serviceDomainCreate(input: $input) { id domain } }',
+    { input: input });
+  return d.serviceDomainCreate.domain;
+}
+
+async function deploy(serviceId, environmentId) {
+  await gql(
+    'mutation serviceInstanceDeployV2($serviceId: String!, $environmentId: String!) {'
+    + ' serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId) }',
+    { serviceId: serviceId, environmentId: environmentId });
+}
+
+async function latestDeployment(projectId, serviceId, environmentId) {
+  const d = await gql(
+    'query deployments($input: DeploymentListInput!) {'
+    + ' deployments(input: $input, first: 1) { edges { node { id status } } } }',
+    { input: { projectId: projectId, serviceId: serviceId, environmentId: environmentId } });
+  const edge = (((d.deployments || {}).edges) || [])[0];
+  return edge ? edge.node : null;
+}
+
+async function deleteProject(projectId) {
+  await gql('mutation projectDelete($id: String!) { projectDelete(id: $id) }', { id: projectId });
+}
+
+/* ── waiting ─────────────────────────────────────────────────────────────── */
+
+/* Polling, not sleeping-and-hoping. Every wait is bounded and every timeout
+   says what it was waiting FOR, because "provisioning failed" at minute four
+   tells an operator nothing they can act on. */
+async function until(what, check, opts) {
+  const o = opts || {};
+  const every = o.everyMs || 5000;
+  const limit = o.timeoutMs || 300000;
+  const started = o.now ? o.now() : Date.now();
+  const now = o.now || Date.now;
+  for (;;) {
+    const got = await check();
+    if (got) return got;
+    if (now() - started > limit) {
+      throw new Error('gave up waiting for ' + what + ' after '
+        + Math.round(limit / 1000) + 's');
+    }
+    await new Promise((r) => (o.wait || setTimeout)(r, every));
+  }
+}
+
+/* ── the secrets an install needs ────────────────────────────────────────── */
+
+/* Minted here, once, per install. Three of them are three ON PURPOSE — a leak
+   of one must not mint the others — and the whole reason to generate them in
+   code is that "three different values" is exactly the discipline a human
+   under time pressure quietly abandons. */
+function mintSecrets() {
+  const b = (n) => crypto.randomBytes(n).toString('base64url');
+  return {
+    OUTLET_ROLE_SECRET: b(32),
+    SESSION_SECRET: b(32),
+    PORTAL_SECRET: b(32),
+    PLATFORM_KEY: b(32),
+    ONBOARDING_CLAIM_TOKEN: b(9)      // read aloud and typed by a person
+  };
+}
+
+/* Railway resolves ${{Service.VAR}} at deploy time, so the app is handed a
+   reference rather than a password this process ever saw. */
+function appVariables(secrets, extra) {
+  return Object.assign({
+    DATABASE_URL: '${{' + PG_NAME + '.DATABASE_URL}}',
+    NODE_ENV: 'production',
+    PORT: '8080',
+    OUTLET_ROLE_SECRET: secrets.OUTLET_ROLE_SECRET,
+    SESSION_SECRET: secrets.SESSION_SECRET,
+    PORTAL_SECRET: secrets.PORTAL_SECRET,
+    PLATFORM_KEY: secrets.PLATFORM_KEY,
+    ONBOARDING_CLAIM_TOKEN: secrets.ONBOARDING_CLAIM_TOKEN
+  }, extra || {});
+}
+
+/* ── the sequence ────────────────────────────────────────────────────────── */
+
+/* Returns { ok, made, secrets, baseUrl, steps } — and on failure THROWS an
+   error carrying `made`, so the caller can say what exists rather than only
+   what went wrong. */
+async function provision(opts) {
+  const o = opts || {};
+  const name = String(o.name || '').trim();
+  if (!name) throw new Error('the install needs a name');
+  const gate = ready();
+  if (!gate.ok) throw new Error(gate.why);
+
+  const onStep = typeof o.onStep === 'function' ? o.onStep : function () {};
+  const made = { projectId: null, environmentId: null, appServiceId: null,
+    pgServiceId: null, volumeId: null, domain: null, ourProject: false };
+  const steps = [];
+
+  const run = async (key, label, fn) => {
+    onStep({ key: key, label: label, state: 'running', made: made });
+    try {
+      const out = await fn();
+      steps.push({ key: key, label: label, ok: true });
+      onStep({ key: key, label: label, state: 'done', made: made });
+      return out;
+    } catch (e) {
+      steps.push({ key: key, label: label, ok: false, error: e.message });
+      onStep({ key: key, label: label, state: 'failed', error: e.message, made: made });
+      throw Object.assign(e, { made: made, steps: steps, failedAt: key });
+    }
+  };
+
+  const secrets = mintSecrets();
+
+  try {
+    await run('project', 'Creating the project', async () => {
+      const p = await createProject(name);
+      made.projectId = p.projectId;
+      made.environmentId = p.environmentId;
+      made.ourProject = true;      // ours, so ours to roll back
+    });
+
+    await run('database', 'Creating the database', async () => {
+      /* No POSTGRES_* variables are set here. The image's own defaults and
+         Railway's template wiring compose DATABASE_URL, and the next step
+         VERIFIES that it did rather than assuming. Writing them ourselves
+         would be reconstructing somebody else's template from memory — and
+         getting one wrong yields a database that boots and cannot be reached. */
+      made.pgServiceId = await createService(made.projectId, PG_NAME, { image: PG_IMAGE });
+    });
+
+    await run('volume', 'Attaching its disk', async () => {
+      made.volumeId = await createVolume(made.projectId, made.environmentId,
+        made.pgServiceId, PG_MOUNT);
+    });
+
+    await run('database-url', 'Waiting for the database to publish its address', async () => {
+      await until('the database to publish DATABASE_URL', async () => {
+        const vars = await readVariables(made.projectId, made.environmentId, made.pgServiceId);
+        return vars && vars.DATABASE_URL ? true : false;
+      }, { everyMs: o.pollMs || 5000, timeoutMs: o.dbTimeoutMs || 180000,
+        wait: o.wait, now: o.now });
+    });
+
+    await run('app', 'Creating the app service', async () => {
+      /* Variables are set at creation so the FIRST build already has its
+         secrets. Creating it bare and setting them afterwards costs a failed
+         boot — the app refuses to migrate without them, and in production it
+         exits rather than serve on a half-built schema, which is correct
+         behaviour that would look like a provisioning bug. */
+      made.appServiceId = await createService(made.projectId, o.serviceName || 'kashikeyopos',
+        { repo: REPO() }, appVariables(secrets));
+    });
+
+    await run('domain', 'Generating its address', async () => {
+      made.domain = await createDomain(made.appServiceId, made.environmentId, 8080);
+    });
+
+    await run('settings', 'Setting the health check and the public URL', async () => {
+      const instance = { healthcheckPath: '/readyz', healthcheckTimeout: 300 };
+      if (REGION()) instance.region = REGION();
+      await updateInstance(made.appServiceId, made.environmentId, instance);
+      /* PUBLIC_URL is the ONE place the build learns its own hostname —
+         nothing else in it spells a domain — so it cannot be set until the
+         domain exists. Setting it triggers the deploy we actually want. */
+      await setVariables(made.projectId, made.environmentId, made.appServiceId,
+        { PUBLIC_URL: 'https://' + made.domain }, true);
+      await deploy(made.appServiceId, made.environmentId);
+    });
+
+    await run('live', 'Waiting for the first deploy', async () => {
+      await until('the first deploy to succeed', async () => {
+        const d = await latestDeployment(made.projectId, made.appServiceId, made.environmentId);
+        if (!d) return false;
+        if (d.status === 'SUCCESS') return true;
+        if (d.status === 'FAILED' || d.status === 'CRASHED') {
+          throw new Error('the first deploy ' + String(d.status).toLowerCase()
+            + ' — read its build log in Railway before retrying');
+        }
+        return false;
+      }, { everyMs: o.pollMs || 5000, timeoutMs: o.deployTimeoutMs || 600000,
+        wait: o.wait, now: o.now });
+    });
+
+    return {
+      ok: true,
+      made: made,
+      steps: steps,
+      secrets: secrets,
+      baseUrl: 'https://' + made.domain
+    };
+  } catch (e) {
+    /* Rollback is offered, never taken silently, and ONLY for a project this
+       run created. `rollback: true` is a decision a person made on a screen
+       that told them what would be destroyed. */
+    if (o.rollback && made.ourProject && made.projectId) {
+      try {
+        await deleteProject(made.projectId);
+        e.rolledBack = true;
+      } catch (e2) {
+        e.rollbackError = e2.message;
+      }
+    }
+    throw e;
+  }
+}
+
+module.exports = {
+  ready, provision, mintSecrets, appVariables,
+  // exported for the tests, which exercise composition rather than the network
+  _internal: { gql, until, createProject, createService, createVolume,
+    setVariables, readVariables, updateInstance, createDomain, deploy,
+    latestDeployment, deleteProject, API, PG_IMAGE, PG_MOUNT, PG_NAME }
+};

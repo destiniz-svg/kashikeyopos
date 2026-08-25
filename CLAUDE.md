@@ -49,6 +49,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        038 a PIN hash never leaves the database
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
+panel/railway.js       Provision: it builds the whole install, or says why it cannot
 site/                  the public website — landing, docs, legal, store signup
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
@@ -2003,6 +2004,60 @@ seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.
 Trial enforcement is a person's decision, not automated — the panel monitors.
 
+### Provisioning is one button, and it never handles the password
+
+Standing a store up was six manual acts before the panel was even opened —
+create a service, create a database, generate three secrets and two keys, set
+nine variables, point a domain — and then two of those values were typed BACK
+into Mission Control by hand, where nothing compared them with what was
+actually set. A secret typed twice is a secret that diverges, and the only
+symptom is a customer refused at step one holding a code the panel swears is
+right.
+
+`panel/railway.js` does it instead, over Railway's GraphQL API with the
+platform's built-in `fetch` — so the two-runtime-dependency rule survives. Set
+`RAILWAY_API_TOKEN` and `INSTALL_REPO` on the panel and **Provision** creates
+the project, the Postgres and its disk, the app service, its address and its
+`/readyz` health check, mints every secret, waits for the first deploy, then
+records the install and emails the customer. Unset, the automated path is OFF
+and the panel names the missing variable rather than greying out a control for
+an unstated reason; the manual sheet stays the whole feature underneath,
+because an install built on somebody else's infrastructure has to stay
+registrable.
+
+Four properties, and each is the answer to a way this class of automation
+usually goes wrong:
+
+- **The token never reaches a browser.** It can create and destroy
+  infrastructure, so it is held exactly like `PLATFORM_KEY` already is —
+  server-side, never rendered, never in a response.
+- **It never handles the database password.** The app's `DATABASE_URL` is set
+  to the reference `${{Postgres.DATABASE_URL}}`, resolved by Railway at deploy
+  time. The panel never reads it and never has to know how their Postgres image
+  composed it. The parts most likely to be got wrong are the parts it declines
+  to do — which is also why the Postgres image and mount path were read off a
+  running one rather than reconstructed from memory.
+- **Progress is recorded BEFORE it is made.** Every step writes the install row
+  first, so a panel that dies mid-run leaves a row saying how far it got and
+  every id it created. The expensive failure here is not an error, it is an
+  orphan: a service nobody knows about bills quietly for months, where a
+  half-finished row is on the dashboard within thirty seconds.
+- **A partial run is named, never rounded up.** The row carries which step
+  failed, in the outlet's own words, and what exists. Rollback deletes only a
+  project THAT RUN created, and only when a person asked — deleting a
+  pre-existing project because our own later step failed is how automation
+  earns its reputation.
+
+`test/provision.test.js` drives all of it against a stubbed transport: the
+order (the database exists before the app that references it), the payloads
+(the app is created WITH its secrets, because it refuses to migrate without
+them and would look like a provisioning bug), `PUBLIC_URL` set only after the
+domain exists, the poll that waits for the database to publish its address, a
+GraphQL refusal answered 200 being an error rather than a success, and every
+rollback branch. That proves composition and decision — never connectivity.
+**The live call path is unverified until it is run once**, and DEPLOYMENT.md
+says so rather than letting a green suite imply otherwise.
+
 ### A trial the customer can see, and only the seller can move
 
 The commercial state of a customer used to live ONLY in the seller's registry
@@ -2275,7 +2330,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 321 tests
+npm test                          # 336 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
