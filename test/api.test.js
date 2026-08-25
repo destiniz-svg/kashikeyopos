@@ -2425,6 +2425,46 @@ test('the till and the server expand one recipe to one answer', opts, async () =
     + JSON.stringify(till) + '\n  server ' + JSON.stringify(srv));
 });
 
+/* ═══ AN OUTLET'S OWN PRICE, AND THE TILL THAT NEVER SAW IT ═══════════════
+   Two shapes with nothing between them. The bootstrap publishes this outlet's
+   overrides keyed by ITEM — a bootstrap is one outlet's, so there is nothing
+   else to key them by. The terminal keys them by OUTLET and then by item, and
+   holds a bare number. applyLive assigned one straight onto the other, so
+   state.priceOv[outletId] was whatever row happened to sit under a key shaped
+   like an outlet id, and priceOv() came back undefined for every dish on the
+   menu. A price the office set was never the price the till charged, and the
+   only symptom was a margin nobody could account for.
+
+   Run here rather than reasoned about: a real override row, this outlet's real
+   bootstrap, and the SHIPPED terminal in a vm asked what it would charge. */
+test('a price the outlet set is the price the till charges', opts, async () => {
+  const HARNESS = require('./harness');
+  const boot0 = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const dish = (boot0.body.kpos.MENU || [])[0];
+  assert.ok(dish && dish.price > 0, 'the fixture outlet has a priced dish');
+  const cut = Math.round(Number(dish.price) / 2);
+  assert.notStrictEqual(cut, Number(dish.price), 'and the override is a different figure');
+
+  await db.withOutlet({ outletId, rank: 5, actor: null }, async (c) => {
+    const who = await c.query('SELECT id FROM chain.staff LIMIT 1');
+    await c.query('INSERT INTO price_override (item_id, price, reason, by_staff)'
+      + ' VALUES ($1,$2,$3,$4)', [dish.id, cut, 'api test', who.rows[0].id]);
+  });
+
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(boot.status, 200);
+  assert.ok(boot.body.state.priceOv[dish.id], 'the outlet publishes it, keyed by item');
+
+  const F = HARNESS.makeInstance({ kpos: boot.body.kpos, raw: boot.body.raw || {},
+    outletId: outletId });
+  F.state.outletId = outletId;
+  assert.strictEqual(F.priceOv(dish.id), undefined, 'a cold terminal holds none');
+  F.applyLive(boot.body.state);
+  assert.strictEqual(F.priceOv(dish.id), cut, 'and reads the outlet\'s answer after one poll');
+  assert.strictEqual(F.menuPrice(dish), cut,
+    'so the figure the till would charge is the one the outlet set, not the menu price');
+});
+
 test('a tip is held for the team, not booked as rounding', opts, async () => {
   // The guest hands over 100 for a 90 bill: the payment carries the whole
   // note, the bill total stays 90, and the 10 is a liability from the moment

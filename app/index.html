@@ -2681,7 +2681,7 @@ class Component extends DCLogic {
     if (live.register) patch.register = live.register;
     if (live.counts) patch.counts = live.counts;
     if (live.res) patch.res = live.res;
-    if (live.priceOv) patch.priceOv = live.priceOv;
+    if (live.priceOv) patch.priceOv = this.foldPriceOv(live.priceOv);
     if (live.periods) patch.periods = live.periods;
     if (live.bank) patch.bank = live.bank;
     if (live.bankOpen !== undefined) patch.bankOpen = live.bankOpen;
@@ -3234,12 +3234,42 @@ class Component extends DCLogic {
     this.setState({ tickets: t });
   }
 
-  // The chain sets one price; an outlet may hold its own. A resort-island unit
-  // and a city cafe do not charge the same for a flat white, and forcing one
-  // list is how a chain ends up with a second, unmanaged menu on the side.
+  // The menu carries one price; an outlet may hold its own on top of it. A
+  // resort-island unit and a city cafe do not charge the same for a flat white,
+  // and forcing one list is how a group ends up with a second, unmanaged menu.
   // TGST outlets still uplift the price they hold, since that is a tax band and
   // not a pricing decision.
   priceOv(id) { return ((this.state.priceOv || {})[this.state.outletId] || {})[id]; }
+  /* AN OUTLET'S OWN PRICES HAD NEVER REACHED A TILL. Two shapes, and nothing
+     between them. The bootstrap publishes this outlet's overrides keyed by item
+     — { "d1": { price, why, at, by } } — because a bootstrap is one outlet's.
+     The terminal keys them by OUTLET and then by item, holding a bare number.
+     applyLive assigned one onto the other, so state.priceOv[outletId] was
+     whatever row happened to be filed under a key shaped like an outlet id, and
+     priceOv(id) came back undefined for every dish. Verified against a live
+     outlet: price_override said 99.00 for Reef Fish Curry, the terminal read
+     nothing, and the till charged the 145.00 on the item.
+
+     Both halves cost money. Repricing on ANOTHER till never arrived here. And
+     the assignment replaced this terminal's own map wholesale, so a price set
+     on this device reverted at the next poll — the op had reached the outlet,
+     so the decision survived; the price being charged did not.
+
+     One shape now, and the outlet's is the one that wins — same rule as a
+     measured yield and a saved batch. What this device set stays only until the
+     outlet publishes its own answer for that item. */
+  foldPriceOv(pub) {
+    const out = Object.assign({}, this.state.priceOv || {});
+    const mine = Object.assign({}, out[this.state.outletId] || {});
+    Object.keys(pub || {}).forEach((item) => {
+      const row = pub[item];
+      // A number is already folded (an older persisted session); a row is the
+      // outlet's published answer and replaces whatever this device was holding.
+      mine[item] = typeof row === "number" ? row : Number(row && row.price);
+    });
+    out[this.state.outletId] = mine;
+    return out;
+  }
   setPriceOv(id, val, name) {
     const all = Object.assign({}, this.state.priceOv || {});
     const mine = Object.assign({}, all[this.state.outletId] || {});
@@ -3247,9 +3277,9 @@ class Component extends DCLogic {
     all[this.state.outletId] = mine;
     this.setState({ priceOv: all, modal: null });
     const o = this.outlet();
-    this.queue("price_override", name + " · " + o.code + " · " + (val === null ? "back to chain price" : MVRc(val)) + " · by " + this.me(), "menu",
+    this.queue("price_override", name + " · " + o.code + " · " + (val === null ? "back to the menu price" : MVRc(val)) + " · by " + this.me(), "menu",
       val === null ? null : { item: id, price: val, reason: "Outlet price override" });
-    this.toast(val === null ? name + " follows the chain price again" : name + " is " + MVRc(val) + " at " + o.code);
+    this.toast(val === null ? name + " follows the menu price again" : name + " is " + MVRc(val) + " at " + o.code);
   }
   // No single promo may take more than this. The QR payload is a client-supplied
   // number, so it is clamped where it is USED rather than where it arrives —
@@ -10032,7 +10062,7 @@ class Component extends DCLogic {
       guideTitle: "Adding a person", guide: ["Give them a name, a role and a four-digit PIN", "They change that PIN themselves from Settings at their first shift", "The role carries a rank, and the rank is what the server enforces", "Scope limits them to one outlet or the whole chain"],
       actions: [{ label: "Add someone", primary: true, go: () => this.openForm("user") }],
       notes: [
-        ["Who grants access", "Only a role with edit rights on this module can change another person's role, outlet or status — Chain Admin and Super Admin. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change lands on the audit trail as a permission_change, naming both people, written by the server in the same transaction as the change itself."],
+        ["Who grants access", "Changing another person's role, outlet or status is rank 4 and above — Administrator and Owner — and the server checks the rank, not the role name. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change lands on the audit trail as a permission_change, naming both people, written by the server in the same transaction as the change itself."],
         ["What a grant actually opens", "Role decides which modules appear. The person's home outlet plus any additional outlets decide which rows come back inside them. A cashier at one outlet cannot switch to another, and the outlet switcher only lists what they hold — but the switch itself is guarded again, because a list is not a permission."],
         ["Covering two sites", "An area manager gets extra outlet codes rather than a group-scope role. Promoting them to group scope to cover a second site would hand them the whole group, which is the most common over-grant in hospitality."],
         ["What your own sign-in carries", "You are signed in as " + this.me() + " · " + (this.roleFor(this.state.roleKey).label || this.state.roleKey) + " · " + this.rankName() + " rank. " + (this.RANKS().find((x) => x.n === this.rank()) || {}).what + ". Anything above that rank is refused with the reason rather than hidden, so you know whether to ask someone or whether it simply is not a thing this system does."],
@@ -16605,7 +16635,14 @@ class Component extends DCLogic {
               ? "This device has been enrolled and is waiting for somebody to key its code. The code expires; enrol it again for a fresh one."
               : drift
                 ? "A terminal a version behind can be writing with an older tax table or recipe cache. Version drift inside one outlet is what makes two tills disagree about the same dish."
-                : "device_id is bound into the token, so a ticket can only be inserted by the device that signed it \u2014 and a deregistered device is refused at the keypad.",
+                /* This said a ticket "can only be inserted by the device that
+                   signed it". Nothing enforces that: the outlet schema has no
+                   RLS, and no insert anywhere is gated on the device. What
+                   device_id actually buys is ATTRIBUTION — it is stamped on the
+                   ticket, the sale, the payment and every audit row, so a write
+                   has a terminal's name on it. The revocation half is real and
+                   is checked on every authenticated request. */
+                : "device_id rides in the token and is stamped on the ticket, the sale, the payment and the trail, so every write has this terminal's name on it \u2014 and a deregistered device is refused at the keypad and on every request after it.",
           go: d.self
             ? () => this.runDiagnostics()
             : () => this.setState({ modal: { kind: "actions", title: d.label || d.id, sub: d.kind + " \u00b7 " + this.outlet().name, acts: [
