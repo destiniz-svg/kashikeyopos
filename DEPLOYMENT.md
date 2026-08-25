@@ -468,7 +468,9 @@ against a stubbed transport, and the whole sequence has been driven end to end
 against a stand-in API. That proves what is sent and what is decided, never
 that Railway accepts all of it. Two calls remain unexercised against the real
 platform — `serviceCreate` from a GitHub repo carrying inline variables, and
-`volumeCreate` — so make the first real run a disposable one.
+`volumeCreate` — so make the first real run a disposable one. Both are
+exercised now: two live runs, and the second one is why the app is not built
+until the database's deployment reports live.
 
 ### Provision, by hand
 

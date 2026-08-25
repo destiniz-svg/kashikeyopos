@@ -2054,12 +2054,27 @@ usually goes wrong:
   project THAT RUN created, and only when a person asked — deleting a
   pre-existing project because our own later step failed is how automation
   earns its reputation.
+- **The database is up before the app that dials it exists.** The second live
+  run failed here, and the first passed only by luck. Once the wiring moved to
+  creation, the step called "checking the database is addressable" was reading
+  `DATABASE_URL` back off the database service — a variable this module had set
+  four seconds earlier. It passed on the first ask, always, by construction:
+  the label made a claim the check could not make, which is the same defect
+  class as a control that lies. What has to be true is that
+  `postgres.railway.internal` RESOLVES, and that happens when the database's own
+  deployment goes live, so the DEPLOYMENT is what is waited for — a fact the
+  platform owns rather than one we wrote. The first install survived because its
+  app image had to be built from source and the build outlasted the database's
+  start; the second found a warm build cache, started three seconds early,
+  crash-looped four times on `ENOTFOUND` and had given up before the database
+  was ready. A race whose outcome the build cache decides is not a race to leave
+  in.
 
 `test/provision.test.js` drives all of it against a stubbed transport: the
 order (the database exists before the app that references it), the payloads
 (the app is created WITH its secrets, because it refuses to migrate without
 them and would look like a provisioning bug), `PUBLIC_URL` set only after the
-domain exists, the poll that waits for the database to publish its address, a
+domain exists, the wait for the database's own deployment to go live, a
 GraphQL refusal answered 200 being an error rather than a success, and every
 rollback branch. That proves composition and decision — never connectivity.
 **The live call path is unverified until it is run once**, and DEPLOYMENT.md
@@ -2388,6 +2403,19 @@ Browser checks: Chromium at `/opt/pw-browsers/chromium`, Playwright at
 See `DEPLOYMENT.md`. Short version: Railway builds the Dockerfile, `/readyz` is
 the health check, migrations run at boot inside the process, and **production
 exits rather than serving on a schema it could not finish migrating**.
+
+**A database that has not come up yet is not a broken schema.** That second
+failed install printed `MIGRATION FAILED — the schema is not what this build
+expects: getaddrinfo ENOTFOUND postgres.railway.internal`, which sends whoever
+reads it to look at migrations that were fine. Worse than the wording, the
+process exited on it at once: correct for a schema it could not finish, and for
+a database thirty seconds behind it is a crash loop that outlives a platform's
+restart budget, leaving the app down after the database comes up. That is not
+only a provisioning race — it is every Postgres restart and every failover on a
+live install. Boot now waits for the database separately and says so
+(`DB_WAIT_MS`, 90s), and only what is left is a migration failure. Proved by
+starting the app against a stopped cluster, starting the cluster, and watching
+it migrate from nothing and answer `/readyz` 200 without a restart.
 
 Database TLS: set `PGSSL_CA` (PEM) or `PGSSLROOTCERT` (path) and the server's
 certificate is **verified**; `PGSSL=verify` refuses to boot without a pin, so a

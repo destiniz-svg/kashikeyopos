@@ -328,8 +328,49 @@ async function pruneHistory() {
   } catch (e) { console.error('[retention] ' + e.message); }
 }
 
+/* A database that has not come up yet is not a broken schema, and saying so is
+   not a detail: the second live install printed "the schema is not what this
+   build expects: getaddrinfo ENOTFOUND postgres.railway.internal" — a sentence
+   that sends whoever reads it to look at migrations, which were fine. The
+   database simply was not there yet.
+
+   Worse than the wording, the process exited on it immediately. In production
+   that is correct for a schema it could not finish; for a database that is
+   thirty seconds behind it is a crash loop that a platform's restart budget
+   outlives, and the app stays down after the database comes up. That is not
+   only a provisioning race — it is every Postgres restart and every failover on
+   a live install.
+
+   So connectivity is waited for, separately and out loud, and only what is left
+   is a migration failure. Bounded, because waiting for ever is its own outage
+   with no message. */
+async function awaitDatabase() {
+  const limit = Number(process.env.DB_WAIT_MS || 90000);
+  const started = Date.now();
+  let said = false;
+  for (;;) {
+    try { await owner().query('SELECT 1'); return true; }
+    catch (e) {
+      if (Date.now() - started > limit) {
+        console.error('[boot] NO DATABASE — could not reach it in '
+          + Math.round(limit / 1000) + 's: ' + e.message);
+        return false;
+      }
+      if (!said) {
+        console.log('[boot] waiting for the database: ' + e.message);
+        said = true;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+}
+
 async function boot() {
   if (process.env.SKIP_MIGRATE !== '1') {
+    if (!(await awaitDatabase())) {
+      bootError = 'the database is unreachable';
+      if (process.env.NODE_ENV === 'production') process.exit(1);
+    }
     try { await migrate(); }
     catch (e) {
       // Production refuses to go live on a schema it could not finish. Every

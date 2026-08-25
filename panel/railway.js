@@ -405,14 +405,35 @@ async function provision(opts) {
         made.pgServiceId, PG_MOUNT);
     });
 
-    await run('database-url', 'Checking the database is addressable', async () => {
-      /* Kept after the wiring moved to creation, because it is now a CHECK
-         rather than a wait: it asks the outlet whether what we set actually
-         landed, and refuses to build an app against a database that cannot be
-         reached. It passes on the first ask when all is well. */
-      await until('the database to report DATABASE_URL', async () => {
-        const vars = await readVariables(made.projectId, made.environmentId, made.pgServiceId);
-        return vars && vars.DATABASE_URL ? true : false;
+    await run('database-url', 'Waiting for the database to answer', async () => {
+      /* This step used to read DATABASE_URL back off the database service and
+         call that "addressable". Once the wiring moved to creation, it was
+         reading back a variable WE had set four seconds earlier: it passed on
+         the first ask, always, by construction, and the label was a claim the
+         check could not make.
+
+         What it has to establish is that `postgres.railway.internal` RESOLVES,
+         because the app dials it on its very first boot and this build exits
+         rather than serve on a schema it could not migrate. That name is
+         registered when the database's own deployment goes live, so the
+         deployment is what to wait for — a fact the platform owns rather than
+         one we wrote.
+
+         Skipping it is what failed the second live install. The first passed
+         only because its app image had to be built from source, which took
+         longer than the database took to start; the second found a warm build
+         cache, started three seconds early, crash-looped four times on
+         ENOTFOUND and had given up before the database was up. A race the
+         build cache decides is not a race to leave in. */
+      await until('the database to come up', async () => {
+        const d = await latestDeployment(made.projectId, made.pgServiceId, made.environmentId);
+        if (!d) return false;
+        if (d.status === 'SUCCESS') return true;
+        if (d.status === 'FAILED' || d.status === 'CRASHED') {
+          throw new Error('the database deploy ' + String(d.status).toLowerCase()
+            + ' — read its log in Railway before retrying');
+        }
+        return false;
       }, { everyMs: o.pollMs || 5000, timeoutMs: o.dbTimeoutMs || 180000,
         wait: o.wait, now: o.now });
     });

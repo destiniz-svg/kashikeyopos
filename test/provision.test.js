@@ -32,7 +32,8 @@ function stub(script) {
     calls.push({ op: op, vars: body.variables, auth: opts.headers.authorization, url: url });
     const step = script[op];
     if (step === undefined) throw new Error('unscripted call: ' + op);
-    const answer = typeof step === 'function' ? step(calls.filter((c) => c.op === op).length) : step;
+    const answer = typeof step === 'function'
+      ? step(calls.filter((c) => c.op === op).length, body.variables) : step;
     if (answer && answer.__errors) {
       return { status: 200, ok: true, headers: new Map(),
         text: async () => JSON.stringify({ errors: answer.__errors }) };
@@ -290,20 +291,47 @@ test('the health check is /readyz, and the public URL waits for the domain', () 
     } finally { s.restore(); }
   }));
 
-test('it waits for the database to publish its address before building the app', () =>
+test('it waits for the database to be up before building the app against it', () =>
   withEnv(ENV, async () => {
+    /* The check this replaced read DATABASE_URL back off the database service
+       and called that "addressable" — a variable this module had set four
+       seconds earlier, so it passed on the first ask by construction. What has
+       to be true is that the database's private hostname RESOLVES, and that
+       happens when its deployment goes live. */
     let asked = 0;
     const s = stub(happy({
-      // Empty twice, then wired — the ordinary case, since a fresh Postgres
-      // takes a moment to compose DATABASE_URL.
-      variables: () => (++asked < 3 ? { variables: {} } : { variables: { DATABASE_URL: 'x' } })
+      deployments: (n, v) => {
+        const app = v.input.serviceId === 'svc_app';
+        if (!app) asked++;
+        const status = app || asked >= 3 ? 'SUCCESS' : 'BUILDING';
+        return { deployments: { edges: [{ node: { id: 'dep_1', status: status } }] } };
+      }
     }));
     try {
       await RW.provision(Object.assign({ name: 'Store' }, NOWAIT));
       assert.strictEqual(asked, 3, 'it polled rather than assumed');
       const firstApp = s.calls.findIndex((c) => c.op === 'serviceCreate' && c.vars.input.source.repo);
-      const lastVar = s.calls.map((c) => c.op).lastIndexOf('variables');
-      assert.ok(lastVar < firstApp, 'the app is not built until the database answers');
+      const lastPg = s.calls.map((c) => (c.op === 'deployments'
+        && c.vars.input.serviceId === 'svc_pg') ? 1 : 0).lastIndexOf(1);
+      assert.ok(lastPg < firstApp, 'the app is not built until the database is up');
+    } finally { s.restore(); }
+  }));
+
+test('a database that never comes up fails there, not on the app that needed it', () =>
+  withEnv(ENV, async () => {
+    const s = stub(happy({
+      deployments: { deployments: { edges: [{ node: { id: 'd', status: 'FAILED' } }] } }
+    }));
+    try {
+      await assert.rejects(
+        () => RW.provision(Object.assign({ name: 'X' }, NOWAIT)),
+        (e) => {
+          assert.strictEqual(e.failedAt, 'database-url');
+          assert.match(e.message, /database deploy failed/);
+          assert.strictEqual(e.made.appServiceId, null,
+            'and nothing was built against a database that is not there');
+          return true;
+        });
     } finally { s.restore(); }
   }));
 
@@ -354,7 +382,8 @@ test('a bad token is named as a bad token', () =>
 test('a failed first deploy stops the run rather than waiting out the clock', () =>
   withEnv(ENV, async () => {
     const s = stub(happy({
-      deployments: { deployments: { edges: [{ node: { id: 'd', status: 'FAILED' } }] } }
+      deployments: (n, v) => ({ deployments: { edges: [{ node: { id: 'd',
+        status: v.input.serviceId === 'svc_app' ? 'FAILED' : 'SUCCESS' } }] } })
     }));
     try {
       await assert.rejects(
