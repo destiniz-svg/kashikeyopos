@@ -1091,12 +1091,13 @@ retired address is the last one that device makes.
 
 ### The rank the server issued wins
 
-`app/index.html`'s own `RANKMAP()` does not agree with `src/auth.js`: it reads
-`ChainAdmin` as 5 where the ladder says 4, and `OutletManager` as 4 where it
-says 3. `rank()` now prefers `state.session.rank` — the rank the server put in
-the session — and falls back to the map only for a terminal that has not signed
-in against a server yet. Gating on the map would offer an admin controls the API
-then refuses, and a button that 403s is worse than no button.
+`rank()` prefers `state.session.rank` — the rank the server put in the session —
+and falls back to `RANKMAP()` only for a terminal that has not signed in against
+a server yet. `RANKMAP()` used to be its own opinion, disagreeing with
+`src/auth.js` on four of eight keys; it is the server's ladder now, key for key,
+because it is not only read but WRITTEN: granting a role sends this number as
+`chain.staff.rank`. See the copy sweep below for what that cost while it was
+wrong.
 
 ## Both phone apps are one product, in three shells
 
@@ -2075,6 +2076,112 @@ state and every rail screen; it does not open every modal, sheet and form, and
 no screen reader has been driven over any of it. `site/` and `panel/` are
 separate services on their own ports and are not in this suite.
 
+## The copy sweep, and the four things it found under the copy
+
+The eleven lying controls were found BY ACCIDENT — by opening a screen and
+reading it — and the finding rate had not dropped, which is the argument for
+doing it systematically instead. Every user-visible string of 25 characters or
+more was extracted from `app/index.html`, the ones asserting something checkable
+were classified by what they claim (enforced · server-side · persisted · sent ·
+acted · automatic · a figure), and each class was asked of a live database or of
+the source that would have to keep the promise.
+
+Most of what came back was stale vocabulary from the app that was deleted, and
+it is now refused statically. But four were behaviour, and each was invisible
+from the screen it broke.
+
+**A grant wrote the wrong ladder.** There are two rank tables in the terminal
+and the comment above them explains, correctly, why: `RANKMAP` is the CAPABILITY
+ladder (what this rank may do) and `ROLERANK` is SENIORITY (who may act on
+whom), and the seniority one must stay strictly ordered where the capability one
+groups roles together. What nobody noticed is that Users & Roles sent the
+SENIORITY number as `chain.staff.rank` — and there a Cashier sits at 1, because
+a cashier is the most junior person on the floor. So a cashier created on that
+screen landed at rank 1, which is **Kitchen**, and was refused from the Till rung
+the job is made of: `/sales` and the member invitation both 403 "Rank 2 required
+— Till or above". A kitchen account came out at rank 2 and could do both. Proved
+end to end against a live outlet, before and after.
+
+The capability table was also its own opinion, disagreeing with `src/auth.js` on
+four of eight keys. It is the server's ladder now, key for key, and
+`test/handle.test.js` asserts that against `ROLE_KEY_BY_RANK` rather than against
+a copy of it. Seniority is unchanged and stays the terminal's alone: it answers a
+question the server never asks.
+
+**A refused write was deleted by the control that said it had won.** Nothing in
+this build detects a write-write conflict: the server applies a batch in the
+operator's own order and answers a refusal with a REASON. `state.conflicts` was
+fed from those refusals, and a "Replay conflict" screen then told the operator a
+story about them — that another terminal had written the same order line first,
+with a clock value, a quantity and a time that were **literals**, identical on
+every install and every refusal, printed beside their own write as the thing it
+lost to. Then "Keep mine" marked the outbox row `sent`, re-pushed NOTHING, and
+toasted "local write replayed over the server copy". A refused sale, payment or
+credit charge, gone, under a green toast.
+
+The lane that works was already here for the eighth refusal — `parkedActions()`,
+which names the outlet's own reason and offers the two decisions that are real:
+back into the replay with a fresh allowance, or out of the outbox with an
+`op_discarded` audit op naming what was given up. A refusal runs from the first
+one now, and `refusedOps()` is the one derivation of what was refused.
+
+**An outlet's own prices had never reached a till.** Two shapes with nothing
+between them. The bootstrap publishes this outlet's overrides keyed by ITEM —
+`{ "d1": { price, why, at, by } }` — because a bootstrap is one outlet's, so
+there is nothing else to key them by. The terminal keys them by OUTLET and then
+by item, holding a bare number. `applyLive` assigned one straight onto the other,
+so `state.priceOv[outletId]` was whatever row happened to sit under a key shaped
+like an outlet id, and `priceOv()` came back `undefined` for every dish.
+
+Both halves cost money: a price set on another till never arrived here, and the
+assignment replaced this terminal's own map wholesale, so a price set on THIS
+device reverted at the next poll — the op had reached the outlet, so the decision
+survived, but the figure being charged did not. Verified against a live outlet
+with `price_override` at 99.00 against a menu price of 145.00, and pinned in
+`test/api.test.js` by feeding a real override row and this outlet's real
+bootstrap to the SHIPPED terminal in a vm and asking what it would charge.
+`foldPriceOv()` is the one shape now, and the outlet's answer wins — the same
+holding-pen rule a measured yield and a saved batch already follow.
+
+**Switching outlet showed the other outlet's name over this one's data.** A
+session names ONE outlet: the token carries it, the API client puts it in every
+path, and the server refuses any other with `outlet mismatch`. `goOutlet()`
+changed `state.outletId` and nothing else, so every header, fascia and label
+repainted with outlet B while the menu, the tickets and the takings stayed
+outlet A's — worse than a refusal, because nothing on screen said so. There is no
+endpoint that moves a session (`/api/auth/switch` is a hand-over at the same
+outlet), so the way through is named: sign out, sign in there.
+
+The role catalogue was the same defect one level up. It carried `scope:
+"platform"` and `scope: "chain"` — a platform above the install and a chain of
+them — and `scopedOutlets()` reads that field, so "anything but outlet" quietly
+handed three roles every outlet in the switcher. Scope is `outlet` or `group`
+now, the two values `src/auth.js` honours, and only the owner holds `group`,
+because rank 5 is the only rank the estate read is granted to.
+
+And the smaller ones, each the same shape:
+
+- **"Schedule email"** on Reports described a pack "delivered 06:00 local to the
+  outlet manager" and scheduling "set per report and per recipient", in the
+  present tense. There is no scheduler (the one repeating job in `server.js` is
+  `prune_history`), no recipient anywhere, and nothing that renders a pack to a
+  message. The cadence column is what each report is worth READING at, and it
+  says so; the export beside it is the delivery.
+- **"device_id is bound into the token, so a ticket can only be inserted by the
+  device that signed it"** — nothing enforces that. The outlet schema has no RLS
+  and no insert anywhere is gated on the device. What `device_id` buys is
+  ATTRIBUTION: it is stamped on the ticket, the sale, the payment and the trail.
+  The revocation half of that sentence was true and stays.
+- **"the chain price is untouched"** — there is no chain price. There is the menu
+  price and this outlet's override on top of it.
+- **"Only a role with edit rights on this module can change another person's
+  role — Chain Admin and Super Admin"** — the gate is rank 4, and the server
+  reads the rank, not the role name.
+
+`test/wiring.test.js` pins the vocabulary statically across all five app pages
+and both shared modules, so a screen cannot describe the deleted app again
+without a test naming the word and why it is wrong.
+
 ## The seven small ones
 
 Each was cheap, invisible from the screen it affected, and pinned in
@@ -2118,7 +2225,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 296 tests
+npm test                          # 319 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
