@@ -2520,6 +2520,30 @@ nothing. A holder that dies releases it, so a killed container cannot wedge the
 next boot. `test/migrate.test.js` runs the real runner twice at once against a
 cold database; without the lock it fails the way the install did.
 
+**An install that already exists is ADOPTED, and the order is not negotiable.**
+`npm run adopt -- --db <database> --name "<Business>"` copies an old install
+into the registry, dry-run by default, `--apply` to do it. It must run BEFORE
+the new code reaches that install: migration 011 is a tombstone that drops
+`chain.account`, so a boot that gets there first destroys the only record of
+who owns the business. An install whose account tables have already gone is
+reported as a loss rather than adopted quietly.
+
+Every install allocated outlets from 1, so two installs both have an outlet 1
+and a session token would name two stores. The first adopted keeps its ids; a
+later collision is REMAPPED — the row, every reference, the schema and the login
+role, in one transaction. The references are discovered from the catalog rather
+than listed, because two of them are not called `outlet_id` at all
+(`chain.member.home_outlet`, `chain.outlet.parent_id`) and a list is something
+somebody has to remember to update. The foreign keys come off and go back on
+from `pg_get_constraintdef`, so a key a later migration added is replayed
+without anybody having remembered it. The new id has to be free three ways —
+unclaimed in the registry, no such schema in that database, no such role in the
+CLUSTER — because a role is cluster-wide and colliding with one leaves a store
+that cannot sign in.
+
+A handle already held by somebody else is NAMED, never quietly changed: they
+printed it on their table cards, so it is a conversation rather than a fixup.
+
 **Every request opens the right database, and that was not free.**
 `poolFor()` used the connection's default, so before this every outlet request
 went to one database whatever customer it was for — the tenancy boundary

@@ -90,6 +90,48 @@ that does not resolve is not.
 There is no seed data and no demo. A new install has no outlets, no dishes, no
 staff and no PIN until onboarding writes them.
 
+## Moving a live install onto the registry
+
+**Do this BEFORE the new code reaches that install.** Migration 011 is now a
+tombstone: it drops `chain.account`, `chain.account_identity` and
+`chain.account_outlet`, because the account plane moved to the registry. If the
+app boots there first, those tables are gone and with them the only record of
+who owns the business. `npm run adopt` copies them out while they are still
+there, and refuses to pretend otherwise if it arrives too late.
+
+```bash
+# 1 · the registry, once for the whole estate
+createdb kashikeyo_control
+CONTROL_DB=kashikeyo_control npm run migrate        # migrates the registry, then the fleet
+
+# 2 · look at what adoption WOULD do. This is the default; it writes nothing.
+CONTROL_DB=kashikeyo_control npm run adopt -- --db kashikeyo_prod --name "Seaside Cafe"
+
+# 3 · do it
+CONTROL_DB=kashikeyo_control npm run adopt -- --db kashikeyo_prod --name "Seaside Cafe" --apply
+
+# 4 · NOW set CONTROL_DB on the service and deploy. Its next boot migrates the
+#     business set, and 011 drops the account tables step 3 already carried out.
+```
+
+Read the dry run before running step 3. Three things in it are worth stopping
+for:
+
+- **`REMAP outlet N -> M`.** Every install allocated outlets from 1, so two
+  installs both have an outlet 1 and a session token would name two stores. The
+  first install adopted keeps its ids; a later collision moves — the row, every
+  reference to it, the schema and the login role, in one transaction. Nothing
+  about the store changes except the number, but its terminals hold tokens
+  naming the old one and will have to sign in again.
+- **`! handle "x" cannot be claimed`.** Somebody else holds that address. It is
+  never quietly changed, because the customer printed it on their table cards;
+  settle it before that store goes live or its QR codes point at the wrong menu.
+- **`accounts: GONE from this install`.** Step 4 happened before step 3. The
+  owner will have to sign up again and be linked to the business by hand.
+
+`npm run adopt` is idempotent: running it twice reports what is already
+registered and changes nothing.
+
 ## Every deploy after that
 
 `npm test` must pass **against a cold database**. CI does exactly this
