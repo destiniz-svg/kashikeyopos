@@ -1641,3 +1641,34 @@ test('Mission Control pushes the licence and hands the install over', () => {
     'through the app\'s own email seam — a second transport is a second place'
     + ' for a send to fail silently');
 });
+
+/* An unresolved platform reference is not a configuration. Both services take
+   the transport from the environment, and on Railway a variable may be written
+   as a reference to another service — the LITERAL survives when the service
+   name inside the braces is wrong, non-empty and truthy. Left alone that reads
+   as configured, and every send comes back a 401 that blames the key when the
+   fault is the name. */
+test('a dangling platform reference is named, not sent with', async () => {
+  const EMAIL = require('../src/email');
+  const keep = { k: process.env.RESEND_API_KEY, f: process.env.EMAIL_FROM };
+  try {
+    const say = async (k, f) => {
+      process.env.RESEND_API_KEY = k;
+      process.env.EMAIL_FROM = f;
+      return (await EMAIL.send({ to: 'x@example.com', subject: 's' })).reason;
+    };
+    assert.match(await say('', ''), /no transport configured/,
+      'nothing set is still the ordinary, honest fallback');
+    assert.match(await say('${{svc.RESEND_API_KEY}}', 'a@b.c'), /unresolved platform reference/,
+      'a dangling key is named by what is actually wrong with it');
+    assert.match(await say('re_key', '${{svc.EMAIL_FROM}}'), /unresolved platform reference/,
+      'and so is a dangling from-address');
+    assert.strictEqual(EMAIL.configured(), false,
+      'either one dangling means not configured — never a doomed request');
+  } finally {
+    if (keep.k === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = keep.k;
+    if (keep.f === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = keep.f;
+  }
+});

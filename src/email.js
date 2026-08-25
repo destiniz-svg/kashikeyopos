@@ -14,7 +14,22 @@
    Configure with RESEND_API_KEY and EMAIL_FROM.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const configured = () => !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+/* AN UNRESOLVED REFERENCE IS NOT A CONFIGURATION. Both services take these
+   from the platform's environment, and on Railway a variable may be written as
+   a reference to another service — `${{kashikeyopos.RESEND_API_KEY}}`. When
+   that reference is right it is substituted before the process ever sees it;
+   when the service name is wrong the LITERAL survives, non-empty and truthy.
+
+   Left alone, that reads as configured, so every send is attempted with a
+   nonsense key and comes back as a 401 from Resend — which tells whoever is
+   reading it that the key is wrong, when what is actually wrong is the name
+   inside the braces. One is a five-second fix and the other is an afternoon.
+   So it is named, and it falls back to the honest "not configured" path rather
+   than to a doomed request. */
+const unresolved = (v) => /\$\{\{[^}]*\}\}/.test(String(v || ''));
+
+const configured = () => !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
+  && !unresolved(process.env.RESEND_API_KEY) && !unresolved(process.env.EMAIL_FROM);
 
 /* Resend's REST API. No SDK: one POST, and a dependency we would have to keep
    patched forever is not worth the four lines it saves. */
@@ -51,7 +66,15 @@ async function send(msg) {
   if (!msg || !msg.to || !msg.subject) {
     throw Object.assign(new Error('an email needs a recipient and a subject'), { status: 400 });
   }
-  if (!configured()) return { sent: false, via: 'none', reason: 'no transport configured' };
+  if (!configured()) {
+    const dangling = unresolved(process.env.RESEND_API_KEY)
+      || unresolved(process.env.EMAIL_FROM);
+    return { sent: false, via: 'none',
+      reason: dangling
+        ? 'RESEND_API_KEY or EMAIL_FROM is an unresolved platform reference —'
+          + ' check the service name inside the braces'
+        : 'no transport configured' };
+  }
   return viaResend(msg);
 }
 
