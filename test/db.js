@@ -102,8 +102,11 @@ async function dropBusinessDatabases() {
     database: process.env.PGADMINDB || 'postgres'
   });
   await admin.connect();
+  // Whatever prefix this suite is using, so suites sharing a cluster sweep
+  // only their own.
+  const pre = (process.env.BUSINESS_DB_PREFIX || 'kashikeyo_biz_').replace(/_/g, '\\_');
   const q = await admin.query(
-    "SELECT datname FROM pg_database WHERE datname LIKE 'kashikeyo\\_biz\\_%'");
+    'SELECT datname FROM pg_database WHERE datname LIKE $1', [pre + '%']);
   for (const r of q.rows) {
     await admin.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity'
       + ' WHERE datname = $1 AND pid <> pg_backend_pid()', [r.datname]).catch(() => {});

@@ -22,7 +22,12 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { owner, withOutlet, control } = require('../db');
+const { owner, withOutlet, control, ownerFor, CONTROL_DB } = require('../db');
+
+/* The database this request is onboarding. `owner()` — the connection's own —
+   is the single-database case: a local run, the test suite, and every install
+   until its registry exists. */
+const biz = (req) => ((req && req.bizDb) ? ownerFor(req.bizDb) : owner());
 
 /* Which business this outlet belongs to. The registry is the map; a business
    database does not know its own registry id, and inventing one here would be
@@ -99,11 +104,33 @@ r.use(async function (req, res, next) {
   const claims = verifyAccount(raw);
   if (!claims || !claims.a) return next();
   try {
-    const q = await owner().query(
+    const q = await control().query(
       "SELECT id, email, name, status FROM chain.account WHERE id = $1", [claims.a]);
     if (q.rows.length && q.rows[0].status === 'active') req.account = q.rows[0];
+    /* WHICH DATABASE IS BEING ONBOARDED. Onboarding runs before an outlet
+       exists, so there is no outlet to route by — the account is the route,
+       through the business it owns. Without this every customer's onboarding
+       wrote into whichever database the app happened to be connected to,
+       which is the whole tenancy boundary failing open at step one. */
+    if (req.account && CONTROL_DB()) {
+      const b = await control().query(
+        'SELECT b.db_name FROM chain.account_business ab'
+        + ' JOIN chain.business b ON b.id = ab.business_id'
+        + " WHERE ab.account_id = $1 AND b.status = 'live'"
+        + ' ORDER BY b.id DESC LIMIT 1', [req.account.id]);
+      if (b.rows.length) req.bizDb = b.rows[0].db_name;
+    }
     next();
-  } catch (e) { next(); }
+  } catch (e) {
+    /* An unreadable registry must not silently onboard into the wrong
+       database. Losing the account is survivable — the steps are open until
+       claimed — but proceeding as though there were no business, when there
+       is one, writes the company into whichever database this process happens
+       to be connected to. That is the tenancy boundary failing open, so it
+       fails loudly instead. */
+    console.error('[onboarding] could not resolve the account: ' + e.message);
+    next(e);
+  }
 });
 
 const STEPS = [
@@ -127,21 +154,21 @@ const STEPS = [
       is nobody who could be asked to authenticate. ─────────────────────── */
 r.get('/state', async function (req, res, next) {
   try {
-    const st = await owner().query('SELECT * FROM chain.install_state()');
+    const st = await biz(req).query('SELECT * FROM chain.install_state()');
     const s = st.rows[0];
     const done = { company: Number(s.company) > 0, outlet: Number(s.outlets) > 0,
       owner: Number(s.staff) > 0 };
     // Whether the business registered for GST reshapes steps 2 and 4, so the
     // panel has to know it before it renders them — and it has to be the saved
     // answer, not one inferred from an outlet that does not exist yet.
-    const reg = await owner().query('SELECT chain.gst_registered() AS on');
+    const reg = await biz(req).query('SELECT chain.gst_registered() AS on');
     const gstRegistered = !!reg.rows[0].on;
     let deeper = {};
     if (done.outlet) {
-      const o = await owner().query('SELECT id, schema_name FROM chain.outlet'
+      const o = await biz(req).query('SELECT id, schema_name FROM chain.outlet'
         + ' ORDER BY id LIMIT 1');
       const sc = o.rows[0].schema_name;
-      const q = await owner().query(
+      const q = await biz(req).query(
         'SELECT (SELECT count(*) FROM chain.tax_version WHERE outlet_id = $1) AS tax,'
         + ' (SELECT count(*) FROM chain.doc_series WHERE outlet_id = $1) AS series,'
         + ' (SELECT count(*) FROM ' + q0(sc) + '.account) AS chart,'
@@ -235,7 +262,7 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
      marked unregistered whose outlets still hold a tax code, or a business
      with nobody owning it. Both are recoverable by hand and neither is
      discoverable without looking. */
-  const c = await owner().connect();
+  const c = await biz(req).connect();
   try {
     await c.query('BEGIN');
     const already = await c.query('SELECT id FROM chain.company WHERE id = 1');
@@ -286,8 +313,8 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
 });
 
 // The books' currency, as the company step recorded it.
-async function baseCurrency() {
-  const q = await owner().query('SELECT base_currency FROM chain.company WHERE id = 1');
+async function baseCurrency(db) {
+  const q = await db.query('SELECT base_currency FROM chain.company WHERE id = 1');
   return (q.rows[0] || {}).base_currency || 'MVR';
 }
 
@@ -307,7 +334,7 @@ r.get('/handle', async function (req, res, next) {
       return res.json({ handle: want, free: false, why: shape,
         suggested: suggested, base: baseDomain(), url: null });
     }
-    const q = await owner().query('SELECT chain.handle_why($1) AS w', [want]);
+    const q = await biz(req).query('SELECT chain.handle_why($1) AS w', [want]);
     const why = q.rows[0].w;
     res.json({ handle: want, free: !why, why: why || null,
       suggested: suggested, base: baseDomain(),
@@ -320,12 +347,15 @@ r.post('/outlet', openDoor, claim, async function (req, res, next) {
   const b = req.body || {};
   if (!b.name || !b.code) return res.status(400).json({ error: 'outlet name and code required' });
   try {
-    const st = await owner().query('SELECT * FROM chain.install_state()');
+    const st = await biz(req).query('SELECT * FROM chain.install_state()');
     const first = Number(st.rows[0].outlets) === 0;
     if (!first && !req.get('authorization')) {
       return res.status(403).json({ error: 'sign in to add another outlet' });
     }
     const out = await provisionOutlet({
+      // The business this request is onboarding, not whichever database the
+      // process happens to be connected to.
+      db: req.bizDb || null,
       name: b.name, code: b.code, kind: b.kind || 'restaurant',
       // provisionOutlet settles this against chain.gst_registered(); passing
       // null lets it, rather than asserting GGST on a business that has none.
@@ -334,13 +364,13 @@ r.post('/outlet', openDoor, claim, async function (req, res, next) {
       address: b.address, atoll: b.atoll, phone: b.phone,
       // An outlet keeps the company's books, so it keeps the company's
       // currency unless it is explicitly given another one.
-      tz: b.tz, currency: b.currency || (await baseCurrency()), dayStart: b.dayStart,
+      tz: b.tz, currency: b.currency || (await baseCurrency(biz(req))), dayStart: b.dayStart,
       // The store's public address. Absent, provisioning derives one from the
       // name; given, it is honoured or refused by name — never quietly swapped,
       // because they are about to print it on the tables.
       slug: b.slug || b.handle || null
     });
-    const q = await owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [out.id]);
+    const q = await biz(req).query('SELECT slug FROM chain.outlet WHERE id = $1', [out.id]);
     const h = (q.rows[0] || {}).slug || '';
     res.status(201).json(Object.assign({}, out, {
       handle: h, storeUrl: storeUrl(h, ''), memberUrl: memberUrl(h)
@@ -354,10 +384,10 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
   if (!b.name || !b.pin) return res.status(400).json({ error: 'name and PIN required' });
   if (!/^\d{4,8}$/.test(String(b.pin))) return res.status(400).json({ error: 'PIN must be 4 to 8 digits' });
   try {
-    const o = await owner().query('SELECT id FROM chain.outlet ORDER BY id LIMIT 1');
+    const o = await biz(req).query('SELECT id FROM chain.outlet ORDER BY id LIMIT 1');
     if (!o.rows.length) return res.status(409).json({ error: 'create the first outlet before the owner account' });
     const h = hashPin(b.pin);
-    const q = await owner().query('SELECT chain.claim_first_owner($1,$2,$3,$4) AS id',
+    const q = await biz(req).query('SELECT chain.claim_first_owner($1,$2,$3,$4) AS id',
       [o.rows[0].id, b.name, h.hash, h.salt]);
     const hours = Number(process.env.SESSION_TTL_HOURS || 12);
     const staffId = q.rows[0].id;
@@ -380,9 +410,9 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
         + " VALUES ($1,$2,'owner')"
         + ' ON CONFLICT (account_id, business_id) DO NOTHING',
         [req.account.id, await businessIdOf(o.rows[0].id)]);
-      await owner().query('UPDATE chain.company SET owner_account_id = $1'
+      await biz(req).query('UPDATE chain.company SET owner_account_id = $1'
         + ' WHERE owner_account_id IS NULL', [req.account.id]).catch(() => {});
-      await owner().query(
+      await biz(req).query(
         "SELECT chain.log_anon($1,'outlet_owner_set','account',$2,$3)",
         [o.rows[0].id, req.account.id,
           JSON.stringify({ email: req.account.email, staffId: staffId })]).catch(() => {});
@@ -412,7 +442,7 @@ r.post('/tax', async function (req, res, next) {
        WHICH rate once there is. An unregistered business confirms nothing here
        — and saying so is better than a step that quietly writes GGST because
        the select defaulted to it. */
-    const reg = await owner().query('SELECT chain.gst_registered() AS on');
+    const reg = await biz(req).query('SELECT chain.gst_registered() AS on');
     const code = reg.rows[0].on ? (b.code || 'GGST') : 'NONE';
     await withOutlet(req.ctx, async function (c) {
       await c.query('UPDATE chain.outlet SET tax_code = $2 WHERE id = $1',

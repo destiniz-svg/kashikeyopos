@@ -2520,6 +2520,26 @@ nothing. A holder that dies releases it, so a killed container cannot wedge the
 next boot. `test/migrate.test.js` runs the real runner twice at once against a
 cold database; without the lock it fails the way the install did.
 
+**Every request opens the right database, and that was not free.**
+`poolFor()` used the connection's default, so before this every outlet request
+went to one database whatever customer it was for — the tenancy boundary
+failing open at the busiest seam in the app. Pools are keyed by DATABASE and
+outlet now, `withOutlet()`/`withOutletRead()` resolve the route first, and
+onboarding — which runs before an outlet exists, so there is no outlet to route
+by — resolves its business from the ACCOUNT that owns it. `provisionOutlet()`
+is told which database to build in rather than inferring one: an outlet created
+in the wrong database is the boundary failing at the only step that makes a
+schema and a login role. `/readyz` walks every business's outlets, because
+asking one database reports on one customer and calls the install healthy.
+
+**`test/e2e.test.js` is what found all of that.** Every other suite proves a
+part; that one walks the road a customer walks — sign up, confirm the address,
+a database is created, onboard company/outlet/owner, sign in at the till, ring
+a bill with a member, a redemption and a credit tender — and then checks the
+money landed in that customer's database and nobody else's. Four separate
+routing defects were invisible to every unit test and fell out of it in
+sequence.
+
 **Signing up creates the database, and no seller is in the loop.** The website
 takes the lead row it always took, then hands the customer to the app: creating
 a business needs a VERIFIED address, and the only place an address can be

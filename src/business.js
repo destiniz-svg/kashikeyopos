@@ -29,7 +29,10 @@ const { migrateBusiness } = require('./scripts/migrate');
    anything that did not come from there. Belt and braces on the one statement
    in this file that interpolates. */
 function safeDbName(name) {
-  if (!/^kashikeyo_biz_[0-9]+$/.test(String(name || ''))) {
+  const { dbPrefix } = require('./db');
+  const shape = new RegExp('^' + dbPrefix().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    + '[0-9]+$');
+  if (!shape.test(String(name || ''))) {
     throw Object.assign(new Error('refusing a database name this module did'
       + ' not derive: ' + name), { status: 500 });
   }
@@ -135,10 +138,22 @@ async function businessForDb(dbName) {
   const found = await control().query(
     'SELECT id FROM chain.business WHERE db_name = $1', [dbName]);
   if (found.rows.length) return Number(found.rows[0].id);
+  /* Recorded at the version it ACTUALLY is, read from its own ledger. A
+     database being adopted has usually been migrated already — the default of
+     0 would say it was at nothing, and requireAtHead would then refuse every
+     request to a store that is perfectly up to date. */
+  let at = 0;
+  try {
+    const q = await ownerFor(dbName).query(
+      "SELECT count(*)::int AS n FROM chain.migration");
+    at = Number(q.rows[0].n);
+  } catch (e) { at = 0; }      // no ledger yet: it is about to be migrated
+
   const made = await control().query(
-    "INSERT INTO chain.business (name, db_name, status, live_at)"
-    + " VALUES ($1,$2,'live',now()) ON CONFLICT (db_name) DO UPDATE"
-    + ' SET db_name = excluded.db_name RETURNING id', [dbName, dbName]);
+    "INSERT INTO chain.business (name, db_name, status, schema_version, live_at)"
+    + " VALUES ($1,$2,'live',$3,now()) ON CONFLICT (db_name) DO UPDATE"
+    + ' SET schema_version = greatest(chain.business.schema_version, excluded.schema_version)'
+    + ' RETURNING id', [dbName, dbName, at]);
   return Number(made.rows[0].id);
 }
 

@@ -16,6 +16,10 @@ const { Client } = require('pg');
 const DB = require('./db');
 
 DB.secrets();
+/* Its own database-name prefix. Suites share a cluster and each registry
+   allocates business ids from 1, so without this they all reach for
+   kashikeyo_biz_1 and clobber each other. */
+process.env.BUSINESS_DB_PREFIX = 'kt_biz_';
 
 /* Its own registry database. Sharing one with test/api.test.js left business
    rows pointing at databases the other suite had already dropped — which is a

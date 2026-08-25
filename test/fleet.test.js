@@ -17,6 +17,10 @@ const path = require('path');
 const DB = require('./db');
 
 DB.secrets();
+/* Its own database-name prefix. Suites share a cluster and each registry
+   allocates business ids from 1, so without this they all reach for
+   kashikeyo_biz_1 and clobber each other. */
+process.env.BUSINESS_DB_PREFIX = 'kf_biz_';
 const opts = DB.configured() ? {}
   : { skip: 'no Postgres configured (set PGHOST or DATABASE_URL)' };
 

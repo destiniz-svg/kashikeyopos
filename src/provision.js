@@ -4,7 +4,15 @@
    places: the onboarding route (first outlet) and the chain route that adds a
    branch — both behind rank 5. Nothing else imports this. */
 
-const { owner, forget, control } = require('./db');
+const { owner, ownerFor, forget, control } = require('./db');
+
+/* WHICH DATABASE THE OUTLET IS BEING CREATED IN. `opts.db` is the business's
+   own; without one this is the connection's default, which is the
+   single-database case every install is until its registry exists. An outlet
+   provisioned into the wrong database is the tenancy boundary failing at the
+   only step that creates a schema and a login role, so it is named by the
+   caller rather than inferred here. */
+const target = (opts) => ((opts && opts.db) ? ownerFor(opts.db) : owner());
 const registry = require('./business');
 const { outletPassword } = require('./secrets');
 const handle = require('./handle');
@@ -16,8 +24,8 @@ const handle = require('./handle');
    store anywhere in the estate. Same class as the install-uuid fence (026).
    The registry allocates and records the outlet in one act, so an id can never
    exist without a route home. */
-async function allocateOutletId() {
-  const db = await owner().query('SELECT current_database() AS d');
+async function allocateOutletId(opts) {
+  const db = await target(opts).query('SELECT current_database() AS d');
   const businessId = await registry.businessForDb(db.rows[0].d);
   return registry.nextOutletId(businessId);
 }
@@ -27,11 +35,11 @@ async function allocateOutletId() {
    in force at this outlet from the date it opened, which is what its receipts
    will quote for as long as it stands. */
 async function provisionOutlet(opts) {
-  const pool = owner();
+  const pool = target(opts);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const id = opts.id || await allocateOutletId();
+    const id = opts.id || await allocateOutletId(opts);
     const code = String(opts.code || ('KO' + id)).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!code) throw Object.assign(new Error('outlet code required'), { status: 400 });
     if (!opts.name) throw Object.assign(new Error('outlet name required'), { status: 400 });

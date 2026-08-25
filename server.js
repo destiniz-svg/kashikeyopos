@@ -178,11 +178,41 @@ function readyTtl() {
 let readyChecked = 0;
 let readyAnswer = null;
 
+/* Every outlet, wherever it lives. With a registry the outlets are spread
+   across business databases, so asking the connection's own database for
+   "chain.outlet" reports on one customer and calls the install healthy — which
+   is the same class of defect as the probe that answered 200 while every
+   outlet request failed. The registry is the list; each outlet is then checked
+   through its own login role, which is the whole path a real request takes. */
+async function everyOutlet() {
+  const { control, CONTROL_DB, ownerFor } = require('./src/db');
+  if (!CONTROL_DB()) {
+    const q = await owner().query(
+      'SELECT id, code FROM chain.outlet WHERE active ORDER BY id');
+    return q.rows;
+  }
+  const biz = await control().query(
+    "SELECT db_name FROM chain.business WHERE status = 'live' ORDER BY id");
+  const out = [];
+  for (const b of biz.rows) {
+    try {
+      const q = await ownerFor(b.db_name).query(
+        'SELECT id, code FROM chain.outlet WHERE active ORDER BY id');
+      q.rows.forEach((r) => out.push(r));
+    } catch (e) {
+      // A business whose database cannot be opened is itself unreachable, and
+      // saying nothing about it is how the old probe reported green.
+      out.push({ id: null, code: b.db_name, dead: e.message });
+    }
+  }
+  return out;
+}
+
 async function readiness() {
-  const outlets = await owner().query(
-    'SELECT id, code FROM chain.outlet WHERE active ORDER BY id');
+  const rows = await everyOutlet();
   const unreachable = [];
-  for (const o of outlets.rows) {
+  for (const o of rows) {
+    if (o.dead) { unreachable.push({ outlet: o.code, code: o.code, error: o.dead }); continue; }
     try {
       // The outlet's own role, its own schema, its own grants — every belt a
       // real request crosses, and nothing the owner connection could stand in
@@ -193,7 +223,7 @@ async function readiness() {
       unreachable.push({ outlet: o.id, code: o.code, error: e.message });
     }
   }
-  return { outlets: outlets.rowCount, unreachable: unreachable };
+  return { outlets: rows.length, unreachable: unreachable };
 }
 
 app.get('/readyz', async function (req, res) {

@@ -204,17 +204,43 @@ function control() {
   return ownerFor(db);
 }
 
-// What a business's database is called. One rule, so a name is never spelled
-// twice and a typo cannot point two businesses at one database.
-function businessDb(id) { return 'kashikeyo_biz_' + Number(id); }
+/* What a business's database is called. One rule, so a name is never spelled
+   twice and a typo cannot point two businesses at one database. The prefix is
+   configurable because a cluster may host more than one estate — two
+   independent registries would otherwise both allocate from 1 and collide on
+   the name, which is exactly what happens when several test suites share a
+   cluster. */
+function dbPrefix() {
+  const p = String(process.env.BUSINESS_DB_PREFIX || '').trim();
+  return p || 'kashikeyo_biz_';
+}
+function businessDb(id) { return dbPrefix() + Number(id); }
 
 // ── one pool per outlet, each authenticating as that outlet's own role ───────
 const pools = new Map();
-function poolFor(outletId) {
+/* WHICH DATABASE THIS OUTLET IS IN. Null means the connection's default, which
+   is a single-database install — every install is that until its registry
+   exists, and the whole test suite is that too.
+
+   The require is deferred rather than top-level because src/business.js
+   requires this module: hoisting it would be a load-time cycle. It is called
+   once per transaction and the lookup behind it is cached for 30 seconds. */
+async function dbFor(outletId) {
+  if (!CONTROL_DB()) return null;
+  const r = await require('./business').requireAtHead(outletId);
+  return r.db;
+}
+
+function poolFor(outletId, dbName) {
   const id = Number(outletId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('bad outlet id'), { status: 400 });
-  if (!pools.has(id)) {
-    pools.set(id, guarded(new Pool(Object.assign(baseConn(), {
+  /* Keyed by DATABASE and outlet, not by outlet alone. Outlet ids are globally
+     unique so a collision cannot happen today — but a pool is a credential
+     pointed at a database, and keying it by half of what identifies it is how
+     one customer's connection ends up serving another's request. */
+  const key = (dbName || '') + '#' + id;
+  if (!pools.has(key)) {
+    pools.set(key, guarded(new Pool(Object.assign(baseConn(), dbName ? { database: dbName } : {}, {
       user: 'outlet_' + id + '_app',
       password: outletPassword(id),
       ssl,
@@ -232,7 +258,7 @@ function poolFor(outletId) {
       application_name: 'kashikeyo-outlet-' + id
     })), 'outlet-' + id));
   }
-  return pools.get(id);
+  return pools.get(key);
 }
 
 /* Every request query runs inside a transaction that first declares who is
@@ -330,7 +356,7 @@ async function commit(client) {
 }
 
 async function withOutlet(ctx, fn) {
-  const client = await checkout(poolFor(ctx.outletId));
+  const client = await checkout(poolFor(ctx.outletId, await dbFor(ctx.outletId)));
   try {
     await client.query('BEGIN');
     await setContext(client, ctx);
@@ -347,7 +373,7 @@ async function withOutlet(ctx, fn) {
 
 // Read-only variant: a report can never be the thing that changed the books.
 async function withOutletRead(ctx, fn) {
-  const client = await checkout(poolFor(ctx.outletId));
+  const client = await checkout(poolFor(ctx.outletId, await dbFor(ctx.outletId)));
   try {
     await client.query('BEGIN READ ONLY');
     await setContext(client, ctx);
@@ -415,14 +441,22 @@ async function shutdown() {
 }
 
 // Drop a cached pool — used after a role password rotation or a re-provision.
+/* Pools are keyed by database AND outlet, so forgetting one outlet means
+   forgetting it wherever it is cached — a re-provision changes the password
+   and a stale pool would keep presenting the old one. */
 function forget(outletId) {
   const id = Number(outletId);
-  const p = pools.get(id);
-  if (p) { pools.delete(id); p.end().catch(() => {}); }
+  const suffix = '#' + id;
+  Array.from(pools.keys()).filter((k) => k.endsWith(suffix)).forEach((k) => {
+    const p = pools.get(k);
+    pools.delete(k);
+    if (p) p.end().catch(() => {});
+  });
+  if (CONTROL_DB()) require('./business').forgetRoute(id);
 }
 
 module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
-  owner, ownerFor, control, businessDb, CONTROL_DB,
+  owner, ownerFor, control, businessDb, dbPrefix, CONTROL_DB,
   poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };
