@@ -992,7 +992,11 @@ BEGIN
     || ' chain.log(text,text,text,jsonb,jsonb),'
     || ' chain.log_anon(int,text,text,text,jsonb),'
     || ' chain.pin_candidates(int), chain.pin_failed(int,int,int),'
-    || ' chain.pin_ok(uuid), chain.member_code_set(text,text,text,int),'
+    || ' chain.pin_ok(uuid),'
+    -- Your own PIN is yours to change (037): a SECURITY DEFINER pair, one
+    -- row, the caller's own, and only against the hash they already know.
+    || ' chain.staff_pin_change(text,text,text), chain.staff_pin_salt(),'
+    || ' chain.member_code_set(text,text,text,int),'
     || ' chain.member_code_take(text), chain.member_code_clear(uuid,boolean),'
     || ' chain.member_card(uuid),'
     -- An invitation is an event (migration 017): the till issues one and a

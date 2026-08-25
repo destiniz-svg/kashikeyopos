@@ -26,6 +26,7 @@ src/bootstrap.js       everything the terminal needs to come up, in one payload
 src/apply.js           the 115 op kinds and what each one consequences
 src/auth.js            rank gates
 src/limit.js           the doorman: token buckets on the open doors
+src/revoked.js         a revoked session or device is refused, not just recorded
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
@@ -43,6 +44,8 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        031 yield is an outlet fact · 032 a batch is an item
                        033 the licence plane · 034 reserve the mail names
                        035 an account belongs to no outlet
+                       036 a device says what it runs
+                       037 your own PIN is yours to change
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -1596,6 +1599,76 @@ queued by a screen that says it is RECORDING something. It may never be queued
 by a screen that reports the thing was DONE.** `test/audit.test.js` already
 refused invented figures on the ribbons; this is the same rule for the cards
 behind them.
+
+## A revoked token is refused, not merely recorded
+
+The sweep above found five screens claiming actions the build only recorded.
+Finishing it found the floor underneath them: **two revocation columns existed
+and nothing ever read either.**
+
+`session()` in `src/auth.js` verified the JWT and touched no database. So
+`chain.session.revoked_at`, set by "Sign out other sessions", meant nothing —
+the signed-out terminals kept working for the twelve hours their tokens had
+left, including immediately after that button was wired to its real endpoint.
+And `chain.device.revoked`, set by deregistering a device, meant nothing
+either: the device kept signing in and kept writing, which is exactly the
+scenario the card's own copy invokes.
+
+Underneath both, the device id bound into every token came from a **free-text
+field** in Settings defaulting to `dev_CHA_T1`, so `chain.device` had no row
+for it and nothing about a device could have been enforced even if it had been
+checked.
+
+- **`src/revoked.js`** asks both questions on every authenticated request, in
+  the one place all three routers mount. The cost is bounded by a POSITIVE
+  cache — a session known good is not asked about again for thirty seconds —
+  and revocation is one-way, so a cached answer can only ever be stale in the
+  harmless direction. The product is sold **one install per customer**, so
+  there is a single process and `forget()` makes every revocation IMMEDIATE;
+  the thirty seconds is the bound for replicas that do not exist. Same seam
+  note as `src/limit.js`. It reads under the OUTLET role — the token names its
+  own outlet and both policies allow it — so there is no seventh owner
+  exception. An unreachable database **fails open**: refusing there would sign
+  the whole floor out over a blip.
+- **A deregistered device is refused at the keypad**, not three requests later.
+  Without that the till signs in, has its next call refused for the same
+  reason, signs in again, and loops, telling the person holding it nothing.
+- **A device is enrolled by the outlet.** `POST /api/auth/devices` mints the
+  six-character code, the card shows it while it is live, and the new screen
+  keys it under Settings → Terminal (`POST /api/auth/devices/claim`, spent on
+  use, fifteen minutes). The old form minted a code **in the browser** with
+  `Math.random` and then asked the operator to confirm it matched the code on a
+  screen that had no way of knowing it.
+- **Signing a device out and deregistering it are different decisions**, so
+  both are offered and both are real: one ends that device's sessions and
+  leaves it enrolled, the other stops it writing until somebody enrols it
+  again. "Ask it to replay now" is gone — there is no channel to push anything
+  to a device, and every terminal drains its own outbox every five seconds.
+- **Your own PIN is yours to change** (migration 037). Settings has offered
+  this since the build began and it did nothing. It could not have used
+  `PATCH /api/auth/staff/:id` either: that is rank 4, which is right for
+  resetting somebody ELSE's PIN and wrong for your own, and `staff_write`
+  requires rank ≥ 4 under RLS. So it is a SECURITY DEFINER pair, the same shape
+  005 uses for sign-in: one row, `app.current_actor()`, no parameter naming a
+  victim, and it verifies the current hash before writing. Hashing stays in the
+  application; the database compares hashes and never sees a PIN. A wrong
+  current PIN pays into the same two tiers every other wrong PIN pays into.
+- **The password is not the till's to change.** It belongs to the account that
+  owns the business, on a plane no outlet role can reach (011). The card says
+  so and opens `/account`, where `POST /api/account/password` has always been.
+- **The devices screen shows the outlet's roll.** It rendered seven hardcoded
+  terminals belonging to outlet codes that exist on no real install, with
+  invented pending counts and an invented version, while the real
+  `chain.device` rows the bootstrap has always published went unread — on the
+  screen a manager opens to find a lost tablet.
+- **Version drift is measured.** Migration 036 adds `chain.device.app_version`,
+  reported on every push (`x-app-version`), where the device already identifies
+  itself. NULL is a real answer: a device that has not said is **not** behind.
+
+Verified end to end against a live outlet: enrol → wrong code refused → claimed
+→ code spent; sign a device out → its sessions die and other browsers are
+untouched and it can sign back in; deregister → token refused AND keypad
+refused; change a PIN → old refused, new works.
 
 ## History has a horizon, the trail does not
 

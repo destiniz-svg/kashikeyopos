@@ -439,6 +439,7 @@
       try {
         var r = await this._fetch("/api/outlet/" + this.outletId + "/sync/push", {
           method: "POST",
+          appVersion: this.appVersion || null,
           body: { ops: ops.slice(0, 100).map(function (o) {
             return { opId: o.opId, kind: o.kind, label: o.label, entity: o.entity,
               payload: o.payload, lamport: o.lamport, at: o.at };
@@ -553,6 +554,35 @@
     revokeSessions() {
       return this._fetch("/api/auth/revoke", { method: "POST", body: {} });
     }
+    devices() { return this._fetch("/api/auth/devices"); }
+    /* Enrol one. The outlet mints the pair code — a code this browser invented
+       proves nothing to the screen being paired. */
+    registerDevice(body) {
+      return this._fetch("/api/auth/devices", { method: "POST", body: body });
+    }
+    /* Two different decisions, and the screen offers both because they ARE
+       different: signing a device out returns it to the PIN screen and leaves
+       it enrolled; deregistering it stops it writing until somebody enrols it
+       again. */
+    /* Keying the code a manager read out. The answer is the enrolment this
+       terminal is now signing as — the id was a free-text field before. */
+    /* Your own PIN, proved with the one you are replacing. Not an outbox op:
+       a credential change that waits for a flush is not a credential change. */
+    changePin(current, next) {
+      return this._fetch("/api/auth/pin/change",
+        { method: "POST", body: { current: current, next: next } });
+    }
+    claimDevice(code) {
+      return this._fetch("/api/auth/devices/claim", { method: "POST", body: { code: code } });
+    }
+    signOutDevice(id) {
+      return this._fetch("/api/auth/devices/" + encodeURIComponent(id) + "/signout",
+        { method: "POST", body: {} });
+    }
+    deregisterDevice(id) {
+      return this._fetch("/api/auth/devices/" + encodeURIComponent(id) + "/revoke",
+        { method: "POST", body: {} });
+    }
     onboarding() { return this._fetch("/api/onboarding/state", { anon: !this.token }); }
     onboard(step, body) {
       return this._fetch("/api/onboarding/" + step, { method: "POST", body, anon: !this.token });
@@ -562,6 +592,11 @@
       var o = opts || {};
       var headers = { "content-type": "application/json" };
       if (this.token && !o.anon) headers.authorization = "Bearer " + this.token;
+      /* What this terminal is running, reported where the device already
+         identifies itself. The outlet stores it on the push (036), which is
+         what makes "a version behind" a measurement rather than two literals
+         agreeing with each other. */
+      if (o.appVersion) headers["x-app-version"] = String(o.appVersion);
       var res = await fetch(this.baseUrl + path, {
         method: o.method || "GET",
         headers: headers,

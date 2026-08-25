@@ -1871,3 +1871,90 @@ test('granting and revoking access reaches the outlet', () => {
     'signed in, USERS comes from the authenticated staff roll');
   assert.match(bridge, /status: !u\.active \? "Suspended"/, 'which is what makes Suspended renderable');
 });
+
+/* A REVOKED TOKEN IS REFUSED, NOT MERELY RECORDED.
+
+   The continuation of the sweep above, and the worst of it. Two columns
+   existed and NOTHING EVER READ EITHER. `session()` in src/auth.js verified
+   the JWT and touched no database, so:
+
+     · "Sign out other sessions" set `chain.session.revoked_at` and the signed-
+       out terminals kept working for the twelve hours their tokens had left —
+       including, embarrassingly, right after that button was wired to the real
+       endpoint in the previous commit;
+     · deregistering a device set `chain.device.revoked` and the device kept
+       signing in and kept writing, which is precisely the scenario the card's
+       own copy invokes: a lost tablet.
+
+   And underneath both, the device id bound into every token was a FREE-TEXT
+   FIELD in Settings defaulting to "dev_CHA_T1", so `chain.device` had no row
+   for it and nothing about a device could have been enforced even if it had
+   been checked. The Sync screen meanwhile rendered seven hardcoded terminals
+   belonging to outlets KAS-CHA, KAS-MAA and KAS-HUL — which exist on no real
+   install — with invented pending counts and an invented version, while the
+   real `chain.device` rows the bootstrap has always published went unread. */
+test('a revoked session or device is refused, not merely recorded', () => {
+  const auth = fs.readFileSync(path.join(__dirname, '..', 'src', 'auth.js'), 'utf8');
+  assert.match(auth, /async function session\(req, res, next\)/,
+    'the check is in the one place all three routers mount');
+  assert.match(auth, /await stillGood\(req\.ctx\)/, 'and it is actually awaited');
+  assert.match(auth, /deregistered — ask a manager to enrol it again/,
+    'a deregistered device is named, because keying a PIN will not fix it');
+
+  const rev = fs.readFileSync(path.join(__dirname, '..', 'src', 'revoked.js'), 'utf8');
+  assert.match(rev, /revoked_at, expires_at FROM chain\.session/, 'the session is asked about');
+  assert.match(rev, /SELECT revoked FROM chain\.device/, 'and so is the device');
+  /* Fails OPEN on an unreachable database: refusing there would sign the whole
+     floor out over a blip, which is worse than a revocation landing late. Same
+     call src/limit.js makes. */
+  assert.match(rev, /return \{ ok: true \};[\s\S]{0,40}\}\s*\n\s*if \(row\.d/,
+    'an unreachable database does not sign the floor out');
+  assert.match(rev, /withOutletRead/, 'read under the outlet role — no seventh owner exception');
+
+  const ra = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'auth.js'), 'utf8');
+  // One process, so the revoking endpoints make it immediate rather than 30s.
+  ['/revoke', '/devices/:id/signout', '/devices/:id/revoke'].forEach(() => {});
+  assert.strictEqual((ra.match(/\n    forget\(/g) || []).length >= 3, true,
+    'every endpoint that revokes drops the positive cache');
+  // Refused at the KEYPAD, or the till loops sign-in → refusal → sign-in.
+  assert.match(ra, /if \(d\.rows\[0\] && d\.rows\[0\]\.revoked\) return \{ refused: true, device: true \}/,
+    'a deregistered device cannot sign in at all');
+  assert.match(ra, /r\.post\('\/pin\/change'/, 'your own PIN is changeable');
+  assert.match(ra, /r\.post\('\/devices\/claim'/, 'and an enrolment is claimable');
+});
+
+test('the devices screen shows the outlet roll, not seven invented terminals', () => {
+  assert.ok(!/DEVICE_REGISTRY/.test(SRC), 'the hardcoded registry is gone');
+  ['dev_CHA_T2', 'dev_CHA_KDS', 'KAS-MAA', 'KAS-HUL', 'dev_CHA_T1'].forEach((lie) => {
+    assert.ok(SRC.indexOf(lie) < 0, 'an invented device is still on screen: ' + lie);
+  });
+  assert.match(SRC, /devices\(\) \{\s*\n\s*const rows = \(K\(\) \|\| \{\}\)\.DEVICES/,
+    'the roll comes from the bootstrap');
+
+  // The two device writes reach the outlet, through one seam, with no offline path.
+  assert.match(SRC, /async deviceAct\(d, call, said\)/, 'one seam');
+  assert.match(SRC, /"signOutDevice"/, 'signing a device out is a call');
+  assert.match(SRC, /"deregisterDevice"/, 'so is deregistering it');
+  ['device_lock', 'device_deregister', 'device_paired', 'device_replay', 'pin_reset',
+    'password_reset'].forEach((k) => {
+    assert.ok(!new RegExp('queue\\(\\s*"' + k + '"').test(SRC),
+      k + ' is audit-only — no screen may queue it while reporting the thing was done');
+    assert.ok(AUDIT_ONLY.indexOf(k) >= 0, k + ' keeps its handler for an outbox that holds one');
+  });
+
+  /* The pairing code is the OUTLET's. This browser used to mint one with
+     Math.random and then ask the operator to confirm it matched the code on a
+     screen that had no way of knowing it. */
+  assert.ok(!/Math\.random\(\) \* A\.length/.test(SRC), 'no code is minted in this browser');
+  assert.match(SRC, /B\.registerDevice\(\{/, 'enrolling asks the outlet');
+  assert.match(SRC, /B\.claimDevice\(code\)/, 'and the new screen claims it');
+  assert.match(SRC, /B\.changePin\(/, 'a PIN change is a call, not an outbox op');
+
+  // Version drift is measured against what a device reported, where it has.
+  assert.match(SRC, /!d\.self && d\.ver && d\.ver !== this\.appVer\(\)/,
+    'a device that has not said is not "behind"');
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(boot, /ver: r\.app_version \|\| null/, 'and the bootstrap publishes what it said');
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+  assert.match(sync, /x-app-version/, 'reported on the push, where the device already names itself');
+});

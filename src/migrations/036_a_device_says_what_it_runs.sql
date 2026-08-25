@@ -1,0 +1,17 @@
+-- ═══ A DEVICE SAYS WHAT IT RUNS ═══════════════════════════════════════════
+-- "Terminals a version behind" was on the owner's Today list and on the Sync
+-- screen, computed from a hardcoded registry of seven devices belonging to
+-- outlets that do not exist on any real install. There was nothing to measure
+-- it against: chain.device recorded when a terminal was last seen and when it
+-- last delivered its writes, and never what build it was running.
+--
+-- Version drift is a DATA problem, not a cosmetic one — an older build holds
+-- an older tax table and an older recipe cache, which is how two tills in one
+-- outlet price the same dish differently — so the figure is worth having for
+-- real. The terminal reports it on every push, beside last_push_at, which is
+-- the one moment the device is already identifying itself.
+--
+-- NULL is a real answer and is why it is nullable: a device that has never
+-- pushed since this migration has not told us, and "has not said" is not the
+-- same as "is behind".
+ALTER TABLE chain.device ADD COLUMN IF NOT EXISTS app_version text;

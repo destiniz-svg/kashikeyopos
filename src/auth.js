@@ -1,5 +1,6 @@
 'use strict';
 const { verify, verifyTable } = require('./secrets');
+const { stillGood } = require('./revoked');
 
 /* ═══ THE ONE LADDER ════════════════════════════════════════════════════════
    Kitchen 1 · Till 2 · Manager 3 · Admin 4 · Owner 5.
@@ -19,7 +20,15 @@ const ROLE_KEY_BY_RANK = {
   4: 'ChainAdmin', 5: 'SuperAdmin'
 };
 
-function session(req, res, next) {
+/* A VALID SIGNATURE IS NOT THE WHOLE QUESTION. This verified the token and
+   nothing else, so two revocations that the screens promised were never
+   enforced: signing out every other session set `chain.session.revoked_at` and
+   a signed-out till kept working for the twelve hours its token had left, and
+   deregistering a device set `chain.device.revoked` and the device kept
+   signing in and writing. Both are asked here now — once, for all three
+   routers that mount this — through src/revoked.js, which explains what the
+   check costs and why it fails open. */
+async function session(req, res, next) {
   const h = req.get('authorization') || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
   const claims = token && verify(token);
@@ -34,6 +43,20 @@ function session(req, res, next) {
     roleKey: claims.rk || ROLE_KEY_BY_RANK[claims.r] || 'Cashier',
     scope: claims.scope === 'group' ? 'group' : 'outlet'
   };
+  try {
+    const live = await stillGood(req.ctx);
+    if (!live.ok) {
+      /* Named, because the two land a person in different places: a signed-out
+         session is fixed by keying a PIN, and a deregistered device is not
+         fixed by anything the person holding it can do. */
+      return res.status(401).json({
+        error: live.why === 'device'
+          ? 'This terminal has been deregistered — ask a manager to enrol it again'
+          : 'This session was signed out — key your PIN to sign back in',
+        revoked: live.why
+      });
+    }
+  } catch (e) { return next(e); }
   next();
 }
 

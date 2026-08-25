@@ -1617,7 +1617,7 @@
                   <button onClick="{{ keepMine }}" style="margin-top:12px;width:100%;padding:9px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700;text-align:center">Keep mine</button>
                 </div>
                 <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px">
-                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:8px">Server copy · dev_CHA_T2</div>
+                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:8px">Server copy</div>
                   <div style="font-size:12.5px;color:var(--text);line-height:1.6">{{ conflictTheirs }}</div>
                   <button onClick="{{ keepTheirs }}" style="margin-top:12px;width:100%;padding:9px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600;text-align:center">Keep server copy</button>
                 </div>
@@ -2048,7 +2048,7 @@ class Component extends DCLogic {
     seededDays: this._saved.seededDays || [],
     printJobs: this._saved.printJobs || [], printerDown: this._saved.printerDown || {},
     kdsRecall: null,
-    pairedDevices: this._saved.pairedDevices || [], pairCode: null,
+    pairCode: null,
     pinFails: this._saved.pinFails || 0, pinLockUntil: this._saved.pinLockUntil || 0,
     qtyMult: 0,
     pal: false, palQ: "", palSel: 0, palPlan: null, parOv: this._saved.parOv || {}, setupHide: !!this._saved.setupHide, palRecent: this._saved.palRecent || [],
@@ -2149,7 +2149,7 @@ class Component extends DCLogic {
     this._lastWrite = Date.now();
     const body = {
       v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox), conflicts: s.conflicts,
-      settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pairedDevices: s.pairedDevices, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
+      settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
       local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
       fulfil: s.fulfil,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, permOverride: s.permOverride, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
@@ -6879,7 +6879,7 @@ class Component extends DCLogic {
       const c = s.conflicts[0] || { label: "—", at: "—" };
       return {
         modalTitle: "Replay conflict", modalSub: c.label,
-        conflictBody: "This operation was captured offline at " + c.at + " on dev_CHA_T1. While the terminal was dark, another terminal in the same outlet wrote to the same order line and reached the server first.",
+        conflictBody: "This operation was captured offline at " + c.at + " on this terminal. While the terminal was dark, another terminal in the same outlet wrote to the same order line and reached the server first.",
         conflictMine: c.label + "\nCaptured offline, Lamport 4.",
         conflictTheirs: "Same line, quantity 3, fired at 19:31.\nAccepted by the server, Lamport 6.",
         conflictFoot: "Last-writer-wins would silently drop one of these. Because the line belongs to a ticket that is still open, the resolver hands it to you instead. Had the ticket been closed, the replay would have been rejected outright and logged.",
@@ -7625,7 +7625,7 @@ class Component extends DCLogic {
           { n: "NET SALES", v: MVRc(net - refunded), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
           { n: "Of which not yet money", v: MVRc(byTender("card") + byTender("wallet") + byTender("credit")), style: "display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0" }
         ],
-        rcpFoot: (this.prefs().device || "dev_CHA_T1") + " · " + this.me() + " · " + this.rankName() + " rank"
+        rcpFoot: (this.prefs().device || "unpaired terminal") + " · " + this.me() + " · " + this.rankName() + " rank"
           + (reg.openedAt ? "\nRegister opened " + pad(new Date(reg.openedAt).getHours()) + ":" + pad(new Date(reg.openedAt).getMinutes()) + " by " + (reg.openedBy || "—") : "\nNo register was opened for this shift")
           + "\nCard and credit are revenue, not cash — the drawer reconciles on the rufiyaa line only.",
         settledDone: () => {
@@ -14295,40 +14295,40 @@ class Component extends DCLogic {
           this.saveProf(Object.assign({}, v, { taxRate: r, taxSc: +v.taxSc || 0 }), "Tax profile · " + v.taxClass + " " + r + "% · SC " + (+v.taxSc || 0) + "%");
         }
       },
-      password: {
-        title: "Reset password", sub: this.me(), save: "Reset password",
-        editSave: "Reset password",
-        foot: "Passwords sign in to the back office. They are never the same thing as the floor PIN, and one being compromised does not hand over the other. All sessions on other devices end when this is saved.",
-        fields: [
-          { k: "cur", label: "Current password", v: "", full: 1 },
-          { k: "next", label: "New password", v: "", full: 1 },
-          { k: "conf", label: "Confirm new password", v: "", full: 1 }
-        ],
-        onSave: (v) => {
-          if (!v.cur) return this.toast("Enter the current password first", "warn");
-          if (!v.next || v.next.length < 8) return this.toast("A new password needs at least 8 characters", "warn");
-          if (v.next !== v.conf) return this.toast("The two new passwords do not match", "warn");
-          this.setState({ modal: null, profile: Object.assign({}, this.prof(), { pwChanged: "just now" }) });
-          this.queue("password_reset", "Password reset · " + this.me(), "settings");
-          this.toast("Password reset — other devices have been signed out");
-        }
-      },
+      /* The back-office password belongs to the ACCOUNT that owns the
+         business, on chain.account — a plane a staff session deliberately
+         cannot reach (migration 011 revokes every privilege on it from every
+         outlet role, and an account token carries no rank while a staff token
+         carries no account). So this form could never have worked from here,
+         and it did not: it queued `password_reset`, which is AUDIT_ONLY, and
+         toasted "Password reset — other devices have been signed out" over a
+         password that had not changed and sessions that had not ended.
+
+         POST /api/account/password is real and is where it happens, behind an
+         account token. The card sends the owner there rather than pretending
+         the till can do it. */
       pin: {
-        title: "Reset floor PIN", sub: this.me(), save: "Reset PIN",
-        editSave: "Reset PIN",
-        foot: "The PIN unlocks the terminal and authorises voids at the till. Four digits, no repeats and no runs — a PIN a colleague can read over a shoulder in one glance is the most common way a till leaks.",
+        title: "Change your floor PIN", sub: this.me(), save: "Change my PIN",
+        editSave: "Change my PIN",
+        foot: "The PIN unlocks the terminal and authorises voids at the till. Four digits, no repeats and no runs — a PIN a colleague can read over a shoulder in one glance is the most common way a till leaks. Knowing the current one is what proves this is you: a manager who does not know it resets it for you from Users & Roles instead.",
         fields: [
           { k: "curPin", label: "Current PIN", v: "" },
           { k: "newPin", label: "New PIN" },
           { k: "confPin", label: "Confirm PIN" }
         ],
-        onSave: (v) => {
+        onSave: async (v) => {
           if (!/^\d{4}$/.test(v.newPin || "")) return this.toast("A PIN is exactly four digits", "warn");
           if (v.newPin !== v.confPin) return this.toast("The two PINs do not match", "warn");
-          if (/^(\d)\1{3}$/.test(v.newPin) || "0123456789".indexOf(v.newPin) >= 0) return this.toast("That PIN is too easy to guess — avoid runs and repeats", "warn");
-          this.setState({ modal: null, profile: Object.assign({}, this.prof(), { pinChanged: "just now" }) });
-          this.queue("pin_reset", "Floor PIN reset · " + this.me(), "settings");
-          this.toast("PIN reset — use it at the next terminal unlock");
+          if (/^(\d)\1{3}$/.test(v.newPin) || "0123456789".indexOf(v.newPin) >= 0 || "9876543210".indexOf(v.newPin) >= 0) return this.toast("That PIN is too easy to guess — avoid runs and repeats", "warn");
+          const B = window.KPOS_BRIDGE;
+          if (!B || !B.changePin) return this.toast("Changing a PIN needs the outlet — this terminal is not connected to one", "warn");
+          try {
+            await B.changePin(String(v.curPin || ""), String(v.newPin));
+            this.setState({ modal: null, profile: Object.assign({}, this.prof(), { pinChanged: "just now" }) });
+            this.toast("PIN changed — use it at the next terminal unlock");
+          } catch (e) {
+            this.toast((e && e.message) || "The outlet refused that PIN change", "err");
+          }
         }
       },
       /* The `backup` and `restore` forms lived here and did nothing. Both
@@ -14344,16 +14344,36 @@ class Component extends DCLogic {
         editSave: "Save terminal",
         foot: "Printer bindings live on the device registration, so a reimaged terminal pulls them back rather than needing a re-setup. A station with no printer bound falls back to the KDS screen.",
         fields: [
-          { k: "device", label: "Device name", v: "dev_CHA_T1", full: 1 },
+          /* The device id used to be a free-text box defaulting to a made-up
+             string, so the id bound into every token was whatever somebody
+             typed and the outlet had no row for it — which is why nothing
+             about a device could ever be enforced. It is claimed with the code
+             a manager reads out now, and shown rather than edited. */
+          { k: "pair", label: "Pairing code from a manager", v: "", full: 1 },
           { k: "receiptPrinter", label: "Receipt printer", v: "Epson TM-m30 · USB", full: 1 },
           { k: "kotPrinter", label: "Kitchen printer", v: "Kitchen bumper · LAN", full: 1 },
           { k: "paper", label: "Paper width", options: [{ v: "80", l: "80 mm" }, { v: "58", l: "58 mm" }] },
           { k: "copies", label: "Receipt copies", options: [{ v: "1", l: "One" }, { v: "2", l: "Two — guest and merchant" }] }
         ],
-        onSave: (v) => {
-          const next = Object.assign({}, this.prefs(), { paper: +v.paper || 80, copies: +v.copies || 1, device: v.device, receiptPrinter: v.receiptPrinter, kotPrinter: v.kotPrinter });
+        onSave: async (v) => {
+          const next = Object.assign({}, this.prefs(), { paper: +v.paper || 80, copies: +v.copies || 1, receiptPrinter: v.receiptPrinter, kotPrinter: v.kotPrinter });
+          const code = String(v.pair || "").trim();
+          if (code) {
+            const B = window.KPOS_BRIDGE;
+            if (!B || !B.claimDevice) return this.toast("Pairing needs the outlet — this terminal is not connected to one", "warn");
+            try {
+              const d = await B.claimDevice(code);
+              next.device = d.id;
+              this.setState({ prefs: next, modal: null });
+              this.queue("terminal_update", (d.label || d.id) + " · " + v.paper + "mm · " + v.copies + " copies · by " + this.me(), "devices");
+              if (B.refresh) await B.refresh();
+              return this.toast("Paired as " + (d.label || d.id) + " — sign out and back in so the token carries it");
+            } catch (e) {
+              return this.toast((e && e.message) || "That code was refused", "err");
+            }
+          }
           this.setState({ prefs: next, modal: null });
-          this.queue("terminal_update", v.device + " · " + v.paper + "mm · " + v.copies + " copies · by " + this.me(), "devices");
+          this.queue("terminal_update", (this.prefs().device || "unpaired terminal") + " · " + v.paper + "mm · " + v.copies + " copies · by " + this.me(), "devices");
           this.toast("Terminal settings saved");
         }
       },
@@ -15649,35 +15669,41 @@ class Component extends DCLogic {
           this.toast(this.printer(id).name + " prints over the network at " + host);
         }
       },
+      /* ENROLLING A SCREEN. This used to mint a code IN THIS BROWSER and then
+         ask the operator to confirm it matched the code on the new screen —
+         which had no way of knowing it. It then invented a device id, pushed a
+         row into local state, and queued an audit-only op, so the outlet never
+         heard of the display and the "paired" device existed on one browser.
+
+         The outlet mints the code now (POST /api/auth/devices), the card shows
+         it while it is live, and the new screen keys it in its own Terminal
+         settings. Nothing is paired until that happens, and the screen says
+         so. */
       pairKds: {
-        title: "Add a kitchen display", sub: "Pair a screen and tell it which pass it serves",
-        save: "Pair this screen",
-        foot: "Open Kashikeyo on the new screen and choose Pair with an outlet — it shows a six-character code. The station you pick here is what the screen comes back to after a power cut, so it is set once on pairing rather than left to whoever last touched it. A display holds no data of its own: it renders the terminal's pass over the LAN, which is why it keeps working when the internet does not.",
-        pre: () => ({ code: "" }),
+        title: "Enrol a kitchen display", sub: "Name it here, then key its code on the screen itself",
+        save: "Enrol it",
+        foot: "Enrolling reserves a place on the outlet's roll and gives you a six-character code, good for fifteen minutes. Open Kashikeyo on the new screen, sign in, and key the code under Settings \u2192 Terminal. The station you pick here is what the screen comes back to after a power cut, so it is set once rather than left to whoever last touched it.",
         fields: [
-          { k: "code", label: "Code shown on the new screen — this one is " + (this.state.pairCode || ""), v: "" },
-          { k: "name", label: "Where it hangs", v: "Kitchen display" },
-          { k: "station", label: "Which pass it serves", options: [{ v: "expo", l: "Pass · every station (expeditor)" }].concat(this.STATIONS().map((st) => ({ v: st[0], l: st[1] }))) },
-          { k: "size", label: "Screen", options: [{ v: "24", l: "24 inch wall screen · 6 tickets" }, { v: "15", l: "15 inch bumper · 4 tickets" }, { v: "10", l: "10 inch tablet · 2 tickets" }] }
+          { k: "name", label: "Where it hangs", v: "Kitchen display", full: 1 },
+          { k: "station", label: "Which pass it serves", options: [{ v: "expo", l: "Pass \u00b7 every station (expeditor)" }].concat(this.STATIONS().map((st) => ({ v: st[0], l: st[1] }))) }
         ],
-        onSave: (v) => {
-          if (!this.canApprove()) return this.toast("Pairing a screen needs a manager", "warn");
-          const typed = String(v.code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-          const want = String(this.state.pairCode || "").replace("-", "");
-          if (!typed) return this.toast("Type the code the new screen is showing", "warn");
-          if (typed !== want) return this.toast("That code does not match the one on this screen — codes expire after a few minutes, so ask it for a fresh one", "err");
-          const o = this.outlet();
-          const id = "dev_" + (o.code || "OUT").split("-")[1] + "_KDS" + (1 + (this.state.pairedDevices || []).length);
-          const row = {
-            id: id, outletCode: o.code, ver: this.appVer(), seenMin: 0, pend: 0,
-            kind: (v.name || "Kitchen display") + " · " + (v.station === "expo" ? "pass" : this.stationName(v.station).toLowerCase()),
-            station: v.station, size: +v.size || 24, pairedAt: Date.now(), by: this.me()
-          };
-          this.setState({ pairedDevices: (this.state.pairedDevices || []).concat([row]), pairCode: null, modal: null });
-          // device_id is bound into the token, so pairing is an access-control
-          // event and belongs in the trail beside a sign-in, not in a settings log.
-          this.queue("device_paired", id + " paired to " + o.code + " · " + row.kind + " · by " + this.me(), "devices");
-          this.toast(id + " paired — it is showing the " + (v.station === "expo" ? "pass" : this.stationName(v.station).toLowerCase()) + " now");
+        onSave: async (v) => {
+          if (!this.canApprove()) return this.toast("Enrolling a screen needs a manager", "warn");
+          const B = window.KPOS_BRIDGE;
+          if (!B || !B.registerDevice) return this.toast("Enrolling needs the outlet \u2014 this terminal is not connected to one", "warn");
+          try {
+            const r = await B.registerDevice({
+              label: v.name || "Kitchen display", kind: "display",
+              station: v.station === "expo" ? null : v.station
+            });
+            this.setState({ modal: null });
+            if (B.refresh) await B.refresh();
+            this.toast(r && r.pair_code
+              ? "Key " + r.pair_code + " on the new screen within fifteen minutes \u2014 it is on the device card until it is used"
+              : "Enrolled");
+          } catch (e) {
+            this.toast((e && e.message) || "The outlet refused that enrolment", "err");
+          }
         }
       },
       channelRates: {
@@ -15906,46 +15932,74 @@ class Component extends DCLogic {
   // decorative. The other terminals are now fixed registry records, and THIS one
   // reports itself from live state — outbox depth, printers, storage, session,
   // clock — because the terminal you are holding is the one you can actually check.
-  DEVICE_REGISTRY() {
-    return [
-      { id: "dev_CHA_T2", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 0, pend: 0, kind: "Till 2" },
-      { id: "dev_CHA_T3", outletCode: "KAS-CHA", ver: "4.1.8", seenMin: 4, pend: 2, kind: "Terrace handheld" },
-      { id: "dev_CHA_KDS", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 0, pend: 0, kind: "Kitchen display · hot pass", station: "hot" },
-      { id: "dev_CHA_KDS2", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 1, pend: 0, kind: "Kitchen display · grill", station: "grill" },
-      { id: "dev_MAA_T1", outletCode: "KAS-MAA", ver: this.appVer(), seenMin: 1, pend: 0, kind: "Till 1" },
-      { id: "dev_MAA_T2", outletCode: "KAS-MAA", ver: "4.1.8", seenMin: 96, pend: 5, kind: "Till 2" },
-      { id: "dev_HUL_T1", outletCode: "KAS-HUL", ver: this.appVer(), seenMin: 2, pend: 0, kind: "Till 1" }
-    ];
+  /* WHAT IS ACTUALLY ENROLLED HERE. This was a hardcoded registry of seven
+     terminals belonging to three outlet codes that exist
+     on no real install — carrying invented pending counts, invented last-seen
+     minutes and an invented version. So on a real outlet the Sync screen
+     showed seven devices that do not exist and hid the ones that do, on the
+     screen a manager opens to find a lost tablet. `chain.device` has been
+     published in the bootstrap the whole time and nothing read it.
+
+     `ver` is null where the device has not pushed since 036, and "not said" is
+     rendered as not said rather than as behind. `pend` belongs to the device
+     that holds the outbox, so it is known for THIS terminal and unknowable for
+     any other: the card says so instead of guessing. */
+  devices() {
+    const rows = (K() || {}).DEVICES || [];
+    const me = this.thisDevice();
+    const mine = rows.filter((d) => !d.revoked && d.id !== me.id).map((d) => ({
+      id: d.id, label: d.label || d.id, kind: d.kind || "terminal",
+      station: d.station || null, outletCode: this.outlet().code,
+      ver: d.ver || null, seen: d.seen || null, pushed: d.pushed || null,
+      paired: d.paired || null, pairing: d.pairing || null, self: false
+    }));
+    return [me].concat(mine);
   }
   thisDevice() {
     const s = this.state, P = this.prefs();
     return {
-      id: P.device || "dev_CHA_T1", outletCode: this.outlet().code, ver: this.appVer(),
-      seenMin: 0, pend: s.outbox.filter((x) => x.state === "queued").length,
-      kind: "This terminal", self: true
+      id: P.device || "", label: "This terminal", kind: "terminal",
+      outletCode: this.outlet().code, ver: this.appVer(),
+      seen: new Date().toISOString(), pushed: null, paired: null,
+      pend: s.outbox.filter((x) => x.state === "queued").length,
+      self: true
     };
   }
-  devices() {
-    const code = this.outlet().code;
-    const scope = this.roleIsChainWide() ? null : code;
-    const paired = (this.state.pairedDevices || []).filter((d) => !scope || d.outletCode === scope);
-    return [this.thisDevice()]
-      .concat(paired)
-      .concat(this.DEVICE_REGISTRY().filter((d) => !scope || d.outletCode === scope));
+  /* One seam for the two device writes, like staffWrite() for the staff ones,
+     and for the same reason: both used to paint a local row and queue an
+     audit-only op, so a "locked" device kept working and a "deregistered" one
+     kept writing. No offline path — taking a terminal off the estate while
+     unable to reach the outlet is the write that must not be optimistic. */
+  async deviceAct(d, call, said) {
+    const B = window.KPOS_BRIDGE;
+    this.setState({ modal: null });
+    if (!B || !B[call]) return this.toast("This needs the outlet \u2014 this terminal is not connected to one", "warn");
+    try {
+      const r = await B[call](d.id);
+      const n = Number(r && (r.signedOut !== undefined ? r.signedOut : 1)) || 0;
+      if (B.refresh) await B.refresh();
+      this.toast(said(n));
+    } catch (e) {
+      this.toast((e && e.message) || "The outlet refused that", "err");
+    }
   }
-  // Six characters, no vowels and no 0/O or 1/I: it is read off a screen across a
-  // kitchen and typed by someone holding a phone, so the alphabet matters more
-  // than the entropy.
-  pairCode() {
-    const A = "23456789BCDFGHJKLMNPQRSTVWXZ";
-    let out = "";
-    for (let i = 0; i < 6; i++) out += A[Math.floor(Math.random() * A.length)];
-    return out.slice(0, 3) + "-" + out.slice(3);
+  // How long ago, in the words a person uses, or "never" — never a number
+  // nobody measured.
+  agoOf(iso) {
+    if (!iso) return null;
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    const h = Math.round(m / 60);
+    return h < 24 ? h + (h === 1 ? " hour ago" : " hours ago")
+      : Math.round(h / 24) + " day" + (Math.round(h / 24) === 1 ? "" : "s") + " ago";
   }
+  /* The code is the OUTLET's. This browser used to mint one — six characters
+     of Math.random held in local state — and then ask the operator to confirm
+     it matched the code on the new screen, which had no way of knowing it. */
   openPairing() {
-    if (!this.canApprove()) return this.toast("Pairing a screen needs a manager", "warn");
-    this.setState({ pairCode: this.pairCode(), pairAt: Date.now() });
-    setTimeout(() => this.openForm("pairKds"), 0);
+    if (!this.canApprove()) return this.toast("Enrolling a screen needs a manager", "warn");
+    this.openForm("pairKds");
   }
   // Every check is something that has actually bitten a restaurant at 19:30, and
   // every one names the consequence rather than a status colour.
@@ -16474,41 +16528,57 @@ class Component extends DCLogic {
       empty: "Outbox is clean. Flip the network pill to Offline on the POS floor, keep selling, and the writes stack up here.",
       cardMin: 250,
       cards: devices.map((d) => {
-        const stale = d.seenMin > 30;
-        // Behind WHAT — the version this install is actually running, which
-        // the bootstrap publishes. Compared against a literal, "behind" was a
-        // verdict measured off a number nothing else in the build agreed with.
-        const drift = d.ver !== this.appVer();
+        /* Every figure on this card is now the outlet's, or absent. It used
+           to be a hardcoded row: "4 min ago", "2 pending", version 4.1.8 —
+           on devices that do not exist. */
+        const seen = this.agoOf(d.seen), pushed = this.agoOf(d.pushed);
+        const hour = 3600e3;
+        const quiet = !d.self && d.pushed && (Date.now() - new Date(d.pushed).getTime()) > hour;
+        const stale = !d.self && (!d.seen || (Date.now() - new Date(d.seen).getTime()) > 30 * 60e3);
+        // Behind WHAT — the build this install is running, against what the
+        // device reported on its last push. A device that has never reported
+        // is "not said", which is a different answer from "behind".
+        const drift = !d.self && d.ver && d.ver !== this.appVer();
         return {
-          title: d.id + (d.self ? " · you" : ""), sub: (this.outletByCode(d.outletCode) || {}).name + " · " + d.kind,
+          title: (d.label || d.id) + (d.self ? " \u00b7 you" : ""),
+          sub: this.outlet().name + " \u00b7 " + d.kind + (d.station ? " \u00b7 " + d.station : ""),
           accent: d.self ? "var(--line-3)" : null,
-          chip: d.self ? "This terminal" : stale ? "Last seen " + d.seenMin + "m ago" : "Online",
-          chipBg: d.self ? "var(--info-dim)" : stale ? "var(--warn-dim)" : "var(--ok-dim)",
-          chipFg: d.self ? "var(--blue-bright)" : stale ? "var(--warn-bright)" : "var(--green)",
-          rows: [
-            ["App version", d.ver + (drift ? " · behind" : ""), drift ? "var(--warn-bright)" : "t"],
-            ["Last seen", d.self ? "now" : d.seenMin ? d.seenMin + " min ago" : "just now"],
-            ["Pending ops", String(d.pend), d.pend ? "var(--warn-bright)" : "var(--green)"]
-          ],
+          chip: d.self ? "This terminal" : d.pairing ? "Waiting to pair" : stale ? "Not seen lately" : "Enrolled",
+          chipBg: d.self ? "var(--info-dim)" : d.pairing ? "var(--warn-dim)" : stale ? "var(--warn-dim)" : "var(--ok-dim)",
+          chipFg: d.self ? "var(--blue-bright)" : d.pairing ? "var(--warn-bright)" : stale ? "var(--warn-bright)" : "var(--green)",
+          rows: d.self
+            ? [["App version", d.ver],
+               ["Waiting to send", String(d.pend), d.pend ? "var(--warn-bright)" : "var(--green)"],
+               ["Enrolled as", d.id || "not paired to this outlet"]]
+            : [["App version", d.ver ? d.ver + (drift ? " \u00b7 behind" : "") : "not said yet",
+                drift ? "var(--warn-bright)" : "t"],
+               ["Last seen", seen || "never"],
+               ["Last delivered", pushed || (d.kind === "printer" || d.kind === "display" ? "never pushes" : "never"),
+                quiet ? "var(--warn-bright)" : "t"]],
           foot: d.self
-            ? "Everything on this card is read from live state — the figures move when the terminal does."
-            : drift
-              ? "A terminal a version behind can be writing with an older tax table or recipe cache. Version drift inside one outlet is what makes two tills disagree about the same dish."
-              : "device_id is bound into the JWT, so a ticket can only be inserted by the device that signed it.",
+            ? "Everything on this card is read from live state \u2014 the figures move when the terminal does. What is waiting to send is known here because this is the device holding the outbox."
+            : d.pairing
+              ? "This device has been enrolled and is waiting for somebody to key its code. The code expires; enrol it again for a fresh one."
+              : drift
+                ? "A terminal a version behind can be writing with an older tax table or recipe cache. Version drift inside one outlet is what makes two tills disagree about the same dish."
+                : "device_id is bound into the token, so a ticket can only be inserted by the device that signed it \u2014 and a deregistered device is refused at the keypad.",
           go: d.self
             ? () => this.runDiagnostics()
-            : () => this.setState({ modal: { kind: "actions", title: d.id, sub: d.kind + " · " + (this.outletByCode(d.outletCode) || {}).name, acts: [
-                { label: "Ask it to replay now", sub: d.pend ? d.pend + " operations waiting" : "Nothing waiting",
-                  go: () => { this.setState({ modal: null }); this.queue("device_replay", "Replay requested on " + d.id + " by " + this.me(), "devices"); this.toast("Replay requested on " + d.id); } },
-                { label: "Lock it now", sub: "Returns it to the PIN screen · open tickets untouched",
-                  go: () => { this.setState({ modal: null }); this.queue("device_lock", d.id + " locked remotely by " + this.me(), "devices"); this.toast(d.id + " locked — open tickets are untouched"); } },
-                { label: "Deregister this device", sub: "It cannot write again until re-enrolled",
+            : () => this.setState({ modal: { kind: "actions", title: d.label || d.id, sub: d.kind + " \u00b7 " + this.outlet().name, acts: [
+                /* "Ask it to replay now" used to sit here. There is no channel
+                   to push anything to a device, and every terminal drains its
+                   own outbox every five seconds anyway, so the control could
+                   only ever have recorded a wish. What a manager needs is on
+                   the card: when it last delivered. */
+                { label: "Sign it out", sub: "Back to the PIN screen \u00b7 stays enrolled \u00b7 open tickets untouched",
+                  go: () => this.deviceAct(d, "signOutDevice", (n) => n
+                    ? (d.label || d.id) + " signed out \u2014 it lands on the PIN screen at its next action"
+                    : "Nobody was signed in on " + (d.label || d.id)) },
+                { label: "Deregister it", sub: "Refused at the keypad until somebody enrols it again",
                   go: () => {
                     if (!this.canApprove()) return this.toast("Deregistering a device needs manager rights", "warn");
-                    if (d.pend) return this.toast(d.id + " still has " + d.pend + " unreplayed writes — those would be lost", "err");
-                    this.setState({ modal: null });
-                    this.queue("device_deregister", d.id + " deregistered by " + this.me(), "devices");
-                    this.toast(d.id + " deregistered");
+                    this.deviceAct(d, "deregisterDevice", () => (d.label || d.id)
+                      + " deregistered \u2014 it cannot sign in or write until it is enrolled again");
                   } }
               ] } })
         };
@@ -16518,7 +16588,12 @@ class Component extends DCLogic {
         ["Conflict rule", "Last-writer-wins on open tickets, except anything touching money: a closed ticket, a payment or a credit charge is never overwritten — the replay is rejected and surfaces here for a human decision."],
         ["What never queues", "Reads. Menu, table state and the customer list are served from the local cache, so an outlet with no link still opens, seats guests and prints bills."],
         ["Version drift is a data problem", "A terminal running an older build may be holding an older tax table or recipe cache, so two tills in one outlet can price the same dish differently. That is why the version is on the card rather than buried in a settings screen."],
-        ["Deregistering is refused while writes are outstanding", "A device with unreplayed operations is holding the only copy of them. Removing it would destroy sales that were legitimately taken, so the app refuses until it has replayed."]
+        /* This used to claim the app refused while writes were outstanding.
+           Nobody can enforce that: unreplayed operations live in the DEVICE's
+           own IndexedDB, so neither the outlet nor another terminal can know
+           how many are waiting. What is true is the consequence, and what to
+           look at before pressing it. */
+        ["Check what a device still owes before deregistering it", "Unreplayed operations live in that device's own storage, so nothing here can count them — which is why \"Last delivered\" is on its card. A device deregistered while holding writes still holds them, and it can no longer deliver them. If the figure is not recent, sign it out and let somebody bring it back on the network first."]
       ]
     };
   }
@@ -17460,14 +17535,18 @@ class Component extends DCLogic {
           rows: [["Note", P0.invoiceNote || "—"], ["Taxpayer line", CH.name + " · TIN " + P0.taxTin], ["Contact line", P0.phone + " · " + P0.email], ["Tax summary", "Subtotal, service charge, " + P0.taxClass]],
           foot: "Anything a tax invoice has to carry sits here rather than being hard-coded into the receipt template, so a rule change is an edit and not a release.",
           go: gate(() => this.openForm("taxProfile")) },
-        { title: "Password", sub: "Back-office sign-in", chip: "Changed " + P0.pwChanged, chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "security",
-          rows: [["Account", this.me()], ["Last changed", P0.pwChanged], ["Sessions", "this device + 2 others"], ["Requirement", "8 characters minimum"]],
-          foot: "Resetting signs out every other device. A password and a floor PIN are separate credentials — losing one does not hand over the other.",
-          goLabel: "Reset password", go: () => this.openForm("password") },
-        { title: "Floor PIN", sub: "Terminal unlock and voids", chip: "Changed " + P0.pinChanged, chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "security",
-          rows: [["Length", "4 digits"], ["Last changed", P0.pinChanged], ["Authorises", "unlock · voids · discounts"], ["Rejected", "runs and repeats"]],
-          foot: "Yours to reset here. A manager resets someone else's from Users & Roles, which is the only way to change a PIN you do not know.",
-          goLabel: "Reset PIN", go: () => this.openForm("pin") },
+        /* "Changed just now" and "this device + 2 others" were both invented,
+           over a form that queued an audit-only op. The password is not the
+           till's to change at all — it belongs to the account that owns the
+           business, on a plane no outlet role can reach. */
+        { title: "Password", sub: "The owner's account, not this till", chip: "Changed on the account", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "security",
+          rows: [["Belongs to", "whoever owns this business"], ["Signs in to", "the account page"], ["Changed at", "/account"], ["This till", "uses PINs, not passwords"]],
+          foot: "A password and a floor PIN are separate credentials on separate planes, and losing one does not hand over the other. The password is the account's — the email address the business signed up with — so it is changed where that account signs in, and a staff session deliberately cannot reach it.",
+          goLabel: "Open the account page", go: () => { try { window.location.href = "/account"; } catch (e) {} } },
+        { title: "Floor PIN", sub: "Terminal unlock and voids", chip: "Yours", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "security",
+          rows: [["Length", "4 digits"], ["Authorises", "unlock · voids · discounts"], ["Proved by", "the PIN you are replacing"], ["Rejected", "runs and repeats"]],
+          foot: "Yours to change here, and knowing the current one is what proves it is you. A manager resets someone else's from Users & Roles, which is the only way to change a PIN nobody knows.",
+          goLabel: "Change my PIN", go: () => this.openForm("pin") },
         /* Backups are taken where the database lives, and this app takes
            none of its own. What used to be here was a picture of a backup
            system: an archive list, a retention policy and a size, all
@@ -17582,7 +17661,7 @@ class Component extends DCLogic {
             .concat([["Change given in", "rufiyaa only"]]),
           foot: "A tender is recorded in the currency the note was handed over in, at the rate in force at that moment, and posts to the ledger in MVR. The rate travels on the ticket — so a receipt reprinted next year still shows the rate the guest was actually given, and a rate move between the sale and the bank deposit lands in 7100 FX gain / loss rather than in a cashier's variance.",
           goLabel: "Set rates", go: gate(() => this.openForm("fxrates")) },
-        { title: "Terminal", sub: P.device || "dev_CHA_T1", chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)",
+        { title: "Terminal", sub: P.device || "not paired to this outlet", chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)",
           // The version was "4.2.1", a literal on a build numbered otherwise —
           // and it is the figure somebody rings support quoting. The cache was
           // a cache size in megabytes, never measured. Both come from somewhere real, and
@@ -17749,7 +17828,9 @@ class Component extends DCLogic {
         // named one screen and opened another.
         { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 6 }) }) });
     }
-    const drift = this.DEVICE_REGISTRY().filter((d) => d.outletCode === o.code && d.ver !== this.appVer());
+    // Measured against what each device REPORTED on its last push (036), and
+    // only where it has reported. A device that has not said is not behind.
+    const drift = this.devices().filter((d) => !d.self && d.ver && d.ver !== this.appVer());
     if (drift.length) {
       add("watch", "Terminals a version behind", drift.length + " device" + (drift.length === 1 ? "" : "s"), "An older build can hold an older tax table or recipe cache, which is how two tills price the same dish differently.", "sync",
         { act: "Devices", go: () => this.setState({ view: "sync" }) });

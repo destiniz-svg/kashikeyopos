@@ -52,7 +52,8 @@ async function buildBootstrap(ctx) {
       taxVers: ['SELECT * FROM chain.tax_version ORDER BY code, effective_from'],
       staff: ['SELECT id, name, rank, role_key, outlet_id, outlets, active,'
         + ' locked_until, perm_override FROM chain.staff ORDER BY rank DESC, name'],
-      devices: ['SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked'
+      devices: ['SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked,'
+        + ' app_version, pair_code, pair_expires'
         + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
       /* How many sign-ins are live at this outlet right now, THIS one
          included. The Settings card used to print "3 active" as a literal on
@@ -289,7 +290,13 @@ async function buildBootstrap(ctx) {
       DEVICES: devices.rows.map((r) => ({
         id: r.id, label: r.label, kind: r.kind, station: r.station,
         paired: iso(r.paired_at), seen: iso(r.last_seen),
-        pushed: iso(r.last_push_at), revoked: r.revoked
+        pushed: iso(r.last_push_at), revoked: r.revoked,
+        /* What it last told us it was running, and null where it has not said.
+           The Sync screen used to compare a hardcoded registry against a
+           hardcoded current version — two literals agreeing with each other. */
+        ver: r.app_version || null,
+        pairing: r.pair_code && r.pair_expires && new Date(r.pair_expires) > new Date()
+          ? { code: r.pair_code, until: iso(r.pair_expires) } : null
       })),
       /* What this install is actually running. The Terminal card printed
          "4.2.1" as a literal on a build numbered otherwise, which is exactly

@@ -108,8 +108,16 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
          what lets any OTHER screen answer "which till has not delivered in an
          hour", which matters precisely when that till cannot be asked. */
       if (req.ctx.deviceId) {
-        await c.query('UPDATE chain.device SET last_seen = now(), last_push_at = now()'
-          + ' WHERE id = $1 AND outlet_id = $2', [req.ctx.deviceId, req.ctx.outletId]);
+        /* The build this terminal is running, reported where it is already
+           identifying itself (036). A push is the one moment the device is
+           certainly the device; asking it anywhere else would be a second
+           protocol for one fact. `coalesce` so a build that does not send it
+           leaves the last answer standing rather than erasing it. */
+        const ver = String(req.get('x-app-version') || '').slice(0, 32) || null;
+        await c.query('UPDATE chain.device SET last_seen = now(), last_push_at = now(),'
+          + ' app_version = coalesce($3, app_version)'
+          + ' WHERE id = $1 AND outlet_id = $2',
+          [req.ctx.deviceId, req.ctx.outletId, ver]);
       }
       return out;
     });

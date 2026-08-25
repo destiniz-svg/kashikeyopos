@@ -3,6 +3,7 @@ const express = require('express');
 const { owner, withOutlet } = require('../db');
 const { sign, pinMatches, hashPin, pairCode } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
+const { forget } = require('../revoked');
 const { take, room, gate } = require('../limit');
 
 const r = express.Router();
@@ -132,6 +133,16 @@ r.get('/roster',
    there is one lockout, one audit record and one token shape. */
 async function pinSignIn(oid, pin, deviceId, caller) {
   return withOutlet({ outletId: oid, rank: 0 }, async function (c) {
+    /* A deregistered device is refused at the KEYPAD, not three requests
+       later. Without this the till signs in, has its very next call refused
+       for the same reason, signs in again, and loops — telling the person
+       holding it nothing about why. It costs no PIN budget: the device is out,
+       whoever is standing at it. */
+    if (deviceId) {
+      const d = await c.query('SELECT revoked FROM chain.device WHERE id = $1'
+        + ' AND outlet_id = $2', [deviceId, oid]);
+      if (d.rows[0] && d.rows[0].revoked) return { refused: true, device: true };
+    }
     const q = await c.query('SELECT * FROM chain.pin_candidates($1)', [oid]);
     const now = Date.now();
     let anyLocked = false;
@@ -176,6 +187,9 @@ async function pinSignIn(oid, pin, deviceId, caller) {
 }
 
 function refusal(out) {
+  if (out.device) {
+    return 'This terminal has been deregistered — ask a manager to enrol it again';
+  }
   return out.locked
     ? 'Too many attempts — the keypad is locked for ' + LOCK_MINS + ' minutes'
     : 'PIN not recognised';
@@ -221,6 +235,7 @@ r.post('/signout', async function (req, res, next) {
       }
       await c.query("SELECT chain.log('sign_out','staff',$1,NULL,NULL)", [req.ctx.actor]);
     });
+    forget(req.ctx.sessionId);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -255,7 +270,52 @@ r.post('/revoke', atLeast('admin'), async function (req, res, next) {
         [JSON.stringify({ count: q.rowCount })]);
       return q.rowCount;
     });
+    /* Immediately, not in thirty seconds: this is one process, and the person
+       pressing it has lost a tablet. */
+    forget();
     res.json({ revoked: n });
+  } catch (e) { next(e); }
+});
+
+/* CHANGING YOUR OWN PIN. Settings has offered this since the build began and
+   it did nothing: the form validated the shape, toasted "PIN reset — use it at
+   the next terminal unlock", and queued `pin_reset`, which is AUDIT_ONLY. The
+   old PIN kept working, and the person pressing that button has usually just
+   watched somebody read theirs over a shoulder.
+
+   Not the rank-4 staff endpoint: that is for resetting SOMEBODY ELSE's PIN,
+   which is an administrator's act. Your own is yours, and it is proved by
+   knowing the one you are replacing — see migration 037 for why this has to be
+   a SECURITY DEFINER function rather than a policy.
+
+   A wrong current PIN pays into the same two tiers every other wrong PIN pays
+   into, or this is a way to try four digits at leisure from inside a session
+   that is already open on the counter. */
+r.post('/pin/change', async function (req, res, next) {
+  const { current, next: fresh } = req.body || {};
+  if (!/^\d{4,8}$/.test(String(fresh || ''))) {
+    return res.status(400).json({ error: 'A PIN is four to eight digits' });
+  }
+  if (String(current || '') === String(fresh)) {
+    return res.status(400).json({ error: 'That is the PIN you already have' });
+  }
+  const caller = callerKey(req, req.ctx.deviceId);
+  const left = room(caller, CALLER_TRIES, LOCK_MINS * 60e3);
+  if (!left.ok) return tooMany(res, left.retry);
+  try {
+    const ok = await withOutlet(req.ctx, async function (c) {
+      const salt = await c.query('SELECT chain.staff_pin_salt() AS s');
+      const cur = hashPin(String(current || ''), (salt.rows[0] || {}).s || 'x');
+      const h = hashPin(String(fresh));
+      const q = await c.query('SELECT chain.staff_pin_change($1,$2,$3) AS ok',
+        [cur.hash, h.hash, h.salt]);
+      return !!(q.rows[0] || {}).ok;
+    });
+    if (!ok) {
+      take(caller, CALLER_TRIES, LOCK_MINS * 60e3);
+      return res.status(401).json({ error: 'That is not your current PIN' });
+    }
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
 
@@ -289,6 +349,63 @@ r.post('/devices', atLeast('manager'), async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* CLAIMING AN ENROLMENT. A manager enrols the device above and reads the
+   outlet's six-character code across the room; the new terminal keys it here
+   and learns the id it is to sign with. Before this, "Device name" was a
+   free-text field defaulting to a made-up string, so the device id bound into
+   every token was whatever somebody typed and `chain.device` never had a row
+   for it — which is why deregistering could not work even once it was wired.
+
+   Behind the session, because the person doing it has already keyed a PIN at
+   this terminal; the code is a convenience for naming the enrolment, not the
+   credential. It is spent on use and it expires, so a code read out across a
+   kitchen and forgotten does not stay live. */
+r.post('/devices/claim', async function (req, res, next) {
+  const code = String((req.body || {}).code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!code) return res.status(400).json({ error: 'code required' });
+  try {
+    const row = await withOutlet(req.ctx, async function (c) {
+      const q = await c.query('UPDATE chain.device SET pair_code = NULL,'
+        + ' pair_expires = NULL, paired_at = now(), revoked = false'
+        + ' WHERE outlet_id = $1 AND upper(pair_code) = $2 AND pair_expires > now()'
+        + ' RETURNING id, label, kind, station', [req.ctx.outletId, code]);
+      if (!q.rows.length) return null;
+      await c.query("SELECT chain.log('device_paired','device',$1,NULL,$2)",
+        [q.rows[0].id, JSON.stringify({ by: req.ctx.actor })]);
+      return q.rows[0];
+    });
+    if (!row) {
+      return res.status(404).json({
+        error: 'That code does not match an enrolment here, or it has expired'
+              + ' — ask a manager to enrol this screen again'
+      });
+    }
+    res.json(row);
+  } catch (e) { next(e); }
+});
+
+/* Signing ONE device out, which is a different decision from deregistering
+   it and the screen offers both because a manager needs both. This ends the
+   sessions on that device and leaves it enrolled, so it lands on the PIN
+   screen at its next call and whoever is standing at it keys their PIN — the
+   open tickets are the outlet's, not the device's, so nothing is lost. The
+   card has said exactly this for a long time over an audit-only op that did
+   nothing at all. */
+r.post('/devices/:id/signout', atLeast('manager'), async function (req, res, next) {
+  try {
+    const n = await withOutlet(req.ctx, async function (c) {
+      const q = await c.query('UPDATE chain.session SET revoked_at = now()'
+        + ' WHERE outlet_id = $1 AND device_id = $2 AND revoked_at IS NULL'
+        + ' AND expires_at > now()', [req.ctx.outletId, req.params.id]);
+      await c.query("SELECT chain.log('device_lock','device',$1,NULL,$2)",
+        [req.params.id, JSON.stringify({ count: q.rowCount })]);
+      return q.rowCount;
+    });
+    forget();
+    res.json({ signedOut: n });
+  } catch (e) { next(e); }
+});
+
 r.post('/devices/:id/revoke', atLeast('manager'), async function (req, res, next) {
   try {
     await withOutlet(req.ctx, async function (c) {
@@ -296,6 +413,8 @@ r.post('/devices/:id/revoke', atLeast('manager'), async function (req, res, next
         [req.params.id, req.ctx.outletId]);
       await c.query("SELECT chain.log('device_deregister','device',$1,NULL,NULL)", [req.params.id]);
     });
+    // Every session cached as good may have been on that device.
+    forget();
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

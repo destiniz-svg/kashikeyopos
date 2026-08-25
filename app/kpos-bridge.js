@@ -42,6 +42,11 @@
     var K = root.KPOS || {};
     var live = boot.kpos || {};
 
+    /* The client tells the outlet what build it is running, on every push.
+       Held on the API object so the header is set from the one place the
+       version is known rather than threaded through every call site. */
+    if (live.APPVER) api.appVersion = live.APPVER;
+
     // Replace only what the server actually sent. A key the server has no
     // opinion on keeps the shipped structure — which is how the labels, the
     // reason codes and the chart survive a bootstrap that carries no trade.
@@ -251,6 +256,15 @@
        the endpoints that were there the whole time. */
     addStaff: function (body) { return api.addStaff(body); },
     editStaff: function (id, body) { return api.editStaff(id, body); },
+    /* Devices are the outlet's roll, not this browser's. The Sync screen used
+       to render seven hardcoded terminals belonging to outlets that exist on
+       no real install, while chain.device — which the bootstrap has always
+       published — went unread. */
+    registerDevice: function (body) { return api.registerDevice(body); },
+    changePin: function (cur, next) { return api.changePin(cur, next); },
+    claimDevice: function (code) { return api.claimDevice(code); },
+    signOutDevice: function (id) { return api.signOutDevice(id); },
+    deregisterDevice: function (id) { return api.deregisterDevice(id); },
     rename: async function (h) {
       var r = await api.rename(h);
       hydrate(await api.bootstrap());
