@@ -80,25 +80,20 @@ customer data. **An install with no company holds nothing worth adopting** —
 its own boot log says `[install] no company yet — onboarding is open` — so
 starting clean is simpler and skips the one irreversible step in this document.
 
-1. **Create the registry** on the cluster the businesses will live on. It is
-   one database for the whole estate, and it is named rather than guessed:
-
-   ```bash
-   createdb kashikeyo_control
-   ```
-
-2. **Set the environment variables**, including `CONTROL_DB=kashikeyo_control`.
+1. **Set the environment variables**, including `CONTROL_DB=kashikeyo_control`.
    Do this **before** the first boot: the service refuses to migrate without
    the secrets, and in production it exits rather than serving on a half-built
    schema. The database user needs `CREATEDB` — signing up creates a database.
-3. **Deploy.** Boot migrates the registry, then every business database it
-   lists — none, on a first deploy. Migrations run in name order, exactly once
-   each (`chain.migration` is the ledger, per database). A migration whose
-   contents changed is re-applied, which is why every one here is idempotent.
-4. **Sign up on the website.** Confirm the email, and a database is created for
+2. **Deploy.** Boot creates the registry if it is not there — the name is
+   given, never guessed, so it can only make the one you asked for — migrates
+   it, then migrates every business database it lists, of which there are none
+   on a first deploy. Migrations run in name order, exactly once each
+   (`chain.migration` is the ledger, per database). A migration whose contents
+   changed is re-applied, which is why every one here is idempotent.
+3. **Sign up on the website.** Confirm the email, and a database is created for
    that business. No seller is in the loop and no infrastructure is provisioned
    per customer.
-5. **Work the fourteen steps.** The last one hands you the floor, signed in as
+4. **Work the fourteen steps.** The last one hands you the floor, signed in as
    the owner, with a PIN you set. **Write that PIN down before you close the
    tab.**
 

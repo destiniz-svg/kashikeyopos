@@ -25,7 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { owner, ownerFor, control } = require('../db');
+const { owner, ownerFor, control, CONTROL_DB } = require('../db');
 
 /* Two sets, and which database each belongs in is the whole tenancy model.
    BUSINESS is everything a till reads and writes — company, staff, members,
@@ -59,8 +59,46 @@ async function applyTo(pool, dir, log, opts) {
 // what boot and the whole test suite have always called.
 function migrate(log) { return applyTo(owner(), DIR, log, { reportRole: true }); }
 
+/* THE REGISTRY IS CREATED IF IT IS NOT THERE. Setting CONTROL_DB on a service
+   whose registry does not exist yet would otherwise fail at boot, and in
+   production this build exits rather than serve on a schema it could not
+   finish — a crash loop over one createdb somebody had to remember.
+
+   It is safe to create because the name is NAMED: control() refuses to guess,
+   so this can only ever make the database an operator asked for. The app
+   already holds CREATEDB — it makes one per business — so this grants itself
+   nothing new.
+
+   And a peer that got there first is success, not an error. That is the third
+   face of the CREATE EXTENSION defect: a DATABASE is cluster-wide too, so two
+   boots race here exactly as they raced on the extension and the role. */
+async function ensureControlDb(log) {
+  const name = CONTROL_DB();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw Object.assign(new Error('CONTROL_DB is not a usable database name: '
+      + name), { status: 500 });
+  }
+  try {
+    await control().query('SELECT 1');
+    return false;
+  } catch (e) {
+    if (e.code !== '3D000') throw e;        // invalid_catalog_name — anything
+    (log || console.log)('[migrate] registry "' + name + '" does not exist yet;'
+      + ' creating it');                    // else is a real connection problem
+    try {
+      await owner().query('CREATE DATABASE "' + name + '"');
+    } catch (made) {
+      if (made.code !== '42P04') throw made; // duplicate_database: a peer won
+    }
+    return true;
+  }
+}
+
 // The registry. No report role here — chain.estate_day is a business's own.
-function migrateControl(log) { return applyTo(control(), CONTROL_DIR, log, {}); }
+async function migrateControl(log) {
+  await ensureControlDb(log);
+  return applyTo(control(), CONTROL_DIR, log, {});
+}
 
 // One business, by database name.
 /* `dir` exists because the fleet has to be testable without writing a file
@@ -302,4 +340,5 @@ if (require.main === module) {
 }
 
 module.exports = { migrate, migrateControl, migrateBusiness, headCount, fleet,
+  ensureControlDb,
   _DIR: DIR, _CONTROL_DIR: CONTROL_DIR };

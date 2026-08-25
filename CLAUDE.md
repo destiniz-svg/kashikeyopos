@@ -2598,6 +2598,15 @@ does not stop the others: its row carries the reason, and only its own requests
 are refused. One customer down and named beats a deploy that stopped halfway
 with nobody knowing which half.
 
+**The registry creates itself when it is named but absent.** Setting
+`CONTROL_DB` on a service whose registry does not exist would otherwise fail at
+boot, and production exits rather than serve on a schema it could not finish —
+a crash loop over one `createdb` somebody had to remember. It is safe to create
+because the name is NAMED: `control()` refuses to guess, so this can only make
+the database an operator asked for, and the app already holds CREATEDB because
+it makes one per business. A peer that got there first is success. That is the
+third face of the `CREATE EXTENSION` defect — a DATABASE is cluster-wide too.
+
 **A cluster-wide object is not protected by a per-database lock.** The advisory
 lock above serialises two boots against ONE database, which is what it is for
 and no help at all for `kashikeyo_report` — a ROLE, which is cluster-wide. The

@@ -39,6 +39,53 @@ const EXTRA = path.join(SET, '999_fleet_probe.sql');
 
 let db, M, BIZ, a, b;
 
+test('the registry creates itself when it is named but absent', opts, async () => {
+  /* Setting CONTROL_DB on a service whose registry does not exist would
+     otherwise fail at boot — and this build exits rather than serve on a
+     schema it could not finish, so that is a crash loop over one createdb
+     somebody had to remember. */
+  const { Client } = require('pg');
+  const NEW = 'kashikeyo_control_born';
+  const a = new Client({
+    host: process.env.PGHOST || '127.0.0.1',
+    port: Number(process.env.PGPORT || 5432),
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || '',
+    database: process.env.PGADMINDB || 'postgres'
+  });
+  await a.connect();
+  await a.query('DROP DATABASE IF EXISTS ' + NEW);
+
+  const keep = process.env.CONTROL_DB;
+  process.env.CONTROL_DB = NEW;
+  try {
+    const M2 = require('../src/scripts/migrate');
+    await M2.migrateControl(() => {});
+    const there = await a.query('SELECT 1 FROM pg_database WHERE datname = $1', [NEW]);
+    assert.strictEqual(there.rows.length, 1, 'it made the registry it was told to use');
+
+    const db2 = require('../src/db');
+    const t = await db2.control().query(
+      "SELECT to_regclass('chain.account') IS NOT NULL AS ok");
+    assert.strictEqual(t.rows[0].ok, true, 'and migrated it');
+
+    // Twice is a no-op, which is what two boots racing looks like.
+    await M2.migrateControl(() => {});
+
+    // A name that is not a name is refused rather than interpolated.
+    process.env.CONTROL_DB = 'not a name"; DROP DATABASE x';
+    await assert.rejects(() => M2.ensureControlDb(() => {}),
+      /not a usable database name/);
+  } finally {
+    process.env.CONTROL_DB = keep;
+    await require('../src/db').shutdown().catch(() => {});
+    await a.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity'
+      + ' WHERE datname = $1 AND pid <> pg_backend_pid()', [NEW]).catch(() => {});
+    await a.query('DROP DATABASE IF EXISTS ' + NEW).catch(() => {});
+    await a.end();
+  }
+});
+
 test('two businesses, both at head', opts, async () => {
   await DB.dropBusinessDatabases();
   await DB.freshDatabase(process.env.PGTESTDB4 || 'kashikeyo_fleet_test');
