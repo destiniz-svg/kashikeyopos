@@ -160,7 +160,7 @@ const MODAL_KINDS = [
 
 const FORMS = [
   'category', 'chain', 'company', 'outletProfile', 'taxProfile', 'password',
-  'pin', 'backup', 'restore', 'terminal', 'item', 'recipe', 'adjust', 'refund',
+  'pin', 'terminal', 'item', 'recipe', 'adjust', 'refund',
   'journal', 'regopen', 'yield', 'subrecipe', 'acqFile', 'mdr', 'taxVersion',
   'fxrates', 'regclose', 'brand', 'staffedit', 'clockin', 'opex', 'asset',
   'breakdown', 'outlet', 'dish', 'outletPrice', 'pinFor', 'bankImport',

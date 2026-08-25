@@ -1533,6 +1533,70 @@ purpose — the people on it are standing in front of the terminal — but "not 
 secret" is not "free to harvest": one connection asking four hundred times an
 hour is building a staff list, not opening a till.
 
+## A control does what it says, or it is not a control
+
+Found by running the restore drill `DEPLOYMENT.md` asks for. The **restore
+works** — dumped, dropped the database entirely, restored, and every figure
+came back identical: 18,014 bills, MVR 5,879,628.04 gross, trial balance
+dr = cr = 5,879,675.32, 72,982 journal lines, 0 unbalanced, the same install
+uuid. Repeated into a **fresh cluster**, where `pg_dump` of one database
+carries no roles, `pg_restore` dropped 108 GRANT statements on the floor and
+exited 1; `/readyz` still answered **200** while every outlet request failed
+with `role "outlet_1_app" does not exist`. `npm run provision:outlet -- --all`
+— the step the guide names — brought it back in full: sign-in, a 2.4 MB
+bootstrap, 12 forced-RLS tables, 20 policies, no grant on the account plane,
+`leak-test` 13/13.
+
+What the drill actually found was the screen. **The app's own Backup and
+Restore were a picture of a backup system.** `backup_run`, `backup_create` and
+`restore_run` are all in `AUDIT_ONLY` — they record the press and do nothing;
+`grep pg_dump` over this repo returns nothing and there is no route for
+either. Yet the Restore card listed archives with dates and sizes, the form
+demanded a typed RESTORE, and the toast said the tills would stay locked until
+it finished. An operator who trusted that screen believed they had backups and
+a way back, and had neither. Both cards say what is true now and name where
+the work is done; the handlers stay in `AUDIT_ONLY` for a device still holding
+one in its outbox, exactly like `ticket_status`.
+
+The same shape ran through four more:
+
+- **Removing or suspending a person did nothing.** Every write on Users &
+  Roles went through `patchRows("users", …)`, which paints the local table and
+  queues `users_update` — a kind with NO HANDLER, so `applyOp` recorded it as
+  `unmodelled` and answered success. Proved against a live outlet:
+  `chain.staff.active` was still true after the op the Remove button queues. A
+  PIN reset reset nothing. And "Invite user" promised a magic link this build
+  has never had, writing a local row reading "Invited" and creating no account
+  at all — while `POST /api/auth/staff` and `PATCH /api/auth/staff/:id` sat
+  there fully written, guarded at rank 4, with nothing calling them. All four
+  go through one seam, `staffWrite()`, which calls the endpoint and refreshes
+  from the server; there is deliberately **no offline path**, because granting
+  or revoking access while unable to reach the outlet is precisely the write
+  that must not be optimistic. A role change carries the **rank** as well as
+  the key, or the server keeps gating on the old one. Verified end to end:
+  created, signed in, suspended, and the same PIN is then refused.
+- **"Sign out other sessions" signed out nobody** and toasted a "+2" it had
+  invented, over a count of "3 active" on an install nobody had signed into
+  twice. It calls `POST /api/auth/revoke` now and reports the number the
+  server actually revoked; the bootstrap publishes `SESSIONS` so the chip is
+  measured.
+- **"Reset this store"** toasted "tills lock while it runs, then boot empty"
+  over an audit-only op, and offered a pre-reset backup this build cannot
+  take. It files a **request** now, and says so on the card, in the form and
+  in the toast.
+- **The Terminal card** printed an app version of `4.2.1` on a build numbered
+  otherwise — the figure somebody rings support quoting — and an offline cache
+  of "42 MB" nobody had measured. The version comes from `package.json`
+  through the bootstrap (`APPVER`) and the cache from
+  `navigator.storage.estimate()`, with "not measured" where the browser will
+  not say. The Sync screen's "behind" was a verdict against that same literal.
+
+The rule, pinned in `test/wiring.test.js`: **an `AUDIT_ONLY` kind may be
+queued by a screen that says it is RECORDING something. It may never be queued
+by a screen that reports the thing was DONE.** `test/audit.test.js` already
+refused invented figures on the ribbons; this is the same rule for the cards
+behind them.
+
 ## History has a horizon, the trail does not
 
 `chain.prune_history(op_days, guest_days)` (migration 025), called at boot and

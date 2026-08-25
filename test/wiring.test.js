@@ -1742,3 +1742,132 @@ test('an account code that could not be sent is where the screen says it is', ()
   assert.ok(/audit trail/.test(page),
     'the sign-in screen still points at the trail — which is now true');
 });
+
+/* A CONTROL DOES WHAT IT SAYS, OR IT IS NOT A CONTROL.
+
+   Found by running the restore drill the deployment guide asks for. The
+   database restored perfectly — same bills, same trial balance to the laari,
+   same install uuid — but the app's own Backup and Restore screens turned out
+   to be a picture of a backup system. `backup_run`, `backup_create`,
+   `restore_run` and `store_reset` are all AUDIT_ONLY: they record the press
+   and do nothing. `grep pg_dump` over this repo returns nothing, and there is
+   no route for either. Yet the Restore card listed archives with dates and
+   sizes, the form demanded a typed RESTORE, and the toast said the tills would
+   stay locked until it finished. An operator who trusted that screen believed
+   they had backups and a way back; they had neither.
+
+   The same shape had "3 active" sessions on an install nobody had signed into
+   twice, over a control that queued an audit-only op and toasted a "+2" it had
+   invented — so a manager who had lost a tablet was told every other session
+   was ended and none of them was. That one had a real endpoint all along.
+
+   The rule this pins: an AUDIT_ONLY kind may be queued by a screen that says
+   it is RECORDING something. It may never be queued by a screen that reports
+   the thing was DONE. */
+test('no screen claims an action this build only records', () => {
+  const banned = ['backup_run', 'restore_run', 'backup_create'];
+  banned.forEach((k) => {
+    assert.ok(!new RegExp('queue\\(\\s*"' + k + '"').test(SRC),
+      k + ' is audit-only — no screen may queue it while reporting a backup or a restore');
+  });
+
+  // And the fictional archive list, retention and size are gone with it.
+  ['Newest archive', 'Oldest retained', '30 nightly', '41 MB', '39 MB'].forEach((lie) => {
+    assert.ok(SRC.indexOf(lie) < 0, 'an invented backup figure is still on screen: ' + lie);
+  });
+
+  /* The Terminal card beside them carried two more of the same: an app version
+     of "4.2.1" on a build numbered otherwise — the figure somebody rings
+     support quoting — and an offline cache of "42 MB" that was never measured.
+     "behind" on the Sync screen was a verdict against that same literal. */
+  assert.ok(SRC.indexOf('42 MB') < 0, 'the cache size was never measured');
+  assert.ok(!/"4\.2\.1"/.test(SRC.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')),
+    'and the version was a literal');
+  assert.match(SRC, /appVer\(\) \{ return \(\(K\(\) \|\| \{\}\)\.APPVER\)/,
+    'the version comes from the bootstrap');
+  assert.match(SRC, /navigator\.storage\.estimate\(\)/, 'and the cache is asked of the browser');
+  assert.match(SRC, /return "not measured"/, 'with an honest answer where it will not say');
+  const bs = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(bs, /APPVER: APP_VERSION/, 'read from package.json, the one place it is stated');
+
+  /* The reset still exists — it is a real thing an owner needs — but it now
+     files a REQUEST, and the wording says so on the card, in the form and in
+     the toast. */
+  assert.ok(/store_reset", "Store reset REQUESTED/.test(SRC),
+    'the reset records a request rather than claiming an erase');
+  assert.ok(/nothing has been erased/.test(SRC),
+    'and the toast says plainly that nothing was erased');
+
+  // Sessions: a measured count, and the real endpoint.
+  assert.ok(SRC.indexOf('"3 active"') < 0 && SRC.indexOf('"2 active"') < 0,
+    'the session counts were literals on an install nobody had signed into twice');
+  assert.ok(!/queue\(\s*"revoke_sessions"/.test(SRC),
+    'signing out everywhere is a call, not an outbox op — a lost tablet cannot wait for a flush');
+  assert.match(SRC, /B\.revokeSessions\(\)/,
+    'the control calls POST /api/auth/revoke');
+  assert.match(SRC, /SESS\.live/, 'and the chip shows the count the outlet published');
+
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  assert.match(api, /revokeSessions\(\)\s*\{[\s\S]*?\/api\/auth\/revoke/,
+    'the client has that call');
+
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(boot, /SESSIONS:/, 'and the bootstrap measures it rather than the screen guessing');
+
+  /* The handlers stay — a device that was offline across this change may be
+     holding one of these in its outbox, exactly like `ticket_status`. */
+  ['backup_run', 'restore_run', 'backup_create', 'store_reset', 'revoke_sessions']
+    .forEach((k) => assert.ok(AUDIT_ONLY.indexOf(k) >= 0,
+      k + ' keeps its audit-only handler for an outbox that still holds one'));
+});
+
+/* WHO WORKS HERE IS THE OUTLET'S ANSWER, NOT THE TERMINAL'S.
+
+   Same shape as the backup screen, found in the same pass and worse in kind.
+   Every write on Users & Roles went through `patchRows("users", …)`, which
+   paints the local table and queues `users_update` — a kind with NO HANDLER.
+   `applyOp` records an unhandled kind as `unmodelled` and answers success, so
+   the screen said "Removed" and the person kept their rank, their PIN and
+   their sign-in. Proved against a live outlet: `chain.staff.active` was still
+   true after the op the Remove button queues. Suspending suspended nobody. A
+   PIN reset reset nothing. And "Invite user" promised a magic link this build
+   has never had, writing a local row reading "Invited" and creating no account
+   at all — while POST /api/auth/staff and PATCH /api/auth/staff/:id sat there
+   fully written, guarded at rank 4, with nothing calling them. */
+test('granting and revoking access reaches the outlet', () => {
+  // (the comment above the seam quotes the old call, so match a real one)
+  assert.ok(!/this\.patchRows\("users"/.test(SRC),
+    'no staff write may be a local paint plus an unmodelled op');
+  assert.ok(!/queue\(\s*"users_update"/.test(SRC), 'and users_update has no handler to reach');
+  assert.ok(!HANDLERS.users_update, 'still no handler — which is why the screen must not queue it');
+
+  // Every one of the four writes now calls the endpoint.
+  assert.match(SRC, /B\.addStaff\(\{/, 'creating an account calls POST /api/auth/staff');
+  assert.match(SRC, /B\.editStaff\(u\.id, \{ active: false \}\)/, 'removing sets active false');
+  assert.match(SRC, /B\.editStaff\(u\.id, \{ pin: p \}\)/, 'a PIN reset sends the PIN');
+  assert.match(SRC, /active: v\.status !== "Suspended"/, 'suspending sets active false');
+
+  /* The rank IS the gate — src/auth.js and the RLS policies both read it — so
+     a role change that sent only the key would leave the old rank enforced. */
+  assert.match(SRC, /rank: this\.rankOf\(v\.role\)/,
+    'a role change carries the rank the server actually gates on');
+
+  // No offline path: an optimistic grant is the one write that must not be.
+  assert.match(SRC, /async staffWrite\(run, said\)/, 'one seam for all four');
+  assert.match(SRC, /this terminal is not connected to one/,
+    'and it refuses in words when there is no outlet to ask');
+
+  // The magic link that never existed.
+  assert.ok(SRC.indexOf('Magic-link invite') < 0, 'no magic link is promised');
+  assert.ok(SRC.indexOf('link not used yet') < 0, 'and no account waits on one');
+
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  assert.match(bridge, /addStaff: function/, 'the bridge carries both calls');
+  assert.match(bridge, /editStaff: function/);
+  /* And the screen reads the roll that says whether an account is ACTIVE. The
+     anonymous roster carries only the faces at the terminal, so a suspended
+     account rendered as absent rather than as suspended. */
+  assert.match(bridge, /api\.token \? await api\.staff\(\)/,
+    'signed in, USERS comes from the authenticated staff roll');
+  assert.match(bridge, /status: !u\.active \? "Suspended"/, 'which is what makes Suspended renderable');
+});

@@ -14,6 +14,8 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 const { withOutletRead } = require('./db');
+// What this install is running. Read once, from the one place it is stated.
+const APP_VERSION = require('../package.json').version;
 // The outlet's own local date — see apply.js. One day-key, not two.
 const { today } = require('./apply');
 
@@ -52,6 +54,13 @@ async function buildBootstrap(ctx) {
         + ' locked_until, perm_override FROM chain.staff ORDER BY rank DESC, name'],
       devices: ['SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked'
         + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
+      /* How many sign-ins are live at this outlet right now, THIS one
+         included. The Settings card used to print "3 active" as a literal on
+         an install nobody had signed into twice. A count is either measured
+         or it is not shown. */
+      sessions: ['SELECT count(*)::int AS n FROM chain.session'
+        + ' WHERE outlet_id = $1 AND revoked_at IS NULL AND expires_at > now()',
+        [ctx.outletId]],
       chainSettings: ['SELECT key, value FROM chain.setting'],
       /* The commercial state of this install (033). Readable by every outlet
          and writable by none — the platform door is the only writer — so what
@@ -127,6 +136,7 @@ async function buildBootstrap(ctx) {
     const locations = q.locations;
     const accounts = q.accounts;
     const employees = q.employees;
+    const sessions = q.sessions;
     const opex = q.opex;
     const assets = q.assets;
     const outletSettings = q.outletSettings;
@@ -281,6 +291,16 @@ async function buildBootstrap(ctx) {
         paired: iso(r.paired_at), seen: iso(r.last_seen),
         pushed: iso(r.last_push_at), revoked: r.revoked
       })),
+      /* What this install is actually running. The Terminal card printed
+         "4.2.1" as a literal on a build numbered otherwise, which is exactly
+         the figure somebody rings support quoting. */
+      APPVER: APP_VERSION,
+      /* Live sign-ins at this outlet, this device included. `others` is what
+         "sign out everywhere" would actually end. */
+      SESSIONS: (function () {
+        const n = (sessions.rows[0] || {}).n || 0;
+        return { live: n, others: Math.max(0, n - 1) };
+      })(),
       ALLERGENS: ALLERGENS, DIETS: DIETS,
       /* Where this outlet stands on GST registration. `registered` is a fact
          read from its own effective-dated tax version, never a preference; the

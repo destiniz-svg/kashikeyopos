@@ -154,16 +154,39 @@
         currency: o.currency, active: o.active
       };
     });
+    /* Who works here. Signed in, ask the roll that carries the WHOLE row —
+       whether the account is active, which outlets it reaches, whether it is
+       locked out — because Users & Roles has to render a suspended account as
+       suspended rather than as absent. The anonymous roster is the fallback
+       for the lock screen, which is the one moment nobody is signed in; it
+       carries only the faces standing in front of the terminal. */
+    root.KPOS.USERS = [];
     try {
-      var r = await api._fetch("/api/auth/roster?outletId=" + pick.id, { anon: true });
-      root.KPOS.USERS = (r.staff || []).map(function (u) {
-        return {
-          id: u.id, name: u.name, user: u.user, role: u.roleKey, rank: u.rank,
-          outlet: pick.id, outlets: [], pin: "",
-          status: u.locked ? "Locked" : "Active", last: ""
-        };
-      });
-    } catch (e) { root.KPOS.USERS = []; }
+      var full = api.token ? await api.staff() : null;
+      if (full && full.staff) {
+        root.KPOS.USERS = full.staff.map(function (u) {
+          var locked = u.locked_until && new Date(u.locked_until) > new Date();
+          return {
+            id: u.id, name: u.name, user: "", role: u.role_key, rank: u.rank,
+            outlet: u.outlet_id || pick.id, outlets: u.outlets || [], pin: "",
+            status: !u.active ? "Suspended" : locked ? "Locked" : "Active",
+            last: ""
+          };
+        });
+      }
+    } catch (e) { /* rank below manager, or offline — fall through */ }
+    if (!root.KPOS.USERS.length) {
+      try {
+        var r = await api._fetch("/api/auth/roster?outletId=" + pick.id, { anon: true });
+        root.KPOS.USERS = (r.staff || []).map(function (u) {
+          return {
+            id: u.id, name: u.name, user: u.user, role: u.roleKey, rank: u.rank,
+            outlet: pick.id, outlets: [], pin: "",
+            status: u.locked ? "Locked" : "Active", last: ""
+          };
+        });
+      } catch (e) { root.KPOS.USERS = []; }
+    }
   }
 
   // The terminal re-renders on its own 15-second tick; a fresh sign-in or a
@@ -218,6 +241,16 @@
        says which of the two happened rather than claiming a send. */
     inviteMember: function (id, via, to) { return api.inviteMember(id, via, to); },
     revokeMember: function (id) { return api.revokeMember(id); },
+    /* Ending every other session is a real call, and it answers with a real
+       count. The old control queued an audit-only op and toasted a number it
+       had invented. */
+    revokeSessions: function () { return api.revokeSessions(); },
+    /* Staff are a control-plane fact, not an outbox op. The screen used to
+       write a local row and queue `users_update`, which has no handler: a
+       cashier "removed" on screen kept their rank and their PIN. These are
+       the endpoints that were there the whole time. */
+    addStaff: function (body) { return api.addStaff(body); },
+    editStaff: function (id, body) { return api.editStaff(id, body); },
     rename: async function (h) {
       var r = await api.rename(h);
       hydrate(await api.bootstrap());

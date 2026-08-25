@@ -252,6 +252,23 @@ a backup nobody has restored is a hypothesis. A restore is:
 3. /readyz, then sign in and read a receipt you know the number of
 ```
 
+**Step 3 is not optional and `/readyz` is not enough.** Drilled: a `pg_dump`
+of one database carries no roles, so restoring into a fresh cluster leaves
+`pg_restore` reporting a non-zero exit and over a hundred failed GRANTs — and
+the app then boots, answers `/readyz` with **200**, serves the lock screen, and
+fails every outlet request with `role "outlet_1_app" does not exist`. A drill
+that stops at the health check reports green on an install that cannot take a
+single order. Sign in and read a receipt.
+
+`npm run provision:outlet -- --all` closes it: the role password is derived
+from `OUTLET_ROLE_SECRET`, so the same secret rebuilds the same credential and
+re-applies the grants. Verified on a restored copy of a real store — sign-in,
+bootstrap, `chain.licence`, 12 forced-RLS tables, 20 policies, no grant on the
+account plane, `npm run leak-test` 13/13.
+
+**The app takes no backups of its own and can restore none.** That is
+deliberate and the Settings screens say so; the copies are the platform's.
+
 ## Rebuilding from nothing
 
 To wipe an environment and start over — which is a real operation, not a

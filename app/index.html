@@ -2377,6 +2377,14 @@ class Component extends DCLogic {
     this.requireSignIn();
     window.addEventListener("resize", this._onResize);
     this._mountRest();
+    // Measured, not asserted — see cacheSize().
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        navigator.storage.estimate().then((e) => {
+          if (e && typeof e.usage === "number") this.setState({ cacheBytes: e.usage });
+        }).catch(() => {});
+      }
+    } catch (e) {}
   }
 
   // The message said "4 attempts left before this device locks" and nothing
@@ -3349,6 +3357,23 @@ class Component extends DCLogic {
      deadline and once standing after it, and offers the one action the
      customer can actually take. */
   licence() { return (K() || {}).LICENCE || null; }
+  /* Live sign-ins at this outlet, as the outlet counts them. A bootstrap from
+     an older build carries none, and "none" is then the honest answer rather
+     than a number this terminal made up. */
+  appVer() { return ((K() || {}).APPVER) || "unknown"; }
+  /* What the offline cache actually occupies, asked of the browser once at
+     mount. A browser that will not answer (private mode, an older engine) gets
+     "not measured" rather than a number. */
+  cacheSize() {
+    const b = this.state.cacheBytes;
+    if (b == null) return "not measured";
+    return "IndexedDB \u00b7 " + (b < 1048576 ? Math.max(1, Math.round(b / 1024)) + " KB"
+      : Math.round(b / 1048576) + " MB");
+  }
+  sessionCount() {
+    const x = (K() || {}).SESSIONS || {};
+    return { live: Number(x.live) || 0, others: Number(x.others) || 0 };
+  }
 
   /* The notice, or null when there is nothing to say. Three states and the
      boundaries are the two reminders:
@@ -9960,7 +9985,7 @@ class Component extends DCLogic {
     return {
       tabs: [{ label: "Users" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
       guideTitle: "Adding a person", guide: ["Invite by email; the row is created with status Invited", "The account activates only when the link is used on a device", "Role decides which modules open and which rows come back", "Scope limits them to one outlet or the whole chain"],
-      actions: [{ label: "Invite user", primary: true, go: () => this.openForm("user") }],
+      actions: [{ label: "Add someone", primary: true, go: () => this.openForm("user") }],
       notes: [
         ["Who grants access", "Only a role with edit rights on this module can change another person's role, outlet or status — Chain Admin and Super Admin. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change writes an access_control row naming both people."],
         ["What a grant actually opens", "Role decides which modules appear. The person's home outlet plus any additional outlets decide which rows come back inside them. A cashier at one outlet cannot switch to another, and the outlet switcher only lists what they hold — but the switch itself is guarded again, because a list is not a permission."],
@@ -13060,6 +13085,33 @@ class Component extends DCLogic {
   // those two escalations. Change one table and re-check every strict call site:
   // removeUser, setRole, PIN reset, edit user, grant role, assignableRoles.
   ROLERANK() { return { SuperAdmin: 5, ChainAdmin: 4, Accountant: 3, OutletManager: 3, KitchenManager: 2, StoreKeeper: 2, Cashier: 1, Waiter: 1 }; }
+  /* Who works here is a CONTROL-PLANE fact, not something a till holds an
+     opinion about. Every write on this screen used to be `patchRows("users",
+     …)`, which paints the local table and queues `users_update` — a kind with
+     no handler, recorded as unmodelled and answered "ok". So a cashier removed
+     on screen kept their rank, their PIN and their sign-in; suspending someone
+     suspended nobody; and a PIN reset reset nothing. Proved against a live
+     outlet: chain.staff.active stayed true through the op.
+
+     These call the endpoints that were there all along, and they refresh from
+     the server afterwards, so what the screen shows next is the outlet's
+     answer rather than the terminal's hope. There is deliberately no offline
+     path: granting or revoking access while unable to reach the outlet is
+     precisely the write that must not be optimistic. */
+  async staffWrite(run, said) {
+    const B = window.KPOS_BRIDGE;
+    if (!B || !B.editStaff) return this.toast("Changing who works here needs the outlet \u2014 this terminal is not connected to one", "warn");
+    try {
+      const r = await run(B);
+      this.setState({ modal: null });
+      if (B.refresh) await B.refresh();
+      this.toast(said);
+      return r;
+    } catch (e) {
+      this.toast((e && e.message) || "The outlet refused that change", "err");
+      return null;
+    }
+  }
   rankOf(key) { const r = this.ROLERANK()[key]; return r === undefined ? 1 : r; }
   assignableRoles() {
     const mine = this.rankOf(this.state.roleKey);
@@ -13074,9 +13126,8 @@ class Component extends DCLogic {
     if (!this.canApprove()) return this.toast("Removing a person needs a manager", "warn");
     // Removed, not deleted: their name still has to resolve on every void,
     // discount and drawer opening they signed for.
-    this.patchRows("users", [u.id], { status: "Removed" }, u.name + " removed · sessions revoked · by " + this.me(), "users");
-    this.queue("revoke_sessions", u.name + " removed · all tokens revoked · by " + this.me(), "sessions");
-    this.setState({ modal: null });
+    this.staffWrite((B) => B.editStaff(u.id, { active: false }),
+      u.name + " can no longer sign in \u2014 their name still resolves on everything they signed for");
   }
   // ── Receiving, and who may do which half of it ───────────────────────────
   // A delivery arriving at 06:00 is signed for by whoever is on the floor, which
@@ -14280,38 +14331,14 @@ class Component extends DCLogic {
           this.toast("PIN reset — use it at the next terminal unlock");
         }
       },
-      backup: {
-        title: "Backup", sub: "Chain data export", save: "Run backup now",
-        editSave: "Run backup now",
-        foot: "A backup is a point-in-time copy of the chain's rows, not of this terminal. The offline cache rebuilds itself from the server, so nothing on the device needs backing up.",
-        fields: [
-          { k: "scope", label: "What to include", options: [{ v: "all", l: "Everything — configuration and transactions" }, { v: "config", l: "Configuration only — menu, outlets, users" }, { v: "tx", l: "Transactions only — orders, stock, ledger" }] },
-          { k: "dest", label: "Destination", options: [{ v: "download", l: "Download to this device" }, { v: "cloud", l: "Chain cloud store" }, { v: "both", l: "Both" }] },
-          { k: "sched", label: "Automatic backup", options: [{ v: "nightly", l: "Nightly at close" }, { v: "weekly", l: "Weekly" }, { v: "off", l: "Off — manual only" }] }
-        ],
-        onSave: (v) => {
-          this.setState({ modal: null, profile: Object.assign({}, this.prof(), { backupSched: v.sched, lastBackup: "just now", backupScope: v.scope }) });
-          this.queue("backup_run", "Backup · " + v.scope + " → " + v.dest + " · by " + this.me(), "settings");
-          this.toast("Backup running — you will get a notice when the archive is ready");
-        }
-      },
-      restore: {
-        title: "Restore from backup", sub: "Overwrites current data", save: "Restore",
-        editSave: "Restore",
-        danger: 1,
-        foot: "Restoring replaces the selected data with the archive's version. Anything rung after the archive was taken is lost, so close the tills first. Type RESTORE to confirm you have read that sentence.",
-        fields: [
-          { k: "src", label: "Archive", options: [{ v: "n1", l: "Nightly · 07 Aug 2026 23:58 · 41 MB" }, { v: "n2", l: "Nightly · 06 Aug 2026 23:58 · 41 MB" }, { v: "w1", l: "Weekly · 02 Aug 2026 23:58 · 39 MB" }] },
-          { k: "scope", label: "Restore", options: [{ v: "config", l: "Configuration only — safest" }, { v: "all", l: "Everything" }] },
-          { k: "confirm", label: "Type RESTORE to confirm", v: "", full: 1 }
-        ],
-        onSave: (v) => {
-          if ((v.confirm || "").toUpperCase() !== "RESTORE") return this.toast("Type RESTORE in the confirmation field to go ahead", "warn");
-          this.setState({ modal: null });
-          this.queue("restore_run", "Restore requested · " + v.src + " · " + v.scope + " · by " + this.me(), "settings");
-          this.toast("Restore queued — tills stay locked until it finishes", "warn");
-        }
-      },
+      /* The `backup` and `restore` forms lived here and did nothing. Both
+         queued an audit-only op \u2014 the press was recorded, no archive was
+         ever written and no data was ever put back \u2014 while the restore form
+         demanded a typed RESTORE and toasted "tills stay locked until it
+         finishes". Backups are taken where the database lives; the Settings
+         cards now say so and offer no control this build cannot honour.
+         `backup_run`, `backup_create` and `restore_run` keep their handlers
+         in AUDIT_ONLY for a device still holding one in its outbox. */
       terminal: {
         title: "Terminal & printers", sub: "This device only", save: "Save terminal",
         editSave: "Save terminal",
@@ -14966,8 +14993,8 @@ class Component extends DCLogic {
           if (p !== String(v.again || "")) return this.toast("The two PINs do not match", "warn");
           if (/^(\d)\1{3}$/.test(p) || "0123456789".indexOf(p) >= 0 || "9876543210".indexOf(p) >= 0) return this.toast("No repeats and no runs — that is the first thing anyone tries", "warn");
           if (this.rankOf(u.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot reset the PIN of someone with more reach than you", "err");
-          this.patchRows("users", [u.id], { pin: p }, "PIN reset for " + u.name + " · by " + this.me(), "users");
-          this.setState({ modal: null });
+          this.staffWrite((B) => B.editStaff(u.id, { pin: p }),
+            "PIN reset for " + u.name + " \u2014 it works at the next keypad, and their lockout is cleared");
         }
       },
       bankImport: {
@@ -15013,15 +15040,21 @@ class Component extends DCLogic {
           this.toast("Opening balance " + MVRc(a));
         }
       },
+      /* There was never a magic link. A person signs in at this counter by
+         tapping their face and keying four digits, so what creating an account
+         needs is a name, a role and a PIN \u2014 which is also what the server has
+         always required. The old form asked for a username, wrote a local row
+         reading "Invited", and created nobody. */
       user: {
-        title: "Invite user", sub: "Magic-link invite scoped to this chain", save: "Send invite",
-        foot: "The invite writes a users row with status Invited; the account only becomes Active after the link is used and a device is bound.",
+        title: "Add someone to the floor", sub: "A name, what they may do, and a PIN", save: "Create the account",
+        foot: "They key this PIN at the terminal. Set one you both know and tell them to change it from Settings at their first shift \u2014 every void, discount and drawer opening is attributed by PIN, which is why they are never shared.",
         fields: [
           { k: "name", label: "Full name", v: "", full: 1 },
-          { k: "user", label: "Username", v: "" },
+          { k: "pin", label: "Four-digit PIN", v: "" },
+          { k: "again", label: "Repeat it", v: "" },
           { k: "role", label: "Role", options: sel(this.assignableRoles().map((r) => ({ v: r.key, l: r.label }))) },
           { k: "outlet", label: "Outlet scope", options: [{ v: "0", l: "Chain-wide" }].concat(outletOpts), full: 1 },
-          { k: "status", label: "Account status", options: [{ v: "Active", l: "Active" }, { v: "Invited", l: "Invited — link not used yet" }, { v: "Suspended", l: "Suspended — sign-in refused" }], full: 1 },
+          { k: "status", label: "Account status", options: [{ v: "Active", l: "Active" }, { v: "Suspended", l: "Suspended — sign-in refused" }], full: 1 },
           { k: "extra", label: "Additional outlets (codes, comma separated)", v: "", full: 1 }
         ],
         editSave: "Save changes",
@@ -15042,17 +15075,30 @@ class Component extends DCLogic {
           const extraIds = codes.map((c) => (all.find((o) => (o.code || "").toUpperCase() === c) || {}).id).filter((x) => x && x !== (+v.outlet || null));
           const roleScope = ((K().ROLES || []).find((r) => r.key === v.role) || {}).scope;
           if (extraIds.length && roleScope !== "outlet") return this.toast("A " + roleScope + "-scope role already reaches every outlet — extra grants do nothing", "warn");
-          this.patchRows("users", [u.id], { name: v.name, role: v.role, outlet: +v.outlet || null, outlets: extraIds, status: v.status },
-            u.name + " updated" + (roleChanged ? " · role now " + v.role : "") + (extraIds.length ? " · also covers " + codes.join(", ") : "") + (revoked ? " · SUSPENDED, sessions revoked" : ""), "users");
-          if (revoked) this.queue("revoke_sessions", u.name + " suspended · all refresh tokens revoked · by " + this.me(), "sessions");
-          if (roleChanged || extraIds.length) this.queue("access_change", u.name + " · role " + v.role + " · outlets [" + [(+v.outlet || null)].concat(extraIds).filter(Boolean).join(", ") + "] · by " + this.me(), "access_control");
+          /* The rank IS the gate — src/auth.js and the RLS policies both read
+             it — so the role's rank travels with the role key, or the server
+             would keep enforcing the old one. `active` is what Suspended
+             means; there is no separate revoke, because a suspended account
+             cannot sign in and its live sessions die at their expiry. */
+          this.staffWrite((B) => B.editStaff(u.id, {
+            name: v.name, roleKey: v.role, rank: this.rankOf(v.role),
+            active: v.status !== "Suspended", outlets: extraIds
+          }), u.name + " updated"
+            + (roleChanged ? " \u00b7 role now " + v.role : "")
+            + (extraIds.length ? " \u00b7 also covers " + codes.join(", ") : "")
+            + (revoked ? " \u00b7 suspended \u2014 their PIN is refused from now" : ""));
         },
         onSave: (v) => {
-          if (!v.name || !v.user) return this.toast("Name and username are required", "warn");
-          this.insertRow("users", {
-            id: this.nextId("users", "u"), name: v.name, user: v.user.toLowerCase().replace(/\s+/g, ""),
-            role: v.role, outlet: +v.outlet || null, status: "Invited", last: "never"
-          }, "Invite sent · @" + v.user.toLowerCase() + " as " + v.role, "users");
+          if (!v.name) return this.toast("A name is required", "warn");
+          const p = String(v.pin || "");
+          if (!/^\d{4}$/.test(p)) return this.toast("Four digits for the PIN", "warn");
+          if (p !== String(v.again || "")) return this.toast("The two PINs do not match", "warn");
+          if (/^(\d)\1{3}$/.test(p) || "0123456789".indexOf(p) >= 0 || "9876543210".indexOf(p) >= 0) return this.toast("No repeats and no runs \u2014 that is the first thing anyone tries", "warn");
+          if (this.rankOf(v.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot create an account with more reach than your own", "err");
+          this.staffWrite((B) => B.addStaff({
+            name: v.name, rank: this.rankOf(v.role), roleKey: v.role, pin: p,
+            outlets: []
+          }), v.name + " can sign in now \u2014 they change that PIN from Settings at their first shift");
         }
       },
       earnRate: {
@@ -15139,20 +15185,27 @@ class Component extends DCLogic {
             { member: c.id, amt: amt, method: v.tender, ref: v.ref || "" });
         }
       },
+      /* This never erased anything: `store_reset` is audit-only, so the form
+         took a typed RESET, promised a pre-reset backup this build cannot
+         take, and toasted "tills lock while it runs, then boot empty" over an
+         op that only recorded the press. It files the request now, and says
+         that is what it does \u2014 the erase is `npm run reset:database`, run by
+         whoever holds the database, which is also the only place a copy could
+         be taken first. */
       resetStore: {
-        title: "Reset this store", sub: "Erases trading data \u2014 keeps the people", save: "Reset the store",
-        foot: "Menu, sales, orders, customers and inventory are erased. Sign-ins, staff and outlets survive, so the chain is still yours to walk back into. A backup is taken first unless you turn that off.",
+        title: "Ask for this store to be reset", sub: "Files a request \u2014 it does not erase",
+        save: "File the request",
+        foot: "A reset erases menu, sales, orders, customers and inventory and keeps the sign-ins, staff and outlets. This app cannot do it: it is run against the database by whoever holds it, who is also the only one who can take a copy first. Pressing this records the request, who made it and when, on the audit trail, so there is something to point at.",
         fields: [
-          { k: "backup", label: "Take a backup first", options: [{ v: "1", l: "Yes \u2014 recommended" }, { v: "0", l: "No" }] },
+          { k: "why", label: "Why", v: "", full: 1 },
           { k: "confirm", label: "Type RESET to confirm", v: "", full: 1 }
         ],
         onSave: (v) => {
-          if (this.state.roleKey !== "SuperAdmin" && this.state.roleKey !== "ChainAdmin") return this.toast("Only an owner or chain administrator can reset a store", "err");
+          if (this.state.roleKey !== "SuperAdmin" && this.state.roleKey !== "ChainAdmin") return this.toast("Only an owner or chain administrator can ask for a reset", "err");
           if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("Type RESET exactly to confirm", "warn");
-          if (v.backup === "1") this.queue("backup_create", "Pre-reset backup \u00b7 " + this.outlet().code + " \u00b7 by " + this.me(), "backups");
-          this.queue("store_reset", "Store reset requested \u00b7 " + this.outlet().name + " \u00b7 by " + this.me(), "settings");
+          this.queue("store_reset", "Store reset REQUESTED \u00b7 " + this.outlet().name + " \u00b7 by " + this.me() + (v.why ? " \u00b7 " + v.why : ""), "settings");
           this.setState({ modal: null });
-          this.toast("Reset queued \u2014 tills lock while it runs, then boot empty", "warn");
+          this.toast("Request filed \u2014 nothing has been erased. Whoever holds the database runs the reset.", "warn");
         }
       },
       tableEdit: (() => {
@@ -15616,7 +15669,7 @@ class Component extends DCLogic {
           const o = this.outlet();
           const id = "dev_" + (o.code || "OUT").split("-")[1] + "_KDS" + (1 + (this.state.pairedDevices || []).length);
           const row = {
-            id: id, outletCode: o.code, ver: "4.2.1", seenMin: 0, pend: 0,
+            id: id, outletCode: o.code, ver: this.appVer(), seenMin: 0, pend: 0,
             kind: (v.name || "Kitchen display") + " · " + (v.station === "expo" ? "pass" : this.stationName(v.station).toLowerCase()),
             station: v.station, size: +v.size || 24, pairedAt: Date.now(), by: this.me()
           };
@@ -15855,19 +15908,19 @@ class Component extends DCLogic {
   // clock — because the terminal you are holding is the one you can actually check.
   DEVICE_REGISTRY() {
     return [
-      { id: "dev_CHA_T2", outletCode: "KAS-CHA", ver: "4.2.1", seenMin: 0, pend: 0, kind: "Till 2" },
+      { id: "dev_CHA_T2", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 0, pend: 0, kind: "Till 2" },
       { id: "dev_CHA_T3", outletCode: "KAS-CHA", ver: "4.1.8", seenMin: 4, pend: 2, kind: "Terrace handheld" },
-      { id: "dev_CHA_KDS", outletCode: "KAS-CHA", ver: "4.2.1", seenMin: 0, pend: 0, kind: "Kitchen display · hot pass", station: "hot" },
-      { id: "dev_CHA_KDS2", outletCode: "KAS-CHA", ver: "4.2.1", seenMin: 1, pend: 0, kind: "Kitchen display · grill", station: "grill" },
-      { id: "dev_MAA_T1", outletCode: "KAS-MAA", ver: "4.2.1", seenMin: 1, pend: 0, kind: "Till 1" },
+      { id: "dev_CHA_KDS", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 0, pend: 0, kind: "Kitchen display · hot pass", station: "hot" },
+      { id: "dev_CHA_KDS2", outletCode: "KAS-CHA", ver: this.appVer(), seenMin: 1, pend: 0, kind: "Kitchen display · grill", station: "grill" },
+      { id: "dev_MAA_T1", outletCode: "KAS-MAA", ver: this.appVer(), seenMin: 1, pend: 0, kind: "Till 1" },
       { id: "dev_MAA_T2", outletCode: "KAS-MAA", ver: "4.1.8", seenMin: 96, pend: 5, kind: "Till 2" },
-      { id: "dev_HUL_T1", outletCode: "KAS-HUL", ver: "4.2.1", seenMin: 2, pend: 0, kind: "Till 1" }
+      { id: "dev_HUL_T1", outletCode: "KAS-HUL", ver: this.appVer(), seenMin: 2, pend: 0, kind: "Till 1" }
     ];
   }
   thisDevice() {
     const s = this.state, P = this.prefs();
     return {
-      id: P.device || "dev_CHA_T1", outletCode: this.outlet().code, ver: "4.2.1",
+      id: P.device || "dev_CHA_T1", outletCode: this.outlet().code, ver: this.appVer(),
       seenMin: 0, pend: s.outbox.filter((x) => x.state === "queued").length,
       kind: "This terminal", self: true
     };
@@ -16422,7 +16475,10 @@ class Component extends DCLogic {
       cardMin: 250,
       cards: devices.map((d) => {
         const stale = d.seenMin > 30;
-        const drift = d.ver !== "4.2.1";
+        // Behind WHAT — the version this install is actually running, which
+        // the bootstrap publishes. Compared against a literal, "behind" was a
+        // verdict measured off a number nothing else in the build agreed with.
+        const drift = d.ver !== this.appVer();
         return {
           title: d.id + (d.self ? " · you" : ""), sub: (this.outletByCode(d.outletCode) || {}).name + " · " + d.kind,
           accent: d.self ? "var(--line-3)" : null,
@@ -17284,6 +17340,7 @@ class Component extends DCLogic {
     const tog = (k) => set(k, !P[k]);
     const gate = (fn) => () => mayEdit ? fn() : this.toast("You can see these settings but not change them — ask a chain administrator", "warn");
     const P0 = this.prof();
+    const SESS = this.sessionCount();
     // Eleven cards in one grid was a wall. They split cleanly along who owns
     // them: the company, the fascia, the tax office, the floor, the auditor and
     // the device — which is also the order onboarding fills them in.
@@ -17411,26 +17468,50 @@ class Component extends DCLogic {
           rows: [["Length", "4 digits"], ["Last changed", P0.pinChanged], ["Authorises", "unlock · voids · discounts"], ["Rejected", "runs and repeats"]],
           foot: "Yours to reset here. A manager resets someone else's from Users & Roles, which is the only way to change a PIN you do not know.",
           goLabel: "Reset PIN", go: () => this.openForm("pin") },
-        { title: "Backup", sub: P0.backupSched === "off" ? "Manual only" : P0.backupSched === "weekly" ? "Weekly" : "Nightly at close", chip: P0.backupSched === "off" ? "Off" : "On", chipBg: P0.backupSched === "off" ? "var(--bad-dim)" : "var(--ok-dim)", chipFg: P0.backupSched === "off" ? "var(--red-bright)" : "var(--green)", cat: "device",
-          rows: [["Last backup", P0.lastBackup], ["Scope", P0.backupScope === "config" ? "Configuration" : P0.backupScope === "tx" ? "Transactions" : "Everything"], ["Retained", "30 nightly · 12 weekly"], ["Size", "41 MB"]],
-          foot: "A point-in-time copy of the chain's rows. The terminal's offline cache rebuilds itself from the server, so the device needs no backup of its own.",
-          goLabel: "Backup now", go: gate(() => this.openForm("backup")) },
-        { title: "Restore", sub: "From an archive", chip: "Careful", chipBg: "var(--bad-dim)", chipFg: "var(--red-bright)", cat: "device",
-          rows: [["Newest archive", "today 23:58"], ["Oldest retained", "09 Jul 2026"], ["Tills", "locked during restore"], ["Confirmation", "typed"]],
-          foot: "Restoring replaces data with the archive's version, so anything rung since is lost. Configuration-only is the safe choice and covers most mistakes — a menu wiped, an outlet deleted.",
-          danger: 1, goLabel: "Restore…", go: gate(() => this.openForm("restore")) },
-        { title: "Signed-in sessions", sub: "Every cookie this account holds", chip: "3 active", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
-          rows: [["This device", this.deviceCode()], ["Other terminals", "2 active"], ["Signed out here", String(this.state.revoked || 0)], ["Paired devices", "under Sync"]],
-          foot: "Signing out everywhere invalidates every token issued before now — a lost tablet stops being a way into the till the moment you press it. Paired browsers are revoked separately, from Sync & Devices, because unpairing one is a slower decision than ending a session.",
-          goLabel: "Sign out other sessions", go: gate(() => {
-            this.setState({ revoked: (this.state.revoked || 0) + 2 });
-            this.queue("revoke_sessions", "All other sessions signed out · by " + this.me(), "sessions");
-            this.toast("Other sessions signed out — they land on the PIN screen at their next action");
-          }) },
-        { title: "Reset this store", sub: "Erases trading data, keeps the people", chip: "Owner only", chipBg: "var(--bad-dim)", chipFg: "var(--red-bright)", cat: "device",
-          rows: [["Erases", "menu · sales · stock"], ["Keeps", "sign-ins · staff"], ["Backup first", "on by default"], ["Confirmation", "typed"]],
-          foot: "The way out of a store set up wrong, without losing the account. Everything rung is gone and no restore brings it back unless the backup ran — which is why it runs unless you say otherwise.",
-          danger: 1, goLabel: "Reset store…", go: () => this.openForm("resetStore") },
+        /* Backups are taken where the database lives, and this app takes
+           none of its own. What used to be here was a picture of a backup
+           system: an archive list, a retention policy and a size, all
+           literals, over two controls that queued an audit-only op and
+           toasted a success. Pressing Restore told the operator the tills
+           would lock, and nothing whatever happened \u2014 the worst kind of
+           invented figure, because it is a destructive action reporting that
+           it ran. Both cards now say what is true and name where the work is
+           actually done. */
+        { title: "Backup", sub: "Taken where the database lives", chip: "Not in the app", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["Taken by", "your hosting platform"], ["This app", "takes none of its own"], ["This device", "needs none"], ["Schedule", "set where the database runs"]],
+          foot: "The database is the only state \u2014 this terminal's offline cache rebuilds itself from the server, so nothing on the device needs backing up. The copies themselves are taken by the platform the database runs on. This screen deliberately shows no archive list rather than one it cannot read.",
+          goLabel: "", go: null },
+        { title: "Restore", sub: "An operator procedure, not a button", chip: "Off the app", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["Run by", "whoever holds the database"], ["Steps", "restore \u00b7 reprovision \u00b7 sign in"], ["Tills", "stop until it is done"], ["Rung since", "lost"]],
+          foot: "Restoring puts the database back to an earlier moment, so anything rung since is gone. It is done against the database with the install's own secrets \u2014 the outlet login roles live outside the backup and have to be recreated afterwards \u2014 which is why there is no button here that could do it half way.",
+          goLabel: "", go: null },
+        /* The count is measured now. Both figures here used to be literals
+           on an install nobody had signed into twice, and the control queued
+           an audit-only op \u2014 so a manager who had lost a tablet was told
+           every other session was ended and none of them was. It calls the
+           endpoint that has always been there, and reports the number the
+           server actually revoked. */
+        { title: "Signed-in sessions", sub: "Every sign-in live at this outlet", chip: SESS.live ? SESS.live + " live" : "\u2014", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["This device", this.deviceCode()], ["Other sessions", SESS.others ? String(SESS.others) : "none"], ["Signed out here", String(this.state.revoked || 0)], ["Paired devices", "under Sync"]],
+          foot: "Signing out everywhere invalidates every token issued before now \u2014 a lost tablet stops being a way into the till the moment you press it. Paired browsers are revoked separately, from Sync & Devices, because unpairing one is a slower decision than ending a session.",
+          goLabel: SESS.others ? "Sign out other sessions" : "", go: SESS.others ? gate(async () => {
+            const B = window.KPOS_BRIDGE;
+            if (!B || !B.revokeSessions) return this.toast("Signing out elsewhere needs the server \u2014 this terminal is not connected to one", "warn");
+            try {
+              const r = await B.revokeSessions();
+              const n = Number(r && r.revoked) || 0;
+              this.setState({ revoked: (this.state.revoked || 0) + n });
+              this.toast(n ? n + (n === 1 ? " session" : " sessions") + " signed out \u2014 they land on the PIN screen at their next action"
+                           : "No other session was live to sign out");
+              if (B.refresh) B.refresh();
+            } catch (e) {
+              this.toast((e && e.message) || "The outlet refused the sign-out", "err");
+            }
+          }) : null },
+        { title: "Reset this store", sub: "Asks for it \u2014 the app cannot do it", chip: "Owner only", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["Would erase", "menu · sales · stock"], ["Would keep", "sign-ins · staff"], ["Run by", "whoever holds the database"], ["This button", "files the request"]],
+          foot: "The way out of a store set up wrong without losing the account. The erase itself is run against the database, not from here, so this records the request — who asked, when and why — for whoever carries it out. Everything rung is gone afterwards and only a backup taken beforehand brings it back.",
+          danger: 1, goLabel: "Ask for a reset…", go: () => this.openForm("resetStore") },
         { title: "Theme", sub: "Stored per user as ThemeMode + CustomColors", chip: mode, chipBg: "var(--amber-dim)", chipFg: "var(--amber-bright)",
           picks: [
             { label: "Mode", opts: [{ label: "Dark", on: mode === "dark", go: () => this.setState({ theme: "dark" }) }, { label: "Light", on: mode === "light", go: () => this.setState({ theme: "light" }) }] },
@@ -17502,7 +17583,11 @@ class Component extends DCLogic {
           foot: "A tender is recorded in the currency the note was handed over in, at the rate in force at that moment, and posts to the ledger in MVR. The rate travels on the ticket — so a receipt reprinted next year still shows the rate the guest was actually given, and a rate move between the sale and the bank deposit lands in 7100 FX gain / loss rather than in a cashier's variance.",
           goLabel: "Set rates", go: gate(() => this.openForm("fxrates")) },
         { title: "Terminal", sub: P.device || "dev_CHA_T1", chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)",
-          rows: [["App version", "4.2.1"], ["Offline cache", "IndexedDB · 42 MB"], ["Receipt printer", P.receiptPrinter || "Epson TM-m30 · USB"], ["Kitchen printer", P.kotPrinter || "Kitchen bumper · LAN"], ["Paper", P.paper + " mm · " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
+          // The version was "4.2.1", a literal on a build numbered otherwise —
+          // and it is the figure somebody rings support quoting. The cache was
+          // a cache size in megabytes, never measured. Both come from somewhere real, and
+          // where the browser will not say, the row says it will not.
+          rows: [["App version", this.appVer()], ["Offline cache", this.cacheSize()], ["Receipt printer", P.receiptPrinter || "not bound"], ["Kitchen printer", P.kotPrinter || "not bound"], ["Paper", P.paper + " mm \u00b7 " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
           foot: "Bound to this outlet by device registration.",
           go: gate(() => this.openForm("terminal")) }
       ]);
@@ -17664,7 +17749,7 @@ class Component extends DCLogic {
         // named one screen and opened another.
         { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 6 }) }) });
     }
-    const drift = this.DEVICE_REGISTRY().filter((d) => d.outletCode === o.code && d.ver !== "4.2.1");
+    const drift = this.DEVICE_REGISTRY().filter((d) => d.outletCode === o.code && d.ver !== this.appVer());
     if (drift.length) {
       add("watch", "Terminals a version behind", drift.length + " device" + (drift.length === 1 ? "" : "s"), "An older build can hold an older tax table or recipe cache, which is how two tills price the same dish differently.", "sync",
         { act: "Devices", go: () => this.setState({ view: "sync" }) });

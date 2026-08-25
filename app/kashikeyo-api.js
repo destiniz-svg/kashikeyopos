@@ -545,6 +545,14 @@
       return this._fetch("/api/outlet/" + this.outletId + "/member/"
         + encodeURIComponent(id) + "/revoke", { method: "POST", body: {} });
     }
+    /* Every OTHER session at this outlet, ended now. Not an outbox op: a
+       "sign out everywhere" that waits for a flush is not what somebody
+       pressing it after losing a tablet is asking for, and the answer has to
+       carry the COUNT — a screen that says "done" without saying how many is
+       the invented figure this build refuses. Rank 4; the server says so. */
+    revokeSessions() {
+      return this._fetch("/api/auth/revoke", { method: "POST", body: {} });
+    }
     onboarding() { return this._fetch("/api/onboarding/state", { anon: !this.token }); }
     onboard(step, body) {
       return this._fetch("/api/onboarding/" + step, { method: "POST", body, anon: !this.token });
