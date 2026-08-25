@@ -156,12 +156,14 @@ async function routeFor(outletId) {
   if (hit && Date.now() - hit.at < TTL_MS) return hit;
   try {
     const q = await control().query(
-      'SELECT d.business_id, b.db_name, b.status FROM chain.outlet_directory d'
+      'SELECT d.business_id, b.db_name, b.status, b.schema_version'
+      + ' FROM chain.outlet_directory d'
       + ' JOIN chain.business b ON b.id = d.business_id'
       + ' WHERE d.outlet_id = $1 AND d.active', [id]);
     if (!q.rows.length) { routes.delete(id); return null; }
     const r = { db: q.rows[0].db_name, businessId: Number(q.rows[0].business_id),
-      status: q.rows[0].status, at: Date.now() };
+      status: q.rows[0].status, version: Number(q.rows[0].schema_version),
+      at: Date.now() };
     routes.set(id, r);
     return r;
   } catch (e) {
@@ -170,10 +172,39 @@ async function routeFor(outletId) {
   }
 }
 
+/* A BUSINESS BEHIND HEAD IS REFUSED, NOT SERVED. One app now serves many
+   databases, so a deploy that moved the code but not every schema leaves
+   somebody's till talking to a database that does not have the columns the
+   code just started using. Serving it means wrong answers about money;
+   refusing it means a shop is down for the length of a migration and knows
+   why. Named, with the remedy, because "service unavailable" leaves whoever
+   is holding the phone exactly where silence would.
+
+   Deliberately NOT cached separately: routeFor's 30s TTL is the window, and it
+   is short enough that a finished migration is picked up without a restart. */
+async function requireAtHead(outletId) {
+  const r = await routeFor(outletId);
+  if (!r) {
+    throw Object.assign(new Error('that outlet is not in the registry'),
+      { status: 404 });
+  }
+  if (r.status !== 'live') {
+    throw Object.assign(new Error('this store is still being set up'),
+      { status: 503, retryable: true });
+  }
+  const head = require('./scripts/migrate').headCount();
+  if (r.version < head) {
+    throw Object.assign(new Error('this store is being updated (schema '
+      + r.version + ' of ' + head + ') — it will answer again in a moment'),
+    { status: 503, retryable: true });
+  }
+  return r;
+}
+
 function forgetRoute(outletId) {
   if (outletId == null) routes.clear(); else routes.delete(Number(outletId));
 }
 
 module.exports = { createBusiness, nextOutletId, registerOutlet, businessForDb,
-  routeFor, forgetRoute,
+  routeFor, requireAtHead, forgetRoute,
   _safeDbName: safeDbName };

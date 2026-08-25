@@ -2520,6 +2520,34 @@ nothing. A holder that dies releases it, so a killed container cannot wedge the
 next boot. `test/migrate.test.js` runs the real runner twice at once against a
 cold database; without the lock it fails the way the install did.
 
+**Updates run per business, or across the fleet.** `npm run migrate` migrates
+the registry and then every business database; `-- --business <id>` moves one;
+`-- --dry-run` lists who is at what version. Boot does the same in-process when
+`CONTROL_DB` is set. Four at a time, because a fleet migration opens a
+connection per business and a hundred at once is a thundering herd against the
+Postgres the shops are trading on.
+
+**A business behind head is refused, not served.** One app serves many
+databases now, so a deploy that moved the code but not every schema leaves
+somebody's till talking to a database without the columns the code just started
+using — wrong answers about money, silently. `requireAtHead()` answers 503 with
+how far behind it is; the route's 30s route cache is the window, so a finished
+migration is picked up without a restart. A business whose migration FAILED
+does not stop the others: its row carries the reason, and only its own requests
+are refused. One customer down and named beats a deploy that stopped halfway
+with nobody knowing which half.
+
+**A cluster-wide object is not protected by a per-database lock.** The advisory
+lock above serialises two boots against ONE database, which is what it is for
+and no help at all for `kashikeyo_report` — a ROLE, which is cluster-wide. The
+fleet raced four workers into check-then-`CREATE ROLE` across four databases,
+and two app processes booting together race on `ALTER ROLE` and get "tuple
+concurrently updated". So the role is done ONCE per fleet run before any worker
+starts, and both statements treat a peer having just done the same idempotent
+thing as success rather than as an error. It is the `CREATE EXTENSION` defect
+wearing two new faces, and it will wear a third: anything cluster-wide needs
+this reasoning, not the database lock.
+
 **A database that has not come up yet is not a broken schema.** That second
 failed install printed `MIGRATION FAILED — the schema is not what this build
 expects: getaddrinfo ENOTFOUND postgres.railway.internal`, which sends whoever

@@ -63,8 +63,12 @@ function migrate(log) { return applyTo(owner(), DIR, log, { reportRole: true });
 function migrateControl(log) { return applyTo(control(), CONTROL_DIR, log, {}); }
 
 // One business, by database name.
-function migrateBusiness(dbName, log) {
-  return applyTo(ownerFor(dbName), DIR, log, { reportRole: true });
+/* `dir` exists because the fleet has to be testable without writing a file
+   into the directory every other suite is reading at the same time. It
+   defaults to the real set and nothing in the application passes it. */
+function migrateBusiness(dbName, log, opts) {
+  const o = Object.assign({ reportRole: true }, opts || {});
+  return applyTo(ownerFor(dbName), o.dir || DIR, log, o);
 }
 
 // How many files a database at head would have applied. The fleet compares a
@@ -119,20 +123,73 @@ async function run(db, log, dir, opts) {
 
   // The read-only reporting role exists once per business database. It can
   // execute that business's estate aggregate and read nothing else.
-  if (opts && opts.reportRole) await ensureReportRole(db, say);
+  if (opts && opts.reportRole) await ensureReportRole(db, say, opts);
   return applied;
 }
 
-async function ensureReportRole(db, say) {
+/* A ROLE IS CLUSTER-WIDE AND AN ADVISORY LOCK IS NOT. pg_advisory_lock is
+   scoped to a database, which is right for serialising two boots against one
+   business and no help at all when the fleet migrates four businesses at once:
+   check-then-CREATE ROLE then races across four different databases on the
+   same cluster, and so does ALTER ROLE, which fails with "tuple concurrently
+   updated". It is the CREATE EXTENSION defect from one level down, reappearing
+   the moment there was more than one database to migrate.
+
+   So the fleet does this ONCE, before any worker starts, and the workers do
+   only the per-database grants. Removing the race beats tolerating it. The
+   create is still forgiving, because a concurrent creator got the outcome we
+   wanted anyway. */
+/* Did a peer already do exactly this? Three shapes of the same answer: the
+   role existed by the time we created it, or somebody was mid-ALTER on the
+   same catalog row. "tuple concurrently updated" has no dedicated SQLSTATE, so
+   it is matched by message as well as code — narrowly, and only around
+   statements that are idempotent by construction. */
+function peerDidIt(e) {
+  if (!e) return false;
+  if (e.code === '42710' || e.code === '23505' || e.code === '40001') return true;
+  return /tuple concurrently updated/i.test(String(e.message || ''));
+}
+
+async function ensureReportRoleExists(db, say) {
   const pw = process.env.REPORT_ROLE_PASSWORD
     || require('../secrets').outletPassword('report');
   const exists = await db.query("SELECT 1 FROM pg_roles WHERE rolname = 'kashikeyo_report'");
   if (!exists.rows.length) {
-    await db.query("CREATE ROLE kashikeyo_report LOGIN PASSWORD " + lit(pw) + " NOINHERIT");
-    say('[migrate] created role kashikeyo_report');
-  } else {
-    await db.query("ALTER ROLE kashikeyo_report PASSWORD " + lit(pw));
+    try {
+      await db.query("CREATE ROLE kashikeyo_report LOGIN PASSWORD " + lit(pw) + " NOINHERIT");
+      (say || console.log)('[migrate] created role kashikeyo_report');
+      return;
+    } catch (e) {
+      if (!peerDidIt(e)) throw e;
+    }
   }
+  /* And the ALTER collides too, between PROCESSES rather than between fleet
+     workers: two app containers booting against one cluster both reach here.
+     Postgres answers the loser "tuple concurrently updated". The statement is
+     idempotent — the password is derived, so both are writing the same value —
+     so a peer having just done it is the outcome we wanted, not an error. */
+  try {
+    await db.query("ALTER ROLE kashikeyo_report PASSWORD " + lit(pw));
+  } catch (e) {
+    if (!peerDidIt(e)) throw e;
+  }
+}
+
+async function ensureReportRole(db, say, opts) {
+  const pw = process.env.REPORT_ROLE_PASSWORD
+    || require('../secrets').outletPassword('report');
+  /* A ROLE IS CLUSTER-WIDE AND THE ADVISORY LOCK IS NOT. pg_advisory_lock is
+     scoped to a database, which is exactly right for serialising two boots
+     against one business — and no help at all when the fleet migrates four
+     businesses at once, because check-then-CREATE ROLE then races across four
+     different databases on the same cluster. It is the CREATE EXTENSION defect
+     from one level down, reappearing the moment there was more than one
+     database to migrate.
+
+     So the create is attempted and a loser is treated as a winner: 42710 is
+     "somebody else created it a millisecond ago", which is the outcome we
+     wanted. The ALTER and the GRANTs below are idempotent and run either way. */
+  if (!opts || !opts.roleAlreadyDone) await ensureReportRoleExists(db, say);
   await db.query('REVOKE ALL ON SCHEMA public FROM kashikeyo_report');
   await db.query('GRANT USAGE ON SCHEMA chain, app TO kashikeyo_report');
   await db.query('GRANT SELECT ON chain.outlet, chain.company TO kashikeyo_report');
@@ -141,13 +198,108 @@ async function ensureReportRole(db, say) {
 
 function lit(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
 
-if (require.main === module) {
-  migrate().then((n) => {
-    console.log('[migrate] done, ' + n + ' file(s) applied');
-    return require('../db').shutdown();
-  }).then(() => process.exit(0))
-    .catch((e) => { console.error('[migrate] failed:', e.message); process.exit(1); });
+/* ── the fleet ──────────────────────────────────────────────────────────────
+   "Per outlet and also all at once" is the whole point of a database per
+   business: one customer can be moved on its own, and everybody can be moved
+   together. Both go through here so there is one definition of what "at head"
+   means.
+
+   Bounded concurrency, because a fleet migration opens a connection per
+   business and a hundred at once is a thundering herd against the same
+   Postgres the shops are trading on. Four is slow enough to be polite and fast
+   enough that a deploy is not measured in minutes.
+
+   A business that FAILS does not stop the others. Its row keeps its old
+   schema_version and carries the reason, and the request path refuses it —
+   which is the honest outcome: one customer down and named beats a deploy that
+   stopped halfway with nobody knowing which half. */
+const FLEET_CONCURRENCY = Number(process.env.MIGRATE_CONCURRENCY || 4);
+
+async function listBusinesses(only) {
+  const { control } = require('../db');
+  const q = await control().query(
+    'SELECT id, name, db_name, status, schema_version FROM chain.business'
+    + (only ? ' WHERE id = $1' : " WHERE status IN ('live','building')")
+    + ' ORDER BY id', only ? [Number(only)] : []);
+  return q.rows;
 }
 
-module.exports = { migrate, migrateControl, migrateBusiness, headCount,
+async function fleet(opts) {
+  const o = opts || {};
+  const say = o.log || console.log;
+  const { control } = require('../db');
+  const head = headCount(o.dir);
+  const rows = await listBusinesses(o.business);
+
+  if (o.business && !rows.length) {
+    throw Object.assign(new Error('no business ' + o.business + ' in the registry'),
+      { status: 404 });
+  }
+
+  if (o.dryRun) {
+    rows.forEach((b) => say('[migrate] ' + b.db_name + '  at ' + b.schema_version
+      + ' of ' + head + (b.schema_version >= head ? '' : '  BEHIND')));
+    return { head: head, checked: rows.length, moved: 0, failed: [] };
+  }
+
+  // Once, before any worker: see ensureReportRoleExists.
+  await ensureReportRoleExists(control(), say);
+
+  const queue = rows.slice();
+  const failed = [];
+  let moved = 0;
+
+  async function worker() {
+    for (;;) {
+      const b = queue.shift();
+      if (!b) return;
+      try {
+        const n = await migrateBusiness(b.db_name, () => {},
+          { roleAlreadyDone: true, dir: o.dir });
+        const at = await require('../db').ownerFor(b.db_name)
+          .query('SELECT count(*)::int AS n FROM chain.migration');
+        await control().query(
+          'UPDATE chain.business SET schema_version = $2 WHERE id = $1',
+          [b.id, Number(at.rows[0].n)]);
+        if (n) { moved++; say('[migrate] ' + b.db_name + ' +' + n); }
+      } catch (e) {
+        failed.push({ id: b.id, db: b.db_name, why: e.message });
+        await control().query(
+          'UPDATE chain.business SET build_state = $2 WHERE id = $1',
+          [b.id, 'migration failed: ' + e.message]).catch(() => {});
+        console.error('[migrate] ' + b.db_name + ' FAILED: ' + e.message);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(FLEET_CONCURRENCY, queue.length || 1) },
+    worker));
+  return { head: head, checked: rows.length, moved: moved, failed: failed };
+}
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  const arg = (name) => {
+    const i = argv.indexOf('--' + name);
+    return i < 0 ? null : (argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : true);
+  };
+  const only = arg('business');
+  const dryRun = !!arg('dry-run');
+
+  (async () => {
+    /* The registry first, always: it is where the fleet is listed, so a run
+       that migrated businesses before it could be reading yesterday's list. */
+    await migrateControl();
+    const out = await fleet({ business: only === true ? null : only, dryRun: dryRun });
+    console.log('[migrate] ' + out.checked + ' business database(s) at head '
+      + out.head + ', ' + out.moved + ' moved, ' + out.failed.length + ' failed');
+    await require('../db').shutdown();
+    process.exit(out.failed.length ? 1 : 0);
+  })().catch((e) => {
+    console.error('[migrate] failed:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { migrate, migrateControl, migrateBusiness, headCount, fleet,
   _DIR: DIR, _CONTROL_DIR: CONTROL_DIR };

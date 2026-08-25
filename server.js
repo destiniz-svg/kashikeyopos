@@ -2,7 +2,7 @@
 const path = require('path');
 const express = require('express');
 const { owner, withOutletRead, shutdown, peerCaPem } = require('./src/db');
-const { migrate } = require('./src/scripts/migrate');
+const { migrate, migrateControl, fleet } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
 const directory = require('./src/directory');
 
@@ -371,8 +371,27 @@ async function boot() {
       bootError = 'the database is unreachable';
       if (process.env.NODE_ENV === 'production') process.exit(1);
     }
-    try { await migrate(); }
-    catch (e) {
+    try {
+      /* THE REGISTRY FIRST, THEN THE FLEET. With CONTROL_DB set this install is
+         a multi-business one: the registry lists the fleet, so migrating
+         businesses before it would work from yesterday's list. Without it,
+         this is a single database and nothing changes — which is what every
+         existing install is until its registry exists. */
+      if (String(process.env.CONTROL_DB || '').trim()) {
+        await migrateControl();
+        const out = await fleet({});
+        console.log('[migrate] ' + out.checked + ' business database(s) at head '
+          + out.head + ', ' + out.moved + ' moved'
+          + (out.failed.length ? ', ' + out.failed.length + ' FAILED: '
+            + out.failed.map((f) => f.db).join(', ') : ''));
+        /* A failed business does NOT stop the boot. The other shops are fine
+           and the failed one is refused by name on its own requests, which is
+           strictly better than taking every customer down for one broken
+           schema. */
+      } else {
+        await migrate();
+      }
+    } catch (e) {
       // Production refuses to go live on a schema it could not finish. Every
       // other environment keeps serving so the fault can be fixed from the
       // same shell — but it says so on every health check, because a silent
