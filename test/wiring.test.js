@@ -1848,9 +1848,19 @@ test('granting and revoking access reaches the outlet', () => {
   assert.match(SRC, /active: v\.status !== "Suspended"/, 'suspending sets active false');
 
   /* The rank IS the gate — src/auth.js and the RLS policies both read it — so
-     a role change that sent only the key would leave the old rank enforced. */
-  assert.match(SRC, /rank: this\.rankOf\(v\.role\)/,
+     a role change that sent only the key would leave the old rank enforced.
+
+     And it must be the CAPABILITY ladder it carries, not the seniority one.
+     This pinned rankOf, which is the seniority table, where a Cashier sits at 1
+     because a cashier is the most junior person on the floor. That number went
+     straight into chain.staff.rank, so a cashier created here landed at Kitchen
+     and was refused from the Till rung the job is made of. */
+  assert.match(SRC, /rank: this\.rankFor\(v\.role\)/,
     'a role change carries the rank the server actually gates on');
+  assert.match(SRC, /rank: this\.rankFor\(v\.role\), roleKey: v\.role/,
+    'and so does creating an account');
+  assert.ok(!/rank: this\.rankOf\(/.test(SRC),
+    'seniority is who may act on whom — it is never what a grant writes');
 
   // No offline path: an optimistic grant is the one write that must not be.
   assert.match(SRC, /async staffWrite\(run, said\)/, 'one seam for all four');
@@ -2207,4 +2217,156 @@ test("'unsafe-eval' is a property of three pages, not of the product", () => {
     const page = fs.readFileSync(path.join(__dirname, '..', 'app', f + '.html'), 'utf8');
     assert.ok(page.indexOf('support.js') >= 0, f + '.html does, so it keeps the directive');
   });
+});
+
+/* THE COPY SWEEP.
+
+   The eleven controls that lied were found by accident — by opening a screen
+   and reading it. This is the systematic pass: every user-visible string of 25
+   characters or more was extracted, the 259 that assert something checkable
+   were classified, and each was verified against the database or the server.
+
+   The largest seam was a stratum of architecture copy written against the
+   PREVIOUS app, which was deleted in full. It named `kpos.*` tables, a
+   `chain_id` claim, an `outlet_ids[]` array in the token, a
+   `menu_for_terminal` security_invoker view and a PgBouncer that is not
+   deployed. Asked of a live database: the `kpos` schema does not exist, no
+   column anywhere is called `chain_id`, no view matches `menu_for%`, and no
+   policy mentions `from_outlet`. The code samples beside that prose were
+   already correct, which is the worst arrangement — a reader trusts the
+   sentence over the SQL. */
+test('no screen describes the app that was deleted', () => {
+  const APPS = ['index.html', 'guest.html', 'member.html', 'account.html', 'onboarding.html'];
+  const DATA = ['kashikeyo-data.js', 'kashikeyo-rules.js', 'kashikeyo-invite.js'];
+  const GONE = [
+    ['kpos.', 'the previous app\'s schema — this build is chain.* and outlet_N.*'],
+    ['chain_id', 'no column anywhere is called that; an install holds one company'],
+    ['outlet_ids', 'a token names ONE outlet, and the path must match it'],
+    ['menu_for_terminal', 'there is no such view — cost is hidden by the screen, not the wire'],
+    ['security_invoker', 'no view in this build uses it'],
+    ['PgBouncer', 'not deployed; the pool is pg\'s own, in one process'],
+    ['SQLite', 'the terminal\'s local store is IndexedDB']
+  ];
+  APPS.concat(DATA).forEach((f) => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8');
+    // Comments may name the old vocabulary — that is how a fix explains itself.
+    const shipped = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
+    GONE.forEach(([word, why]) => {
+      assert.ok(shipped.indexOf(word) < 0,
+        f + ' still says "' + word + '" on a screen — ' + why);
+    });
+  });
+});
+
+/* AND THE CLAIMS THAT WERE CHECKABLE ONE BY ONE. Each of these was asked of a
+   live database or the server source before it was rewritten. */
+test('the claims a screen makes are the ones the server keeps', () => {
+  // The credit limit: no CHECK on chain.member, no trigger. Verified by query.
+  assert.ok(SRC.indexOf('The credit limit is enforced in the database') < 0,
+    'there is no constraint and no trigger — the till blocks it and a replay is flagged');
+
+  // Journals: composed by applySale() in Node. The only trigger in an outlet
+  // schema is journal_balances, a deferred check on the total.
+  assert.ok(SRC.indexOf('produced by a database trigger on a source event') < 0,
+    'the server composes them from the sale; the trigger only refuses an unbalanced one');
+
+  // The architecture screen: four panes, four labels. It had five labels and
+  // branches on 1..5 plus a default — six panes, two unreachable by clicking.
+  const arch = SRC.slice(SRC.indexOf('  g_architecture()'), SRC.indexOf('  g_architecture()') + 9000);
+  const labels = (arch.match(/const tabs = \[([^\]]*)\]/) || [])[1] || '';
+  const panes = (arch.match(/if \(tab === \d\)/g) || []).length + 1;   // +1 default
+  assert.strictEqual(labels.split(',').length, panes,
+    'every tab has a pane and every pane has a tab');
+  assert.ok(arch.indexOf('0007_rls.sql') < 0, 'the migration is 002, and it is named correctly');
+
+  // Unused data that carried a false claim is deleted, not left for a reader.
+  const data = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-data.js'), 'utf8');
+  assert.ok(!/var RAILWAY(_NOTES)? = \[/.test(data),
+    'RAILWAY_NOTES said no request handler imports the owner connection — six do');
+
+  /* A role's SCOPE is one of the two values src/auth.js knows. It carried
+     "platform" and "chain" — a platform above the install and a chain of them,
+     neither of which exists — and scopedOutlets() reads this field, so
+     "anything but outlet" silently handed three roles every outlet in the
+     switcher when a session names exactly one. */
+  const scopes = [...data.matchAll(/scope: "([a-z]+)"/g)].map((m) => m[1]);
+  assert.ok(scopes.length >= 7, 'every role declares a scope');
+  scopes.forEach((sc) => assert.ok(sc === 'outlet' || sc === 'group',
+    'scope "' + sc + '" is not a scope src/auth.js honours'));
+  assert.strictEqual(scopes.filter((x) => x === 'group').length, 1,
+    'group scope is the rank-5 estate read, and only the owner holds it');
+
+  /* AND THE SWITCHER ITSELF. A session names one outlet: the token carries it,
+     every path repeats it, and the server refuses any other. Changing
+     state.outletId painted the other outlet's name over this outlet's data. */
+  assert.match(SRC, /sign out and sign in at/,
+    'switching outlet says what it actually takes');
+});
+
+/* THE RESOLVER THAT THREW THE WRITE AWAY AND SAID IT HAD WON.
+
+   The worst thing the copy sweep turned up, and it was a control, not a
+   sentence. Nothing in this build detects a write-write conflict: the server
+   applies a batch in the operator's own order and answers a refusal with a
+   REASON. state.conflicts was fed from those refusals, and a "Replay conflict"
+   screen then told the operator a story about them — that another terminal had
+   written the same order line first, "quantity 3, fired at 19:31", "Accepted by
+   the server, Lamport 6", beside their own write at "Lamport 4". Every one of
+   those was a literal: identical on every install, every refusal, every op.
+
+   Then "Keep mine" marked the outbox row `sent`, re-pushed NOTHING, and toasted
+   "local write replayed over the server copy". A refused sale, payment or
+   credit charge was deleted by the control that reported it had won.
+
+   The lane that works was already here for the eighth refusal. It runs from the
+   first one now. */
+test('a refused write goes to the one lane that can decide it', () => {
+  // A fix explains itself in a comment, and a comment ships nothing — so the
+  // absence half of this is asked of the code alone.
+  const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
+  assert.ok(code.indexOf('Lamport 6') < 0, 'no invented counterpart write');
+  assert.ok(code.indexOf('Captured offline, Lamport 4') < 0, 'and no invented lamport for our own');
+  assert.ok(!/resolveConflict/.test(code), 'the resolver that dropped the op is gone');
+  assert.ok(!/mConflict|conflictTheirs|conflictFoot/.test(code),
+    'and so is the screen it drew');
+  assert.ok(!/state\.conflicts|conflicts: s\.conflicts/.test(code),
+    'a refusal is a row in the outbox, not a second list beside it');
+
+  // What a refusal reaches instead: the outlet's own reason and two decisions
+  // that are both real — one re-pushes, one deletes with an audit op.
+  assert.match(SRC, /refusedOps\(\) \{/, 'one derivation of what was refused');
+  assert.match(SRC, /state === "refused" \|\| x\.state === "conflict"/,
+    'and a persisted outbox from before the rename still shows its refusals');
+  assert.match(SRC, /parkedActions\(refusedOps\[0\]\)/, 'the Sync action opens that lane');
+  assert.match(SRC, /this\.parkedActions\(x\) : null/, 'so does the row itself');
+  assert.ok(HANDLERS.op_discarded === undefined || AUDIT_ONLY.indexOf('op_discarded') >= 0,
+    'discarding still replays as the audit op naming what was given up');
+});
+
+/* THE BUTTON THAT ENDS EVERY SALE PRINTED NOTHING.
+
+   The settled modal offered "Email receipt" and "Print & close", and BOTH were
+   bound to `closeModal`. `settledDone` — which holds the only receipt print in
+   the build — was bound nowhere in the template, and the same binding carried
+   the credit note and the Z-report with it. So a cashier pressing Print got a
+   closed dialog and no paper, on every sale, on every till. Nothing in the
+   client or the server has ever been able to email a receipt. */
+test('the settle modal prints what its button says it prints', () => {
+  assert.match(SRC, /<button onClick="\{\{ settledDone \}\}"/,
+    'the primary action is bound to the callback that prints');
+  assert.match(SRC, /\{\{ settledDoneLabel \}\}/, 'and it is named by the branch that set it');
+  assert.ok(SRC.indexOf('Email receipt') < 0,
+    'nothing here or on the server can email a receipt');
+  assert.match(SRC, /Close without printing/, 'the alternative says what it does');
+
+  // Every branch that sets the callback also names the button.
+  const done = (SRC.match(/settledDone: \(\) =>/g) || []).length;
+  const label = (SRC.match(/settledDoneLabel:/g) || []).length;
+  assert.strictEqual(done, label, 'no branch renders a nameless button');
+
+  /* And "Print the receipt automatically" was a switch nothing read. It is
+     honoured at settle, which is where "automatically" means something. */
+  assert.match(SRC, /if \(this\.prefs\(\)\.autoPrint\) \{/, 'the pref is read on the settle path');
+  assert.match(SRC, /settledDoneLabel: this\.prefs\(\)\.autoPrint \? "Close"/,
+    'and the button stops offering a print that has already happened');
 });

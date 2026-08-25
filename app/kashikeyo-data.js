@@ -117,43 +117,55 @@
   }
   var ALL = { v: 1, a: 1, e: 1, d: 1 }, VAE = { v: 1, a: 1, e: 1, d: 0 }, VA = { v: 1, a: 1, e: 0, d: 0 }, V = { v: 1, a: 0, e: 0, d: 0 };
 
+  /* THE SEVEN ROLES ARE PRESENTATIONS OF THE FIVE RANKS, and nothing else.
+     The key is a wire value — src/auth.js carries it in the session and maps
+     it back to a rank — so the keys stay whatever they were named on the day.
+     The label and the blurb are what a person reads, and they described a
+     product that was deleted: a platform above chains, a role whose token
+     omitted a chain_id column that exists nowhere, an outlet "reading the chain
+     menu master". An install holds ONE company; a session names ONE outlet.
+
+     `scope` has two values because the server has two: `outlet` is every
+     session, and `group` is the rank-5 estate read (src/auth.js groupScope,
+     honoured at rank 5 and silently downgraded below it). */
   var ROLES = [
     {
-      key: "SuperAdmin", label: "Super Admin", color: "#a88ad9", scope: "platform",
-      blurb: "Platform owner. Crosses every chain — the only role whose JWT omits chain_id.",
+      key: "SuperAdmin", label: "Owner", color: "#a88ad9", scope: "group",
+      blurb: "Owns the business. The only rank that reads the estate figure across outlets, reopens a filed month, registers for GST or renames the store address.",
       perms: (function () { var o = {}; MODULES.forEach(function (m) { o[m.key] = ALL; }); return o; })()
     },
     {
-      key: "ChainAdmin", label: "Chain / HQ Admin", color: "#f2a43a", scope: "chain",
-      blurb: "Full reach inside one chain, every outlet.",
+      key: "ChainAdmin", label: "Administrator", color: "#f2a43a", scope: "outlet",
+      blurb: "Settings, staff, roles, devices and the floor plan \u2014 how the outlet is configured, rather than what it takes today.",
       perms: (function () { var o = {}; MODULES.forEach(function (m) { o[m.key] = m.key === "architecture" ? V : ALL; }); o.analytics = V; return o; })()
     },
     {
       key: "OutletManager", label: "Outlet Manager", color: "#2e7d32", scope: "outlet",
-      blurb: "One outlet. Reads chain menu master, writes local overrides.",
+      blurb: "Voids after fire, discounts, refunds, prices a delivery, closes the day and the month.",
       perms: perms({ pos: ALL, kds: VAE, reservations: ALL, customers: VAE, orders: VAE, delivery: VAE, promos: VAE, chain: V, branches: V, menu: V, inventory: V, ledger: V, counts: VAE, requests: VAE, dispatches: VAE, batches: V, reports: V, accounting: V, sync: V, settings: V, logs: V, staff: VAE, costs: V, assets: VAE })
     },
     {
       key: "Cashier", label: "Cashier / Waiter", color: "#0074D9", scope: "outlet",
-      blurb: "Terminal, and receiving on shift. Never sees cost or margin.",
+      blurb: "Sells, settles, voids before fire, 86s a dish and signs for a delivery. Never sees cost or margin, and never prices what it receives.",
       perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, promos: V, kds: V, purchases: VA, counts: VA, inventory: V, ledger: V, batches: V, vendors: V })
     },
     {
-      key: "KitchenManager", label: "Kitchen Manager", color: "#e65100", scope: "outlet",
-      blurb: "Central kitchen + KDS. Production, recipes, indents.",
+      key: "KitchenManager", label: "Kitchen", color: "#e65100", scope: "outlet",
+      blurb: "The pass. Bumps a line, moves an order through the kitchen, keeps the recipes and the batches. Sells nothing and settles nothing.",
       perms: perms({ kds: VAE, pos: V, production: VAE, recipes: VAE, requests: VAE, dispatches: VAE, consumption: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, menu: V, reports: V, sync: V, staff: V, assets: VAE })
     },
     {
       key: "StoreKeeper", label: "Store Keeper", color: "#67a2d9", scope: "outlet",
-      blurb: "Main store. Receiving, dispatch, counts, vendors.",
+      blurb: "Receiving, dispatch, counts and vendors, at the same rung as the till \u2014 the bread arrives before the office does. Pricing the invoice is the manager's second signature.",
       perms: perms({ purchases: VAE, dispatches: VAE, requests: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, vendors: VAE, reports: V, sync: V, assets: VAE })
     },
     {
-      key: "Accountant", label: "Accountant / Auditor", color: "#6bbf7b", scope: "chain",
-      blurb: "Read-everything, write-nothing. Exports GST returns.",
+      key: "Accountant", label: "Accountant / Auditor", color: "#6bbf7b", scope: "outlet",
+      blurb: "The books, the audit trail and the GST figures. It carries a manager's rank, so it can write whatever a manager can \u2014 the screens keep it off the till, the rank does not.",
       perms: (function () { var o = {}; MODULES.forEach(function (m) { o[m.key] = V; }); o.accounting = VAE; o.reports = VAE; o.payroll = VAE; o.costs = VAE; o.pos = { v: 0, a: 0, e: 0, d: 0 }; return o; })()
     }
   ];
+
 
   // ── The chart of accounts ─────────────────────────────────────────────────
   // Thirty-five codes, and the codes are LOAD-BEARING: the auto-posting rules,
@@ -458,22 +470,15 @@
   ];
 
 
-  var RAILWAY = [
-    ["Service", "One Node process: the API and the terminal it serves"],
-    ["Database", "One Postgres. One schema and one login role per outlet"],
-    ["Healthcheck", "/readyz \u2014 ready only when the control plane answers"],
-    ["Migrations", "Applied at boot, recorded with a checksum in chain.migration"],
-    ["Leak test", "In the deploy pipeline, not in a checklist"],
-    ["Secrets", "OUTLET_ROLE_SECRET, SESSION_SECRET, PORTAL_SECRET \u2014 three, deliberately"]
-  ];
-
-  var RAILWAY_NOTES = [
-    "Per-outlet database passwords are DERIVED from OUTLET_ROLE_SECRET and never stored: nothing readable inside the database yields another outlet\'s credentials.",
-    "The owner connection runs migrations and provisioning only. No request handler imports it \u2014 the owner role bypasses both belts of isolation.",
-    "A deploy that cannot see its database fails its healthcheck rather than going live.",
-    "The terminal has no build step. What ships is the file that was read \u2014 edit it, restart, reload."
-  ];
-
+  /* RAILWAY and RAILWAY_NOTES lived here and nothing rendered them: the screen
+     that was meant to read them expected objects with a name, a kind and a
+     port, and these are pairs of strings — so the topology tab drew six blank
+     cards. They are deleted rather than repaired because one of them was also
+     WRONG: "the owner connection runs migrations and provisioning only, no
+     request handler imports it" — six handlers do, deliberately, and the list
+     is pinned by a test. Unused copy that carries a false claim is the next
+     person's shortcut. What the deployment tab says now is written where it is
+     rendered, so the two cannot drift apart again. */
 
   window.KPOS = {
     ALLERGENS: ALLERGENS, DIETS: DIETS, MEAT_RE: RULES.MEAT_RE,
@@ -490,7 +495,6 @@
     EXPENSE_CATEGORIES: EXPENSE_CATEGORIES, COUNT_FREQUENCIES: COUNT_FREQUENCIES,
     STATIONS: STATIONS, RECON: RECON, ACQUIRERS: ACQUIRERS,
     JWT_CLAIM: JWT_CLAIM, RLS_SQL: RLS_SQL, ERD: ERD,
-    RAILWAY: RAILWAY, RAILWAY_NOTES: RAILWAY_NOTES,
     RAW: R, HERO: ""
   };
 

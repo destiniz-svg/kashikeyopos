@@ -216,13 +216,27 @@ function atRank(rank, roleKey) {
 
 test('the terminal gates on the rank the server issued, not the one it infers', () => {
   const { RANK, ROLE_KEY_BY_RANK } = require('../src/auth');
-  // ChainAdmin is rank 4 on the server. If the terminal read its own map it
-  // would call that 5 and hand an admin the owner's controls.
   assert.strictEqual(RANK.admin, 4);
   assert.strictEqual(ROLE_KEY_BY_RANK[4], 'ChainAdmin');
   const F = atRank(4, 'ChainAdmin');
   assert.strictEqual(F.rank(), 4, 'the session wins');
-  assert.strictEqual(F.RANKMAP().ChainAdmin, 5, 'and the map still disagrees');
+});
+
+/* The capability map is not only READ, it is WRITTEN: granting a role sends
+   this number as chain.staff.rank, and that is the rank every route and every
+   policy then gates on. So it is the server's ladder or it is a defect — a
+   Cashier at the wrong rung is a cashier who cannot sell. */
+test('the capability ladder is the ladder the server enforces', () => {
+  const { RANK, ROLE_KEY_BY_RANK } = require('../src/auth');
+  const map = atRank(5, 'SuperAdmin').RANKMAP();
+  Object.keys(ROLE_KEY_BY_RANK).forEach((n) => {
+    assert.strictEqual(map[ROLE_KEY_BY_RANK[n]], Number(n),
+      ROLE_KEY_BY_RANK[n] + ' must be rank ' + n + ' on both sides');
+  });
+  // The three keys the server has no slot for still have to sit on a real rung.
+  assert.strictEqual(map.Waiter, RANK.till);
+  assert.strictEqual(map.StoreKeeper, RANK.till, 'a store keeper signs for a delivery');
+  assert.strictEqual(map.Accountant, RANK.manager, 'and reads the audit trail');
 });
 
 test('changing a store address is offered to the owner and refused to anybody else', () => {

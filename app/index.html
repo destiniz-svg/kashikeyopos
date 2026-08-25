@@ -1607,25 +1607,6 @@
             </div>
           </sc-if>
 
-          <sc-if value="{{ mConflict }}">
-            <div>
-              <div style="padding:12px 14px;background:var(--bad-dim);border:1px solid var(--red-line);border-radius:10px;font-size:12.5px;color:var(--text);line-height:1.6;margin-bottom:14px">{{ conflictBody }}</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
-                <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px">
-                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:8px">Your offline copy</div>
-                  <div style="font-size:12.5px;color:var(--text);line-height:1.6">{{ conflictMine }}</div>
-                  <button onClick="{{ keepMine }}" style="margin-top:12px;width:100%;padding:9px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700;text-align:center">Keep mine</button>
-                </div>
-                <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px">
-                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:8px">Server copy</div>
-                  <div style="font-size:12.5px;color:var(--text);line-height:1.6">{{ conflictTheirs }}</div>
-                  <button onClick="{{ keepTheirs }}" style="margin-top:12px;width:100%;padding:9px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600;text-align:center">Keep server copy</button>
-                </div>
-              </div>
-              <div style="margin-top:13px;font-size:11.5px;color:var(--text-muted);line-height:1.6">{{ conflictFoot }}</div>
-            </div>
-          </sc-if>
-
           <sc-if value="{{ mDetail }}">
             <div>
               <sc-if value="{{ hasAvatar }}">
@@ -1864,8 +1845,8 @@
             </sc-if>
             <sc-if value="{{ mReceipt }}">
               <div style="display:flex;gap:7px">
-                <button onClick="{{ closeModal }}" style="flex:1;padding:11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center">Email receipt</button>
-                <button onClick="{{ closeModal }}" style="flex:1;padding:11px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Print &amp; close</button>
+                <button onClick="{{ closeModal }}" style="flex:1;padding:11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center">Close without printing</button>
+                <button onClick="{{ settledDone }}" style="flex:1;padding:11px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">{{ settledDoneLabel }}</button>
               </div>
               <button onClick="{{ doTrail }}" style="{{ trailStyle }}">{{ trailLabel }}</button>
               <button onClick="{{ doRefund }}" style="{{ refundStyle }}">{{ refundLabel }}</button>
@@ -2006,7 +1987,6 @@ class Component extends DCLogic {
     online: true,
     syncing: false,
     outbox: this._saved.outbox || [],
-    conflicts: this._saved.conflicts || [],
     tickets: this._saved.tickets || {},
     // The floor plan is a saved list of tables, not a count. A restaurant adds a
     // two-top, pushes two together for a party of eight, or takes the terrace
@@ -2138,7 +2118,8 @@ class Component extends DCLogic {
   // never grows without bound.
   trimOutbox(list) {
     if (list.length <= 90) return list;
-    const keep = (x) => x.state === "queued" || x.state === "conflict" || x.state === "parked";
+    const keep = (x) => x.state === "queued" || x.state === "refused"
+      || x.state === "conflict" || x.state === "parked";
     const live = list.filter(keep);
     const done = list.filter((x) => !keep(x)).slice(-60);
     return live.concat(done).sort((a, b) => (a.lamport || 0) - (b.lamport || 0));
@@ -2147,7 +2128,7 @@ class Component extends DCLogic {
     const s = this.state;
     this._lastWrite = Date.now();
     const body = {
-      v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox), conflicts: s.conflicts,
+      v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox),
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
       local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
       fulfil: s.fulfil,
@@ -2172,7 +2153,8 @@ class Component extends DCLogic {
     const put = (b) => localStorage.setItem(this.SKEY, JSON.stringify(b));
     try { put(body); }
     catch (e) {
-      const liveOps = body.outbox.filter((x) => x.state === "queued" || x.state === "conflict" || x.state === "parked");
+      const liveOps = body.outbox.filter((x) => x.state === "queued" || x.state === "refused"
+        || x.state === "conflict" || x.state === "parked");
       try {
         put(Object.assign({}, body, { outbox: liveOps,
           settled: (body.settled || []).slice(-200),
@@ -2183,7 +2165,7 @@ class Component extends DCLogic {
         // the unreplayed outbox, who is signed in, and the drawer.
         try {
           put({ v: 3, tickets: body.tickets, held: body.held, outbox: liveOps,
-            conflicts: body.conflicts, session: body.session, register: body.register,
+            session: body.session, register: body.register,
             prefs: body.prefs, outletId: body.outletId, docSeq: body.docSeq, docs: (body.docs || []).slice(-100) });
           this.fault("storage", "session did not fit — persisted live state only");
         } catch (e3) {
@@ -2461,7 +2443,7 @@ class Component extends DCLogic {
         this.toast("Too many wrong PINs — this terminal is held for " + this.PIN_HOLD_MIN + " minutes", "err");
         return;
       }
-      this.setState({ pinFails: tries, modal: Object.assign({}, m, { pin: "", checking: 0, err: u.status === "Suspended" ? "This account is suspended. See a chain administrator." : (why || ("Wrong PIN — " + left + " attempt" + (left === 1 ? "" : "s") + " left before this device locks")) }) });
+      this.setState({ pinFails: tries, modal: Object.assign({}, m, { pin: "", checking: 0, err: u.status === "Suspended" ? "This account is suspended. See an administrator." : (why || ("Wrong PIN — " + left + " attempt" + (left === 1 ? "" : "s") + " left before this device locks")) }) });
       if (u.status === "Suspended") {
         this.queue("sign_in_refused", u.name + " attempted sign-in while suspended · " + this.deviceCode(), "sessions");
       } else {
@@ -2543,11 +2525,11 @@ class Component extends DCLogic {
     /* THE SERVER CHANGED UNDERNEATH THIS TERMINAL. Same origin, same outlet
        number, different database — the shape of "staging's demo night ends
        up on the real store's floor". Everything trade-local here belongs to
-       the OLD install: tables, held bills, the settled cache, conflicts.
+       the OLD install: tables, held bills, the settled cache.
        Shed it (the durable outbox is handled separately — its foreign ops
        PARK rather than vanish, because money is never silently deleted). */
     window.addEventListener("kpos-install-changed", (e) => {
-      this.setState({ tickets: {}, held: [], settled: [], conflicts: [],
+      this.setState({ tickets: {}, held: [], settled: [],
         activeTable: null });
       this.persist();
       this.toast("This terminal last served a different install \u2014 its local history was set aside, and any unsent operations are parked on Sync & Devices", "warn");
@@ -4271,7 +4253,7 @@ class Component extends DCLogic {
             ? (quiet ? quiet + " ha" + (quiet === 1 ? "s" : "ve") + " not delivered ops in an hour" : live + " seen in the last hour")
             : "This device is not paired yet",
           quiet ? big + ";color:var(--warn-bright)" : undefined),
-        card("Conflicts resolved", String(s.conflicts.length), "Last-writer-wins except closed tickets"),
+        card("Refused by the outlet", String(this.refusedOps().length), "Each carries the outlet's own reason"),
         parked
           ? card("Parked operations", String(parked), "Refused repeatedly \u2014 decide on each", big + ";color:var(--red-bright)")
           : card("Last replay", lag === null ? "—" : lag + "s",
@@ -5962,7 +5944,7 @@ class Component extends DCLogic {
       // room for both. Short or narrow, the bill drops under the keypad and the
       // body scrolls — a cashier must never lose sight of the total or Pay.
       payGridStyle: (this.effBp() === "m" || this.shortVp()) ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
-      mPay: m.kind === "pay", mNote: m.kind === "note", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
+      mPay: m.kind === "pay", mNote: m.kind === "note", mQr: m.kind === "qr",
       mKot: m.kind === "kot",
       mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "move" || m.kind === "zones" || m.kind === "periodPick" || m.kind === "bankRow" || m.kind === "delorder",
       mLock: m.kind === "lock",
@@ -5974,6 +5956,8 @@ class Component extends DCLogic {
       // never renders an unstyled control on the settled or Z screens.
       refundStyle: "display:none", refundLabel: "", doRefund: () => {},
       trailStyle: "display:none", trailLabel: "", doTrail: () => {},
+      // A modal that sets neither must not render a nameless button.
+      settledDoneLabel: "Close", settledDone: () => this.setState({ modal: null }),
       // Secondary actions under a detail record. Most records have none; a
       // customer with a balance has two, and they are the reason the panel is
       // open at all.
@@ -6465,6 +6449,18 @@ class Component extends DCLogic {
               { member: payMember.id, points: -ptsSpent, reason: "redeem", sale: snapshot.no });
           }
           this.bookSale(settledRow, tk, T);
+          /* "Print the receipt automatically" was a switch nothing read: the
+             receipt printed either way — or rather, it printed NEITHER way,
+             because the button holding the print was bound to nothing. It is
+             honoured here, which is where "automatically" means something: at
+             settle, before anybody reaches for a button. */
+          if (this.prefs().autoPrint) {
+            this.printJob("Receipt", "receipt", "Receipt " + (snapshot.no || "") + " \u00b7 " + MVRc(T.total), { no: snapshot.no,
+              doc: { title: (this.outlet() || {}).name || "", sub: "Receipt " + (snapshot.no || "") + " \u00b7 " + snapshot.time + " \u00b7 " + snapshot.table,
+                rows: (snapshot.lines || []).map((l) => [l.n, l.v]),
+                foot: (this.brandOf().receiptFoot || "Thank you"),
+                kick: snapshot.tender === "cash" } });
+          }
           this.setState({
             tickets: tables,
             settled: [settledRow].concat(s.settled || []),
@@ -6778,7 +6774,7 @@ class Component extends DCLogic {
         modalTitle: mod.label, modalSub: "What each rank reaches here \u00b7 read-only",
         moreActions: (K0.ROLES || []).map((r) => {
           const cur = lvlOf(this.roleFor(r.key).perms[mod.key] || {});
-          const rk = this.rankOf(r.key);
+          const rk = this.rankFor(r.key);
           return {
             label: r.label + " \u2014 " + cur,
             sub: words[cur] + " \u00b7 rank " + rk + (r.key === s.roleKey ? " \u00b7 yours" : ""),
@@ -6866,19 +6862,6 @@ class Component extends DCLogic {
         qrUrl: this.tableUrl(s.activeTable || 1)
           || "This outlet has no store address yet — set one in Settings"
       });
-    }
-
-    if (m.kind === "conflict") {
-      const c = s.conflicts[0] || { label: "—", at: "—" };
-      return {
-        modalTitle: "Replay conflict", modalSub: c.label,
-        conflictBody: "This operation was captured offline at " + c.at + " on this terminal. While the terminal was dark, another terminal in the same outlet wrote to the same order line and reached the server first.",
-        conflictMine: c.label + "\nCaptured offline, Lamport 4.",
-        conflictTheirs: "Same line, quantity 3, fired at 19:31.\nAccepted by the server, Lamport 6.",
-        conflictFoot: "Last-writer-wins would silently drop one of these. Because the line belongs to a ticket that is still open, the resolver hands it to you instead. Had the ticket been closed, the replay would have been rejected outright and logged.",
-        keepMine: () => { this.resolveConflict(c.id, "mine"); },
-        keepTheirs: () => { this.resolveConflict(c.id, "theirs"); }
-      };
     }
 
     if (m.kind === "count") {
@@ -7426,10 +7409,31 @@ class Component extends DCLogic {
     return this.detailVals(m);
   }
 
-  resolveConflict(id, which) {
-    const outbox = this.state.outbox.map((x) => x.id === id ? Object.assign({}, x, { state: which === "mine" ? "sent" : "dropped", label: x.label + (which === "mine" ? " · kept local" : " · superseded by server") }) : x);
-    this.setState({ outbox: outbox, conflicts: this.state.conflicts.filter((c) => c.id !== id), modal: null });
-    this.toast(which === "mine" ? "Local write replayed over the server copy" : "Server copy kept, local write discarded");
+  /* A REFUSED OP IS A REFUSED OP, and there is exactly one lane for it.
+
+     What stood here was a "Replay conflict" screen and a resolver, and neither
+     was real. Nothing in this build ever detects a write-write conflict: the
+     server applies the batch in the operator's own order and reports a refusal
+     with a REASON. state.conflicts was fed from those refusals, and the screen
+     then told the operator a story about them — that another terminal had
+     written the same order line first, at a clock value, a quantity and a time.
+     Every one of those was a literal, identical on every install and every
+     refusal, printed beside the operator's own write as the thing it lost to.
+
+     The resolver was worse. "Keep mine" marked the outbox row `sent` and
+     re-pushed NOTHING, then said "local write replayed over the server copy" —
+     so a refused sale, payment or credit charge was thrown away by the control
+     that reported it had won. Money written on a terminal, gone, with a green
+     toast.
+
+     The lane that works was already here: parkedActions() names the outlet's
+     own reason and offers the two decisions that exist — back into the replay,
+     or out of the outbox with an audit op naming what was given up. A refusal
+     goes there on the first one now, not the eighth. */
+  refusedOps() {
+    // "conflict" is what an older build wrote into a persisted outbox; a
+    // terminal that reloads across this change must still see its refusals.
+    return (this.state.outbox || []).filter((x) => x.state === "refused" || x.state === "conflict");
   }
 
   // Merchant brand, with a per-outlet override. An airport unit trading under
@@ -7510,7 +7514,19 @@ class Component extends DCLogic {
         rcpNo: p.no, rcpTime: p.time,
         rcpLines: p.lines, rcpTotals: rows,
         rcpFoot: "Served by " + (p.server || "—") + " · " + p.guest + "\n" + (this.brandOf().receiptFoot || "Thank you"),
+        /* "Print & close" was bound to closeModal, so it closed and printed
+           nothing, and this callback — which holds the only receipt print in
+           the build — was bound to nothing at all. The same binding took the
+           credit note and the Z-report with it. The other button offered to
+           EMAIL a receipt, which nothing here or on the server can do; it says
+           what it does now.
+
+           `autoPrint` is honoured here rather than invented elsewhere: with it
+           on the receipt is already printing as this opens, so the button has
+           nothing left to do but close, and it says so. */
+        settledDoneLabel: this.prefs().autoPrint ? "Close" : "Print \u0026 close",
         settledDone: () => {
+          if (this.prefs().autoPrint) return this.setState({ modal: null });
           this.printJob("Receipt", "receipt", "Receipt " + (p.no || "") + " · " + MVRc(T.total), { no: p.no,
             doc: { title: o.name, sub: "Receipt " + (p.no || "") + " · " + p.time + " · " + p.table,
               rows: (p.lines || []).map((l) => [l.n, l.v]).concat([{ rule: 1 }],
@@ -7536,7 +7552,7 @@ class Component extends DCLogic {
           rcpFoot: "The note was raised, and it is in the audit trail and the "
             + "documents list — this terminal simply no longer holds its copy. "
             + "Open it from Accounting \u00b7 Documents to reprint it.",
-          settledDone: () => this.setState({ modal: null }) };
+          settledDoneLabel: "Close", settledDone: () => this.setState({ modal: null }) };
       }
       const d = m.doc, T = d.T;
       const rw = "display:flex;justify-content:space-between;padding:2px 0";
@@ -7563,6 +7579,7 @@ class Component extends DCLogic {
         ],
         rcpFoot: d.note + "\nIssued by " + d.by + " · " + d.date
           + "\nThis document reverses the tax invoice named above. The original invoice remains valid and unaltered.",
+        settledDoneLabel: "Print \u0026 close",
         settledDone: () => {
           this.printJob("Credit note", "receipt", "Credit note " + d.no + " · " + MVRc(d.T.total), { no: d.no });
           this.setState({ modal: null });
@@ -7621,6 +7638,7 @@ class Component extends DCLogic {
         rcpFoot: (this.prefs().device || "unpaired terminal") + " · " + this.me() + " · " + this.rankName() + " rank"
           + (reg.openedAt ? "\nRegister opened " + pad(new Date(reg.openedAt).getHours()) + ":" + pad(new Date(reg.openedAt).getMinutes()) + " by " + (reg.openedBy || "—") : "\nNo register was opened for this shift")
           + "\nCard and credit are revenue, not cash — the drawer reconciles on the rufiyaa line only.",
+        settledDoneLabel: "Print \u0026 close",
         settledDone: () => {
           this.printJob("Z-report", "receipt", "Z-report · " + this.shiftLabel() + " · " + MVRc(net), { net: net,
             doc: { title: this.outlet().name, sub: "Z-report · " + this.shiftLabel(),
@@ -7735,7 +7753,7 @@ class Component extends DCLogic {
         ] : [],
         modalTitle: o.name, modalSub: o.code + " · " + (o.region || ""),
         detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Store address", url || "Not set"), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", this.taxLine(o) || "Not registered", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
-        detailNote: "outlet_ids in this outlet's staff tokens = [" + [o.id].concat(kids.map((k) => k.id)).join(", ") + "] — the outlet plus its stock sub-locations, nothing else.",
+        detailNote: "This outlet and its stock sub-locations are " + [o.id].concat(kids.map((k) => k.id)).join(", ") + ". A staff token names ONE outlet and the request is refused if the path names another; reaching a sub-location is a separate sign-in, not a wider claim.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
     }
@@ -7852,7 +7870,7 @@ class Component extends DCLogic {
           style: "flex:1 1 170px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:600;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid " + (this.priceOv(d.id) === undefined ? "var(--line)" : "var(--warn-line)") + ";color:" + (this.priceOv(d.id) === undefined ? "var(--text)" : "var(--warn-bright)"),
           go: () => this.openForm("outletPrice", d)
         }] : [],
-        modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against kpos.items, so a vendor price change on the next GRN recosts this dish automatically.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
+        modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against this outlet's own ingredient and item rows, so a vendor price change on the next priced delivery re-averages the cost and recosts this dish.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
     }
     const it = this.item(m.id) || [];
     const raw = window.KPOS_RAW || {};
@@ -7925,8 +7943,22 @@ class Component extends DCLogic {
     // The sheet only lists granted outlets, but the guard belongs here too:
     // this is the single door every outlet change goes through.
     if (!this.scopedOutlets().some((o) => o.id === id)) {
-      this.toast("You are not assigned to that outlet — a chain administrator grants access", "err");
+      this.toast("You are not assigned to that outlet — an administrator grants access", "err");
       this.queue("outlet_switch_denied", this.me() + " attempted " + this.locName(id), "sessions");
+      return;
+    }
+    /* A SESSION NAMES ONE OUTLET, so this could never have moved one. The token
+       carries the outlet, the API client puts that outlet in every path, and the
+       server refuses any other with `outlet mismatch`. Changing state.outletId
+       therefore repainted every header, fascia and label with the OTHER outlet's
+       name over THIS outlet's menu, tickets and takings — worse than a refusal,
+       because nothing on screen said so. No endpoint moves a session:
+       /api/auth/switch is a hand-over at the same outlet. So the way through is
+       the true one, and it is named. */
+    const sess = this.state.session;
+    if (sess && sess.outlet && id !== sess.outlet) {
+      this.toast("Your session belongs to " + this.locName(sess.outlet)
+        + " — sign out and sign in at " + this.locName(id) + " to work there", "warn");
       return;
     }
     this.setState({ outletId: id, activeTable: null, activeSplit: 0, modal: null, pane: "floor" }, () => {
@@ -8389,19 +8421,31 @@ class Component extends DCLogic {
     const sym = c.sym || c.code;
     return sym + (/[A-Z]$/.test(sym) ? " " : "") + v;
   }
-  // ── Capability ladder: what this rank may DO ────────────────────────────
-  // The five-rank ladder from the product definition — Kitchen 1, Till 2,
-  // Manager 3, Admin 4, Owner 5 — read only through threshold helpers
-  // (canApprove, canReceive). Deliberately coarse: it groups roles that may do
-  // the same things. See ROLERANK above for the seniority question, which is
-  // separate and must not be folded into this.
-  RANKMAP() { return { SuperAdmin: 5, ChainAdmin: 5, Accountant: 3, OutletManager: 4, KitchenManager: 3, StoreKeeper: 3, Cashier: 2, Waiter: 2 }; }
-  /* The rank the SERVER put in this session wins, because the server is what
-     enforces it. This map does not agree with src/auth.js — it reads
-     ChainAdmin as 5 where the ladder says 4, and OutletManager as 4 where the
-     ladder says 3 — so trusting it would offer an admin controls the API then
-     refuses, and a button that 403s is worse than no button. It stays as the
-     fallback for a terminal that has not signed in against a server yet. */
+  /* ── Capability ladder: what this rank may DO ────────────────────────────
+     THE SAME LADDER src/auth.js GATES ON, role key for role key — Kitchen 1,
+     Till 2, Manager 3, Admin 4, Owner 5 — because this table is not only read,
+     it is WRITTEN: granting somebody a role sends this number as the rank, and
+     the rank is what every route and every RLS policy then reads.
+
+     It used to be its own opinion, and it disagreed with the server on four of
+     the eight keys. That alone would only have offered controls the API then
+     refuses. What made it a live defect is that the write did not even use this
+     table — it used the SENIORITY one below, where a Cashier sits at 1 because
+     a cashier is the most junior person on the floor. So a cashier created in
+     Users landed in chain.staff at rank 1, which is Kitchen, and was refused
+     from the Till rung the job is made of: no sales history, no member
+     invitation, proved end to end against a live outlet. A kitchen account came
+     out at rank 2 and could do both.
+
+     Two tables, two questions, and neither may answer the other's: this one is
+     the capability ladder and it is the server's; ROLERANK is seniority and is
+     the terminal's alone. Changing this one changes what somebody may DO, so it
+     changes with src/auth.js or not at all. */
+  RANKMAP() { return { SuperAdmin: 5, ChainAdmin: 4, OutletManager: 3, Accountant: 3, Cashier: 2, Waiter: 2, StoreKeeper: 2, KitchenManager: 1 }; }
+  /* The rank the SERVER put in this session still wins, because the server is
+     what enforces it and a session can outlive a change to this table. The map
+     is the fallback for a terminal that has not signed in against a server yet,
+     and the rank a grant writes. */
   rank() {
     const s = this.state.session;
     if (s && s.rank) return Number(s.rank);
@@ -8901,7 +8945,7 @@ class Component extends DCLogic {
       growth: ((last7 - prev7) / (prev7 || 1)) * 100,
       credit: credit, overdue: overdue,
       queued: s.outbox.filter((x) => x.state === "queued").length,
-      conflicts: s.conflicts.length,
+      conflicts: this.refusedOps().length,
       // Measured from clock punches, so prime cost is real on both halves.
       labourCost: labourCost, labourHours: L.hours, labourHeads: L.heads,
       labour: labourPct, prime: chainFc + labourPct,
@@ -9028,7 +9072,7 @@ class Component extends DCLogic {
     else push(work, "House credit clean", MVRc(d.credit), "No account at its limit. Every charge and settlement is a ledger row.", "g");
 
     if (d.queued) { score -= 4; push(watch, "Terminals out of step", d.queued + " queued", "Operations waiting to replay. Do not close a shift until this clears.", "a"); }
-    else push(work, "Every till in step", "Synced", "No queued operations, no unresolved conflicts.", "g");
+    else push(work, "Every till in step", "Synced", "No queued operations, nothing refused.", "g");
 
     if (best.name) push(work, "Best average cheque: " + best.name, MVR(best.avg), "Whatever that floor is doing with upsell, copy it to " + (thin.name || "the others") + ".", "g");
     if (thin.name && thin.id !== best.id) push(watch, "Thinnest cheque: " + thin.name, MVR(thin.avg), MVR(best.avg - thin.avg) + " behind the best outlet on the same menu. That is a service gap, not a pricing one.", "a");
@@ -9337,9 +9381,9 @@ class Component extends DCLogic {
       body: silent.map((r) => r.name).join(" · ") + " — closed, or a till that is not reaching the chain.",
       val: "check", valStyle: vS("r") });
     if (d.conflicts) dec.push({ n: String(d.conflicts), chip: chipS("r"), go: go("sync"),
-      title: "Replayed writes are in conflict",
-      body: "A reconnect found a ticket that had already moved. Nothing is lost, but somebody has to choose.",
-      val: "resolve", valStyle: vS("r") });
+      title: "The outlet refused a write",
+      body: "Nothing is lost — each one is held in the outbox with the reason it was refused, and waits for a decision.",
+      val: "decide", valStyle: vS("r") });
     if (overFc > 0) dec.push({ n: overFc.toFixed(1), chip: chipS("r"), go: go("recipes"),
       title: "Food cost is " + overFc.toFixed(1) + " points over target",
       body: "Worth " + MVRc((overFc / 100) * d.tot) + " on " + (onToday ? "today's" : "that day's") + " sales. The variance report names the ingredients.",
@@ -9779,7 +9823,7 @@ class Component extends DCLogic {
         };
       }),
       notes: [
-        ["Stock locations", "Sub-locations (dry store, freezer, prep line, floor) are rows in kpos.outlets with parent_id set, so the same RLS predicate covers both a restaurant and the freezer inside it — outlet_ids[] in the JWT carries the whole subtree."],
+        ["Stock locations", "Sub-locations (dry store, freezer, prep line, floor) are rows in chain.outlet with parent_id set, so the same policy covers both a restaurant and the freezer inside it. Each still has its own schema and its own login role: a subtree is a reporting idea, never a wider reach."],
         ["Tax profile", "GGST applies to general outlets; TGST to tourism-zone outlets. Every rate that has ever been in force is held with the date it took effect, on the outlet, so a rate change next year cannot restate a return already filed."]
       ]
     };
@@ -9932,7 +9976,7 @@ class Component extends DCLogic {
         };
       }),
       empty: q ? "No dish matches that." : "No dishes in this section yet.",
-      notes: showCost ? [["Hidden is not 86'd", "Hiding a dish takes it off every channel until someone puts it back \u2014 a seasonal item, a discontinued line. 86 is tonight's stock talking, clears with the next service, and is what the floor uses. The two are deliberately separate switches so a stock-out never quietly deletes a dish from the menu."]] : [["Cost prices hidden", "Your role reads kpos.menu_for_terminal, a security_invoker view that nulls food_cost for Cashier. The column is not filtered in the client \u2014 Postgres never sends it."]]
+      notes: showCost ? [["Hidden is not 86'd", "Hiding a dish takes it off every channel until someone puts it back \u2014 a seasonal item, a discontinued line. 86 is tonight's stock talking, clears with the next service, and is what the floor uses. The two are deliberately separate switches so a stock-out never quietly deletes a dish from the menu."]] : [["Cost prices hidden", "Your rank is below the one that reads cost, so the terminal does not show it. Be clear about what that is and is not: this is the SCREEN, not the wire \u2014 the bootstrap this device holds carries the figure, and hiding it is a courtesy to the counter rather than a boundary. What the ranks actually gate is the API and the row-level policies underneath it, which is where a hand-crafted request is refused."]]
     };
   }
 
@@ -9990,7 +10034,7 @@ class Component extends DCLogic {
       notes: [
         ["Who grants access", "Only a role with edit rights on this module can change another person's role, outlet or status — Chain Admin and Super Admin. Nobody can change their own role or suspend themselves, so an account can never quietly promote itself. Every change lands on the audit trail as a permission_change, naming both people, written by the server in the same transaction as the change itself."],
         ["What a grant actually opens", "Role decides which modules appear. The person's home outlet plus any additional outlets decide which rows come back inside them. A cashier at one outlet cannot switch to another, and the outlet switcher only lists what they hold — but the switch itself is guarded again, because a list is not a permission."],
-        ["Covering two sites", "An area manager gets extra outlet codes rather than a chain-scope role. Promoting them to chain scope to cover a second site would hand them the whole group, which is the most common over-grant in hospitality."],
+        ["Covering two sites", "An area manager gets extra outlet codes rather than a group-scope role. Promoting them to group scope to cover a second site would hand them the whole group, which is the most common over-grant in hospitality."],
         ["What your own sign-in carries", "You are signed in as " + this.me() + " · " + (this.roleFor(this.state.roleKey).label || this.state.roleKey) + " · " + this.rankName() + " rank. " + (this.RANKS().find((x) => x.n === this.rank()) || {}).what + ". Anything above that rank is refused with the reason rather than hidden, so you know whether to ask someone or whether it simply is not a thing this system does."],
         ["The ladder every gate reads", this.RANKS().map((r) => r.key + " — " + r.what).join("\n")],
         ["Receiving sits below manager on purpose", "A cashier and a waiter can sign for a delivery. The bread arrives at 06:40 and a delivery nobody may sign for is a delivery that goes back on the boat. What they cannot do is price it: they never see the invoice total and are never asked to type it, because a receiver who can see the expected figure stops counting and starts agreeing with it. Pricing is the manager's second signature, and it is what books the payable."],
@@ -10001,7 +10045,7 @@ class Component extends DCLogic {
         const r = (K0.ROLES || []).find((x) => x.key === u.role) || {};
         const o = (K0.OUTLETS || []).find((x) => x.id === u.outlet);
         const extra = (u.outlets || []).map((id) => (this.outlet(id) || {}).code).filter(Boolean);
-        const reach = o ? (o.name + (extra.length ? " +" + extra.join(" +") : "")) : (r.scope === "platform" ? "All chains" : "Chain-wide");
+        const reach = o ? (o.name + (extra.length ? " +" + extra.join(" +") : "")) : (r.scope === "group" ? "Every outlet" : "Chain-wide");
         return {
           go: () => this.setState({ modal: { kind: "user", id: u.id } }),
           cells: [u.name, { t: "@" + u.user, mono: 1 }, { t: r.label || u.role, c: this.tone(r.color), w: 600 },
@@ -10101,7 +10145,7 @@ class Component extends DCLogic {
       notes: tab === 1
         ? [["Flagged, never blocked", "The money-integrity check re-runs the arithmetic on every sale as it arrives and stamps a flag when it disagrees. It never rejects one: the cashier has already taken the money, and a till that refuses a completed payment turns a bookkeeping problem into a queue at the counter."],
           ["Acknowledging is not erasing", "An acknowledgement is a new row naming whoever cleared it. The flag stays on the record and in the export — it simply stops counting against the outstanding total."]]
-        : [["Immutability", "kpos.audit_log grants INSERT to authenticated and revokes UPDATE and DELETE outright. Even ChainAdmin cannot rewrite history; corrections are new rows."]]
+        : [["Immutability", "chain.audit grants an outlet's login role INSERT and nothing else \u2014 no UPDATE, no DELETE, verified by connecting as the role. A till cannot rewrite its own story at any rank; corrections are new rows. The owner connection can, which is why the six places that use it are a list rather than a habit."]]
     };
   }
   // ── Supply chain ─────────────────────────────────────────────────────────
@@ -10695,7 +10739,7 @@ class Component extends DCLogic {
         };
       }),
       notes: [
-        ["Automated stock count", "Consumption is deducted by recipe explosion on every closed ticket, so the figure on the outlet tab is live: opening, plus everything received here, minus everything the recipes say the kitchen used. The location tabs show the position those locations were opened with. Cycle counts only ever record variance — the count sheet is generated per category from count_freq on kpos.categories."],
+        ["Automated stock count", "Consumption is deducted by recipe explosion on every closed ticket, so the figure on the outlet tab is live: opening, plus everything received here, minus everything the recipes say the kitchen used. The location tabs show the position those locations were opened with. Cycle counts only ever record variance — the count sheet is generated from the count frequency held on each ingredient."],
         ["Two ways a line goes red", "Sold short means this outlet has plated more of an ingredient than it holds — a real variance, and the count will not tie until it is explained. Never received means the recipes consume it and no delivery or transfer ever brought it here, which is a procurement gap rather than a counting one. Neither is fixed by typing a new balance: receive it, transfer it, or adjust it with a reason."]
       ]
     };
@@ -10707,7 +10751,7 @@ class Component extends DCLogic {
     return {
       cols: [{ label: "Location", w: "1.4fr" }, { label: "Item", w: "2.2fr" }, { label: "Movement", w: "1.1fr" }, { label: "In", w: ".8fr", a: "right", mono: 1 }, { label: "Out", w: ".8fr", a: "right", mono: 1 }, { label: "Balance", w: ".9fr", a: "right", mono: 1 }],
       rows: rows.map((r) => { const it = this.item(r[1]); const f = this.convFactor(it); const su = it ? (it[8] || it[3]) : ""; return { cells: [this.locName(r[0]), this.itemName(r[1]), { t: r[2], chip: this.chip(r[3] > 0 ? "ok" : "warn") }, { t: r[3] ? (Math.round(r[3] / f * 100) / 100) + " " + su : "—", c: r[3] ? "var(--green)" : "var(--text-faint)" }, { t: r[4] ? (Math.round(r[4] / f * 100) / 100) + " " + su : "—", c: r[4] ? "var(--red-bright)" : "var(--text-faint)" }, { t: (Math.round(r[5] / f * 100) / 100) + " " + su, w: 600, c: "var(--text)" }] }; }),
-      notes: [["Append-only", "UPDATE and DELETE are revoked on kpos.stock_ledger for the authenticated role. A correction is a reversing row, which is what makes offline replay safe: replaying a movement twice is caught by the idempotency key, never by mutating a balance."]]
+      notes: [["Append-only", "UPDATE is revoked on stock_move for every outlet login role \u2014 checked by connecting as one. A correction is a reversing row, which is what makes offline replay safe: a movement replayed twice is caught by the op id, never by mutating a balance."]]
     };
   }
 
@@ -10830,7 +10874,7 @@ class Component extends DCLogic {
       // A delivery belongs to the outlet that received it. A cashier at
       // A restaurant reading the main store's invoices is the same leak the
       // schema forbids, so the list is scoped like every other outlet screen;
-      // only a chain-scope role sees the estate, and the location column is
+      // only a group-scope role sees the estate, and the location column is
       // what makes that view legible.
       rows: (raw.purch || []).filter((p) => this.roleIsChainWide() || p.branch === s.outletId).map((p) => {
         const v = (raw.vendors || []).find((x) => x.id === p.vendor) || {};
@@ -10871,7 +10915,7 @@ class Component extends DCLogic {
       rows: (raw.reqs || []).map((r) => ({
         cells: [{ t: r.no, mono: 1 }, this.locName(r.from), this.locName(r.to), r.by, { t: r.priority, chip: this.chip(r.priority === "urgent" ? "err" : "mute") }, r.appr || "—", { t: r.status, chip: this.chip(this.statusTone(r.status)) }]
       })),
-      notes: [["Both sides can read it", "An indent is visible to the requesting outlet and the fulfilling store — the policy is `from_outlet = any(outlet_ids) or to_outlet = any(outlet_ids)`, which is how a transfer stays visible to exactly two tenants' worth of staff and nobody else."]]
+      notes: [["Both sides can read it", "An indent is written in the requesting outlet's own schema and the dispatch in the fulfilling store's, so each side holds its own half and neither can read the other's tables at all. What crosses is the transfer itself, which is why a dispatch is a document rather than a shared row."]]
     };
   }
 
@@ -12215,7 +12259,7 @@ class Component extends DCLogic {
             { t: (cur + 1) + "/" + steps.length + " \u00b7 " + steps[cur], chip: this.chip(cur >= steps.length - 1 ? "ok" : cur >= 3 ? "info" : "warn") }]
         };
       }),
-      notes: [["The stage is a column, not a guess", "kpos.orders.fulfil_stage moves by an explicit write from whoever knows \u2014 the pass, the dispatcher, the rider's app. Guest phones subscribe to that column rather than reading ticket lines, so splitting or re-firing a line never rewrites what the customer was told."]]
+      notes: [["The stage is a column, not a guess", "ticket.stage moves by an explicit write from whoever knows \u2014 the pass bumping a docket, or the floor moving it by hand. The guest's tracker reads that one number rather than inferring from lines, so splitting or re-firing never rewrites what the customer was told. Rung 3, served, is never derived: carrying the plates is a person's act, not the absence of one."]]
     };
   }
 
@@ -12247,7 +12291,7 @@ class Component extends DCLogic {
         },
         { label: "Add customer", primary: true, go: () => this.openForm("cust") }
       ],
-      guideTitle: "Loyalty and credit", guide: ["Create the customer — loyalty and credit both key off this row", "A credit limit above zero opens a credit ledger for them", "Open a customer to invite them to their portal — the code is read out at the counter", "The credit limit is enforced in the database, not by the terminal"],
+      guideTitle: "Loyalty and credit", guide: ["Create the customer — loyalty and credit both key off this row", "A credit limit above zero opens a credit ledger for them", "Open a customer to invite them to their portal — the code is read out at the counter", "An over-limit charge is blocked at the pay screen and, if one replays from an offline till, recorded and flagged rather than silently allowed"],
       
       cols: [{ label: "Customer", w: "1.6fr" }, { label: "Phone", w: "1.2fr", mono: 1 }, { label: "Tier", w: ".8fr" }, { label: "Visits", w: ".7fr", a: "right", mono: 1 }, { label: "Lifetime", w: "1fr", a: "right", mono: 1 }, { label: "Points", w: ".8fr", a: "right", mono: 1 }, { label: "Credit used", w: "1.2fr", a: "right", mono: 1 }, { label: "Last visit", w: ".9fr", a: "right" }],
       rows: list.map((c) => ({
@@ -12323,7 +12367,7 @@ class Component extends DCLogic {
     if (pending) { this.toast(pending + " operation" + (pending > 1 ? "s" : "") + " not replayed yet — sync first", "warn"); return; }
     try { localStorage.removeItem(this.SKEY); } catch (e) { /* nothing cached */ }
     this._saved = {};
-    this.setState({ tickets: {}, held: [], outbox: [], conflicts: [], seated: {}, activeTable: null, activeSplit: 0, modal: null, view: "pos", pane: "floor" }, () => this.seed());
+    this.setState({ tickets: {}, held: [], outbox: [], seated: {}, activeTable: null, activeSplit: 0, modal: null, view: "pos", pane: "floor" }, () => this.seed());
     this.toast("Session closed — floor reset for the next shift");
   }
 
@@ -13066,7 +13110,7 @@ class Component extends DCLogic {
   }
   // Nobody may hand out more reach than they hold. Without this an
   // OutletManager with user rights could promote a colleague — or themselves on
-  // the next sign-in — straight to chain scope, which is the most common way a
+  // the next sign-in — straight to group scope, which is the most common way a
   // hospitality system quietly loses its access boundary.
   // ── Administrative seniority: who may act ON whom ───────────────────────
   // NOT the capability ladder below. This one answers a different question —
@@ -13121,7 +13165,7 @@ class Component extends DCLogic {
   removeUser(u) {
     const K0 = K(), sess = this.state.session || {};
     if (u.id === sess.id) return this.toast("You cannot remove your own account", "err");
-    if (this.rankOf(u.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot remove someone with more reach than you — ask a chain administrator", "err");
+    if (this.rankOf(u.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot remove someone with more reach than you — ask an administrator", "err");
     const admins = (K0.USERS || []).filter((x) => x.id !== u.id && x.status === "Active" && (this.roleFor(x.role).perms.users || {}).e);
     if (!admins.length) return this.toast("This is the last account that can administer users — grant someone else the rights first", "err");
     if (!this.canApprove()) return this.toast("Removing a person needs a manager", "warn");
@@ -14888,8 +14932,8 @@ class Component extends DCLogic {
         }
       },
       outlet: {
-        title: "Add outlet", sub: "Inherits chain_id from your token", save: "Create outlet",
-        foot: "A new outlet row inherits chain_id from your JWT — an admin cannot create an outlet in another chain even by editing the request.",
+        title: "Add outlet", sub: "A schema and a login role of its own", save: "Create outlet",
+        foot: "Creating an outlet builds it a schema and a login role, granted nothing outside that schema, with a password derived from a secret held outside the database. There is no chain to put it in the wrong one of: an install holds one company, and a second business is a second install with its own database and its own secrets.",
         fields: [
           { k: "name", label: "Outlet name", v: "Kashikeyo Addu", full: 1 },
           { k: "code", label: "Code", v: "KO-ADD" },
@@ -15082,13 +15126,13 @@ class Component extends DCLogic {
         pre: (u) => ({ outlet: String(u.outlet || 0), extra: (u.outlets || []).map((id) => (this.outlet(id) || {}).code || id).join(", ") }),
         onEdit: (v, u) => {
           if (!v.name) return this.toast("A name is required", "warn");
-          if (this.rankOf(u.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot edit someone with more reach than you — ask a chain administrator", "err");
+          if (this.rankOf(u.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot edit someone with more reach than you — ask an administrator", "err");
           if (this.rankOf(v.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot grant a role with more reach than your own", "err");
           const roleChanged = v.role !== u.role, revoked = v.status === "Suspended" && u.status !== "Suspended";
           if (u.id === (this.state.session || {}).id && v.status === "Suspended") return this.toast("You cannot suspend your own account", "warn");
           if (u.id === (this.state.session || {}).id && v.role !== u.role) return this.toast("You cannot change your own role — ask another administrator", "warn");
           // Extra outlet grants are how an area manager covers two sites without
-          // being promoted to chain scope, which would hand them the whole group.
+          // being promoted to group scope, which would hand them the whole company.
           const codes = String(v.extra || "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
           const all = K().OUTLETS || [];
           const bad = codes.filter((c) => !all.some((o) => (o.code || "").toUpperCase() === c));
@@ -15102,7 +15146,7 @@ class Component extends DCLogic {
              means; there is no separate revoke, because a suspended account
              cannot sign in and its live sessions die at their expiry. */
           this.staffWrite((B) => B.editStaff(u.id, {
-            name: v.name, roleKey: v.role, rank: this.rankOf(v.role),
+            name: v.name, roleKey: v.role, rank: this.rankFor(v.role),
             active: v.status !== "Suspended", outlets: extraIds
           }), u.name + " updated"
             + (roleChanged ? " \u00b7 role now " + v.role : "")
@@ -15117,7 +15161,7 @@ class Component extends DCLogic {
           if (/^(\d)\1{3}$/.test(p) || "0123456789".indexOf(p) >= 0 || "9876543210".indexOf(p) >= 0) return this.toast("No repeats and no runs \u2014 that is the first thing anyone tries", "warn");
           if (this.rankOf(v.role) > this.rankOf(this.state.roleKey)) return this.toast("You cannot create an account with more reach than your own", "err");
           this.staffWrite((B) => B.addStaff({
-            name: v.name, rank: this.rankOf(v.role), roleKey: v.role, pin: p,
+            name: v.name, rank: this.rankFor(v.role), roleKey: v.role, pin: p,
             outlets: []
           }), v.name + " can sign in now \u2014 they change that PIN from Settings at their first shift");
         }
@@ -15222,7 +15266,7 @@ class Component extends DCLogic {
           { k: "confirm", label: "Type RESET to confirm", v: "", full: 1 }
         ],
         onSave: (v) => {
-          if (this.state.roleKey !== "SuperAdmin" && this.state.roleKey !== "ChainAdmin") return this.toast("Only an owner or chain administrator can ask for a reset", "err");
+          if (this.state.roleKey !== "SuperAdmin" && this.state.roleKey !== "ChainAdmin") return this.toast("Only an owner or administrator can ask for a reset", "err");
           if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("Type RESET exactly to confirm", "warn");
           this.queue("store_reset", "Store reset REQUESTED \u00b7 " + this.outlet().name + " \u00b7 by " + this.me() + (v.why ? " \u00b7 " + v.why : ""), "settings");
           this.setState({ modal: null });
@@ -15597,7 +15641,7 @@ class Component extends DCLogic {
       },
       indent: {
         title: "New indent", sub: "Stock request between two locations", save: "Raise indent",
-        foot: "The row is visible to the requesting outlet and the fulfilling store only — from_outlet or to_outlet must be in your outlet_ids().",
+        foot: "The request is written in this outlet's own schema and the dispatch in the fulfilling store's, so neither side can read the other's tables at all. What travels between them is the document — which is why a transfer is signed for at both ends rather than shared as one row.",
         fields: [
           { k: "from", label: "Requesting location", options: outletOpts, full: 1 },
           { k: "to", label: "Fulfilled by", options: storeOpts, full: 1 },
@@ -16013,8 +16057,9 @@ class Component extends DCLogic {
       s.online ? "Writes replay as they happen." : "Normal, not broken — the till keeps selling and the outbox holds the writes. What matters is that it clears before the shift ends.");
     add("Outbox depth", queued === 0 ? "ok" : queued < 20 ? "warn" : "fail", queued + " queued",
       queued === 0 ? "Nothing waiting to replay." : "Held locally since " + ((oldest || {}).at || "this shift") + ". A shift must not be closed with writes outstanding.");
-    add("Replay conflicts", s.conflicts.length ? "fail" : "ok", s.conflicts.length + " open",
-      s.conflicts.length ? "A money write was refused rather than overwritten. It needs a human decision before the figures can be trusted." : "No write has been refused.");
+    const refusedN = this.refusedOps().length;
+    add("Refused writes", refusedN ? "fail" : "ok", refusedN + " open",
+      refusedN ? "The outlet refused a write and it is still held. Until somebody decides on each, the figures cannot be trusted." : "No write has been refused.");
     const down = this.PRINTERS().filter((x) => x.down);
     add("Printers", down.length ? "fail" : "ok", down.length ? down.length + " not responding" : this.PRINTERS().length + " ready",
       down.length ? down.map((x) => x.name).join(", ") + " — dockets sent there are failing. The KDS still has the order." : "Every printer answered its last job.");
@@ -16363,16 +16408,13 @@ class Component extends DCLogic {
         if (!r) return x;                                    // still queued
         if (r.error) {
           failed.push({ id: x.id, label: x.label, at: x.at, note: r.error });
-          return Object.assign({}, x, { state: "conflict", note: r.error });
+          return Object.assign({}, x, { state: "refused", err: r.error, note: r.error });
         }
         return Object.assign({}, x, { state: "sent", sentAt: Date.now() });
       });
       const sent = outbox.filter((x) => x.state === "sent").length
         - s.outbox.filter((x) => x.state === "sent").length;
-      this.setState({
-        outbox: outbox, syncing: false,
-        conflicts: this.state.conflicts.concat(failed)
-      });
+      this.setState({ outbox: outbox, syncing: false });
       if (failed.length) {
         this.toast(sent + " replayed · " + failed.length + " refused by the outlet", "warn");
         this.setState({ view: "sync" });
@@ -16417,7 +16459,8 @@ class Component extends DCLogic {
   g_sync() {
     const s = this.state, K0 = K();
     const devices = this.devices();
-    const tone = { queued: "warn", sent: "ok", conflict: "err", parked: "err", discarded: "mute" };
+    const tone = { queued: "warn", sent: "ok", refused: "err", conflict: "err", parked: "err", discarded: "mute" };
+    const refusedOps = this.refusedOps();
     const stab = s.tab.sync || 0;
     const stabs = ["Outbox & devices", "Printers & jobs"].map((t, i) => ({ label: t, on: stab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { sync: i }) }) }));
 
@@ -16515,15 +16558,15 @@ class Component extends DCLogic {
       } }]),
       actions: [
         { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); } },
-        { label: s.conflicts.length ? "Resolve " + s.conflicts.length + " conflict" + (s.conflicts.length > 1 ? "s" : "") : "No conflicts", primary: !!s.conflicts.length, go: () => s.conflicts.length ? this.setState({ modal: { kind: "conflict" } }) : this.toast("Nothing to resolve") },
+        { label: refusedOps.length ? "Decide on " + refusedOps.length + " refused write" + (refusedOps.length > 1 ? "s" : "") : "Nothing refused", primary: !!refusedOps.length, go: () => refusedOps.length ? this.parkedActions(refusedOps[0]) : this.toast("Nothing has been refused") },
         { label: "Add a kitchen display", go: () => this.openPairing() },
         { label: "Run diagnostics", go: () => this.runDiagnostics() },
         { label: "End session on this device", go: () => this.endSession() }
       ],
       cols: [{ label: "Op", w: ".9fr", mono: 1 }, { label: "Lamport", w: ".7fr", a: "right", mono: 1 }, { label: "Entity", w: "1fr", mono: 1 }, { label: "Operation", w: "2.4fr" }, { label: "Captured", w: ".9fr", a: "right", mono: 1 }, { label: "State", w: ".9fr", a: "right" }],
       rows: s.outbox.slice().reverse().map((x) => ({
-        go: () => x.state === "conflict" ? this.setState({ modal: { kind: "conflict" } })
-          : x.state === "parked" ? this.parkedActions(x) : null,
+        go: () => (x.state === "refused" || x.state === "conflict" || x.state === "parked")
+          ? this.parkedActions(x) : null,
         cells: [{ t: x.op, mono: 1, size: 11 }, { t: String(x.lamport), mono: 1 }, { t: x.entity, mono: 1, size: 11 }, x.state === "parked" ? { t: x.label + " \u2014 " + (x.err || "refused"), size: 11.5, c: "var(--red-bright)" } : x.label, { t: x.at, mono: 1, size: 11 }, { t: x.state, chip: this.chip(tone[x.state] || "mute") }]
       })),
       empty: "Outbox is clean. Flip the network pill to Offline on the POS floor, keep selling, and the writes stack up here.",
@@ -17182,7 +17225,7 @@ class Component extends DCLogic {
         rows: rows.map((r) => ({ cells: [{ t: r.ref, mono: 1 }, { t: r.t, mono: 1 }, r.src, { t: r.dr, mono: 1, c: "var(--blue-bright)" }, { t: r.cr, mono: 1, c: "var(--violet-bright)" }, { t: MVRc(r.amt), c: "var(--warn-bright)", w: 600 }, { t: r.by === "auto" ? "auto" : r.by, chip: this.chip(r.by === "auto" ? "ok" : "info") }] })),
         empty: "Nothing has posted at this outlet yet. Settle a ticket and its four lines — cash, revenue, tax and cost of sales — appear here as one transaction.",
         foot: all.length > rows.length ? "Showing the most recent " + rows.length + " of " + all.length + " lines. Every one of them is counted in the trial balance and the P&L — this list is trimmed for reading, the ledger behind it is not." : "",
-        notes: [["Nobody keys the trading accounts", "Every line above is produced by a database trigger on a source event, and the accounts the till posts to — sales, cash, card, credit, stock and GST — are closed to hand-keying. If one of those is wrong the fix is a corrected source document, which is what keeps the ledger reconcilable to the POS by construction."], ["Where a manual entry is still required", "Accruals, prepayments, depreciation, opening balances and reclassifications have no source document in a POS, so an accountant can post them here. Each carries a mandatory memo and the name of whoever posted it, and can be reversed but never edited. Attempting to touch a trading account is refused outright rather than warned about."]]
+        notes: [["Nobody keys the trading accounts", "Every line above was composed by the server from the sale that caused it — never keyed, and never taken from a figure the till sent — and eleven accounts are closed to hand-keying outright: a manual journal naming one is refused. A deferred constraint then refuses the whole entry at commit if it does not balance. If one of those is wrong the fix is a corrected source document, which is what keeps the ledger reconcilable to the POS by construction."], ["Where a manual entry is still required", "Accruals, prepayments, depreciation, opening balances and reclassifications have no source document in a POS, so an accountant can post them here. Each carries a mandatory memo and the name of whoever posted it, and can be reversed but never edited. Attempting to touch a trading account is refused outright rather than warned about."]]
       };
     }
     // ── Trial balance ────────────────────────────────────────────────────────
@@ -17352,7 +17395,16 @@ class Component extends DCLogic {
       // Exporting the wrong one is the whole reason a period picker exists.
       tabs: months.map((m, i) => ({ label: m, on: per === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { rep: i }) }) })),
       actions: [
-        { label: "Schedule email", go: () => this.info("Scheduled reports", "Delivered 06:00 local to the outlet manager", rep.map((r) => [r[0], r[2], "t"]), "Scheduling is set per report and per recipient. A filed month never changes, so its pack is generated once and re-sent from the archive rather than recomputed.") },
+        /* THE CADENCE IS A DESCRIPTION, NOT A SCHEDULE. This button was called
+           "Schedule email" and the panel behind it said the pack is "delivered
+           06:00 local to the outlet manager" and that "scheduling is set per
+           report and per recipient" — in the present tense, about a delivery
+           that has never happened. There is no scheduler (the one repeating job
+           in server.js is prune_history), no recipient anywhere, and nothing
+           that renders a pack to a message. A manager who reads that stops
+           checking, which is the whole cost. The cadence column is what each
+           report is FOR reading at; taking it is the export beside this. */
+        { label: "What the cadences mean", go: () => this.info("Report cadences", "How often each pack is worth reading — not a delivery", rep.map((r) => [r[0], r[2], "t"]), "Nothing is emailed on a schedule in this build: there is no scheduler and no recipient list, so a pack arrives when somebody exports it. Export all as CSV takes the whole set for the period on the tabs above.") },
         { label: "Export all as CSV", primary: true, go: () => this.downloadCsv("kashikeyo-report-pack-" + months[per].split(" ")[0].toLowerCase() + ".csv", [["Period", months[per]], ["Outlet", this.outlet().name], [], ["Report", "Contents", "Cadence"]].concat(rep.map((r) => [r[0], r[1], r[2]]))) }
       ],
       cols: [{ label: "Report", w: "1.4fr" }, { label: "What it contains", w: "3.4fr" }, { label: "Cadence", w: "1fr", a: "center" }, { label: "Formats", w: "1.2fr", a: "right" }],
@@ -17407,14 +17459,14 @@ class Component extends DCLogic {
     // that governs money, access or what prints needs edit rights.
     const mayEdit = this.can("settings", "e");
     const set = (k, v) => {
-      if (!mayEdit) return this.toast("You can see these settings but not change them — ask a chain administrator", "warn");
+      if (!mayEdit) return this.toast("You can see these settings but not change them — ask an administrator", "warn");
       const next = Object.assign({}, P); next[k] = v;
       this.setState({ prefs: next });
       this.queue("setting_change", k + " → " + v + " · by " + this.me(), "settings");
       this.toast(k + " set to " + (v === true ? "on" : v === false ? "off" : v));
     };
     const tog = (k) => set(k, !P[k]);
-    const gate = (fn) => () => mayEdit ? fn() : this.toast("You can see these settings but not change them — ask a chain administrator", "warn");
+    const gate = (fn) => () => mayEdit ? fn() : this.toast("You can see these settings but not change them — ask an administrator", "warn");
     const P0 = this.prof();
     const SESS = this.sessionCount();
     // Eleven cards in one grid was a wall. They split cleanly along who owns
@@ -17682,7 +17734,7 @@ class Component extends DCLogic {
         ["Every switch does something", "These are not preferences in the cosmetic sense — each one changes how the terminal behaves on the next action. Turning off the manager PIN lets a waiter void their own line; turning off the kitchen docket makes the KDS the only record of a fire. Each change is written to the audit log with the name of whoever made it, because loosening a control is exactly the event an auditor looks for."],
         ["Who can change them", mayEdit
           ? "You hold edit rights here, so every card with a chevron opens an editor and every switch commits immediately. Theme is personal and open to everyone; the rest is chain configuration and is logged against your name."
-          : "You can read this screen but not change it. Theme and accent are yours to set; anything governing money, access or what prints needs settings edit rights from a chain administrator."]
+          : "You can read this screen but not change it. Theme and accent are yours to set; anything governing money, access or what prints needs settings edit rights from an administrator."]
       ]
     };
   }
@@ -17764,9 +17816,10 @@ class Component extends DCLogic {
       add("now", "Printer not responding", down[0].name, "Everything sent there is failing. The KDS still has the orders, so service continues — but no docket is coming out.", "sync",
         { act: "Printers", go: () => this.setState({ view: "sync", tab: Object.assign({}, s.tab, { sync: 1 }) }) });
     }
-    if (s.conflicts.length) {
-      add("now", "A money write was refused", s.conflicts.length + " conflict" + (s.conflicts.length === 1 ? "" : "s"), "Two terminals disagree about a closed ticket or a payment. The figures cannot be trusted until a human decides which is right.", "sync",
-        { act: "Resolve", go: () => this.setState({ view: "sync", modal: { kind: "conflict" } }) });
+    const refused = this.refusedOps();
+    if (refused.length) {
+      add("now", "The outlet refused a write", refused.length + " held", "Each carries the reason the outlet gave. Send it again once the cause is fixed, or discard it — which is itself recorded.", "sync",
+        { act: "Decide", go: () => { this.setState({ view: "sync" }); this.parkedActions(refused[0]); } });
     }
     const parkedOps = (s.outbox || []).filter((x) => x.state === "parked");
     if (parkedOps.length) {
@@ -18036,26 +18089,41 @@ class Component extends DCLogic {
   g_architecture() {
     const K0 = K(), s = this.state;
     const tab = s.tab.arch || 0;
-    const tabs = ["Data model", "RLS policies", "JWT & roles", "Deployment", "Railway topology"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { arch: i }) }) }));
-    if (tab === 2) {
-      return { tabs: tabs, code: K0.RLS_SQL, codeName: "migrations/0007_rls.sql", notes: [["Defence in depth", "The app never filters by chain or outlet in the SQL it writes. Every query is written as if the whole chain were visible; Postgres narrows it. A bug in the client, a stolen key or a hand-rolled request all fail the same way — zero rows."], ["Pooling caveat", "PgBouncer runs in transaction mode, so claims are set with set_config(..., true) — transaction-local. A pooled connection reused by another tenant starts with no claims at all, which fails closed."]] };
+    /* The labels and the panes were off by one: "JWT & roles" rendered the
+       RLS migration and "Deployment" rendered the token payload, so a reader
+       following the tabs was reading the wrong thing under both. There are
+       four panes, so there are four tabs. */
+    const tabs = ["Data model", "Isolation & policies", "The token", "How it is deployed"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { arch: i }) }) }));
+    if (tab === 1) {
+      return { tabs: tabs, code: K0.RLS_SQL, codeName: "src/migrations/002_rls.sql", notes: [
+        ["Two belts, and they are not the same belt", "Each outlet connects as its OWN login role, granted USAGE on its own schema alone \u2014 another outlet's tables are unreachable, not merely filtered, and its role password is derived from a secret held outside the database rather than stored in it. Row-level security is the second belt, on the shared control plane, and it is FORCED so that even the owner of the table obeys it."],
+        ["What the app does and does not rely on", "The app DOES write the outlet into its queries \u2014 that is ordinary, and it is not what makes a request safe. Safety is that a request which forgot to, or lied about it, reaches a role that cannot see the rows anyway. Thirteen deliberate crossing attempts are run against a live database on every build and all thirteen are refused."],
+        ["Why the context is transaction-local", "Every request sets its outlet, rank and actor with set_config(..., true), so the setting dies at commit. A pooled connection therefore cannot carry one request's identity into the next, and a connection that somehow arrives with no context at all sees nothing rather than everything."]
+      ] };
     }
-    if (tab === 3) {
+    if (tab === 2) {
       return {
-        tabs: tabs, code: K0.JWT_CLAIM, codeName: "access token payload", cardMin: 280,
+        tabs: tabs, code: K0.JWT_CLAIM, codeName: "the signed session payload", cardMin: 280,
         cards: (K0.ROLES || []).map((r) => ({
           title: r.label, sub: r.blurb,
-          chip: r.scope, chipBg: "var(--bg-3)", chipFg: this.tone(r.color),
-          rows: [["chain_id claim", r.scope === "platform" ? "omitted" : "ch_kashikeyo"], ["outlet_ids claim", r.scope === "outlet" ? "own subtree" : "all in chain"], ["Writes money", r.perms.pos && r.perms.pos.a ? "yes" : "no", r.perms.pos && r.perms.pos.a ? "var(--warn-bright)" : "var(--green)"], ["Reads cost price", r.key === "Cashier" ? "no — masked" : "yes"]]
+          chip: "rank " + this.rankFor(r.key), chipBg: "var(--bg-3)", chipFg: this.tone(r.color),
+          rows: [["Rank in the token", String(this.rankFor(r.key))], ["Outlets it reaches", "one \u2014 the one it signed in at"], ["Writes money", r.perms.pos && r.perms.pos.a ? "yes" : "no", r.perms.pos && r.perms.pos.a ? "var(--warn-bright)" : "var(--green)"], ["Cost shown on screen", r.key === "Cashier" ? "no" : "yes"]]
         })),
-        notes: [["Token lifetime", "Access tokens live one hour; the refresh token is bound to the device registration. An offline terminal keeps working on an expired access token against its local cache and re-authenticates on reconnect, before the outbox replays."]]
+        notes: [
+          ["Token lifetime", "A session lasts twelve hours and there is no refresh token \u2014 one credential, one expiry, nothing to steal that outlives it. An offline terminal keeps selling against its own cache with an expired token and signs in again when the link returns, before the outbox replays."],
+          ["It says what plane it is for", "Every token carries a one-letter type \u2014 staff, account, table, member \u2014 checked on every verify. Without it a signed blob is whichever credential the reader's field lookups make it, which is how a guest's table token once read a manager's bootstrap. The guest plane's signing key is derived from the session secret rather than borrowed, so the two can never be equal."],
+          ["Revocation is real", "Ending a session or deregistering a device is checked on every authenticated request, not merely recorded. A deregistered terminal is refused at the keypad rather than three requests later."]
+        ]
       };
     }
-    // The estate as it is actually deployed: what runs where, what each tier owns,
-    // and what keeps trading when the tier above it is unreachable. Ordered top to
-    // bottom, because that is the direction the sync flows and the reverse of the
-    // direction a failure propagates.
-    if (tab === 4) {
+    /* THE ESTATE AS IT IS ACTUALLY DEPLOYED. This pane described a different
+       product: a cloud "tenant root per chain", a websocket API, a sync engine
+       as its own tier, and terminals holding SQLite. There is one Node process
+       and one Postgres; the terminal's local store is IndexedDB; there are no
+       sockets. It also sat on tab 4 while the tab list had five labels and the
+       branches used 1 to 5 — six panes for five tabs, so two of them were
+       unreachable by clicking. Four panes now, four labels. */
+    if (tab === 3) {
       const tier = (name, where, chip, tone, rows, foot) => ({
         title: name, sub: where,
         chip: chip, chipBg: tone === "g" ? "var(--ok-dim)" : tone === "a" ? "var(--warn-dim)" : "var(--violet-dim)",
@@ -18066,67 +18134,49 @@ class Component extends DCLogic {
       return {
         tabs: tabs, cardMin: 262,
         cards: [
-          tier("Central control plane", "Cloud · one tenant root per chain", "authoritative", "v", [
-            ["Master data", "menu, pricing, items"],
-            ["Business", "customers, accounts"],
-            ["Platform", "BI, automation, APIs"],
-            ["Writes to a till", "never directly", "var(--green)"]
-          ], "Master data flows down. A price, a recipe or a tax class is authored once here and every terminal converges on it — which is why an outlet price is an override with an owner, not a second copy."),
-          tier("Sync engine", "Cloud · Lamport-ordered replay", "eventual", "a", [
-            ["Direction", "both ways"],
-            ["Ordering", "Lamport per device"],
-            ["Closed ticket", "never overwritten", "var(--green)"],
-            ["Conflicts", "surfaced", "var(--warn-bright)"]
-          ], "Replay is idempotent by operation id, so a terminal that reconnects after four hours cannot double-post a settlement. Anything genuinely ambiguous lands in Sync & Devices for a human, because a silent merge of two cash counts is worse than a question."),
-          tier("REST / WS API", "Cloud · the only door in", "authenticated", "v", [
-            ["REST", "writes, queries"],
-            ["Sockets", "KDS, tracker"],
-            ["Row access", "RLS, not client", "var(--green)"],
-            ["Claims", "chain, outlets, rank"]
-          ], "The client never filters by tenant. Postgres does, from the token's claims — so a stolen key, a hand-rolled request and a client bug all fail the same way: zero rows."),
-          tier("POS terminals", outlets + " trading outlet" + (outlets === 1 ? "" : "s") + " · local SQLite", "offline-first", "g", [
-            ["Database", "SQLite on device"],
+          tier("One service", "Node \u00b7 the API and the pages it serves", "one process", "v", [
+            ["Runtime dependencies", "two"],
+            ["Build step", "none"],
+            ["Also serves", "the terminal and both phone apps"],
+            ["Health", "/readyz, per outlet role", "var(--green)"]
+          ], "The same process answers the API and hands out the HTML. There is no bundler and no build: what ships is the file that was read, which is why a fix is an edit and a restart rather than a release."),
+          tier("One database", "Postgres \u00b7 a schema and a login role per outlet", "authoritative", "v", [
+            ["Control plane", "chain.*, row-level security"],
+            ["Each outlet", "its own schema"],
+            ["Role password", "derived, never stored", "var(--green)"],
+            ["Owner connection", "six named exceptions", "var(--warn-bright)"]
+          ], "Every figure on every screen is read back from here; nothing is authoritative on a device. The owner connection bypasses both belts, so where a request handler reaches for it is a list of six pinned by a test \u2014 a seventh has to justify itself there."),
+          tier("The terminals", outlets + " trading outlet" + (outlets === 1 ? "" : "s") + " \u00b7 IndexedDB on each device", "offline-first", "g", [
+            ["Local store", "IndexedDB"],
             ["A sale", "completes locally"],
-            ["Costing", "at time of sale"],
-            ["No link", "outbox queues", "var(--warn-bright)"]
-          ], "Offline is the normal case, not the exception. The whole chain — ticket, KOT, tender, tax, stock, COGS, journal — completes on the device against its own SQLite, and reconciles on replay. A terminal with no internet is a working till, not a degraded one."),
-          tier("Local network", "In the building · no cloud round-trip", "LAN", "g", [
-            ["Screens", "KDS, pass, display"],
-            ["Printers", "receipt, KOT"],
-            ["Guest", "QR ordering"],
-            ["Round-trip", "LAN only", "var(--green)"]
-          ], "Peripherals speak to the terminal, not to the cloud, so a fired course reaches the kitchen in milliseconds and keeps reaching it during an outage. The internet is for the chain, not for the kitchen.")
+            ["Ordering", "Lamport, per outlet"],
+            ["No link", "the outbox holds", "var(--warn-bright)"]
+          ], "Offline is the normal case, not the exception. The ticket, the docket, the tender and the receipt all complete on the device against its own store, and replay is idempotent by operation id \u2014 a till that reconnects after four hours cannot double-post a settlement. A refusal is not a network failure: the eighth refusal parks the operation with the server's reason rather than retrying it for ever."),
+          tier("The shop's own network", "In the building \u00b7 no cloud round-trip", "LAN", "g", [
+            ["Screens", "KDS and the pass"],
+            ["Printers", "USB, serial, or LAN"],
+            ["Guest QR", "reaches the server"],
+            ["Kitchen", "keeps working offline", "var(--green)"]
+          ], "A receipt printer is cabled to the till or sits on the shop's LAN, and the KDS renders from the terminal's own state \u2014 so a fired course reaches the pass whether or not the internet is up. The guest's phone is the one thing that does need the link, because it is talking to the outlet rather than to the till in front of it.")
         ],
         notes: [
-          ["Where the boundary really is", "Everything a service needs to complete a sale lives on the terminal and its LAN. Everything a business needs to run a chain lives in the cloud. That split is the whole design: a cut cable costs you reporting, never trading."],
-          ["What a failure costs, by tier", "Lose the LAN and the kitchen goes back to paper tickets, but the till still sells. Lose the internet and the outlet trades on SQLite with a growing outbox. Lose the control plane and every outlet keeps trading on the master data it already has — only authoring stops."],
-          ["Why each terminal has its own database", "A shared local server is one more box to fail in a kitchen. Per-device SQLite means the blast radius of any single failure is one till, and the outbox makes its recovery a replay rather than a reconstruction."]
+          ["Where the boundary really is", "Everything a service needs to complete a sale lives on the terminal and its LAN. Everything a business needs to answer for that sale lives in the database. A cut cable costs you reporting and the guest's phone; it does not cost you trading."],
+          ["What a failure costs", "Lose the link and every till keeps selling against its own cache with a growing outbox, and the ribbon says how many writes are waiting and how long since each device last delivered. Lose the database and the service fails its own health check rather than serving \u2014 which is the honest failure, because a till that cannot reach its outlet should say so at the counter."],
+          ["One install per customer", "This is not a multi-tenant platform with a chain column. Each customer gets their own service, their own database and their own secrets \u2014 which is what makes every isolation guarantee here true by construction, and what stops a staging till's queued sales ever replaying into a real shop."]
         ]
-      };
-    }
-    if (tab === 5) {
-      return {
-        tabs: tabs, cardMin: 250,
-        cards: (K0.RAILWAY || []).map((x) => ({
-          title: x.name, sub: x.sub,
-          chip: x.kind === "db" ? "managed" : x.kind === "external" ? "edge" : "service",
-          chipBg: x.kind === "db" ? "var(--ok-dim)" : x.kind === "external" ? "var(--violet-dim)" : "var(--warn-dim)",
-          chipFg: x.kind === "db" ? "var(--green)" : x.kind === "external" ? "var(--violet-bright)" : "var(--warn-bright)",
-          rows: x.port ? [["Internal port", x.port], ["Public domain", x.id === "web" ? "yes" : "no", x.id === "web" ? "var(--warn-bright)" : "var(--green)"]] : [["Access", "railway.internal only"]]
-        })),
-        notes: K0.RAILWAY_NOTES || []
       };
     }
     return {
       tabs: tabs, cardMin: 268,
       cards: (K0.ERD || []).reduce((acc, g) => acc.concat(g.tables.map((t) => ({
-        title: "kpos." + t.name, sub: g.group,
+        title: t.name, sub: g.group,
         chip: t.rls, chipBg: "var(--bg-3)", chipFg: this.tone(g.color),
         rows: t.cols.map((c) => { const p = c.split(" "); return [p[0], p[1] ? p[1].toUpperCase() : "", p[1] === "pk" ? "var(--warn-bright)" : "var(--blue-bright)"]; })
       }))), []),
       notes: [
-        ["Shape of it", "Four table families under one tenant root. Everything outlet-scoped carries both chain_id and outlet_id — denormalised on purpose, because an RLS predicate that has to join to find its tenant is one that gets slow and, eventually, wrong."],
-        ["Imported from your workbook", "items, categories, units, inventory, stock_ledger, batches, purchases, requests, dispatches, productions, vendors and the audit log are modelled directly on the sheets you sent, with chain_id and outlet_id added so the same tables serve every chain on the platform."]
+        ["Shape of it", "One control plane and one schema per outlet. chain.* holds what an install shares — the company, its outlets, the people, the devices, the sessions, the customers and the trail — and everything a shop does day to day lives in outlet_N.*, its own tables reachable only by its own login role. There is no tenant column to get wrong, because there is no shared table to put one in."],
+        ["Why an outlet is a schema, not a column", "A predicate you forgot to write is a leak; a table you cannot reach is not. Filtering by tenant means every query is one missing WHERE clause away from another shop's takings, and the mistake is invisible until somebody notices their numbers are too high. Separate schemas make that class of bug impossible rather than unlikely, and the cost is one login role per outlet."],
+        ["What this install holds", "One company. The product is sold one install per customer, so a second chain is a second database with its own secrets and its own install uuid \u2014 which is also the fence that stops a staging till's queued sales replaying into a real shop."]
       ]
     };
   }
