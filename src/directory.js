@@ -18,13 +18,17 @@
        actually resolves a store asks the database, so a stale entry costs one
        extra hop and never serves the wrong outlet's menu.
 
-   It reads through the owner connection, like the table-token mint in
-   src/routes/guest.js and for the same reason: a request arriving on a
-   subdomain has no outlet context yet — establishing which outlet it belongs
-   to is the whole job.
+   It reads the REGISTRY, because a handle is one name on the internet and a
+   business database only knows its own outlets. Asking a business database
+   "who holds seaside" gets the answer "nobody" from every business that does
+   not, which is how two customers both get told a name is free and only one
+   gets the traffic. One registry, one answer.
+
+   No outlet context is involved: a request arriving on a subdomain has not
+   established which outlet it belongs to yet — that is the whole job.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const { owner } = require('./db');
+const { control } = require('./db');
 
 const TTL_MS = 30000;
 
@@ -33,20 +37,23 @@ let loadedAt = 0;
 let inflight = null;
 
 async function refresh() {
-  const q = await owner().query(
-    'SELECT o.slug AS handle, o.id AS outlet_id, o.slug AS current, false AS retired'
-    + '  FROM chain.outlet o WHERE o.active'
+  const q = await control().query(
+    'SELECT h.name AS handle, h.outlet_id, h.business_id, h.name AS current,'
+    + ' false AS retired FROM chain.handle h'
+    + '  JOIN chain.outlet_directory d ON d.outlet_id = h.outlet_id AND d.active'
     + ' UNION ALL '
-    + 'SELECT x.handle, o.id, o.slug, true'
-    + '  FROM chain.outlet_handle_history x'
-    + '  JOIN chain.outlet o ON o.id = x.outlet_id WHERE o.active');
+    + 'SELECT y.name, y.outlet_id, y.business_id, c.name, true'
+    + '  FROM chain.handle_history y'
+    + '  JOIN chain.outlet_directory d ON d.outlet_id = y.outlet_id AND d.active'
+    + '  LEFT JOIN chain.handle c ON c.outlet_id = y.outlet_id');
   const next = new Map();
   // A live address always wins a retired one of the same spelling: an outlet
   // that took its own former name back is at that name, not redirecting to it.
   q.rows.forEach((r) => {
     const have = next.get(r.handle);
     if (have && !have.retired) return;
-    next.set(r.handle, { outletId: r.outlet_id, current: r.current, retired: r.retired });
+    next.set(r.handle, { outletId: r.outlet_id, businessId: r.business_id,
+      current: r.current, retired: r.retired });
   });
   entries = next;
   loadedAt = Date.now();

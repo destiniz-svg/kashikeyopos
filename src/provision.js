@@ -4,7 +4,7 @@
    places: the onboarding route (first outlet) and the chain route that adds a
    branch — both behind rank 5. Nothing else imports this. */
 
-const { owner, forget } = require('./db');
+const { owner, forget, control } = require('./db');
 const registry = require('./business');
 const { outletPassword } = require('./secrets');
 const handle = require('./handle');
@@ -49,6 +49,13 @@ async function provisionOutlet(opts) {
     const schema = await client.query('SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
       [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s);
 
+    const businessId = await registry.businessForDb(
+      (await client.query('SELECT current_database() AS d')).rows[0].d);
+    /* Always, not only when we allocated the id: an outlet the caller named
+       still needs a route home, and its handle cannot be claimed without one. */
+    await registry.registerOutlet(id, businessId);
+    const chosen = await claimHandle(client, opts, id);
+
     await client.query(
       'UPDATE chain.outlet SET kind = coalesce($2, kind), parent_id = $3,'
       + ' tax_code = $4, service_pct = coalesce($5, service_pct),'
@@ -59,7 +66,15 @@ async function provisionOutlet(opts) {
         opts.servicePct == null ? null : Number(opts.servicePct),
         opts.address || null, opts.atoll || null, opts.phone || null,
         opts.tz || null, opts.currency || null, opts.dayStart || null,
-        await claimHandle(client, opts, id)]);
+        chosen]);
+
+    /* CLAIMED IN THE REGISTRY, where the name is unique across every business.
+       chain.outlet.slug is a local copy for the pages this database renders;
+       the registry row is the claim. Doing it after the outlet row exists is
+       deliberate — the registry's foreign key is to the directory entry, and a
+       handle pointing at an outlet that failed to write would outlive it. */
+    await control().query('SELECT chain.claim_handle($1,$2,$3)',
+      [id, businessId, chosen]);
 
     // The outlet's own tax version, effective from the day it opens. NONE is a
     // real answer: a business that is not GST-registered charges nothing, and
@@ -115,7 +130,11 @@ async function claimHandle(client, opts, id) {
     const want = String(opts.slug).trim().toLowerCase();
     const shape = handle.shapeError(want);
     if (shape) throw Object.assign(new Error(shape), { status: 400 });
-    const why = await client.query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
+    /* Asked of the REGISTRY, not of this business's database. A business
+       database only knows its own outlets, so it answers "free" for every name
+       another customer holds — which is how two stores print the same address
+       on their table cards and only one of them gets the traffic. */
+    const why = await control().query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
     if (why.rows[0].w) {
       throw Object.assign(new Error(why.rows[0].w), { status: 409 });
     }
@@ -128,8 +147,8 @@ async function claimHandle(client, opts, id) {
   tries.push(want + '-' + id, 'store-' + id);
   for (const t of tries) {
     if (!handle.ok(t)) continue;
-    const free = await client.query('SELECT chain.handle_free($1,$2) AS f', [t, id]);
-    if (free.rows[0].f) return t;
+    const why = await control().query('SELECT chain.handle_why($1,$2) AS w', [t, id]);
+    if (!why.rows[0].w) return t;
   }
   // 'store-<id>' is unique by construction, so reaching here means the id is
   // not what we were told it was. Say that rather than write a wrong address.

@@ -7,7 +7,7 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 const express = require('express');
-const { owner, withOutlet, withOutletRead } = require('../db');
+const { owner, control, ownerFor, withOutlet, withOutletRead } = require('../db');
 const { signTable, verifyTable, signMember, verifyMember,
   hashPin, pinMatches, randomPin, tokenHash } = require('../secrets');
 const { snapshot } = require('./outlet');
@@ -42,9 +42,22 @@ const tableMint = { ip: [400, 10 * 60e3] };
 async function mintTable(req, res, want) {
   // Current address or one the store gave up — chain.handle_points_at answers
   // both, so a card printed under the old name keeps opening the right menu.
-  const o = await owner().query(
-    'SELECT o.id, o.name, o.slug, p.retired FROM chain.handle_points_at($1) p'
-    + ' JOIN chain.outlet o ON o.id = p.outlet_id', [want]);
+  /* Resolved in the REGISTRY. A handle is one name across every business, and
+     a business database only knows its own outlets — asking it "who holds
+     seaside" gets "nobody" from every business that does not, so a guest
+     scanning a card would land on a 404 or, worse, on whichever store the
+     request happened to reach. The registry says which business, and only then
+     is that business's own database opened for the store's name. */
+  const p = await control().query(
+    'SELECT p.outlet_id, p.business_id, NOT p.current AS retired, b.db_name'
+    + ' FROM chain.handle_points_at($1) p'
+    + ' JOIN chain.business b ON b.id = p.business_id', [want]);
+  const o = p.rows.length
+    ? await ownerFor(p.rows[0].db_name).query(
+      'SELECT id, name, slug FROM chain.outlet WHERE id = $1', [p.rows[0].outlet_id])
+      .then((q) => ({ rows: q.rows.map((x) => Object.assign({}, x,
+        { retired: p.rows[0].retired })) }))
+    : { rows: [] };
   if (!o.rows.length) {
     // A handle nobody answers to. Say so rather than silently landing the
     // guest somewhere else.

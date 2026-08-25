@@ -1204,8 +1204,7 @@ test('only the named routers reach past the isolation belts', () => {
   const allowed = {
     'onboarding.js': 'steps 1-3 run before an outlet or a session exists',
     'auth.js': 'the lock screen asks before anybody has signed in',
-    'guest.js': 'resolves a handle TO an outlet — the outlet is the answer',
-    'outlet.js': 'handle uniqueness and GST registration span every outlet',
+    'outlet.js': 'GST registration is a company fact that must reach every outlet',
     'platform.js': 'aggregates for the seller, key-guarded and audited'
   };
 
@@ -1217,14 +1216,13 @@ test('only the named routers reach past the isolation belts', () => {
   const registry = {
     'account.js': 'the account plane lives in the registry: one account may own'
       + ' several businesses',
-    'onboarding.js': 'records the new business and who owns it'
+    'onboarding.js': 'records the new business and who owns it',
+    'outlet.js': 'a handle is one name across every business, so the registry'
+      + ' owns it and chain.outlet.slug follows',
+    'guest.js': 'resolves a handle TO a business and an outlet — a business'
+      + ' database only knows its own'
   };
-  /* NOT here yet, and deliberately not listed until it is: guest.js and
-     outlet.js still resolve handles against the BUSINESS database, where 012
-     and 013 defined them. The registry now holds the authoritative copy
-     (control/002), so until those two routes are moved a handle is unique per
-     business rather than across the cluster. Listing them early would be a
-     stale exception standing in for work that has not happened. */
+
 
   const clean = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const importsFrom = (src, name) =>

@@ -107,6 +107,24 @@ async function createBusiness(opts) {
   return row.rows[0];
 }
 
+/* Register an outlet the caller already has an id for. provisionOutlet is
+   given one by the leak test, by a restore and by any path replaying a known
+   estate, and an outlet with no directory row has no route home — its handle
+   cannot even be claimed, because the registry's foreign key points here. The
+   sequence is nudged past a hand-picked id so the next allocation cannot
+   collide with it. */
+async function registerOutlet(outletId, businessId) {
+  const id = Number(outletId);
+  await control().query(
+    'INSERT INTO chain.outlet_directory (outlet_id, business_id) VALUES ($1,$2)'
+    + ' ON CONFLICT (outlet_id) DO UPDATE SET business_id = excluded.business_id',
+    [id, businessId]);
+  await control().query(
+    "SELECT setval('chain.outlet_id_seq', greatest(nextval('chain.outlet_id_seq'), $1))",
+    [id]);
+  return id;
+}
+
 /* Which business a database IS. A business database does not carry its own
    registry id — that would be a second source of truth for the thing routing
    depends on — so it is looked up by name. A database the registry has never
@@ -156,6 +174,6 @@ function forgetRoute(outletId) {
   if (outletId == null) routes.clear(); else routes.delete(Number(outletId));
 }
 
-module.exports = { createBusiness, nextOutletId, businessForDb,
+module.exports = { createBusiness, nextOutletId, registerOutlet, businessForDb,
   routeFor, forgetRoute,
   _safeDbName: safeDbName };

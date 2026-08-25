@@ -69,6 +69,66 @@ app/kpos-bridge.js     terminal ↔ API
 app/guest-bridge.js    guest portal + member card ↔ API
 ```
 
+## The tenancy model: a business is a database
+
+**One app, one Postgres cluster, a database per business.** A customer signs up
+on the website and gets `kashikeyo_biz_<id>` carrying the schema this repo has
+always had — company, staff, members, the outlet schemas and their login roles.
+A REGISTRY database (`CONTROL_DB`) sits above them all and holds what has to be
+true ACROSS businesses: accounts, the business directory, a global outlet id
+sequence, and the handle registry.
+
+**Why the boundary is the business and not the outlet.** `applySale()` moves
+`chain.member.points` and `credit_used` in the SAME transaction as the sale, its
+tenders, its stock moves and its journal. Postgres has no cross-database
+transaction, so everything one sale touches has to live in one database or a
+crash can take the money without the balance. A single-outlet café therefore
+still gets exactly "its own database"; a chain gets one database with its
+outlets as schemas, and points and credit stay chain-wide. **`src/apply.js` is
+unchanged by any of this.**
+
+**`CONTROL_DB` is named, never guessed.** Falling back to "whatever database
+this connection happens to be on" would silently make a business database its
+own registry on a misconfigured deploy — the tables would create, the accounts
+would land in the wrong place, and nothing would say so until two customers had
+signed up. `control()` throws instead.
+
+**The account plane moved to the registry** (011 is now a tombstone that drops
+the tables). One account may own several businesses, so "is this address known"
+cannot be asked of one business's database without searching every database in
+the cluster — and that is the one question `src/routes/account.js` promises
+twice over it never answers. The registry has an audit table of its own, for the
+same reason migration 035 gave a business one: an account event has nowhere else
+to be written, and a trail nothing can be written to is how "the code is in the
+audit trail" became false the first time.
+
+**Outlet ids are allocated globally.** `provision.js` took `max(id)+1` inside one
+install, so every install had an outlet 1 — fine when a customer was a whole
+install, a cross-tenant hazard the moment two share a cluster, because a session
+token names an outlet and that name must resolve to exactly one store. Every
+outlet is registered in `chain.outlet_directory` whether the id was allocated or
+supplied: an outlet with no directory row has no route home and its handle
+cannot even be claimed.
+
+**A handle is one name on the internet, so the registry owns it.** A business
+database only knows its own outlets, so asking it "who holds seaside" gets
+"nobody" from every business that does not — which is how two stores print the
+same address and only one gets the traffic. `control/002_handles.sql` holds the
+rules, the reserved names, the claim, the rename and the history; uniqueness is
+still enforced by a primary key and reservation still by a trigger, just in that
+database rather than each business's. `chain.outlet.slug` is a local copy that
+follows. `src/directory.js`, `guest.js` and `outlet.js` all resolve there.
+
+**An owner whose business cannot be read is told so.** `session()` used to
+swallow an unreadable business and return no outlets, which the browser renders
+as "you have not set up a store yet" — and that screen's first action is to
+create one. It returns `unreachable` with a reason and `next: 'unavailable'`
+now; onboarding is only for an account that genuinely owns nothing.
+
+`test/tenancy.test.js` is the gate: two businesses, and business A's outlet role
+refused at B's database, at B's members, and at the registry where the accounts
+live.
+
 ## Isolation: two belts, and they are not the same belt
 
 **Belt one — a schema and a login role per outlet.** `chain.provision_outlet()`

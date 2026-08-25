@@ -154,7 +154,12 @@ DECLARE why text;
 BEGIN
   why := chain.handle_why(p_handle, p_outlet);
   IF why IS NOT NULL THEN
-    RAISE EXCEPTION '%', why USING ERRCODE = '23505';
+    /* 23514, the same code chain.rename_outlet raised when this lived in a
+       business database, because the route already knows that a check
+       violation carrying no constraint name is a sentence somebody wrote for a
+       person and passes it through. A second code would mean a second branch
+       saying the same thing, and one of them would eventually rot. */
+    RAISE EXCEPTION '%', why USING ERRCODE = '23514';
   END IF;
   -- Taking a name back that this outlet gave up frees the history row: it can
   -- only ever have been its own, because handle_why refused it otherwise.

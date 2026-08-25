@@ -2848,7 +2848,7 @@ test('a reserved address cannot become a store, and the refusal names why', opts
   // Not hypothetical: webmail. and demo. are probed by scanners on the live
   // domain daily, and before migration 012 either was claimable.
   for (const h of ['www', 'webmail', 'demo', 'api', 'admin', 'member']) {
-    const why = await db.owner().query('SELECT chain.handle_why($1) AS w', [h]);
+    const why = await db.control().query('SELECT chain.handle_why($1) AS w', [h]);
     assert.ok(why.rows[0].w, h + ' must not be free');
     assert.ok(/reserved for/.test(why.rows[0].w),
       h + ' is refused by name, not as "invalid": ' + why.rows[0].w);
@@ -3010,19 +3010,21 @@ test('a renamed store keeps the address it left', opts, async () => {
 });
 
 test('the address a store left is nobody else\'s to take', opts, async () => {
-  const left = (await db.owner().query(
-    'SELECT handle FROM chain.outlet_handle_history WHERE outlet_id = $1'
-    + ' ORDER BY retired_at DESC LIMIT 1', [outletId])).rows[0].handle;
+  // The registry owns retired addresses now: they have to outlive a business
+  // database being restored, and nobody else may claim them meanwhile.
+  const left = (await db.control().query(
+    'SELECT name FROM chain.handle_history WHERE outlet_id = $1'
+    + ' ORDER BY retired_at DESC LIMIT 1', [outletId])).rows[0].name;
 
   // To another outlet it is taken — a guest scanning the card in front of them
   // must never land on a competitor's menu.
   const other = outletId + 1;
-  const why = await db.owner().query('SELECT chain.handle_why($1,$2) AS w', [left, other]);
+  const why = await db.control().query('SELECT chain.handle_why($1,$2) AS w', [left, other]);
   assert.ok(why.rows[0].w, left + ' must not be free to outlet ' + other);
   assert.match(why.rows[0].w, /still points at it/, why.rows[0].w);
 
   // To the outlet that left it, it is its own name to take back.
-  const mine = await db.owner().query('SELECT chain.handle_why($1,$2) AS w', [left, outletId]);
+  const mine = await db.control().query('SELECT chain.handle_why($1,$2) AS w', [left, outletId]);
   assert.strictEqual(mine.rows[0].w, null);
 
   const back = await patch('/api/outlet/' + outletId + '/handle', { handle: left }, token);
@@ -3031,8 +3033,8 @@ test('the address a store left is nobody else\'s to take', opts, async () => {
 
   // And it stops being history — an outlet at an address does not redirect to
   // itself.
-  const still = await db.owner().query(
-    'SELECT 1 FROM chain.outlet_handle_history WHERE handle = $1', [left]);
+  const still = await db.control().query(
+    'SELECT 1 FROM chain.handle_history WHERE name = $1', [left]);
   assert.strictEqual(still.rows.length, 0, 'the address it took back is not history');
   const hit = await callHost(left + '.kashikeyopos.com', 'GET', '/');
   assert.strictEqual(hit.status, 200, 'and it answers there rather than redirecting');

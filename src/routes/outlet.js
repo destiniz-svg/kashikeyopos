@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { withOutletRead, withOutlet, owner } = require('../db');
+const { withOutletRead, withOutlet, owner, control } = require('../db');
 const { shapeError, storeUrl, memberUrl, joinUrl, baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
@@ -131,8 +131,10 @@ r.get('/handle', sameOutlet, atLeast('admin'), async function (req, res, next) {
     const id = req.ctx.outletId;
     const mine = await owner().query(
       'SELECT slug FROM chain.outlet WHERE id = $1', [id]);
-    const past = await owner().query(
-      'SELECT handle, retired_at FROM chain.outlet_handle_history'
+    // Retired addresses are registry rows now: they have to outlive a business
+    // database being restored, and nobody else may claim them meanwhile.
+    const past = await control().query(
+      'SELECT name AS handle, retired_at FROM chain.handle_history'
       + ' WHERE outlet_id = $1 ORDER BY retired_at DESC', [id]);
     const now = {
       handle: (mine.rows[0] || {}).slug || null,
@@ -146,7 +148,7 @@ r.get('/handle', sameOutlet, atLeast('admin'), async function (req, res, next) {
 
     const shape = shapeError(want);
     if (shape) return res.json(Object.assign(now, { want: want, free: false, why: shape }));
-    const why = await owner().query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
+    const why = await control().query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
     res.json(Object.assign(now, {
       want: want, free: !why.rows[0].w, why: why.rows[0].w || null,
       wantUrl: why.rows[0].w ? null : storeUrl(want, '')
@@ -161,8 +163,16 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
     if (shape) return res.status(400).json({ error: shape });
 
     const id = req.ctx.outletId;
-    const q = await owner().query('SELECT chain.rename_outlet($1,$2) AS was', [id, want]);
-    const was = q.rows[0].was;
+    /* The REGISTRY renames, in one transaction that retires the old name and
+       claims the new one — a rename that recorded the old and failed to set the
+       new leaves a store answering to an address the directory thinks is
+       retired, and the reverse kills every card already printed. The business
+       database's slug is a copy and follows. */
+    const q = await control().query('SELECT chain.rename_handle($1,$2) AS now', [id, want]);
+    const was = await owner().query(
+      'SELECT slug FROM chain.outlet WHERE id = $1', [id]).then((r) => (r.rows[0] || {}).slug);
+    await owner().query('UPDATE chain.outlet SET slug = $2 WHERE id = $1',
+      [id, q.rows[0].now]);
     // The next request should see the new address rather than wait out the
     // directory's refresh window.
     directory.forget();
