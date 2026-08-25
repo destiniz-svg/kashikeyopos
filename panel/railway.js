@@ -91,6 +91,45 @@ const MAIL_FROM = () => String(process.env.INSTALL_EMAIL_FROM
    INSTALL_PORTAL_BASE_DOMAIN once a real wildcard domain exists. */
 const PORTAL_DOMAIN = () => String(process.env.INSTALL_PORTAL_BASE_DOMAIN || '').trim();
 
+/* WHAT THIS PANEL HOLDS IS NOT ALWAYS WHAT IT CAN PASS ON. Both mail variables
+   were read with a bare truthiness check, and a Railway variable may be written
+   as a reference to another service — `${{kashikeyopos.RESEND_API_KEY}}`. When
+   the service name is right the reference is substituted before this process
+   ever sees it, and a real key is copied forward. When it is WRONG the literal
+   survives: non-empty, truthy, no warning from ready(), and copied verbatim
+   into a brand-new project whose only services are a database and the app. It
+   can never resolve there. The install comes up believing it has email,
+   answers every send with the honest "not configured" fallback, and the
+   customer sits on Check your email — which is exactly what happened.
+
+   So the same rule that governs a send governs a HANDOVER, and it is imported
+   rather than re-spelled: two definitions of "this is a dangling reference"
+   would eventually disagree, and this one is already load-bearing. */
+const EMAIL = require('../src/email');
+
+function mailReady() {
+  const k = MAIL_KEY(), f = MAIL_FROM();
+  if (!k || !f) {
+    return { ok: false, why: 'no email transport to pass on — set RESEND_API_KEY'
+      + ' and EMAIL_FROM on this panel, or the install cannot send a'
+      + ' verification code' };
+  }
+  if (EMAIL.unresolved(k) || EMAIL.unresolved(f)) {
+    return { ok: false, why: "this panel's RESEND_API_KEY or EMAIL_FROM is an"
+      + ' unresolved ${{reference}} — check the service name inside the braces.'
+      + ' It is not passed on: a reference belongs to the project it was'
+      + ' written in and means nothing in a new one' };
+  }
+  /* A key that LOOKS fine and is refused is worth saying too, and this panel
+     finds out every time it emails a customer their address. */
+  const h = EMAIL.health();
+  if (!h.ok) {
+    return { ok: false, why: 'the last message this panel tried to send was not'
+      + ' delivered: ' + h.reason };
+  }
+  return { ok: true };
+}
+
 /* A service name becomes the hostname, so it is the store's, not the
    product's. Every install was called `kashikeyopos` and every address came
    out `kashikeyopos-production.up.railway.app` — indistinguishable across
@@ -113,10 +152,8 @@ function ready() {
   /* Not a refusal: an install with no email still works, its customer just has
      to be read their code. But it is worth saying BEFORE the run rather than
      discovering it when the first person cannot sign up. */
-  if (!MAIL_KEY() || !MAIL_FROM()) {
-    return { ok: true, warn: 'no email transport to pass on — set RESEND_API_KEY and'
-      + ' EMAIL_FROM on this panel, or the install cannot send a verification code' };
-  }
+  const mail = mailReady();
+  if (!mail.ok) return { ok: true, warn: mail.why };
   return { ok: true };
 }
 
@@ -342,9 +379,13 @@ function appVariables(secrets, extra) {
        what this is. */
     PORTAL_BASE_DOMAIN: PORTAL_DOMAIN()
   };
-  // Without both, the install has no email at all and a customer cannot verify
-  // the address they are claiming it with.
-  if (MAIL_KEY() && MAIL_FROM()) {
+  /* Without both, the install has no email at all and a customer cannot verify
+     the address they are claiming it with — but a value that cannot work THERE
+     is worse than none. An install with nothing set says "no email transport is
+     configured on this install"; one carrying a dangling reference says the
+     same thing while a variable sits on the service looking correct, and
+     whoever is debugging it checks the key instead of the braces. */
+  if (mailReady().ok) {
     v.RESEND_API_KEY = MAIL_KEY();
     v.EMAIL_FROM = MAIL_FROM();
   }

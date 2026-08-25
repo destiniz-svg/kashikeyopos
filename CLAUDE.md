@@ -2100,6 +2100,23 @@ rollback branch. That proves composition and decision — never connectivity.
 **The live call path is unverified until it is run once**, and DEPLOYMENT.md
 says so rather than letting a green suite imply otherwise.
 
+**What a panel HOLDS is not always what it can PASS ON.** Both mail variables
+were read with a bare truthiness check, and a Railway variable may be written
+as a reference to another service — `${{kashikeyopos.RESEND_API_KEY}}`. Where
+the name inside the braces is right, the reference is substituted before the
+panel's process sees it and a real key is copied forward. Where it is WRONG the
+literal survives: non-empty, truthy, no warning from `ready()`, and copied
+verbatim into a brand-new project whose only services are a database and the
+app. It can never resolve there. The install comes up believing it has email,
+answers every send with the honest "not configured" fallback, and the customer
+sits on Check your email with a variable on the service that looks perfectly
+correct — so whoever debugs it checks the key instead of the braces. The rule
+that governs a send now governs a handover, imported from `src/email.js` rather
+than re-spelled, because two definitions of "this is a dangling reference"
+would eventually disagree. A value that cannot work THERE is not passed on: no
+transport at all is a state the install describes accurately, and a dangling
+one is a state it cannot.
+
 ### A trial the customer can see, and only the seller can move
 
 The commercial state of a customer used to live ONLY in the seller's registry

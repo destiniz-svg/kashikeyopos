@@ -335,6 +335,40 @@ test('a database that never comes up fails there, not on the app that needed it'
     } finally { s.restore(); }
   }));
 
+test('a dangling reference is not passed on, and the panel says why', () =>
+  withEnv(Object.assign({}, ENV, {
+    RESEND_API_KEY: '${{kashikeyopos.RESEND_API_KEY}}',
+    EMAIL_FROM: 'KashikeyoPOS <hello@example.mv>'
+  }), async () => {
+    /* A Railway variable may be a reference to another service. Where the name
+       inside the braces is wrong the LITERAL survives — non-empty, truthy —
+       and a bare check passes it straight into a brand-new project, whose only
+       services are a database and the app. It can never resolve there. */
+    const a = RW.ready();
+    assert.strictEqual(a.ok, true, 'still not a refusal — an install with no email works');
+    assert.match(a.warn, /unresolved \$\{\{reference\}\}/,
+      'and it is named as a reference, not as an unset variable somebody would go and set');
+
+    const v = RW.appVariables(RW.mintSecrets());
+    assert.ok(!('RESEND_API_KEY' in v),
+      'a value that cannot work in the new project is not copied into it');
+    assert.ok(!('EMAIL_FROM' in v));
+    assert.ok(!/\$\{\{kashikeyopos\./.test(JSON.stringify(v)),
+      'and no reference to a service the new project does not have');
+  }));
+
+test('a transport that is set and working is passed on', () =>
+  withEnv(Object.assign({}, ENV, {
+    RESEND_API_KEY: 're_a_real_looking_key', EMAIL_FROM: 'KashikeyoPOS <hi@example.mv>'
+  }), async () => {
+    const a = RW.ready();
+    assert.strictEqual(a.ok, true);
+    assert.strictEqual(a.warn, undefined, 'nothing to warn about');
+    const v = RW.appVariables(RW.mintSecrets());
+    assert.strictEqual(v.RESEND_API_KEY, 're_a_real_looking_key');
+    assert.strictEqual(v.EMAIL_FROM, 'KashikeyoPOS <hi@example.mv>');
+  }));
+
 /* ── failure ─────────────────────────────────────────────────────────────── */
 
 test('a partial run names the step that failed and everything it had made', () =>

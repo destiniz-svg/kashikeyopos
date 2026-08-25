@@ -146,5 +146,5 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-module.exports = { send, signInCode, configured, health,
+module.exports = { send, signInCode, configured, health, unresolved,
   _reset: () => { last = null; } };
