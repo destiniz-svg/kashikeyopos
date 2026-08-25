@@ -42,7 +42,7 @@ const CONTRACT = [
   'modifier_update', 'move_table', 'open_register', 'opex_insert',
   'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
   'payment_run', 'period_close', 'period_reopen', 'permission_change',
-  'permission_reset', 'pin_failed', 'pin_lockout', 'pin_reset', 'post_journal',
+  'permission_reset', 'pin_failed', 'pin_lockout', 'pin_reset', 'plan_request', 'post_journal',
   'post_payroll', 'price_override', 'print_abandoned', 'print_failed',
   'print_retry', 'printer_state', 'promo_clamped', 'qr_banner_slot', 'qr_order',
   'qr_pay_intent', 'recipe_recost', 'recost_items', 'refund', 'reservation_',
@@ -103,7 +103,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 116, 'the contract is 116 kinds');
+  assert.strictEqual(CONTRACT.length, 117, 'the contract is 117 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -1061,8 +1061,14 @@ test('every form the terminal can open is on the list the harness sweeps', () =>
   const to = src.indexOf('return F[name] || null;', from);
   assert.ok(from > 0 && to > from, 'found the form spec table');
 
-  const keys = (src.slice(from, to).match(/\n {6}[A-Za-z][A-Za-z0-9_]*: \{/g) || [])
-    .map((m) => m.trim().replace(':', '').replace('{', '').trim());
+  /* A form spec is usually an object literal, but nothing stops one being
+     COMPUTED — `plan: (function (self) { ... })(this)` is a perfectly ordinary
+     way to write one that needs a value twice. The first version of this
+     extractor matched only `name: {`, so a computed spec was invisible to it
+     and excused entirely — the same blind spot the op-kind extractor had with
+     a ternary, and the same fix: match the key, not one shape of value. */
+  const keys = (src.slice(from, to).match(/\n {6}[A-Za-z][A-Za-z0-9_]*: *[{(]/g) || [])
+    .map((m) => m.trim().replace(/[:{(]/g, '').trim());
   assert.ok(keys.length > 40, 'the extraction found the table, not a fragment');
 
   const missing = keys.filter((k) => H.FORMS.indexOf(k) < 0);
@@ -1493,4 +1499,145 @@ test('the derivation is bounded, and a partial answer never wins', () => {
     'and only a COMPLETE derivation replaces what the till sent');
   assert.match(apply, /qtyOff = useDerived && supplied\.length/,
     'while a divergence still needs two numbers to be a divergence');
+});
+
+/* ═══ A TRIAL THE CUSTOMER CAN SEE, AND ONLY THE SELLER CAN MOVE ════════════
+   The product is sold one install per customer, and the commercial state of
+   that customer used to live ONLY in the seller's registry — on a screen the
+   customer cannot open. So a trial ending was an event that happened somewhere
+   else, and the first they heard of it was a phone call.
+
+   The wiring that fixes it has four ends, and every one of them is a place it
+   could quietly come undone: the plane that holds it, the door that writes it,
+   the payload that carries it to the till, and the notice that renders it. */
+test('the licence is readable by the outlet and writable only by the platform', () => {
+  const mig = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'migrations', '033_the_licence_plane.sql'), 'utf8');
+
+  /* It is NOT a row in chain.setting, and that is the whole design: settings
+     are writable by any rank-4 admin, so a licence kept there is a text field
+     an admin can type themselves a year into. */
+  assert.match(mig, /CREATE TABLE IF NOT EXISTS chain\.licence/);
+  assert.match(mig, /FORCE ROW LEVEL SECURITY/,
+    'the table forces RLS, so even its owner is filtered');
+  assert.match(mig, /CREATE POLICY licence_read ON chain\.licence FOR SELECT/,
+    'the outlet may read it — the till has to render the countdown');
+  assert.match(mig, /REVOKE INSERT, UPDATE, DELETE ON chain\.licence/,
+    'and may not write it: protection by absence of grant, the same belt the'
+    + ' account plane uses');
+
+  /* A role created LATER must land in the same place, or the fence holds for
+     today's outlets and not for the one opened next month. */
+  const prov = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'migrations', '003_outlet_provision.sql'), 'utf8');
+  assert.match(prov, /GRANT SELECT ON chain\.licence TO %I/,
+    'a newly provisioned outlet can read it');
+  assert.match(prov, /REVOKE INSERT, UPDATE, DELETE ON chain\.licence FROM %I/,
+    'and cannot write it either');
+});
+
+test('the platform door reports the licence and is the only thing that sets it', () => {
+  const pf = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'routes', 'platform.js'), 'utf8');
+
+  assert.match(pf, /r\.post\('\/licence'/, 'there is a write side');
+  // Both halves of the same key check as the read side — a write door that is
+  // easier to open than the read door beside it is the whole vulnerability.
+  const write = pf.slice(pf.indexOf("r.post('/licence'"));
+  assert.match(write, /keyOk\(req\)/, 'guarded by PLATFORM_KEY');
+  assert.match(write, /ok === null\) return res\.status\(404\)/,
+    'unset key, no door — a 404, like the read');
+  assert.match(write, /kind !== 'trial' && ends/,
+    'a paid install with a countdown is refused by name rather than stored:'
+    + ' the till would otherwise have to render "Paid · 3 days left"');
+  /* Mission Control reconciles on every dashboard load, which is what makes
+     the copy self-healing. If each of those wrote a trail row the real change
+     would be unfindable among them. */
+  assert.match(write, /const moved =/, 'an unchanged push writes no trail');
+
+  assert.match(pf, /licence: await readLicence\(o\)/, 'the summary reports it back');
+  assert.match(pf, /planRequest: await readPlanRequest\(o\)/,
+    'and reports whether the customer has asked for a plan — the one thing on'
+    + " the seller's screen somebody has to act on");
+});
+
+test('the till is told, and never blocked', () => {
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(boot, /LICENCE: \(function \(\) \{/, 'the bootstrap publishes it');
+  assert.match(boot, /if \(!l\) return null;/,
+    'no licence is published as null — an install nobody sold shows no notice,'
+    + ' rather than a countdown somebody invented');
+  assert.match(boot, /today\(ctx\)/,
+    "days are counted on the OUTLET's own calendar, or a trial expires at seven"
+    + ' in the evening because the container is in UTC');
+
+  /* NOTHING IN THE TERMINAL MAY GATE ON THE LICENCE. This is the promise the
+     copy makes in four places — "nothing switches off" — and a promise the
+     code does not keep is worse than no promise. */
+  const lic = SRC.slice(SRC.indexOf('licenceNotice()'), SRC.indexOf('planAsked()'));
+  assert.ok(lic.length > 200, 'found the notice');
+  assert.ok(!/return\s*;\s*\/\/\s*block|disabled|readOnly|cannotSell/.test(lic),
+    'the notice decides what to SAY, never what to allow');
+  ['licence()', 'licenceNotice()'].forEach((fn) => {
+    assert.ok(SRC.indexOf(fn) > 0, 'the terminal has ' + fn);
+  });
+  // Owner only: whether the business pays for its software is not a cashier's
+  // to read, let alone to act on.
+  assert.match(SRC, /if \(lic && this\.rank\(\) >= 5\)/,
+    'the Today signal is rank 5');
+  assert.match(SRC, /this\.rank\(\) >= 5 && this\.licence\(\)/,
+    'and so is the Settings card');
+});
+
+test('asking for a plan grants nothing and is readable back', () => {
+  const ap = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const h = ap.slice(ap.indexOf('H.plan_request'), ap.indexOf('H.item_upsert'));
+  assert.ok(h.length > 100, 'the handler exists');
+
+  /* It must not touch chain.licence. A plan a customer can award themselves is
+     not a plan, and this is the one handler with any reason to reach for it. */
+  assert.ok(h.indexOf('chain.licence') < 0,
+    'the handler grants nothing — the consequence is the seller opening'
+    + ' Mission Control, not a row in this database');
+
+  assert.match(h, /INSERT INTO chain\.setting \(key, value\) VALUES \('plan_request'/,
+    'the ask is recorded where the TILL can read it back, so the control can'
+    + ' say "you asked on the 3rd" rather than offering to ask again');
+  assert.match(h, /await log\(c, 'plan_request'/,
+    'and on the trail as well: settings hold the latest ask, the trail holds'
+    + ' every one, and a support call six weeks later needs the second');
+  assert.match(h, /PLAN_WANTS\.includes/,
+    'an unrecognised choice is recorded rather than refused — the customer has'
+    + ' asked either way, and losing the ask over a vocabulary mismatch would'
+    + ' be the worst outcome of pressing that button');
+});
+
+test('Mission Control pushes the licence and hands the install over', () => {
+  const p = fs.readFileSync(path.join(__dirname, '..', 'panel', 'server.js'), 'utf8');
+
+  /* THE SAME DATE RULE THE APP KEEPS. Without this, a Postgres `date` arrives
+     as a JS Date and String(d).slice(0, 10) yields "Tue Sep 08" — which is
+     exactly what made the first licence push fail, refused by the install as
+     not a date. */
+  assert.match(p, /types\.setTypeParser\(1082/,
+    'the panel reads a date as the text it is, like src/db.js');
+
+  assert.match(p, /function pushLicence/, 'it pushes');
+  assert.match(p, /licenceDiffers\(want, \(p\.summary \|\| \{\}\)\.licence\)/,
+    'only when the two disagree — reconciling on every load must cost a request'
+    + ' and never a row');
+  assert.match(p, /customer_note/,
+    'what the CUSTOMER reads is its own column, never the seller\'s private notes');
+  assert.ok(!/note: String\(row\.notes/.test(p),
+    'and the private notes are never what gets pushed');
+
+  assert.match(p, /function handoverMessage/, 'the customer is told their install exists');
+  const msg = p.slice(p.indexOf('function handoverMessage'), p.indexOf('/* ── pushing the licence'));
+  assert.ok(/Your address/.test(msg) && /Your setup code/.test(msg),
+    'carrying the two things they need');
+  assert.ok(!/password/i.test(msg) || /deliberately does not contain one/.test(msg),
+    'and never a password: they set their own on their own install');
+  assert.match(p, /require\('\.\.\/src\/email'\)/,
+    'through the app\'s own email seam — a second transport is a second place'
+    + ' for a send to fail silently');
 });

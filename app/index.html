@@ -3336,6 +3336,62 @@ class Component extends DCLogic {
   // Where this business stands against the registration threshold, as the
   // outlet's own database measured it. Never a projection, never a guess.
   gstWatch() { return (K() || {}).GST_WATCH || null; }
+
+  /* ── WHAT THIS INSTALL IS ON ───────────────────────────────────────────────
+     The commercial state, published by the outlet's own database, which is
+     written only by the platform door — an admin cannot type themselves a
+     longer trial. `null` means nobody has ever sold this install, and that is
+     rendered as NOTHING rather than as a trial with an invented deadline.
+
+     Nothing here ever blocks a sale. A restaurant mid-service is not where a
+     licence check gets to stop a cashier, and a customer who has not paid an
+     invoice yet has not stopped being a customer. It warns, twice before the
+     deadline and once standing after it, and offers the one action the
+     customer can actually take. */
+  licence() { return (K() || {}).LICENCE || null; }
+
+  /* The notice, or null when there is nothing to say. Three states and the
+     boundaries are the two reminders:
+       · more than 7 days left  → silence
+       · 7 days or fewer        → the first reminder
+       · 2 days or fewer        → the second, worded as a deadline
+       · past                   → standing, and it says the till still works */
+  licenceNotice() {
+    const l = this.licence();
+    if (!l || l.kind !== "trial") return null;
+    // A trial nobody set a deadline on is a trial with nothing to count down
+    // to. It is on trial; there is no reminder to give.
+    if (l.days == null) return null;
+    const d = Number(l.days);
+    if (d > 7) return null;
+    const day = (n) => n === 1 ? "1 day" : n + " days";
+    if (d < 0) {
+      return { state: "over", band: "soon",
+        title: "Your free trial has ended",
+        figure: "Ended " + day(-d) + " ago",
+        cost: "Nothing has stopped — the till still takes money, prints and syncs"
+          + " exactly as it did yesterday, and none of your trade is going"
+          + " anywhere. What is waiting is the decision: ask to be put on a"
+          + " plan and we will set one up." };
+    }
+    if (d <= 2) {
+      return { state: "closing", band: "soon",
+        title: d === 0 ? "Your free trial ends today" : "Your free trial ends in " + day(d),
+        figure: "Ends " + l.ends,
+        cost: "This is the second reminder. Nothing switches off when it ends —"
+          + " the till keeps working — but this is the moment to ask for a plan"
+          + " so there is no gap in the paperwork." };
+    }
+    return { state: "soon", band: "watch",
+      title: "Your free trial ends in " + day(d),
+      figure: "Ends " + l.ends,
+      cost: "Nothing to do today. When you are ready, ask to be put on a plan"
+        + " and we will get in touch \u2014 there is nothing to pay online yet." };
+  }
+
+  // Whether this install has already asked. A control that offers to ask
+  // again as though the first one went nowhere is one an owner presses twice.
+  planAsked() { const l = this.licence(); return l && l.asked ? l.asked : null; }
   taxLine(o) {                       // "GGST 8%", or "" when not registered
     const x = o || this.outlet();
     return this.taxRegistered(x) ? x.tax + " " + (x.rate || 0) + "%" : "";
@@ -15699,6 +15755,53 @@ class Component extends DCLogic {
          The old address is kept and points here afterwards. That is the whole
          reason renaming is allowed at all: the cards are already on the
          tables. ─────────────────────────────────────────────────────────── */
+      /* ASKING TO BE PUT ON A PLAN. There is no online payment in this build
+         and this form does not pretend there is: it sends a request, says so
+         in those words, and the seller gets in touch. A form that took card
+         details for a payment nobody can process would be the worst thing on
+         this screen.
+
+         It is an ordinary outbox op, so an owner who presses it on a bad link
+         is not told it failed — it goes when the till next reaches the outlet,
+         which is the same promise every other write on this terminal makes. */
+      plan: {
+        title: this.planAsked() ? "You have asked for a plan"
+          : "Ask to be put on a plan",
+        sub: (this.licence() || {}).kind === "paid" ? "You are on a paid plan"
+          : (this.licence() || {}).kind === "internal" ? "This install is marked internal"
+            : (this.licence() || {}).ends
+              ? "Free trial \u00b7 ends " + this.licence().ends : "Free trial",
+        save: this.planAsked() ? "Send it again" : "Send the request",
+        foot: (this.planAsked()
+          ? "You asked on " + this.dayOf(this.planAsked()) + " and we have it."
+            + " Sending again is not a second request \u2014 it replaces the note"
+            + " on the first."
+          : "There is nothing to pay online yet.")
+          + " Nothing switches off while this is being sorted out: the till keeps"
+          + " taking money, printing and syncing exactly as it does now."
+          + ((this.licence() || {}).note ? " \u2014 " + this.licence().note : ""),
+        fields: [
+          { k: "want", label: "What suits you", v: "monthly", full: 1, options: [
+            { v: "monthly", l: "A monthly plan" },
+            { v: "yearly", l: "A yearly plan" },
+            { v: "permanent", l: "Buy it outright" },
+            { v: "talk", l: "I would rather talk it through" }
+          ] },
+          { k: "note", label: "Anything we should know", v: "", full: 1 }
+        ],
+        onSave: (v) => {
+          const l = this.licence() || {};
+          const want = String(v.want || "talk");
+          this.queue("plan_request",
+            "Asked to be put on a plan \u00b7 " + want, "settings",
+            { entity: "install", want: want, by: this.me(),
+              note: String(v.note || "").slice(0, 600),
+              was: l.kind || null, endsWas: l.ends || null });
+          this.setState({ modal: null });
+          this.toast("Sent \u2014 we will get in touch. Nothing changes in the"
+            + " meantime.", "good");
+        }
+      },
       storeAddress: {
         title: "Change the store address",
         sub: this.storeUrl("", addrOutlet) || "This store has no address yet",
@@ -17238,6 +17341,42 @@ class Component extends DCLogic {
         { title: "How a refund gets back", sub: "One route per tender", chip: "On the credit note", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "payments",
           rows: Object.keys(this.TENDERS()).map((k) => [this.tenderName(k), this.returnsVia(k)]),
           foot: "A toast lasts three seconds; the credit note is what the guest and the auditor keep, so the route belongs on the document." },
+        /* WHAT THIS INSTALL IS ON. Owner only, and shown whether or not there
+           is a deadline near enough to warn about — "when does my trial end"
+           is a question somebody asks on day three, not only on day thirteen,
+           and a control that only exists once it is nearly too late is one
+           nobody knows about. Absent entirely when no licence has ever been
+           pushed: an install nobody sold has nothing to say here. */
+        ].concat(this.rank() >= 5 && this.licence() ? [(function (self) {
+          const l = self.licence();
+          const asked = self.planAsked();
+          const trial = l.kind === "trial";
+          const d = trial && l.days != null ? Number(l.days) : null;
+          return {
+            title: "Your plan", cat: "company",
+            sub: l.kind === "paid" ? "Paid" : l.kind === "internal" ? "Internal"
+              : d == null ? "Free trial" : d < 0 ? "Free trial \u00b7 ended" : "Free trial",
+            chip: trial ? (d == null ? "On trial" : d < 0 ? "Ended" : d + " days left")
+              : (l.kind === "paid" ? "Active" : "Not billed"),
+            chipBg: !trial ? "var(--good-dim)" : d == null ? "var(--bg-3)"
+              : d <= 2 ? "var(--warn-dim)" : "var(--bg-3)",
+            chipFg: !trial ? "var(--good-bright)" : d == null ? "var(--text-dim)"
+              : d <= 2 ? "var(--warn-bright)" : "var(--text-dim)",
+            rows: [
+              ["What you are on", l.kind === "paid" ? "A paid plan"
+                : l.kind === "internal" ? "Marked internal \u2014 not billed"
+                  : "A free trial"],
+              ["Ends", trial ? (l.ends || "No end date set") : "\u2014"],
+              ["You asked for a plan", asked ? "On " + self.dayOf(asked) : "Not yet"]
+            ].concat(l.note ? [["From us", l.note]] : []),
+            foot: "Nothing here can switch the till off. Whatever this says, the"
+              + " terminal keeps taking money, printing and syncing \u2014 a licence"
+              + " is a conversation, not a kill switch. There is no online payment"
+              + " yet, so a plan is arranged by asking.",
+            goLabel: asked ? "See your request" : "Ask for a plan",
+            go: () => self.openForm("plan")
+          };
+        })(this)] : []).concat([
         { title: "Taxation",
           sub: this.taxRegistered() ? P0.taxClass + " · " + P0.taxRate + "%" : "Not registered for GST",
           chip: "Editable", chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)", cat: "tax",
@@ -17366,7 +17505,7 @@ class Component extends DCLogic {
           rows: [["App version", "4.2.1"], ["Offline cache", "IndexedDB · 42 MB"], ["Receipt printer", P.receiptPrinter || "Epson TM-m30 · USB"], ["Kitchen printer", P.kotPrinter || "Kitchen bumper · LAN"], ["Paper", P.paper + " mm · " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
           foot: "Bound to this outlet by device registration.",
           go: gate(() => this.openForm("terminal")) }
-      ];
+      ]);
     const catOf = (c) => c.cat || CATOF[c.title] || "device";
     return {
       tabs: CATS.map((c) => ({ label: c[1], on: cat === c[0], count: all.filter((x) => catOf(x) === c[0]).length, pick: () => this.setState({ tab: Object.assign({}, this.state.tab, { set: c[0] }) }) })),
@@ -17434,6 +17573,21 @@ class Component extends DCLogic {
         "A business in the tourism sector registers for GST whatever its turnover. "
         + "This outlet is currently charging nothing. " + gw.authority, "settings",
       { act: "Set the tax class", go: () => this.openForm("taxProfile") });
+    }
+    /* THE TRIAL. Two reminders before the deadline and a standing notice
+       after it — and the wording carries the promise the code keeps, which is
+       that nothing stops. A notice that implies the till is about to switch
+       off would have a manager ringing at seven on a Friday about a thing
+       that was never going to happen. Owner only: whether the business pays
+       for its software is not a cashier's to read, let alone to act on. */
+    const lic = this.licenceNotice();
+    if (lic && this.rank() >= 5) {
+      const asked = this.planAsked();
+      add(lic.band, lic.title, lic.figure,
+        lic.cost + (asked ? " You asked on " + this.dayOf(asked) + " \u2014 we have it." : ""),
+        "settings",
+        { act: asked ? "See your plan" : "Ask for a plan",
+          go: () => this.openForm("plan") });
     }
     const pf = this.failedJobs();
     if (pf.length) {

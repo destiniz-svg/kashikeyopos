@@ -167,7 +167,14 @@ const FORMS = [
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'indent', 'dispatch',
   'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
-  'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn'
+  'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn', 'plan',
+  /* Four COMPUTED form specs the sweep never saw. They are written as
+     `name: (function () { ... })()` rather than as object literals, and the
+     wiring test's extractor matched only `name: {` — so they existed, opened
+     from real screens, and were excused from every sweep this harness does.
+     Found when the extractor was widened to match the KEY rather than one
+     shape of value. */
+  'addon', 'tableEdit', 'zoneEdit', 'grn'
 ];
 
 // The message alone names the symptom; the frame names the line. A harness

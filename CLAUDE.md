@@ -41,6 +41,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        027 reserve panel · 028 credit outstanding
                        029 void a sale · 030 the polled tables
                        031 yield is an outlet fact · 032 a batch is an item
+                       033 the licence plane
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -1599,6 +1600,68 @@ seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.
 Trial enforcement is a person's decision, not automated — the panel monitors.
 
+### A trial the customer can see, and only the seller can move
+
+The commercial state of a customer used to live ONLY in the seller's registry
+(`panel.install`), on a screen the customer cannot open. So a trial ending was
+an event that happened somewhere else, and the first they heard of it was a
+phone call.
+
+**The flow is: the seller provisions, the customer does everything else.** A
+store request on the website lands in Mission Control; **Provision** creates
+the install, links the request, and **emails the customer their address and
+setup code in the same act** — the message deliberately carries no password,
+because they set their own on their own install's `/account`. From there they
+run the fourteen onboarding steps themselves and land on a live trial. A form
+anybody on the internet can post still never spins up paid infrastructure;
+what changed is that everything after the seller's one click is self-serve.
+
+**`chain.licence` (migration 033) is a plane of its own**, and that is the
+whole design. It is not a row in `chain.setting`, which any rank-4 admin can
+write — a licence a customer can edit is a text field, not a licence. So:
+SELECT is granted with a read policy, because the till has to render the
+countdown; INSERT and UPDATE are granted to **no outlet role at all**. The only
+writer is the owner connection, reached through the platform door. That is the
+same "protection by absence of grant" belt migration 011 uses for the account
+plane, and `test/api.test.js` asserts an outlet role's four attempts on it all
+fail.
+
+**The registry is authoritative and the install holds a copy.** Mission Control
+pushes it — `POST /api/platform/licence`, same key, same constant-time compare,
+same trail as the read — whenever the two disagree, on the same probe every
+dashboard load already makes. That makes it **self-healing** rather than
+scheduled: a push that fails is retried by the next load, and an install
+restored from a backup is corrected the first time anybody looks. It is
+idempotent by design — the install writes its trail only when something moved —
+so reconciling on every load costs a request and never a row. An install whose
+seller is unreachable keeps working and keeps saying the last true thing it was
+told, which is what a cached copy does and a live check does not.
+
+**Nothing here ever blocks a sale.** A restaurant mid-service is not where a
+licence check gets to stop a cashier, and a customer who has not paid an
+invoice yet has not stopped being a customer. The till warns **twice** before
+the deadline (at seven days and at two) and carries a standing notice after it,
+owner-only, each offering the one action the customer can take. `NULL` is a
+real answer: an install nobody has sold shows nothing at all rather than a
+countdown somebody invented, and a trial with no end date is on trial with
+nothing to count down to.
+
+**Asking for a plan grants nothing.** `plan_request` records who asked, when
+and for what, in `chain.setting` (so the till can read it back and say "you
+asked on the 3rd") and on the trail (so every ask survives, not just the
+latest). The platform summary carries it, so the seller sees the request
+without the install ever reaching out. There is no online payment in this
+build and the form does not pretend there is.
+
+Two things a date got wrong, both found by driving the whole flow rather than
+by reading it. The panel had no `setTypeParser(1082)`, so a Postgres `date`
+arrived as a JS Date and `String(d).slice(0, 10)` yielded `"Tue Sep 08"` — the
+install refused the push, correctly, as not a date. And `daysUntil()` measured
+to the end of the last day and rounded up, so a trial the customer's own till
+called "2 days left" the seller's panel called three: the same trial, two
+answers, on the two screens most likely to be open during the conversation
+about it.
+
 **The website** (`site/`) is the third service from the same image
 (`node site/server.js`): landing, docs, legal, and the signup. A signup is a
 STORE REQUEST — it writes `panel.signup` in the registry (advisory-locked
@@ -1703,7 +1766,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 283 tests
+npm test                          # 293 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

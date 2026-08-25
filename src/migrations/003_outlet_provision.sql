@@ -978,6 +978,11 @@ BEGIN
     || ' chain.device, chain.tax_version, chain.supplier, chain.member,'
     || ' chain.setting TO %I', r);
   EXECUTE format('GRANT INSERT ON chain.audit TO %I', r);
+  -- The licence plane (033) is READ by the outlet and written by nobody inside
+  -- one: the till renders the trial countdown, and only the platform door,
+  -- on the owner connection, may change what it counts down to.
+  EXECUTE format('GRANT SELECT ON chain.licence TO %I', r);
+  EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON chain.licence FROM %I', r);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.session, chain.doc_series,'
     || ' chain.member, chain.staff, chain.device, chain.supplier, chain.setting,'
     || ' chain.tax_version, chain.company, chain.outlet TO %I', r);

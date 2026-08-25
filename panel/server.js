@@ -28,7 +28,16 @@
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+/* THE SAME RULE THE APP KEEPS, and it has to be kept here too or the two
+   services disagree about what a date IS. Left to the driver, a Postgres
+   `date` arrives as a JavaScript Date, and `String(d).slice(0, 10)` — the
+   obvious way to get a YYYY-MM-DD back out of it — yields "Tue Sep 08".
+   That is what made the first licence push fail: the panel sent a trial
+   ending "Tue Sep 08" and the install refused it, correctly, as not a date.
+   Read them as the text they are. (1082 = DATE.) See src/db.js. */
+types.setTypeParser(1082, (v) => v);
 const { gate } = require('../src/limit');
 
 const SECRET = process.env.PANEL_SECRET || '';
@@ -83,6 +92,17 @@ async function migrate() {
     -- when a customer says they have lost it. Which is exactly why it is here
     -- and not only in a Railway variable nobody can find at nine on a Sunday.
     ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS claim_code text NOT NULL DEFAULT '';
+    -- What the CUSTOMER reads on their own Settings screen beside the trial
+    -- countdown, in the seller's own words. Deliberately separate from the
+    -- notes column, which is the seller's private file on the account: pushing
+    -- "chased twice, no answer" onto the owner's screen is the kind of
+    -- mistake one shared column makes inevitable.
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS customer_note text NOT NULL DEFAULT '';
+    -- Who to write to when the install is provisioned, and whether that has
+    -- been done. Null email = provisioned by hand for somebody already in
+    -- the room, which is a real case and not a missing field.
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS contact_email text NOT NULL DEFAULT '';
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS handed_over_at timestamptz;
     -- Written by the public website (site/server.js), decided here. The same
     -- CREATE IF NOT EXISTS lives on both sides so either service may boot first.
     CREATE TABLE IF NOT EXISTS panel.signup (
@@ -161,6 +181,112 @@ async function probe(inst) {
   }
 }
 
+/* ── handing an install over ────────────────────────────────────────────────
+   The customer needs two things and neither of them is a password: the
+   ADDRESS of their install, and the CLAIM CODE that lets them create the first
+   owner on it. They set their own credentials themselves, on their own
+   install's /account — which is why this message carries no password and never
+   will.
+
+   It goes through the app's own email seam (src/email.js), because a second
+   transport is a second thing to keep configured and a second place for a
+   send to fail silently. With no transport configured it does not pretend:
+   `sent` says which of the two happened and the panel shows the message so
+   the seller can send it themselves.
+
+   THE CLAIM CODE IS IN THE MESSAGE ON PURPOSE, and it is why the message is
+   worth sending rather than reading down a phone. What it grants is the right
+   to claim an install nobody has claimed yet — the one window in an install's
+   life where that matters — and it is spent the moment they do. */
+const EMAIL = require('../src/email');
+
+function handoverMessage(o) {
+  const days = o.trialEnds
+    ? Math.max(0, Math.round((Date.parse(o.trialEnds + 'T00:00:00Z') - Date.now()) / 86400000))
+    : null;
+  const lines = [
+    'Hello ' + (o.contactName || 'there') + ',',
+    '',
+    (o.storeName ? o.storeName + ' is' : 'Your KashikeyoPOS install is') + ' ready.',
+    '',
+    'Your address:  ' + o.baseUrl,
+    'Your setup code:  ' + o.claimCode,
+    '',
+    'Open the address, choose Create an account, and the setup code is asked for',
+    'once at the start. You pick your own password — nobody here has it, and',
+    'this message deliberately does not contain one.',
+    '',
+    'From there the panel walks you through fourteen steps: your company, your',
+    'first outlet, your menu, your staff. You can stop and come back.',
+    ''
+  ];
+  if (days !== null) {
+    lines.push('Your free trial runs for ' + days + ' day' + (days === 1 ? '' : 's')
+      + ', until ' + o.trialEnds + '. The till will remind you twice before then.');
+    lines.push('Nothing switches off when it ends — you ask for a plan from inside');
+    lines.push('the app and we set one up. There is nothing to pay online.');
+    lines.push('');
+  }
+  lines.push('Anything at all, just reply to this message.');
+  return {
+    to: o.to,
+    subject: (o.storeName || 'Your KashikeyoPOS install') + ' is ready',
+    text: lines.join('\n')
+  };
+}
+
+/* ── pushing the licence ────────────────────────────────────────────────────
+   THIS REGISTRY IS AUTHORITATIVE about what a customer is on. The install
+   holds a copy so its till can render the countdown without reaching out to
+   anything — an install whose seller is unreachable must keep working and
+   keep saying the last true thing it was told, which is exactly what a cached
+   copy does and a live check does not.
+
+   The copy is kept fresh by pushing it whenever the two disagree, on the same
+   key and the same connection the health probe already uses. That makes it
+   SELF-HEALING rather than scheduled: every dashboard load reconciles every
+   install, a push that fails is retried by the next one, and an install
+   restored from a backup is corrected the first time anybody looks at it.
+
+   A push is idempotent by design — the install only writes its trail when
+   something actually moved — so reconciling on every load costs a request and
+   never a row. */
+function licenceOf(row) {
+  return { kind: row.kind,
+    trialEnds: row.trial_ends ? String(row.trial_ends).slice(0, 10) : null,
+    // `customer_note`, never `notes`: one is written FOR the customer and the
+    // other is written ABOUT them.
+    note: String(row.customer_note || '').slice(0, 400) };
+}
+
+function licenceDiffers(want, got) {
+  if (!got) return true;                               // never pushed
+  return got.kind !== want.kind
+    || (got.trialEnds || null) !== (want.trialEnds || null)
+    || (got.note || '') !== (want.note || '');
+}
+
+async function pushLicence(inst, want) {
+  const base = String(inst.base_url || '').replace(/\/+$/, '');
+  try {
+    const r = await fetch(base + '/api/platform/licence', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + inst.platform_key,
+        'content-type': 'application/json' },
+      body: JSON.stringify(want),
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!r.ok) return { pushed: false, note: 'HTTP ' + r.status };
+    return { pushed: true };
+  } catch (e) {
+    // A push that could not be made is not an error the seller has to act on:
+    // the install keeps the licence it already had, and the next dashboard
+    // load tries again. Reported, never thrown.
+    return { pushed: false, note: e.name === 'TimeoutError' ? 'no answer in 6s'
+      : (e.cause && e.cause.code) || e.message };
+  }
+}
+
 /* ── the app ────────────────────────────────────────────────────────────── */
 const app = express();
 app.set('trust proxy', 1);
@@ -230,13 +356,28 @@ app.post('/api/signin',
 app.get('/api/overview', authed, async (req, res, next) => {
   try {
     const q = await pool.query(
-      'SELECT id, name, base_url, kind, trial_ends, notes, archived, created_at'
+      'SELECT id, name, base_url, kind, trial_ends, notes, customer_note,'
+      + ' contact_email, handed_over_at, archived, created_at'
       + ' FROM panel.install ORDER BY archived, created_at');
     const keys = await pool.query('SELECT id, platform_key FROM panel.install');
     const keyOf = Object.fromEntries(keys.rows.map((r) => [r.id, r.platform_key]));
     const probes = await Promise.all(q.rows.map((r) =>
       r.archived ? Promise.resolve({ state: 'archived' })
         : probe({ base_url: r.base_url, platform_key: keyOf[r.id] })));
+
+    /* Reconcile what each install believes with what this registry says. Only
+       a LIVE install is worth pushing to — a dead one would just time out
+       twice — and only one that actually disagrees. */
+    await Promise.all(q.rows.map(async (r, i) => {
+      const p = probes[i];
+      if (p.state !== 'live') return;
+      const want = licenceOf(r);
+      if (!licenceDiffers(want, (p.summary || {}).licence)) return;
+      const out = await pushLicence({ base_url: r.base_url, platform_key: keyOf[r.id] }, want);
+      p.licencePush = out;
+      if (out.pushed) p.summary = Object.assign({}, p.summary, { licence: want });
+    }));
+
     res.set('cache-control', 'no-store').json({
       installs: q.rows.map((r, i) => Object.assign({}, r, { live: probes[i] })),
       at: new Date().toISOString()
@@ -287,12 +428,52 @@ app.post('/api/installs', authed, async (req, res, next) => {
     if (!urlOk(String(b.baseUrl || ''))) return res.status(400).json({ error: 'the base URL must be https://…' });
     if (String(b.platformKey || '').length < 32) return res.status(400).json({ error: 'the platform key is at least 32 characters — the same value set as PLATFORM_KEY on the install' });
     const kind = ['trial', 'paid', 'internal'].includes(b.kind) ? b.kind : 'trial';
+    const baseUrl = String(b.baseUrl).replace(/\/+$/, '');
     const ins = await pool.query(
       'INSERT INTO panel.install (name, base_url, platform_key, kind, trial_ends,'
-      + ' notes, claim_code) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-      [String(b.name).trim(), String(b.baseUrl).replace(/\/+$/, ''), String(b.platformKey),
-        kind, b.trialEnds || null, String(b.notes || ''), String(b.claimCode || '')]);
-    res.json({ id: ins.rows[0].id });
+      + ' notes, claim_code, customer_note, contact_email)'
+      + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
+      [String(b.name).trim(), baseUrl, String(b.platformKey),
+        kind, kind === 'trial' ? (b.trialEnds || null) : null,
+        String(b.notes || ''), String(b.claimCode || ''),
+        String(b.customerNote || '').slice(0, 400),
+        String(b.contactEmail || '').trim().toLowerCase()]);
+    const id = ins.rows[0].id;
+
+    /* Link the request this install came from, and close it in the same
+       breath. A signup marked provisioned that points at nothing is a story
+       nobody can finish six weeks later. */
+    if (b.signupId) {
+      await pool.query(
+        "UPDATE panel.signup SET status = 'provisioned', install_id = $1,"
+        + ' decided_at = now() WHERE id = $2', [id, b.signupId]).catch(() => {});
+    }
+
+    /* Hand it over, if there is somebody to hand it to. The response carries
+       both the outcome and the message itself, so a seller with no transport
+       configured can copy it rather than being told nothing happened. */
+    let handover = null;
+    if (b.contactEmail) {
+      const msg = handoverMessage({
+        to: String(b.contactEmail).trim(),
+        contactName: String(b.contactName || '').trim(),
+        storeName: String(b.name).trim(),
+        baseUrl: baseUrl,
+        claimCode: String(b.claimCode || ''),
+        trialEnds: kind === 'trial' ? (b.trialEnds || null) : null
+      });
+      try {
+        const out = await EMAIL.send(msg);
+        handover = { sent: !!out.sent, via: out.via, reason: out.reason || null, message: msg.text };
+      } catch (e) {
+        handover = { sent: false, via: 'none', reason: e.message, message: msg.text };
+      }
+      if (handover.sent) {
+        await pool.query('UPDATE panel.install SET handed_over_at = now() WHERE id = $1',
+          [id]).catch(() => {});
+      }
+    }
+    res.json({ id: id, handover: handover });
   } catch (e) { next(e); }
 });
 
@@ -317,6 +498,44 @@ app.get('/api/installs/:id/claim', authed, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/* SENDING IT AGAIN. The commonest support call on a handover is "I never got
+   it" or "I have lost the code", and both are answered by this. It re-sends
+   the same message rather than minting anything: the claim code is still the
+   one that was recorded, so a customer who half-typed it from a phone call
+   gets the same string and not a second one that invalidates the first. */
+app.post('/api/installs/:id/handover', authed, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const q = await pool.query(
+      'SELECT name, base_url, claim_code, contact_email, kind, trial_ends'
+      + ' FROM panel.install WHERE id = $1', [req.params.id]);
+    if (!q.rows.length) return res.status(404).json({ error: 'no such install' });
+    const r0 = q.rows[0];
+    const to = String(b.email || r0.contact_email || '').trim();
+    if (!/^\S+@\S+\.\S+$/.test(to)) {
+      return res.status(400).json({ error: 'no email address on this install — add one, or pass it here' });
+    }
+    if (!r0.claim_code) {
+      return res.status(400).json({ error: 'this install has no setup code recorded, so the message would be missing the one thing it exists to carry' });
+    }
+    const msg = handoverMessage({
+      to: to, contactName: String(b.contactName || '').trim(), storeName: r0.name,
+      baseUrl: r0.base_url, claimCode: r0.claim_code,
+      trialEnds: r0.kind === 'trial' && r0.trial_ends
+        ? String(r0.trial_ends).slice(0, 10) : null
+    });
+    let out;
+    try { out = await EMAIL.send(msg); }
+    catch (e) { out = { sent: false, via: 'none', reason: e.message }; }
+    if (out.sent) {
+      await pool.query('UPDATE panel.install SET handed_over_at = now(),'
+        + ' contact_email = $2 WHERE id = $1', [req.params.id, to.toLowerCase()]).catch(() => {});
+    }
+    res.set('cache-control', 'no-store').json({
+      sent: !!out.sent, via: out.via, reason: out.reason || null, message: msg.text, to: to });
+  } catch (e) { next(e); }
+});
+
 app.patch('/api/installs/:id', authed, async (req, res, next) => {
   try {
     const b = req.body || {};
@@ -332,11 +551,41 @@ app.patch('/api/installs/:id', authed, async (req, res, next) => {
       put('platform_key', String(b.platformKey));
     }
     if (b.claimCode !== undefined) put('claim_code', String(b.claimCode));
+    if (b.customerNote !== undefined) put('customer_note', String(b.customerNote).slice(0, 400));
+    if (b.contactEmail !== undefined) put('contact_email', String(b.contactEmail).trim().toLowerCase());
+    /* EXTENDING A TRIAL is the seller's one routine act, and doing it by
+       typing a date is how a trial gets extended to a day in the past. `days`
+       moves the deadline forward from whichever is later — today, or where it
+       already stood — so extending an expired trial gives the customer the
+       days rather than back-dating them into nothing. */
+    if (b.extendDays !== undefined) {
+      const n = Math.round(Number(b.extendDays));
+      if (!Number.isFinite(n) || n < 1 || n > 365) {
+        return res.status(400).json({ error: 'extend by 1 to 365 days' });
+      }
+      const cur = await pool.query(
+        'SELECT kind, trial_ends FROM panel.install WHERE id = $1', [req.params.id]);
+      if (!cur.rows.length) return res.status(404).json({ error: 'no such install' });
+      if (cur.rows[0].kind !== 'trial') {
+        return res.status(400).json({ error: 'only a trial has an end date to extend' });
+      }
+      const from = new Date();
+      const had = cur.rows[0].trial_ends ? new Date(cur.rows[0].trial_ends) : null;
+      const base = had && had > from ? had : from;
+      base.setDate(base.getDate() + n);
+      put('trial_ends', base.toISOString().slice(0, 10));
+    }
     if (b.kind !== undefined) {
       if (!['trial', 'paid', 'internal'].includes(b.kind)) return res.status(400).json({ error: 'kind is trial, paid or internal' });
       put('kind', b.kind);
     }
-    if (b.trialEnds !== undefined) put('trial_ends', b.trialEnds || null);
+    if (b.trialEnds !== undefined && b.extendDays === undefined) {
+      put('trial_ends', b.trialEnds || null);
+    }
+    /* A paid or internal install with a countdown on it is a contradiction the
+       customer's own screen would have to render, and the install refuses it
+       outright — so it is cleared here rather than pushed and rejected. */
+    if (b.kind !== undefined && b.kind !== 'trial') put('trial_ends', null);
     if (b.notes !== undefined) put('notes', String(b.notes));
     if (b.archived !== undefined) put('archived', !!b.archived);
     if (!sets.length) return res.status(400).json({ error: 'nothing to change' });

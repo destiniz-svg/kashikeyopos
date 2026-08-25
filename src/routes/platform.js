@@ -41,6 +41,34 @@ function keyOk(req) {
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/* ── the licence, both directions ───────────────────────────────────────────
+   The seller's registry is AUTHORITATIVE about what a customer is on; this
+   install holds a copy so the till can say so without an outbound call to
+   anything. The copy is written here and nowhere else — migration 033 grants
+   no outlet role INSERT or UPDATE on chain.licence — and it is read back on
+   the summary so the panel can see drift and re-push it. */
+async function readLicence(o) {
+  const q = await o.query(
+    'SELECT kind, trial_ends, note, set_at, set_by FROM chain.licence WHERE id = 1');
+  if (!q.rows.length) return null;
+  const x = q.rows[0];
+  return { kind: x.kind, trialEnds: x.trial_ends ? String(x.trial_ends).slice(0, 10) : null,
+    note: x.note || '', setAt: x.set_at, setBy: x.set_by };
+}
+
+/* The customer asking to be put on a plan. It rides the audit trail rather
+   than a table of its own: it is an event with a person and a time attached,
+   the trail is append-only from the floor, and a request that has been
+   answered still has to be answerable months later. */
+async function readPlanRequest(o) {
+  const q = await o.query(
+    "SELECT value FROM chain.setting WHERE key = 'plan_request'");
+  if (!q.rows.length) return null;
+  const x = q.rows[0].value || {};
+  if (!x.at) return null;
+  return { at: x.at, by: x.by || null, want: x.want || null, note: x.note || '' };
+}
+
 r.get('/summary', async function (req, res, next) {
   const ok = keyOk(req);
   if (ok === null) return res.status(404).json({ error: 'not found' });
@@ -92,6 +120,8 @@ r.get('/summary', async function (req, res, next) {
 
     res.set('cache-control', 'no-store').json({
       install: (inst.rows[0] || {}).id || null,
+      licence: await readLicence(o),
+      planRequest: await readPlanRequest(o),
       company: co.rows.length ? {
         name: co.rows[0].legal_name,
         gstRegistered: co.rows[0].gst_registered !== false,
@@ -103,6 +133,69 @@ r.get('/summary', async function (req, res, next) {
       commit: process.env.RAILWAY_GIT_COMMIT_SHA || null,
       at: new Date().toISOString()
     });
+  } catch (e) { next(e); }
+});
+
+/* ── the one thing the platform WRITES ──────────────────────────────────────
+   Mission Control pushes the licence whenever what this install believes
+   differs from the registry. Same key, same constant-time compare, same audit
+   trail as the read — and idempotent, so re-pushing an unchanged licence is a
+   no-op rather than a new row every thirty seconds.
+
+   It never blocks anything. The install renders a notice and the till keeps
+   taking money: a restaurant mid-service is not where a licence check gets to
+   stop a sale, and a customer who has fallen behind on an invoice has not
+   stopped being a customer. */
+r.post('/licence', express.json({ limit: '8kb' }), async function (req, res, next) {
+  const ok = keyOk(req);
+  if (ok === null) return res.status(404).json({ error: 'not found' });
+  if (!ok) return res.status(401).json({ error: 'platform key required' });
+
+  const b = req.body || {};
+  const kind = String(b.kind || '').trim();
+  if (!['trial', 'paid', 'internal'].includes(kind)) {
+    return res.status(400).json({ error: 'kind is trial, paid or internal' });
+  }
+  const ends = b.trialEnds == null || b.trialEnds === ''
+    ? null : String(b.trialEnds).slice(0, 10);
+  if (ends !== null && !/^\d{4}-\d{2}-\d{2}$/.test(ends)) {
+    return res.status(400).json({ error: 'trialEnds is a date, YYYY-MM-DD, or null' });
+  }
+  /* A paid or internal install counting down to a date is a contradiction the
+     till would have to render, so it is refused by name rather than stored and
+     quietly ignored. */
+  if (kind !== 'trial' && ends) {
+    return res.status(400).json({ error: 'only a trial has an end date' });
+  }
+  const note = String(b.note || '').slice(0, 400);
+
+  try {
+    const o = owner();
+    const before = await readLicence(o);
+    await o.query(
+      'INSERT INTO chain.licence (id, kind, trial_ends, note, set_at, set_by)'
+      + " VALUES (1, $1, $2, $3, now(), 'platform')"
+      + ' ON CONFLICT (id) DO UPDATE SET kind = $1, trial_ends = $2, note = $3,'
+      + " set_at = now(), set_by = 'platform'", [kind, ends, note]);
+    const after = await readLicence(o);
+
+    /* On the trail only when something actually MOVED. The panel re-pushes on
+       every dashboard load to stay self-healing, and a trail that records
+       thirty identical writes an hour is one nobody can find the real change
+       in. */
+    const moved = !before || before.kind !== after.kind
+      || before.trialEnds !== after.trialEnds || before.note !== after.note;
+    if (moved) {
+      const first = await o.query(
+        'SELECT id FROM chain.outlet WHERE active ORDER BY id LIMIT 1');
+      if (first.rows.length) {
+        await o.query(
+          'INSERT INTO chain.audit (outlet_id, action, entity, before, after, scope)'
+          + " VALUES ($1,'licence_set','install',$2,$3,'group')",
+          [first.rows[0].id, JSON.stringify(before), JSON.stringify(after)]).catch(() => {});
+      }
+    }
+    res.set('cache-control', 'no-store').json({ licence: after, changed: moved });
   } catch (e) { next(e); }
 });
 

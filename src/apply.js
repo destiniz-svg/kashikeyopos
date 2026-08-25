@@ -1840,6 +1840,42 @@ async function republishUsing(c, ingredientId) {
   for (const row of q.rows) await publishDeclaration(c, row.item_id);
 }
 
+/* ── THE OWNER ASKING TO BE PUT ON A PLAN ──────────────────────────────────
+   The consequence of this is not in this database at all: it is the seller
+   opening Mission Control and either extending the trial or converting the
+   install. So this handler grants nothing — a plan a customer can award
+   themselves is not a plan — and does exactly two things.
+
+   It records the ASK where the till can read it back, so the control can say
+   "you asked on the 3rd" rather than offering to ask again as though the first
+   one went nowhere. That is `chain.setting`, because the trail is INSERT-only
+   from an outlet by design and a screen cannot render a row it may not read.
+
+   And it puts the event on the trail as well, which is the copy that survives:
+   settings hold the LATEST ask, the trail holds every one of them, and a
+   support call six weeks later needs the second.
+
+   The platform door reads the setting back on its summary, so the seller sees
+   the request without the install ever having to reach out to anything. */
+const PLAN_WANTS = ['monthly', 'yearly', 'permanent', 'talk'];
+
+H.plan_request = async (c, p, ctx) => {
+  // An unrecognised choice is recorded as "talk" rather than refused: the
+  // customer has asked either way, and losing the ask over a vocabulary
+  // mismatch would be the worst possible outcome of pressing this button.
+  const want = PLAN_WANTS.includes(String(p.want)) ? String(p.want) : 'talk';
+  const row = {
+    at: new Date().toISOString(),
+    by: String(p.by || '').slice(0, 80) || null,
+    want: want,
+    note: String(p.note || '').slice(0, 600)
+  };
+  await c.query("INSERT INTO chain.setting (key, value) VALUES ('plan_request', $1)"
+    + ' ON CONFLICT (key) DO UPDATE SET value = $1', [JSON.stringify(row)]);
+  await log(c, 'plan_request', 'install', null, null, row);
+  return { asked: true, want: want };
+};
+
 H.item_upsert = async (c, p) => {
   const id = p.id || slug(p.name);
   await c.query('INSERT INTO ingredient (id, name, category, base_unit, stock_unit,'
@@ -2488,4 +2524,10 @@ async function applyOp(c, op, ctx) {
 module.exports = { applyOp, postJournal, moveStock, publishDeclaration,
   // Exported so a test can run the server's expansion against the TILL's,
   // on the same outlet, and prove the two cannot drift apart.
-  deriveConsumption, quantityGap, HANDLERS: H, AUDIT_ONLY };
+  deriveConsumption, quantityGap,
+  // ONE day-key. The bootstrap needs the outlet's own date to say how many
+  // days are left on a trial, and a second copy of this would be a second
+  // answer to "what day is it here" — which is the defect migration 016 was
+  // written to end.
+  today,
+  HANDLERS: H, AUDIT_ONLY };

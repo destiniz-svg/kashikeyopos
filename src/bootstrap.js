@@ -14,6 +14,8 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 const { withOutletRead } = require('./db');
+// The outlet's own local date — see apply.js. One day-key, not two.
+const { today } = require('./apply');
 
 const num = (v) => (v == null ? 0 : Number(v));
 // Three decimals, because a batch is measured in grams and millilitres and a
@@ -51,6 +53,12 @@ async function buildBootstrap(ctx) {
       devices: ['SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked'
         + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
       chainSettings: ['SELECT key, value FROM chain.setting'],
+      /* The commercial state of this install (033). Readable by every outlet
+         and writable by none — the platform door is the only writer — so what
+         the till renders is what the seller set, not what an admin typed.
+         NO ROW is a real answer: an install nobody has sold shows no notice
+         at all, rather than a countdown somebody invented. */
+      licence: ['SELECT kind, trial_ends, note, set_at FROM chain.licence WHERE id = 1'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
       members: ['SELECT id, phone, name, email, home_outlet, points,'
         + ' credit_limit, credit_used, joined_at, last_seen, invited_via, invited_to,'
@@ -235,6 +243,31 @@ async function buildBootstrap(ctx) {
          durable outbox keys rows by outlet id — so the install's own name is
          what lets a till refuse to replay one install's ops into another. */
       INSTALL: ((chainSettings.rows.find((r) => r.key === 'install') || {}).value || {}).id || '',
+      /* WHAT THIS CUSTOMER IS ON, and when it runs out. Published as the two
+         raw facts plus the days between, computed on the OUTLET's own clock —
+         `today(ctx)` is the outlet's local date, so a trial does not expire at
+         seven in the evening because the container is in UTC.
+         `null` when no licence has ever been pushed. */
+      LICENCE: (function () {
+        const l = q.licence.rows[0];
+        if (!l) return null;
+        const ends = l.trial_ends ? String(l.trial_ends).slice(0, 10) : null;
+        return {
+          kind: l.kind,
+          ends: ends,
+          // Days remaining, on the outlet's own calendar. Negative once past.
+          days: ends === null ? null
+            : Math.round((Date.parse(ends + 'T00:00:00Z')
+              - Date.parse(today(ctx) + 'T00:00:00Z')) / 86400000),
+          note: l.note || '',
+          /* Whether this install has already asked to be put on a plan, so
+             the control can say "asked on the 3rd" rather than offering to ask
+             again as though the first one went nowhere. It rides chain.setting
+             because the trail is INSERT-only from an outlet by design, and a
+             screen cannot render a row it may not read. */
+          asked: (setting.plan_request || {}).at || null
+        };
+      })(),
       PORTAL: { base: baseDomain(),
         origin: portalOrigin(((outlets.rows.find(
           (o) => o.id === ctx.outletId) || {}).slug) || '') },

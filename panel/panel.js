@@ -49,10 +49,22 @@
     var v = Number(n) || 0;
     return (cur || "") + " " + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  /* CALENDAR DAYS, counted the same way the install counts them. It used to
+     measure to the end of the last day and round up, so a trial the customer's
+     own till called "2 days left" this panel called three — the same trial,
+     two answers, on the two screens most likely to be open at once during the
+     conversation about it. Midnight to midnight, floored, exactly as
+     src/bootstrap.js does it.
+
+     The seller's clock rather than the outlet's, which is a real limitation
+     and a small one: the two are the same date for all but a few hours a day,
+     and the figure the CUSTOMER is shown is the outlet's own. */
   function daysUntil(dateStr) {
     if (!dateStr) return null;
-    var d = new Date(String(dateStr).slice(0, 10) + "T23:59:59");
-    return Math.ceil((d - new Date()) / 86400e3);
+    var end = Date.parse(String(dateStr).slice(0, 10) + "T00:00:00Z");
+    var now = new Date();
+    var today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((end - today) / 86400e3);
   }
 
   /* ── gate screens ─────────────────────────────────────────────────────── */
@@ -168,6 +180,25 @@
     return svg;
   }
 
+  /* THE CUSTOMER ASKED TO BE PUT ON A PLAN. This is the whole point of the
+     panel for a trial that is running out, so it is on the card rather than
+     behind the edit sheet — a request nobody sees is a customer nobody rang
+     back. It comes back on the install's own summary, which means it needs no
+     outbound call from the install and survives the panel being closed for a
+     week. */
+  var WANTS = { monthly: "a monthly plan", yearly: "a yearly plan",
+    permanent: "to buy it outright", talk: "to talk it through" };
+
+  function planAsk(inst) {
+    var pr = ((inst.live || {}).summary || {}).planRequest;
+    if (!pr) return null;
+    var who = pr.by ? " \u00b7 " + pr.by : "";
+    var line = "Asked for " + (WANTS[pr.want] || "a plan") + " " + ageOf(pr.at) + who;
+    return el("div", { class: "note ask" }, [
+      el("b", { text: line }),
+      pr.note ? el("div", { text: pr.note }) : null]);
+  }
+
   function installCard(inst, reload) {
     var st = statusOf(inst);
     var s = (inst.live || {}).summary || null;
@@ -209,6 +240,7 @@
         el("span", { class: "chip " + st.cls }, [el("span", { class: "pip" }),
           document.createTextNode(st.label)])]),
       trialChip(inst) ? el("div", {}, [trialChip(inst)]) : null,
+      planAsk(inst),
       figs,
       meta.length ? el("div", { class: "meta" }, meta) : null,
       inst.notes ? el("div", { class: "note", text: inst.notes }) : null,
@@ -216,6 +248,27 @@
         el("a", { href: inst.base_url, target: "_blank", rel: "noopener", style: "text-decoration:none" },
           [el("button", { class: "mini", text: "Open" })]),
         el("span", { class: "grow" }),
+        /* The one routine act, one press. The panel has no toast, so the
+           button reports its own outcome: on success the reload redraws the
+           chip with the new date, which is the feedback that matters. */
+        inst.kind === "trial"
+          ? (function () {
+            var b = el("button", { class: "mini", text: "+14 days" });
+            b.onclick = function () {
+              b.disabled = true; b.textContent = "Extending\u2026";
+              api("PATCH", "/api/installs/" + inst.id, { extendDays: 14 })
+                .then(function (r) {
+                  if (r.body && r.body.error) {
+                    b.disabled = false; b.textContent = r.body.error.slice(0, 40);
+                    return;
+                  }
+                  reload();
+                })
+                .catch(function () { b.disabled = false; b.textContent = "Did not save"; });
+            };
+            return b;
+          })()
+          : null,
         el("button", { class: "mini", text: "Edit", onclick: function () { sheet(inst, reload); } })])]);
   }
 
@@ -263,10 +316,12 @@
               sub: "Create their app service and database first (DEPLOYMENT.md), set its PLATFORM_KEY, then enter them here. The trial is pre-set to 14 days from today.",
               prefill: { name: s.store_name, kind: "trial",
                 trialEnds: end.toISOString().slice(0, 10),
+                // Carried through so the handover message can be addressed and
+                // sent in the same act that creates the install. Provisioning
+                // and telling the customer are one step, not two.
+                contactEmail: s.email, contactName: s.contact_name, signupId: s.id,
                 notes: s.contact_name + " · " + s.phone + " · " + s.email + (s.island ? " · " + s.island : "") },
-              onSaved: function (installId) {
-                api("PATCH", "/api/signups/" + s.id, { status: "provisioned", installId: installId }).then(reload);
-              }
+              onSaved: function () { reload(); }
             });
           } }));
       foot = el("div", { class: "foot" }, kids);
@@ -323,6 +378,46 @@
     }));
   }
 
+  /* ── when the handover could not be sent ────────────────────────────────
+     With no transport configured (RESEND_API_KEY / EMAIL_FROM), or with one
+     that refused, the install still exists and the customer still needs the
+     two things in that message. So it is shown, in full, to be copied into
+     whatever the seller actually uses — and it says which of the two happened
+     rather than implying an email is on its way. */
+  function handoverFallback(inst, installId, h, reload) {
+    var box = el("textarea", { readonly: "readonly",
+      style: "width:100%;height:230px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
+        + "font-size:12px;line-height:1.6;padding:11px 12px;border-radius:10px;"
+        + "background:var(--bg-2);border:1px solid var(--line);color:var(--text)" });
+    box.value = h.message || "";
+    var copied = el("div", { class: "sub", style: "margin-top:6px" });
+    var scrim = el("div", { class: "scrim" }, [
+      el("div", { class: "sheet" }, [
+        el("h2", { text: "Send this to them yourself" }),
+        el("div", { class: "sub", text: h.reason === 'no transport configured'
+          ? "The install is created. No email transport is configured on this panel "
+            + "(RESEND_API_KEY and EMAIL_FROM), so nothing was sent \u2014 here is the "
+            + "message, word for word."
+          : "The install is created, but the email was refused: " + (h.reason || "unknown")
+            + ". Here is the message, word for word." }),
+        box,
+        copied,
+        el("div", { class: "acts" }, [
+          el("button", { class: "cta", text: "Copy it", onclick: function () {
+            box.select();
+            var ok = false;
+            try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+            copied.textContent = ok ? "Copied." : "Select the text above and copy it.";
+          } }),
+          el("button", { class: "mini", text: "Done", onclick: function () {
+            document.body.removeChild(scrim); reload();
+          } })])])]);
+    scrim.addEventListener("click", function (ev) {
+      if (ev.target === scrim) { document.body.removeChild(scrim); reload(); }
+    });
+    document.body.appendChild(scrim);
+  }
+
   /* ── add / edit sheet ─────────────────────────────────────────────────────
      opts (optional): { prefill, heading, sub, onSaved(installId) } — used by
      "Provision" on a store request, which pre-fills what the request said. */
@@ -344,12 +439,25 @@
         return opt;
       })),
       trialEnds: el("input", { type: "date", value: inst && inst.trial_ends ? String(inst.trial_ends).slice(0, 10) : (pre.trialEnds || "") }),
-      notes: el("input", { placeholder: "who this is, contact, anything worth remembering", value: inst ? inst.notes : (pre.notes || "") })
+      notes: el("input", { placeholder: "who this is, contact, anything worth remembering", value: inst ? inst.notes : (pre.notes || "") }),
+      /* Who to hand it over TO. Without this the install is created and the
+         customer is never told it exists, which was the gap between "the
+         seller provisions" and "the customer onboards themselves". */
+      contactEmail: el("input", { type: "email", placeholder: "where to send the address and setup code",
+        value: inst ? (inst.contact_email || "") : (pre.contactEmail || "") }),
+      /* What the CUSTOMER reads beside their own trial countdown. Separate
+         from Notes above, which is the seller's private file on the account —
+         one column for both is how "chased twice, no answer" ends up on an
+         owner's Settings screen. */
+      customerNote: el("input", { placeholder: "shown to the customer on their own Settings screen \u2014 optional",
+        value: inst ? (inst.customer_note || "") : (pre.customerNote || "") })
     };
     function field(label, input) { return el("div", { class: "field" }, [el("label", { text: label }), input]); }
     var save = el("button", { class: "cta", text: isNew ? "Add the install" : "Save", onclick: function () {
       var body = { name: f.name.value, baseUrl: f.baseUrl.value, kind: f.kind.value,
-        trialEnds: f.trialEnds.value || null, notes: f.notes.value };
+        trialEnds: f.trialEnds.value || null, notes: f.notes.value,
+        contactEmail: f.contactEmail.value, customerNote: f.customerNote.value,
+        contactName: pre.contactName || "", signupId: pre.signupId || null };
       if (isNew || f.platformKey.value) body.platformKey = f.platformKey.value;
       // Written only when typed. Blanking it here would silently un-fence the
       // install's onboarding, which is not what "I left a field alone" means.
@@ -358,6 +466,13 @@
         : api("PATCH", "/api/installs/" + inst.id, body);
       call.then(function (r) {
         if (r.status !== 200) return fail((r.body && r.body.error) || "save failed");
+        /* THE HANDOVER IS THE POINT of provisioning, so its outcome is not a
+           toast that disappears. A send that could not be made shows the
+           message itself, to be copied — the same discipline the app's own
+           invitation uses, and for the same reason: a screen that reports a
+           send it did not make is worse than one offering no send at all. */
+        var h = r.body && r.body.handover;
+        if (h && !h.sent) { close(); handoverFallback(inst, r.body.id, h, reload); return; }
         close();
         if (isNew && o.onSaved && r.body && r.body.id) o.onSaved(r.body.id);
         else reload();
@@ -382,7 +497,9 @@
       field("Platform key", f.platformKey),
       field("Setup code", f.claimCode),
       el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
-      field("Notes", f.notes),
+      field("Their email", f.contactEmail),
+      field("Note to the customer", f.customerNote),
+      field("Notes (private)", f.notes),
       el("div", { class: "acts" }, [save])];
     if (!isNew) kids.push(el("div", { style: "margin-top:10px;text-align:center" },
       [reveal, codeOut]));

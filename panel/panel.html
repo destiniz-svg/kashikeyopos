@@ -109,6 +109,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--fwd-line)}
 .card .meta .warn-t{color:var(--warn-bright);font-weight:600}
 .card .meta .mono{font-size:10.5px;color:var(--text-faint)}
 .card .note{font-size:12px;color:var(--text-faint);border-top:1px solid var(--line-soft);padding-top:10px}
+/* A customer asking to be put on a plan is the one thing on this card that
+   somebody has to act on, so it does not read as a footnote. Warm ground,
+   a rule down the left, and the ink stays at full strength. */
+.card .note.ask{color:var(--text);background:var(--warn-dim);border-top:none;
+  border-left:3px solid var(--warn);border-radius:0 8px 8px 0;padding:9px 11px;margin-top:2px}
+.card .note.ask b{display:block;font-weight:600}
+.card .note.ask div{margin-top:3px;color:var(--text-dim)}
 .card .foot{display:flex;gap:8px;margin-top:2px}
 .card .foot .grow{flex:1}
 .mini{padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);color:var(--text-dim);

@@ -3702,10 +3702,17 @@ test('the platform door does not exist until a key is set, then opens to it alon
   const r = await getWith('/api/platform/summary', { authorization: 'Bearer ' + KEY });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
 
-  // AGGREGATES ONLY — the whole shape is pinned, so a member list or a staff
-  // roster cannot ride in later without failing here first.
+  /* AGGREGATES ONLY — the whole shape is pinned, so a member list or a staff
+     roster cannot ride in later without failing here first.
+
+     `licence` and `planRequest` are the two commercial facts, added
+     deliberately: what this customer is on, and whether they have asked to be
+     put on a plan. Both are about the CONTRACT rather than about the
+     restaurant's trade, which is the line this door has always drawn — neither
+     carries a member, a staff record or a line item. */
   assert.deepStrictEqual(Object.keys(r.body).sort(),
-    ['at', 'commit', 'company', 'days', 'devices', 'install', 'outlets']);
+    ['at', 'commit', 'company', 'days', 'devices', 'install', 'licence',
+      'outlets', 'planRequest']);
   assert.match(String(r.body.install),
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     'the install names itself: ' + r.body.install);
@@ -3726,6 +3733,158 @@ test('the platform door does not exist until a key is set, then opens to it alon
   delete process.env.PLATFORM_KEY;
   assert.strictEqual((await get('/api/platform/summary')).status, 404,
     'clearing the key closes the door again');
+});
+
+
+/* The licence tests below drive the same door, so they set the key themselves
+   rather than depending on the order the platform-door test leaves it in. */
+const PLATFORM_KEY = 'licence-test-key-0123456789abcdef-0123456789';
+const addDays = (d, n) => {
+  const x = new Date(d + 'T00:00:00Z');
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+};
+/* ═══ A LICENCE A CUSTOMER CAN EDIT IS NOT A LICENCE ════════════════════════
+   The commercial state of an install used to live only in the seller's
+   registry, on a screen the customer cannot see — so a trial ending was an
+   event that happened somewhere else, and the first the customer heard of it
+   was a phone call.
+
+   Migration 033 puts it where the till can read it, and the whole design turns
+   on WHO MAY WRITE IT. It is deliberately not a row in chain.setting, which
+   any rank-4 admin can edit: this is the "protection by absence of grant"
+   belt, the same shape the account plane uses, and it is asserted here
+   directly rather than inferred from the invariant test. */
+test('an outlet can read its licence and cannot write one', opts, async () => {
+  process.env.PLATFORM_KEY = PLATFORM_KEY;
+  // The platform sets it. That door is guarded by PLATFORM_KEY and audited.
+  const set = await postWith('/api/platform/licence',
+    { kind: 'trial', trialEnds: '2030-01-31', note: 'Set by the seller' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  assert.strictEqual(set.status, 200, JSON.stringify(set.body));
+  assert.strictEqual(set.body.licence.kind, 'trial');
+  assert.strictEqual(set.body.licence.trialEnds, '2030-01-31');
+
+  // The outlet reads it — it has to, or the till cannot render the countdown.
+  const seen = await one('SELECT kind, trial_ends FROM chain.licence WHERE id = 1');
+  assert.strictEqual(seen.kind, 'trial');
+
+  /* And cannot move it. This is the assertion the whole plane exists for: an
+     admin who could write here would give themselves a year, and the seller
+     would have no way to know. */
+  for (const sql of [
+    "UPDATE chain.licence SET kind = 'paid' WHERE id = 1",
+    "UPDATE chain.licence SET trial_ends = '2099-12-31' WHERE id = 1",
+    "INSERT INTO chain.licence (id, kind) VALUES (1, 'paid')",
+    'DELETE FROM chain.licence WHERE id = 1'
+  ]) {
+    await assert.rejects(() => one(sql), (e) => /permission denied/i.test(e.message),
+      'an outlet role must not be able to: ' + sql);
+  }
+
+  // Unchanged after every attempt.
+  const after = await one('SELECT kind, trial_ends FROM chain.licence WHERE id = 1');
+  assert.strictEqual(after.kind, 'trial');
+  assert.strictEqual(String(after.trial_ends).slice(0, 10), '2030-01-31');
+});
+
+test('the platform refuses a licence that contradicts itself', opts, async () => {
+  process.env.PLATFORM_KEY = PLATFORM_KEY;
+  /* A paid install counting down to a date is a contradiction the customer's
+     own screen would have to render, so it is refused by name here rather
+     than stored and quietly ignored — which is how a screen ends up showing
+     "Paid · 3 days left". */
+  const bad = await postWith('/api/platform/licence',
+    { kind: 'paid', trialEnds: '2030-01-31' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  assert.strictEqual(bad.status, 400);
+  assert.match(bad.body.error, /only a trial/i);
+
+  const nokind = await postWith('/api/platform/licence', { kind: 'gold' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  assert.strictEqual(nokind.status, 400);
+
+  // And the door is the platform's alone.
+  const nokey = await post('/api/platform/licence', { kind: 'paid' });
+  assert.strictEqual(nokey.status, 401, 'no key, no write');
+});
+
+test('a re-push of the same licence writes no new trail', opts, async () => {
+  process.env.PLATFORM_KEY = PLATFORM_KEY;
+  /* Mission Control reconciles every install on every dashboard load, which is
+     what makes the copy self-healing. If each of those wrote a trail row, the
+     trail would carry thirty identical entries an hour and the one real change
+     would be unfindable in it. */
+  const send = () => postWith('/api/platform/licence',
+    { kind: 'trial', trialEnds: '2030-06-30', note: 'steady' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+
+  const first = await send();
+  assert.strictEqual(first.body.changed, true, 'the first push moved something');
+  const n1 = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'licence_set'");
+
+  const again = await send();
+  assert.strictEqual(again.body.changed, false, 'an identical push changes nothing');
+  const n2 = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'licence_set'");
+  assert.strictEqual(n2.n, n1.n, 'and writes no row');
+
+  // A real change does.
+  await postWith('/api/platform/licence', { kind: 'paid' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  const n3 = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'licence_set'");
+  assert.strictEqual(n3.n, n1.n + 1, 'a change is on the trail, exactly once');
+});
+
+test('the till is told what it is on, and how long is left', opts, async () => {
+  process.env.PLATFORM_KEY = PLATFORM_KEY;
+  await postWith('/api/platform/licence',
+    { kind: 'trial', trialEnds: addDays(today(), 5), note: 'Ends Friday' },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const l = boot.body.kpos.LICENCE;
+  assert.ok(l, 'the bootstrap publishes it');
+  assert.strictEqual(l.kind, 'trial');
+  assert.strictEqual(l.days, 5,
+    "counted on the OUTLET's own calendar, not the container's — a trial must"
+    + ' not expire at seven in the evening because the box is in UTC');
+  assert.strictEqual(l.note, 'Ends Friday');
+
+  /* An install nobody has sold has NO licence, and that is published as null
+     rather than as a trial with an invented deadline. A countdown on a demo
+     box is exactly the kind of number this build refuses to make up. */
+  await asOwner('DELETE FROM chain.licence WHERE id = 1');
+  const bare = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(bare.body.kpos.LICENCE, null,
+    'no licence is a real answer, and it is silence rather than a guess');
+});
+
+test('asking for a plan is an event the platform can read back', opts, async () => {
+  process.env.PLATFORM_KEY = PLATFORM_KEY;
+  /* The customer's one action. It is audit-only by design: a plan is not
+     something an install can grant itself, and the consequence lives in
+     Mission Control. What has to survive is WHO asked, WHEN, and FOR WHAT. */
+  await push([{ opId: uuid(), kind: 'plan_request', payload: {
+    entity: 'install', want: 'yearly', note: 'Two more outlets in March' } }]);
+
+  const sum = await getWith('/api/platform/summary',
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  assert.strictEqual(sum.status, 200);
+  const pr = sum.body.planRequest;
+  assert.ok(pr, 'the summary carries it: ' + JSON.stringify(sum.body.planRequest));
+  assert.strictEqual(pr.want, 'yearly');
+  assert.strictEqual(pr.note, 'Two more outlets in March');
+  assert.ok(pr.at, 'with the moment it was asked');
+
+  // And the till knows it has already asked, so the control does not offer to
+  // ask again as though the first one went nowhere.
+  await postWith('/api/platform/licence', { kind: 'trial', trialEnds: addDays(today(), 3) },
+    { authorization: 'Bearer ' + PLATFORM_KEY });
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.ok(boot.body.kpos.LICENCE.asked, 'published as asked');
 });
 
 test('a stranger cannot walk phone numbers and harvest the customer roster',
