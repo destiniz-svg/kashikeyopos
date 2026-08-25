@@ -161,7 +161,21 @@ app.post('/api/site/signup',
           'INSERT INTO panel.signup (store_name, contact_name, email, phone, island, note)'
           + ' VALUES ($1,$2,$3,$4,$5,$6)', [store, name, email, phone, island, note]);
       }
-      res.json({ ok: true });
+      /* SELF-SERVE: the row above is a lead, not a gate. Nobody waits for a
+         seller to press a button any more — the customer confirms their email
+         on the app and their database is created for them there.
+
+         The handover is a LINK, not a background call: creating a business
+         needs a verified address, and the only place an address can be
+         verified is where the code was sent. Doing it here would mean this
+         form — which anybody on the internet can post — reaching CREATE
+         DATABASE, which is exactly the door that must stay shut.
+
+         Empty when APP_URL is unset, and the page says so rather than
+         offering a button that goes nowhere. */
+      res.json({ ok: true,
+        next: APP_URL ? APP_URL + '/account?new=1&store=' + encodeURIComponent(store) : '',
+        selfServe: !!APP_URL });
     } catch (e) { next(e); }
   });
 

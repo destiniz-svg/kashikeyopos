@@ -2520,6 +2520,23 @@ nothing. A holder that dies releases it, so a killed container cannot wedge the
 next boot. `test/migrate.test.js` runs the real runner twice at once against a
 cold database; without the lock it fails the way the install did.
 
+**Signing up creates the database, and no seller is in the loop.** The website
+takes the lead row it always took, then hands the customer to the app: creating
+a business needs a VERIFIED address, and the only place an address can be
+verified is where the code was sent. `POST /api/account/business` is the whole
+door, and three things stand between the internet and `CREATE DATABASE` — a
+token, a verified address (an unverified one is a string somebody typed, and
+minting infrastructure for it means a bot with a wordlist mints
+infrastructure), and a ceiling per account, because a verified address is still
+one address and "as many as you like" is a bill somebody else pays. Rate-limited
+per ACCOUNT rather than per IP: a restaurant's wifi is one address for a whole
+room, and what is worth bounding here is spend, not identity.
+
+No outlet is created with the business. Its name, timezone, currency and handle
+are all things the customer is about to type in onboarding, and inventing them
+so they can be overwritten is how a store ends up trading under "Outlet 1" in
+UTC.
+
 **Updates run per business, or across the fleet.** `npm run migrate` migrates
 the registry and then every business database; `-- --business <id>` moves one;
 `-- --dry-run` lists who is at what version. Boot does the same in-process when

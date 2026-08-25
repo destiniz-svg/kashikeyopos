@@ -244,6 +244,81 @@ test('an owner whose business cannot be read is told so, not sent to onboarding'
     assert.ok(trail.rows[0].n >= 1, 'and it reached the trail rather than a .catch');
   });
 
+test('a verified account creates its own business, and an unverified one cannot',
+  opts, async () => {
+    /* Self-serve, end to end at the seam that matters: the only thing between
+       the internet and CREATE DATABASE. */
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/account', require('../src/routes/account.js'));
+    app.use((e, rq, rs, nx) => rs.status(e.status || 500).json({ error: e.message })); // eslint-disable-line
+    const srv = app.listen(0);
+    const base = 'http://127.0.0.1:' + srv.address().port;
+    const post = (p, body, tok) => fetch(base + p, { method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' },
+        tok ? { authorization: 'Bearer ' + tok } : {}),
+      body: JSON.stringify(body) })
+      .then(async (r) => ({ status: r.status, body: await r.json() }));
+
+    try {
+      const email = 'self-' + Date.now() + '@example.mv';
+      process.env.ACCOUNT_CODE_ECHO = '1';
+      const up = await post('/api/account/signup', { email: email, password: 'a-long-password' });
+      assert.strictEqual(up.status, 200, JSON.stringify(up.body));
+
+      // Unverified: refused, and told what to do rather than given a 500.
+      const acct = await db.control().query(
+        'SELECT id FROM chain.account WHERE lower(email) = lower($1)', [email]);
+      const signedIn = await post('/api/account/signin',
+        { email: email, password: 'a-long-password' });
+      assert.strictEqual(signedIn.status, 200, JSON.stringify(signedIn.body));
+      const token = signedIn.body.token;
+
+      const tooSoon = await post('/api/account/business', { name: 'Too Soon' }, token);
+      assert.strictEqual(tooSoon.status, 403,
+        'an unverified address must not mint infrastructure');
+      assert.match(tooSoon.body.error, /confirm your email/);
+
+      // Verify the way a customer does, then create.
+      await db.control().query(
+        'UPDATE chain.account SET verified_at = now() WHERE id = $1', [acct.rows[0].id]);
+      const made = await post('/api/account/business', { name: 'Self Serve Cafe' }, token);
+      assert.strictEqual(made.status, 201, JSON.stringify(made.body));
+      assert.strictEqual(made.body.next, 'onboarding');
+
+      const row = await db.control().query(
+        'SELECT * FROM chain.business WHERE id = $1', [made.body.businessId]);
+      assert.strictEqual(row.rows[0].status, 'live');
+      assert.strictEqual(row.rows[0].db_name, db.businessDb(made.body.businessId));
+
+      // Owned, and the trail says who and when.
+      const owns = await db.control().query(
+        "SELECT role FROM chain.account_business WHERE account_id = $1 AND business_id = $2",
+        [acct.rows[0].id, made.body.businessId]);
+      assert.strictEqual(owns.rows[0].role, 'owner');
+      const trail = await db.control().query(
+        "SELECT count(*)::int AS n FROM chain.audit WHERE action = 'business_created'");
+      assert.ok(trail.rows[0].n >= 1);
+
+      // No outlet is invented — onboarding asks for its name, zone and currency.
+      const outlets = await db.control().query(
+        'SELECT count(*)::int AS n FROM chain.outlet_directory WHERE business_id = $1',
+        [made.body.businessId]);
+      assert.strictEqual(outlets.rows[0].n, 0, 'nothing is guessed on their behalf');
+
+      // A ceiling, because a verified address is still one address.
+      process.env.MAX_BUSINESSES_PER_ACCOUNT = '1';
+      const second = await post('/api/account/business', { name: 'One Too Many' }, token);
+      assert.strictEqual(second.status, 429);
+      assert.match(second.body.error, /already has 1 businesses/);
+      delete process.env.MAX_BUSINESSES_PER_ACCOUNT;
+    } finally {
+      delete process.env.ACCOUNT_CODE_ECHO;
+      srv.close();
+    }
+  });
+
 test('the cluster is left clean', opts, async () => {
   await db.shutdown();
   const n = await DB.dropBusinessDatabases();

@@ -561,6 +561,70 @@ async function linkIdentity(provider, subject, addr, name, verified) {
 }
 
 /* ── who am I, and what do I own ─────────────────────────────────────────── */
+/* ── a verified account creates its own business ─────────────────────────
+   This is the whole of self-serve: no seller in the loop, no Railway project,
+   no secrets handed over. The customer signs up on the website, proves the
+   address is theirs, and a database is created for them.
+
+   THREE THINGS STAND BETWEEN THE INTERNET AND `CREATE DATABASE`, because that
+   is a statement anonymous traffic must never reach:
+
+     · a token, so the caller is an account at all;
+     · a VERIFIED address — an unverified one is a string somebody typed, and
+       minting infrastructure for it means a bot with a wordlist mints
+       infrastructure;
+     · a ceiling per account, because a verified address is still one address
+       and "as many as you like" is a bill somebody else pays.
+
+   Rate-limited on top of that, per account rather than per IP: a shared
+   restaurant wifi is one address for a whole room, and the thing worth
+   bounding here is spend, not identity. */
+const makesBusiness = { id: [5, 60 * 60e3], ip: [20, 60 * 60e3] };
+/* Read per call, not at module load, so it can be changed without a restart —
+   and written the long way rather than `|| 3`, because an explicit 0 is a
+   meaningful value (a deliberate freeze: nobody creates anything) and `|| 3`
+   would silently read it as unset. Same trap READY_TTL_MS documents. */
+function maxPerAccount() {
+  const raw = process.env.MAX_BUSINESSES_PER_ACCOUNT;
+  return raw === undefined || raw === '' ? 3 : Number(raw);
+}
+
+r.post('/business', requireAccountGate, gate('acct-business', makesBusiness,
+  (req) => String((req.account || {}).id || '')), async function (req, res, next) {
+  try {
+    if (!req.account.verified_at) {
+      return res.status(403).json({
+        error: 'confirm your email address first — we sent you a code' });
+    }
+    const name = String((req.body || {}).name || '').trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: 'What is your business called?' });
+
+    const mine = await control().query(
+      'SELECT count(*)::int AS n FROM chain.account_business WHERE account_id = $1',
+      [req.account.id]);
+    if (mine.rows[0].n >= maxPerAccount()) {
+      return res.status(429).json({ error: 'This account already has '
+        + mine.rows[0].n + ' businesses. Ask us to raise the limit.' });
+    }
+
+    const biz = await require('../business').createBusiness({ name: name });
+    await control().query(
+      "INSERT INTO chain.account_business (account_id, business_id, role)"
+      + " VALUES ($1,$2,'owner') ON CONFLICT DO NOTHING", [req.account.id, biz.id]);
+    await logAccount('business_created', req.account.id,
+      { business: biz.id, name: name });
+
+    /* No outlet yet, deliberately: its name, timezone, currency and handle are
+       all things the customer is about to type in onboarding, and inventing
+       them so they can be overwritten is how a store ends up trading under
+       "Outlet 1" in UTC. */
+    res.status(201).json({ businessId: biz.id, name: biz.name, next: 'onboarding' });
+  } catch (e) { next(e); }
+});
+
+// The guard has to run before the rate limiter can key on the account.
+function requireAccountGate(req, res, next) { return requireAccount(req, res, next); }
+
 async function requireAccount(req, res, next) {
   /* THE HEADER, AND ONLY THE HEADER. This used to fall back to `?at=`, and
      nothing has ever sent it — but a credential in a query string is a
