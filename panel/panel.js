@@ -12,7 +12,7 @@
      before sign-in. Off is a deployment that never configured it — the manual
      sheet is still the whole feature, and the reason is shown rather than the
      control being greyed out for nothing. */
-  var AUTO = { ok: false, why: "" };
+  var AUTO = { ok: false, why: "", warn: "" };
   try { TOKEN = localStorage.getItem("panel.token"); } catch (e) {}
   var root = document.getElementById("app");
   var timer = null;
@@ -583,6 +583,14 @@
             + "service and its address; mints every secret; waits for the first deploy; "
             + "then emails the address and setup code. It spends money on your Railway "
             + "account." })]));
+        /* A gap that does not STOP the run still has to be seen before it. The
+           email transport is the one that matters: without it the install comes
+           up fine and the first person to sign up never gets a code, which is
+           how it was found. */
+        if (AUTO.warn) {
+          kids.push(el("div", { class: "err", style: "margin-top:10px;display:block" },
+            [el("span", { text: AUTO.warn })]));
+        }
         kids.push(el("div", { class: "acts" }, [build]));
         kids.push(el("div", { style: "margin-top:12px;text-align:center" }, [toggle]));
       } else {
@@ -676,7 +684,10 @@
 
   /* ── boot ─────────────────────────────────────────────────────────────── */
   api("GET", "/api/state").then(function (r) {
-    if (r.body) { AUTO = { ok: !!r.body.auto, why: r.body.autoWhy || "" }; }
+    if (r.body) {
+      AUTO = { ok: !!r.body.auto, why: r.body.autoWhy || "",
+        warn: r.body.autoWarn || "" };
+    }
     if (r.body && r.body.setup) return showSetup();
     if (TOKEN) return showDash();
     showSignin();

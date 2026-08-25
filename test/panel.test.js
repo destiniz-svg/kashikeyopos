@@ -91,6 +91,43 @@ test('first-run setup is gated on the environment, then spent', opts, async () =
   assert.strictEqual(r.status, 409, 'the panel is already set up');
 });
 
+/* A WARNING NOBODY SEES IS NOT A WARNING.
+
+   ready() gained a `warn` for a panel with no email transport to pass on —
+   which is the gap that made the first live install unclaimable — and the
+   state endpoint dropped it on the floor, so the sheet rendered nothing. The
+   same defect class as a control that lies: the code was careful and the
+   operator learned nothing. */
+test('a gap that does not stop a run is still reported before one', opts, async () => {
+  const before = { tok: process.env.RAILWAY_API_TOKEN, repo: process.env.INSTALL_REPO,
+    key: process.env.RESEND_API_KEY, from: process.env.EMAIL_FROM };
+  try {
+    // Configured to provision, but with no transport to hand on.
+    process.env.RAILWAY_API_TOKEN = 'tok_for_this_test';
+    process.env.INSTALL_REPO = 'owner/repo';
+    delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
+
+    const r = await call(panelBase, 'GET', '/api/state');
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.auto, true, 'still allowed — an install with no email works');
+    assert.strictEqual(r.body.autoWhy, null, 'so there is no reason it is off');
+    assert.match(r.body.autoWarn, /RESEND_API_KEY/,
+      'but the gap reaches the screen, by the name of the variable that closes it');
+
+    // And once it is configured, nothing is warned about.
+    process.env.RESEND_API_KEY = 're_test_key';
+    process.env.EMAIL_FROM = 'Test <no-reply@example.com>';
+    const ok = await call(panelBase, 'GET', '/api/state');
+    assert.strictEqual(ok.body.autoWarn, null, 'a configured panel says nothing');
+  } finally {
+    ['RAILWAY_API_TOKEN', 'INSTALL_REPO', 'RESEND_API_KEY', 'EMAIL_FROM'].forEach((k, i) => {
+      const v = [before.tok, before.repo, before.key, before.from][i];
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    });
+  }
+});
+
 test('sign-in never says whether an address is an admin', opts, async () => {
   const known = await call(panelBase, 'POST', '/api/signin',
     { email: 'seller@example.com', password: 'wrong-password-here' });

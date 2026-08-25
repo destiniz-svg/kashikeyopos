@@ -323,7 +323,8 @@ app.get('/api/state', async (req, res, next) => {
   try {
     const q = await pool.query('SELECT count(*)::int AS n FROM panel.admin');
     const auto = RAILWAY.ready();
-    res.json({ setup: q.rows[0].n === 0, auto: auto.ok, autoWhy: auto.why || null });
+    res.json({ setup: q.rows[0].n === 0, auto: auto.ok,
+      autoWhy: auto.why || null, autoWarn: auto.warn || null });
   } catch (e) { next(e); }
 });
 
@@ -602,6 +603,7 @@ app.get('/api/provision/config', authed, (req, res) => {
   res.json({
     ok: gate3.ok,
     why: gate3.why || null,
+    warn: gate3.warn || null,
     repo: process.env.INSTALL_REPO || null,
     branch: process.env.INSTALL_BRANCH || 'main',
     region: process.env.INSTALL_REGION || null,
