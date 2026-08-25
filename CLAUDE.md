@@ -41,7 +41,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        027 reserve panel · 028 credit outstanding
                        029 void a sale · 030 the polled tables
                        031 yield is an outlet fact · 032 a batch is an item
-                       033 the licence plane
+                       033 the licence plane · 034 reserve the mail names
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -991,6 +991,19 @@ name through a trigger reading `chain.reserved_handle`. `www`, `mail`, `api`,
 `webmail` and `demo` are infrastructure — the last two are probed by scanners on
 the live domain daily, and before 012 a store could have claimed either.
 
+**A wildcard means no name is obviously free**, which is the trap migration 034
+closes. Stores are served by `*.kashikeyopos.com`, so every name under the base
+domain already answers whether anybody meant it to or not — and the mail
+transport wants some of them. SPF is published at `send`; click tracking wants
+a CNAME at whatever the tracking subdomain is set to. Neither was reserved, so
+a store could have taken `send` or `track`, laminated it onto forty table
+cards, and had its portal broken the day somebody added the record the provider
+asked for. A dead QR is bad; a QR that dies because of a change nobody
+connected to it is worse, because nobody will look there. 034 reserves the
+names an email provider reaches for, and a store already holding one keeps
+trading — evicting a business that has printed its handle is not a migration's
+call — but is named on the trail so somebody can have the conversation.
+
 **Nothing spells a hostname.** `src/handle.js` is the only place that knows the
 base domain (`PORTAL_BASE_DOMAIN`, falling back to the host of `PUBLIC_URL`),
 and it is published to the terminal in the bootstrap as `PORTAL.base`. A domain
@@ -1766,7 +1779,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 293 tests
+npm test                          # 295 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

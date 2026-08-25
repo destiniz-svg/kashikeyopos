@@ -1672,3 +1672,36 @@ test('a dangling platform reference is named, not sent with', async () => {
     else process.env.EMAIL_FROM = keep.f;
   }
 });
+
+/* ═══ THE NAMES THE MAIL TRANSPORT TAKES ════════════════════════════════════
+   Stores live on `<handle>.kashikeyopos.com` behind a WILDCARD, so every name
+   under the base domain already answers whether anybody meant it to or not.
+   That is what makes a new store work the moment its handle is taken, and it
+   is also why "is this name free" cannot be answered by looking it up.
+
+   The mail provider wants some of those names: SPF is published at `send`, and
+   click tracking wants a CNAME at the tracking subdomain. Neither was
+   reserved, so a store could have taken `send` or `track`, laminated it onto
+   forty table cards, and had its portal broken the day somebody added the DNS
+   record the provider asked for. */
+test('a store cannot take a name the mail transport needs', () => {
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '034_reserve_the_mail_names.sql'), 'utf8');
+
+  /* `send` and `track` are the two that are actually claimed by DNS records
+     today; the rest are the names a provider reaches for next. */
+  ['send', 'track', 'noreply', 'links', 'click', 'bounce', 'unsubscribe',
+    'dkim', 'dmarc'].forEach((n) => {
+    assert.ok(mig.indexOf("('" + n + "'") > 0, n + ' is reserved');
+  });
+  assert.match(mig, /ON CONFLICT \(name\) DO NOTHING/,
+    're-running it is a no-op, like 012 and 027');
+
+  /* A store that somehow already holds one keeps trading. Taking a handle away
+     from a business that has printed it is not a migration's call — but it is
+     named on the trail so somebody can have the conversation. */
+  assert.match(mig, /handle_now_reserved/,
+    'an existing holder is named rather than evicted');
+  assert.ok(!/DELETE FROM chain\.outlet|UPDATE chain\.outlet SET slug/.test(mig),
+    'and nothing renames or removes a live store');
+});
