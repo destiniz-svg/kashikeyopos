@@ -25,7 +25,13 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { owner } = require('../db');
+/* THE ACCOUNT PLANE IS IN THE REGISTRY, NOT IN A BUSINESS. One account may own
+   several businesses, so "is this address known" cannot be a question asked of
+   one business's database — it would have to search every database in the
+   cluster, and that is the one question this file promises twice over it never
+   answers. `control()` is the registry; `ownerFor(db)` opens a business's own
+   database for the parts of a session that only it knows. */
+const { control, ownerFor } = require('../db');
 const { hashPin, pinMatches, signAccount, verifyAccount } = require('../secrets');
 const email = require('../email');
 const { baseDomain } = require('../handle');
@@ -53,13 +59,13 @@ function mint(account) {
 }
 
 async function byEmail(addr) {
-  const q = await owner().query(
+  const q = await control().query(
     'SELECT * FROM chain.account WHERE lower(email) = lower($1)', [addr]);
   return q.rows[0] || null;
 }
 
 async function logAccount(action, accountId, detail) {
-  await owner().query(
+  await control().query(
     "INSERT INTO chain.audit (outlet_id, action, entity, entity_id, after, scope)"
     + " VALUES (NULL,$1,'account',$2,$3,'group')",
     [action, accountId, JSON.stringify(detail || {})]).catch(() => {});
@@ -70,7 +76,7 @@ async function logAccount(action, accountId, detail) {
 async function issueCode(account, purpose, brand) {
   const value = code6();
   const h = hashPin(value, null);
-  await owner().query(
+  await control().query(
     'UPDATE chain.account SET code_hash = $2, code_salt = $3,'
     + " code_exp = now() + ($4 || ' minutes')::interval, code_tries = 0,"
     + ' code_purpose = $5 WHERE id = $1',
@@ -164,7 +170,7 @@ r.post('/signup', gate('acct-code', sendsMail, who), async function (req, res, n
     }
 
     const h = password ? hashPin(password, null) : { hash: null, salt: null };
-    const q = await owner().query(
+    const q = await control().query(
       'INSERT INTO chain.account (email, name, password_hash, password_salt)'
       + ' VALUES ($1,$2,$3,$4) RETURNING *',
       [addr, name || null, h.hash, h.salt]);
@@ -213,7 +219,7 @@ r.post('/code/verify', gate('acct-guess', guesses, who), async function (req, re
       return res.status(429).json({ error: 'too many attempts — ask for a new code' });
     }
     if (!pinMatches(value, account.code_hash, account.code_salt)) {
-      await owner().query('UPDATE chain.account SET code_tries = code_tries + 1 WHERE id = $1',
+      await control().query('UPDATE chain.account SET code_tries = code_tries + 1 WHERE id = $1',
         [account.id]);
       await logAccount('account_code_failed', account.id, { tries: account.code_tries + 1 });
       return res.status(401).json(no);
@@ -225,7 +231,7 @@ r.post('/code/verify', gate('acct-guess', guesses, who), async function (req, re
 });
 
 async function clearCode(id, verified) {
-  await owner().query(
+  await control().query(
     'UPDATE chain.account SET code_hash = NULL, code_salt = NULL, code_exp = NULL,'
     + ' code_tries = 0, code_purpose = NULL, last_seen_at = now(),'
     + ' verified_at = CASE WHEN $2 THEN coalesce(verified_at, now()) ELSE verified_at END,'
@@ -256,7 +262,7 @@ r.post('/signin', gate('acct-guess', guesses, who), async function (req, res, ne
       const n = account.failed + 1;
       // Cast explicitly: the same placeholder is read as a value and as a
       // comparand, and Postgres will not deduce one type for both on its own.
-      await owner().query(
+      await control().query(
         'UPDATE chain.account SET failed = $2::int,'
         + " locked_until = CASE WHEN $2::int >= $3::int"
         + "   THEN now() + ($4::text || ' minutes')::interval"
@@ -266,7 +272,7 @@ r.post('/signin', gate('acct-guess', guesses, who), async function (req, res, ne
       return res.status(401).json(no);
     }
     if (account.status !== 'active') return res.status(403).json({ error: 'this account is suspended' });
-    await owner().query(
+    await control().query(
       'UPDATE chain.account SET failed = 0, locked_until = NULL, last_seen_at = now()'
       + ' WHERE id = $1', [account.id]);
     await logAccount('account_sign_in', account.id, { by: 'password' });
@@ -280,7 +286,7 @@ r.post('/password', requireAccount, async function (req, res, next) {
   try {
     if (next_.length < 8) return res.status(400).json({ error: 'a password needs at least eight characters' });
     const h = hashPin(next_, null);
-    await owner().query(
+    await control().query(
       'UPDATE chain.account SET password_hash = $2, password_salt = $3 WHERE id = $1',
       [req.account.id, h.hash, h.salt]);
     await logAccount('account_password_set', req.account.id, {});
@@ -503,11 +509,11 @@ function readJwtClaims(jwt) {
    somebody who signed up with a password and later taps "Continue with
    Google" means to reach the same business. */
 async function linkIdentity(provider, subject, addr, name, verified) {
-  const found = await owner().query(
+  const found = await control().query(
     'SELECT a.* FROM chain.account_identity i JOIN chain.account a ON a.id = i.account_id'
     + ' WHERE i.provider = $1 AND i.subject = $2', [provider, subject]);
   if (found.rows.length) {
-    await owner().query('UPDATE chain.account_identity SET last_seen_at = now(),'
+    await control().query('UPDATE chain.account_identity SET last_seen_at = now(),'
       + ' email = coalesce($3, email) WHERE provider = $1 AND subject = $2',
     [provider, subject, addr || null]);
     return found.rows[0];
@@ -532,7 +538,7 @@ async function linkIdentity(provider, subject, addr, name, verified) {
   }
 
   if (!account) {
-    const q = await owner().query(
+    const q = await control().query(
       'INSERT INTO chain.account (email, name, verified_at) VALUES ($1,$2,$3)'
       + ' RETURNING *',
       [addr || (provider + ':' + subject), name || null,
@@ -544,10 +550,10 @@ async function linkIdentity(provider, subject, addr, name, verified) {
     await logAccount('account_signup', account.id, { by: provider });
   } else if (!account.verified_at) {
     // The provider has already proved the address; that is what verification is.
-    await owner().query('UPDATE chain.account SET verified_at = now() WHERE id = $1',
+    await control().query('UPDATE chain.account SET verified_at = now() WHERE id = $1',
       [account.id]);
   }
-  await owner().query(
+  await control().query(
     'INSERT INTO chain.account_identity (account_id, provider, subject, email)'
     + ' VALUES ($1,$2,$3,$4) ON CONFLICT (provider, subject) DO NOTHING',
     [account.id, provider, subject, addr || null]);
@@ -566,7 +572,7 @@ async function requireAccount(req, res, next) {
   const claims = verifyAccount(raw);
   if (!claims || !claims.a) return res.status(401).json({ error: 'sign in again' });
   try {
-    const q = await owner().query('SELECT * FROM chain.account WHERE id = $1', [claims.a]);
+    const q = await control().query('SELECT * FROM chain.account WHERE id = $1', [claims.a]);
     const account = q.rows[0];
     if (!account || account.status !== 'active') {
       return res.status(401).json({ error: 'sign in again' });
@@ -577,15 +583,47 @@ async function requireAccount(req, res, next) {
 }
 
 async function session(accountId) {
-  const q = await owner().query('SELECT * FROM chain.account WHERE id = $1', [accountId]);
+  const q = await control().query('SELECT * FROM chain.account WHERE id = $1', [accountId]);
   const account = q.rows[0];
-  const owned = await owner().query(
-    'SELECT ao.outlet_id, ao.role, o.code, o.name, o.slug, o.currency, o.tax_code'
-    + ' FROM chain.account_outlet ao JOIN chain.outlet o ON o.id = ao.outlet_id'
-    + ' WHERE ao.account_id = $1 ORDER BY ao.outlet_id', [accountId]);
-  const co = await owner().query(
-    'SELECT id, legal_name, base_currency FROM chain.company WHERE owner_account_id = $1',
-    [accountId]);
+  /* What they own is in the registry; what each business IS lives in that
+     business's own database. Two reads rather than one join, because they are
+     two databases now — and a business that is still building, or whose
+     database is briefly unreachable, must not take the whole sign-in down. */
+  const mine = await control().query(
+    'SELECT b.id, b.name, b.db_name, b.status, ab.role FROM chain.account_business ab'
+    + ' JOIN chain.business b ON b.id = ab.business_id'
+    + ' WHERE ab.account_id = $1 ORDER BY b.id', [accountId]);
+
+  const outlets = [];
+  const unreachable = [];
+  let company = null;
+  for (const b of mine.rows) {
+    if (b.status !== 'live') { unreachable.push({ id: b.id, name: b.name,
+      why: b.status === 'building' ? 'still being set up' : b.status }); continue; }
+    try {
+      const biz = ownerFor(b.db_name);
+      const o = await biz.query('SELECT id AS outlet_id, code, name, slug, currency,'
+        + ' tax_code FROM chain.outlet ORDER BY id');
+      o.rows.forEach((r) => outlets.push(Object.assign({ business_id: b.id,
+        role: b.role }, r)));
+      if (!company) {
+        const co = await biz.query(
+          'SELECT id, legal_name, base_currency FROM chain.company LIMIT 1');
+        company = co.rows[0] || null;
+      }
+    } catch (e) {
+      /* NAMED, NEVER SWALLOWED. Dropping this on the floor sends the owner of
+         a live business to the onboarding wizard as though they had never set
+         one up — telling them they own nothing when the truth is that their
+         store could not be read. That is the "a control does what it says"
+         class, and it would be worse here than most: the wizard's first act is
+         to create a business. */
+      unreachable.push({ id: b.id, name: b.name, why: 'could not be reached' });
+      await logAccount('account_business_unreadable', accountId,
+        { business: b.id, error: e.message });
+    }
+  }
+
   return {
     token: mint(account),
     account: {
@@ -593,10 +631,17 @@ async function session(accountId) {
       verified: !!account.verified_at,
       hasPassword: !!account.password_hash
     },
-    company: co.rows[0] || null,
-    outlets: owned.rows,
-    // What the browser should do next, decided here rather than guessed there.
-    next: owned.rows.length ? 'terminal' : 'onboarding'
+    company: company,
+    businesses: mine.rows.map((b) => ({ id: b.id, name: b.name,
+      status: b.status, role: b.role })),
+    outlets: outlets,
+    // Businesses this account owns that could not be shown, and why. Empty is
+    // the ordinary case; a non-empty list is never rendered as "no stores".
+    unreachable: unreachable,
+    /* What the browser should do next, decided here rather than guessed there.
+       Onboarding ONLY when they genuinely own nothing — an owner whose store
+       is merely unreadable must not be walked into creating a second one. */
+    next: outlets.length ? 'terminal' : (mine.rows.length ? 'unavailable' : 'onboarding')
   };
 }
 

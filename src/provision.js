@@ -5,12 +5,21 @@
    branch — both behind rank 5. Nothing else imports this. */
 
 const { owner, forget } = require('./db');
+const registry = require('./business');
 const { outletPassword } = require('./secrets');
 const handle = require('./handle');
 
-async function nextOutletId(client) {
-  const q = await client.query('SELECT coalesce(max(id), 0) + 1 AS n FROM chain.outlet');
-  return Number(q.rows[0].n);
+/* OUTLET IDS ARE ALLOCATED GLOBALLY. This used to be max(id)+1 inside one
+   install, so every install had an outlet 1 — fine while a customer was a whole
+   install, and a cross-tenant hazard the moment two businesses share a cluster:
+   a session token names an outlet, and that name has to resolve to exactly one
+   store anywhere in the estate. Same class as the install-uuid fence (026).
+   The registry allocates and records the outlet in one act, so an id can never
+   exist without a route home. */
+async function allocateOutletId() {
+  const db = await owner().query('SELECT current_database() AS d');
+  const businessId = await registry.businessForDb(db.rows[0].d);
+  return registry.nextOutletId(businessId);
 }
 
 /* Creates schema outlet_<id>, role outlet_<id>_app, the document series and
@@ -22,7 +31,7 @@ async function provisionOutlet(opts) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const id = opts.id || await nextOutletId(client);
+    const id = opts.id || await allocateOutletId();
     const code = String(opts.code || ('KO' + id)).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     if (!code) throw Object.assign(new Error('outlet code required'), { status: 400 });
     if (!opts.name) throw Object.assign(new Error('outlet name required'), { status: 400 });

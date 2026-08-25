@@ -143,21 +143,70 @@ async function peerCaPem() {
   }
 }
 
-let ownerPool = null;
-function owner() {
-  if (!ownerPool) {
-    const cfg = process.env.DATABASE_URL
+/* ── one cluster, many databases ────────────────────────────────────────────
+   A business gets its own DATABASE, not a schema: a sale moves
+   chain.member.points and credit_used in the same transaction as its journal,
+   and Postgres has no cross-database transaction, so everything one sale
+   touches has to sit in one database. The outlets inside a business keep the
+   schema-and-role belt they have always had.
+
+   `ownerFor(db)` is the owner credential pointed at a named database. It is
+   how the control registry is read, how a new business database is migrated,
+   and how a business's own control plane is reached. `owner()` — no argument —
+   is the connection's default database and is exactly what it always was, so
+   nothing that already worked changes. */
+const ownerPools = new Map();
+
+function ownerFor(dbName) {
+  const key = dbName || '';
+  if (!ownerPools.has(key)) {
+    /* A connection string names a database in its path, so an override has to
+       replace it rather than sit beside it — pg reads `database` after the
+       string, but only when the string is parsed, which it is not. */
+    const cfg = process.env.DATABASE_URL && !dbName
       ? { connectionString: process.env.DATABASE_URL, ssl }
       : Object.assign(baseConn(), {
-        user: process.env.PGUSER || 'postgres',
-        password: process.env.PGPASSWORD || '',
+        user: process.env.PGUSER || urlUser() || 'postgres',
+        password: process.env.PGPASSWORD || urlPassword() || '',
         ssl
-      });
-    ownerPool = guarded(new Pool(Object.assign(cfg, { max: 3, connectionTimeoutMillis: CHECKOUT_MS,
-      application_name: 'kashikeyo-owner' })), 'owner');
+      }, dbName ? { database: dbName } : {});
+    ownerPools.set(key, guarded(new Pool(Object.assign(cfg, {
+      max: 3, connectionTimeoutMillis: CHECKOUT_MS,
+      application_name: 'kashikeyo-owner' + (dbName ? '-' + dbName : '')
+    })), 'owner' + (dbName ? ':' + dbName : '')));
   }
-  return ownerPool;
+  return ownerPools.get(key);
 }
+
+function owner() { return ownerFor(null); }
+
+function urlPart(pick) {
+  if (!process.env.DATABASE_URL) return '';
+  try { return decodeURIComponent(pick(new URL(process.env.DATABASE_URL)) || ''); }
+  catch (e) { return ''; }
+}
+function urlUser() { return urlPart((u) => u.username); }
+function urlPassword() { return urlPart((u) => u.password); }
+
+/* THE REGISTRY IS A DATABASE, AND IT IS NAMED, NEVER GUESSED. Falling back to
+   "whatever database this connection happens to be on" would silently make a
+   business database its own registry on a misconfigured deploy — the tables
+   would create, the accounts would land in the wrong place, and nothing would
+   say so until two customers had signed up. */
+const CONTROL_DB = () => String(process.env.CONTROL_DB || '').trim();
+
+function control() {
+  const db = CONTROL_DB();
+  if (!db) {
+    throw Object.assign(new Error('CONTROL_DB is not set — the registry'
+      + ' database has to be named, never guessed'), { status: 500 });
+  }
+  return ownerFor(db);
+}
+
+// What a business's database is called. One rule, so a name is never spelled
+// twice and a typo cannot point two businesses at one database.
+function businessDb(id) { return 'kashikeyo_biz_' + Number(id); }
 
 // ── one pool per outlet, each authenticating as that outlet's own role ───────
 const pools = new Map();
@@ -356,10 +405,12 @@ async function withOwner(fn) {
 }
 
 async function shutdown() {
-  const all = Array.from(pools.values());
-  if (ownerPool) all.push(ownerPool);
+  // Every owner pool, not just the default one: a fleet migration opens one
+  // per business database, and a pool nobody ends holds its backends open
+  // until Postgres times them out.
+  const all = Array.from(pools.values()).concat(Array.from(ownerPools.values()));
   if (reportPool) all.push(reportPool);
-  pools.clear(); ownerPool = null; reportPool = null;
+  pools.clear(); ownerPools.clear(); reportPool = null;
   await Promise.all(all.map((p) => p.end().catch(() => {})));
 }
 
@@ -371,6 +422,7 @@ function forget(outletId) {
 }
 
 module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
-  owner, poolFor, withOutlet, withOutletRead, withEstate, withOwner,
+  owner, ownerFor, control, businessDb, CONTROL_DB,
+  poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };

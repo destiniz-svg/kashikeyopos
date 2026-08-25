@@ -22,7 +22,21 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { owner, withOutlet } = require('../db');
+const { owner, withOutlet, control } = require('../db');
+
+/* Which business this outlet belongs to. The registry is the map; a business
+   database does not know its own registry id, and inventing one here would be
+   a second source of truth for the thing routing depends on. */
+async function businessIdOf(outletId) {
+  const q = await control().query(
+    'SELECT business_id FROM chain.outlet_directory WHERE outlet_id = $1',
+    [outletId]);
+  if (!q.rows.length) {
+    throw Object.assign(new Error('outlet ' + outletId + ' is in no business —'
+      + ' it was created without a registry entry'), { status: 500 });
+  }
+  return Number(q.rows[0].business_id);
+}
 const { provisionOutlet } = require('../provision');
 const { normalise, shapeError, baseDomain, storeUrl, memberUrl } = require('../handle');
 const { hashPin, sign, verifyAccount } = require('../secrets');
@@ -356,11 +370,18 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
        the floor. A founder is usually both people; they are still two records,
        because one signs in with an email and the other taps four digits. */
     if (req.account) {
-      await owner().query(
-        'INSERT INTO chain.account_outlet (account_id, outlet_id, role, staff_id)'
-        + " VALUES ($1,$2,'owner',$3)"
-        + ' ON CONFLICT (account_id, outlet_id) DO UPDATE SET staff_id = $3',
-        [req.account.id, o.rows[0].id, staffId]);
+      /* Ownership is a REGISTRY fact now, not a business one: an account may
+         own several businesses, and "what do I own" has to be answerable
+         without opening every database in the cluster. The staff record stays
+         where the floor is — it is a different person's credential even when
+         it is the same human. */
+      await control().query(
+        'INSERT INTO chain.account_business (account_id, business_id, role)'
+        + " VALUES ($1,$2,'owner')"
+        + ' ON CONFLICT (account_id, business_id) DO NOTHING',
+        [req.account.id, await businessIdOf(o.rows[0].id)]);
+      await owner().query('UPDATE chain.company SET owner_account_id = $1'
+        + ' WHERE owner_account_id IS NULL', [req.account.id]).catch(() => {});
       await owner().query(
         "SELECT chain.log_anon($1,'outlet_owner_set','account',$2,$3)",
         [o.rows[0].id, req.account.id,

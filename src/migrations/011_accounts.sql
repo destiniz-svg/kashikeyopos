@@ -1,97 +1,32 @@
--- ═══ WHO OWNS THIS INSTALL ═════════════════════════════════════════════════
--- Until now the first person to reach an empty install claimed it with a name
--- and a PIN, and nothing above the outlet knew who they were. That works for a
--- till on a counter and not at all for a product people sign up to.
+-- ═══ THE ACCOUNT PLANE MOVED TO THE REGISTRY ════════════════════════════════
+-- This migration used to create chain.account, chain.account_identity and
+-- chain.account_outlet inside every install's database. That was right while
+-- the product was sold one install per customer, and is wrong now that a
+-- business is a DATABASE on a shared cluster:
 --
--- So there is now a plane ABOVE the outlet: an ACCOUNT, identified by an email
--- address, which owns companies and outlets. It is not a staff record and it
--- does not carry a rank on the floor —
+--   one account may own several businesses, so sign-in in a business database
+--   would have to search every database in the cluster to answer whether an
+--   address is known — and "is this address registered" is the one question
+--   src/routes/account.js promises twice over that it never reveals;
 --
---     an account signs up on the website and owns the business;
---     a staff member taps their face and keys four digits at the till.
+--   an account is authenticated ABOVE any outlet, before one has been chosen,
+--   so there is nothing for it to be scoped to down here.
 --
--- Those are different acts by different people at different moments, and
--- conflating them is how a waiter ends up able to change the company's TIN.
--- The account that completes onboarding becomes the outlet's owner AND gets a
--- rank-5 staff record for the floor, because the founder is usually both.
+-- The tables are now in src/migrations/control/001_registry.sql, verbatim. This
+-- file stays, under its own name and number, because a database that already
+-- applied it has to be told to let them go — and because deleting a migration
+-- is how two environments quietly stop being the same schema.
 --
--- Credentials are hashed with scrypt and a per-row salt, exactly like a staff
--- PIN. A social identity carries no password at all.
+-- The drop is CASCADE so it takes chain.company.owner_account_id's foreign key
+-- with it. The COLUMN survives on purpose: which account owns the business is
+-- still a fact the business knows, it just points at a row in another database
+-- now, the same way chain.outlet.slug points at the handle registry.
 -- ═══════════════════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS chain.account (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email         text NOT NULL,
-  name          text,
-  -- Null for an account that only ever signs in through Google or Apple.
-  password_hash text,
-  password_salt text,
-  -- A code is the same shape as a staff PIN: hashed, salted, expiring, and
-  -- spent on use. It is used both to verify a new email and to sign in.
-  code_hash     text,
-  code_salt     text,
-  code_exp      timestamptz,
-  code_tries    int NOT NULL DEFAULT 0,
-  code_purpose  text,
-  verified_at   timestamptz,
-  status        text NOT NULL DEFAULT 'active'
-                CHECK (status IN ('active','suspended')),
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  last_seen_at  timestamptz,
-  failed        int NOT NULL DEFAULT 0,
-  locked_until  timestamptz
-);
--- One account per address, however it is typed.
-CREATE UNIQUE INDEX IF NOT EXISTS account_email ON chain.account (lower(email));
+DROP TABLE IF EXISTS chain.account_outlet CASCADE;
+DROP TABLE IF EXISTS chain.account_identity CASCADE;
+DROP TABLE IF EXISTS chain.account CASCADE;
 
--- A social identity. The subject is the provider's own stable id — NOT the
--- email, which a person can change at the provider without telling us.
-CREATE TABLE IF NOT EXISTS chain.account_identity (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id uuid NOT NULL REFERENCES chain.account(id) ON DELETE CASCADE,
-  provider   text NOT NULL CHECK (provider IN ('google','apple')),
-  subject    text NOT NULL,
-  email      text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  last_seen_at timestamptz
-);
-CREATE UNIQUE INDEX IF NOT EXISTS account_identity_sub
-  ON chain.account_identity (provider, subject);
-CREATE INDEX IF NOT EXISTS account_identity_acct
-  ON chain.account_identity (account_id);
-
--- What an account owns. `owner` is the master admin — the account onboarding
--- was completed by — and there is exactly one per outlet.
-CREATE TABLE IF NOT EXISTS chain.account_outlet (
-  account_id uuid NOT NULL REFERENCES chain.account(id) ON DELETE CASCADE,
-  outlet_id  int  NOT NULL REFERENCES chain.outlet(id) ON DELETE CASCADE,
-  role       text NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','admin')),
-  staff_id   uuid,                         -- their record on the floor, if any
-  created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (account_id, outlet_id)
-);
-CREATE UNIQUE INDEX IF NOT EXISTS account_outlet_one_owner
-  ON chain.account_outlet (outlet_id) WHERE role = 'owner';
-
--- The company is owned by an account too: outlets are added under it later,
--- and the answer to "whose business is this" must not depend on which outlet
--- you happen to be looking at.
-ALTER TABLE chain.company ADD COLUMN IF NOT EXISTS owner_account_id uuid
-  REFERENCES chain.account(id);
-
--- ── the account plane is NOT reachable from an outlet's login role ─────────
--- Outlet roles are granted nothing on these tables. An account is authenticated
--- by the web tier on the owner connection, above the outlet entirely, so there
--- is no policy to get wrong and no grant to leak. Said explicitly rather than
--- left to the absence of a GRANT.
-REVOKE ALL ON chain.account, chain.account_identity, chain.account_outlet
-  FROM PUBLIC;
-
-DO $g$
-DECLARE o record;
-BEGIN
-  FOR o IN SELECT db_role FROM chain.outlet WHERE db_role IS NOT NULL LOOP
-    EXECUTE format('REVOKE ALL ON chain.account, chain.account_identity,'
-      || ' chain.account_outlet FROM %I', o.db_role);
-  END LOOP;
-END $g$;
+-- Re-asserted rather than assumed: 001 does not create it, and a business
+-- restored from a backup taken before this must still end up with it.
+ALTER TABLE chain.company ADD COLUMN IF NOT EXISTS owner_account_id uuid;

@@ -34,10 +34,16 @@ let app, server, base, db;
 
 test('the suite has a database', opts, async () => {
   await DB.freshDatabase(process.env.PGTESTDB || 'kashikeyo_test');
+  /* Two databases, because that is the shape in production: the REGISTRY holds
+     accounts and the business directory, and a BUSINESS database holds
+     everything a till reads. One account may own several businesses, so
+     "is this address known" cannot be asked of a business database. */
+  await DB.freshControl(process.env.PGTESTCONTROL || 'kashikeyo_control_test');
   await DB.dropOutletRoles();
   // Required AFTER the environment is set: db.js reads it at module load.
   db = require('../src/db');
-  const { migrate } = require('../src/scripts/migrate');
+  const { migrate, migrateControl } = require('../src/scripts/migrate');
+  await migrateControl(() => {});
   const n = await migrate(() => {});
   assert.ok(n >= 5, 'every migration applied to an empty database');
 });
@@ -2664,13 +2670,16 @@ test('the account that onboards owns the outlet', opts, async () => {
   assert.strictEqual(me.body.next, 'onboarding');
   assert.deepStrictEqual(me.body.outlets, []);
 
-  /* Link one the way onboarding does — on the OWNER connection, because an
-     outlet's own role is granted nothing on the account plane. That the line
-     below has to use owner() is itself the isolation working. */
-  await db.owner().query(
-    "INSERT INTO chain.account_outlet (account_id, outlet_id, role)"
+  /* Link one the way onboarding does — in the REGISTRY, because that is where
+     the account plane lives now. An outlet's own role is granted nothing on it
+     and its database does not even contain it, which is the isolation working
+     twice over. */
+  const biz = await db.control().query(
+    'SELECT business_id FROM chain.outlet_directory WHERE outlet_id = $1', [outletId]);
+  await db.control().query(
+    "INSERT INTO chain.account_business (account_id, business_id, role)"
     + " SELECT id, $1, 'owner' FROM chain.account WHERE email = 'founder@example.mv'"
-    + ' ON CONFLICT DO NOTHING', [outletId]);
+    + ' ON CONFLICT DO NOTHING', [Number(biz.rows[0].business_id)]);
   const after = await getWith('/api/account/me', { authorization: 'Bearer ' + s.body.token });
   assert.strictEqual(after.body.next, 'terminal');
   assert.strictEqual(after.body.outlets.length, 1);
@@ -2756,9 +2765,18 @@ test('every control-plane table is either policied or ungranted', opts, async ()
     assert.ok(!grants.includes('DELETE') && !grants.includes('TRUNCATE'),
       'chain.' + r.t + ' lets an outlet role remove rows');
   });
-  assert.ok(policied >= 10 && ungranted >= 4,
+  /* Three of the tables this used to count as "ungranted" — account,
+     account_identity, account_outlet — are not in a business database at all
+     any more: they live in the control registry, because one account may own
+     several businesses. That is the same protection in a stronger form, so the
+     floor drops rather than the rule changing. Absence is checked separately,
+     in test/tenancy.test.js, which asserts a business database holds no copy
+     of them and that an outlet role cannot reach the registry. */
+  assert.ok(policied >= 10 && ungranted >= 3,
     'both halves of the belt are in use: ' + policied + ' policied, '
     + ungranted + ' ungranted');
+  assert.ok(!q.rows.some((r) => r.t === 'account'),
+    'and the account plane is absent, not merely ungranted');
 
   // The trail is append-only from the floor, by grant rather than by policy —
   // an outlet role that could UPDATE chain.audit could rewrite what it did.
@@ -3154,7 +3172,7 @@ test('a social sign-in joins an existing account only on a VERIFIED address', op
     const mine = 'owner-' + Date.now() + '@example.mv';
     const made = await post('/api/account/signup', { email: mine, password: 'a-real-password' });
     assert.strictEqual(made.status, 200, JSON.stringify(made.body));
-    const before = await db.owner().query(
+    const before = await db.control().query(
       'SELECT id FROM chain.account WHERE lower(email) = lower($1)', [mine]);
     assert.strictEqual(before.rows.length, 1);
 
@@ -3169,7 +3187,7 @@ test('a social sign-in joins an existing account only on a VERIFIED address', op
     assert.ok(/error=/.test(to), 'and carries a refusal: ' + to);
     assert.match(decodeURIComponent(to), /already has an account/);
 
-    const linked = await db.owner().query(
+    const linked = await db.control().query(
       "SELECT 1 FROM chain.account_identity WHERE subject = 'g-stranger'");
     assert.strictEqual(linked.rows.length, 0, 'no identity was attached to their account');
 
@@ -3181,7 +3199,7 @@ test('a social sign-in joins an existing account only on a VERIFIED address', op
     const back = String((r.headers && r.headers.location) || '');
     assert.ok(/#token=/.test(back), 'signed in: ' + back);
 
-    const joined = await db.owner().query(
+    const joined = await db.control().query(
       "SELECT account_id FROM chain.account_identity WHERE subject = 'g-owner'");
     assert.strictEqual(joined.rows.length, 1);
     assert.strictEqual(joined.rows[0].account_id, before.rows[0].id,

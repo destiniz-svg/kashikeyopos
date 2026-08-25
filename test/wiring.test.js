@@ -1195,31 +1195,58 @@ test('the company step is one transaction, not four statements', () => {
 
    Six files, each answering a question that cannot be asked from inside one
    outlet. A seventh has to justify itself here. */
-test('only the six named routers reach for the owner connection', () => {
+test('only the named routers reach past the isolation belts', () => {
   const dir = path.join(__dirname, '..', 'src', 'routes');
+
+  /* owner() is the BUSINESS database's superuser connection: it bypasses both
+     belts inside one customer. Five files, each answering a question no outlet
+     role can be scoped to ask. */
   const allowed = {
-    'account.js': 'migration 011 revokes the account plane from every outlet role',
     'onboarding.js': 'steps 1-3 run before an outlet or a session exists',
     'auth.js': 'the lock screen asks before anybody has signed in',
     'guest.js': 'resolves a handle TO an outlet — the outlet is the answer',
     'outlet.js': 'handle uniqueness and GST registration span every outlet',
     'platform.js': 'aggregates for the seller, key-guarded and audited'
   };
-  const uses = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).filter((f) => {
-    const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    // The IMPORT, not the word: several files name it in a comment explaining
-    // why they do not use it, and a comment connects to nothing.
-    return /require\('\.\.\/db'\)[^\n]*\bowner\b|\bowner\b[^\n]*require\('\.\.\/db'\)/.test(src)
-      && /\bowner\(\)/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''));
-  });
-  uses.forEach((f) => {
-    assert.ok(allowed[f], 'src/routes/' + f + ' reaches past both isolation belts'
-      + ' — if that is deliberate, name it and its reason in this test and in'
-      + ' CLAUDE.md, because an unexplained owner() is how a leak gets written');
-  });
-  Object.keys(allowed).forEach((f) => {
-    assert.ok(uses.includes(f), 'src/routes/' + f + ' no longer uses owner() —'
-      + ' take it off the list rather than leaving a stale exception standing');
+
+  /* control() is a DIFFERENT privilege and gets its own list: it opens the
+     registry, which sits above every business. account.js left the owner() list
+     when the account plane moved out of a business database — it does not reach
+     past a business's belts any more, it reaches a database that has none
+     because no outlet role can connect to it at all. */
+  const registry = {
+    'account.js': 'the account plane lives in the registry: one account may own'
+      + ' several businesses',
+    'onboarding.js': 'records the new business and who owns it'
+  };
+  /* NOT here yet, and deliberately not listed until it is: guest.js and
+     outlet.js still resolve handles against the BUSINESS database, where 012
+     and 013 defined them. The registry now holds the authoritative copy
+     (control/002), so until those two routes are moved a handle is unique per
+     business rather than across the cluster. Listing them early would be a
+     stale exception standing in for work that has not happened. */
+
+  const clean = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const importsFrom = (src, name) =>
+    new RegExp("require\\('\\.\\./db'\\)").test(src)
+      && new RegExp("\\b" + name + "\\s*\\(\\)").test(clean(src));
+
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
+  const uses = (name) => files.filter((f) =>
+    importsFrom(fs.readFileSync(path.join(dir, f), 'utf8'), name));
+
+  [['owner', allowed], ['control', registry]].forEach(([name, list]) => {
+    uses(name).forEach((f) => {
+      assert.ok(list[f], 'src/routes/' + f + ' calls ' + name + '() — if that is'
+        + ' deliberate, name it and its reason in this test and in CLAUDE.md,'
+        + ' because an unexplained privileged connection is how a leak gets'
+        + ' written');
+    });
+    Object.keys(list).forEach((f) => {
+      assert.ok(uses(name).includes(f), 'src/routes/' + f + ' no longer uses '
+        + name + '() — take it off the list rather than leaving a stale'
+        + ' exception standing');
+    });
   });
 });
 
