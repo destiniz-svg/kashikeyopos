@@ -141,7 +141,17 @@ function render(state) {
 
 /* ── alerting ────────────────────────────────────────────────────────────── */
 
-const ALERT_TO = () => String(process.env.ALERT_EMAIL || '').trim();
+/* A DANGLING ${{reference}} IS NOT AN ADDRESS. Railway lets a variable be
+   written as a reference to another service's; where the name inside the
+   braces is wrong the literal survives — non-empty, truthy, and useless. That
+   trap has already cost this build twice (src/email.js, panel/railway.js), and
+   here it buys the worst version of it: a watchdog that reports itself ON,
+   addressed to a string no mail provider will accept, telling nobody. Off and
+   saying so is strictly better. */
+const ALERT_TO = () => {
+  const v = String(process.env.ALERT_EMAIL || '').trim();
+  return email.unresolved(v) ? '' : v;
+};
 const REPEAT_MS = () => Math.max(1, Number(process.env.ALERT_REPEAT_HOURS || 6)) * 3600e3;
 const QUIET_MINS = () => Math.max(5, Number(process.env.DEVICE_QUIET_MINUTES || 60));
 
@@ -160,7 +170,12 @@ function configured() {
    wrong place. A missing address and a refusing transport are different
    problems with different fixes. */
 function why() {
-  if (!ALERT_TO()) return 'ALERT_EMAIL is not set, so there is nobody to tell';
+  if (!ALERT_TO()) {
+    return email.unresolved(process.env.ALERT_EMAIL)
+      ? 'ALERT_EMAIL is an unresolved platform reference — check the service'
+        + ' name inside the braces; there is nobody to tell'
+      : 'ALERT_EMAIL is not set, so there is nobody to tell';
+  }
   const h = email.health();
   // The operator's half. `reason` is what an anonymous caller is told; the
   // boot log and the alert log get the transport's own words.

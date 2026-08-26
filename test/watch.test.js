@@ -160,6 +160,36 @@ test('the boot line says whether alerting is on, by name', () => {
   }
 });
 
+/* A DANGLING ${{reference}} IS NOT AN ADDRESS, and this is the third place
+   that trap has been laid. Railway lets a variable be written as a reference
+   to another service's; where the name inside the braces is wrong the literal
+   survives — non-empty, truthy, no complaint. src/email.js learned it about a
+   key and panel/railway.js about a handover. Here it buys the worst version:
+   a watchdog reporting itself ON, addressed to a string no mail provider will
+   accept, telling nobody. Off and saying so is strictly better. */
+test('an alert address that is a dangling reference is no address at all', () => {
+  const keep = process.env.ALERT_EMAIL;
+  try {
+    process.env.ALERT_EMAIL = '${{kashikeyopos.PLATFORM_ADMIN_EMAIL}}';
+    assert.strictEqual(watch.configured(), false,
+      'a reference that did not resolve is not somebody to tell');
+    assert.match(watch.why(), /unresolved platform reference/,
+      'and it is named as that, not as "not set" — one is a five-second fix'
+      + ' inside the braces, the other is looking for a variable that is there');
+    assert.match(watch.bootLine(), /alerting is OFF/,
+      'so the boot line says off, which is the true half');
+
+    // A real address is a real address: whatever else is unconfigured here,
+    // ALERT_EMAIL stops being the reason.
+    process.env.ALERT_EMAIL = 'ops@example.mv';
+    assert.doesNotMatch(String(watch.why()), /ALERT_EMAIL/,
+      'the complaint moves on to whatever is actually still missing');
+  } finally {
+    if (keep === undefined) delete process.env.ALERT_EMAIL;
+    else process.env.ALERT_EMAIL = keep;
+  }
+});
+
 test('/metrics is the shape of the install, so it is a 404 until it is keyed', () => {
   const SRV = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const block = SRV.slice(SRV.indexOf("app.get('/metrics'"), SRV.indexOf("app.get('/healthz'"));

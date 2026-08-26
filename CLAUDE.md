@@ -2117,7 +2117,7 @@ after it, a true recovery, and the log-only path.
 | Variable | Effect |
 | --- | --- |
 | `METRICS_KEY` | ≥16 chars. Unset, `/metrics` is a 404. |
-| `ALERT_EMAIL` | Where alerts go. Unset, they are logged and the boot says so. |
+| `ALERT_EMAIL` | Where alerts go. Unset — or a dangling `${{reference}}`, which is the third place that trap has been laid — they are logged and the boot says which of the two it is. |
 | `ALERT_REPEAT_HOURS` | Reminder interval while a condition holds (6). |
 | `DEVICE_QUIET_MINUTES` | How long a writing device may go without delivering (60). |
 | `WATCH_INTERVAL_SECONDS` | Sweep interval (60, floor 15). First sweep is delayed 20 s so a deploy does not alert on pools that have not opened. |
