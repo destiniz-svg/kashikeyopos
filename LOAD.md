@@ -75,6 +75,55 @@ the DELTA is zero, so what this run did and what the install was already
 carrying stay separate facts. The pre-existing gap is printed on every run,
 by amount, rather than netted away.
 
+## Stock, reconciled at load-test scale
+
+The load fixture deliberately sends **no stock moves** — it is a money test, and
+an outlet with no recipes (a café costing its menu at a flat percentage, which
+is an ordinary way to run one) legitimately produces none. That left the stock
+identity proven only at unit scale, which the readiness audit recorded as NOT
+TESTED.
+
+Closed by giving one outlet real recipes and running stage B against it. The
+server does the rest: `deriveConsumption()` expands the sale from the OUTLET's
+own `recipe_line`, so a till that sends nothing still moves the shelf — "the
+recipe says stock left the shelf, so stock left the shelf".
+
+Two ingredients, a known opening balance and a known cost, two dishes with real
+recipes, then **2,503 bills in 30 seconds**:
+
+| | |
+| --- | --- |
+| p50 / p95 / p99 | 39 / 93 / 136 ms |
+| errors | 0 |
+| duplicate ops, duplicate sales, unbalanced journals | 0 |
+
+**The stock identity holds exactly**, for the ingredient that ran out as well as
+the one that did not:
+
+```
+ing-fish   opening 200,000.00   moved -1,193,560.67   closing -993,560.67   identity 0.0000
+ing-rice   opening 500,000.00   moved   -367,040.76   closing  132,959.24   identity 0.0000
+```
+
+**And the ledger and the shelf are one figure, not two** — the whole point of
+re-valuing a consumed portion server-side:
+
+```
+stock_move value (sales)   219,246.20
+account 1200 credited      219,246.20
+sale.cogs (server)         219,246.20
+COGS debit                 219,246.20
+```
+
+Two things the run flagged, and both are the doctrine working rather than
+defects. Every bill carried `cogs_mismatch`, because the fixture sends a COGS
+of zero and the server derived a real one from the recipes — the till's claim
+is kept beside the server's answer, exactly as designed. And 2,085 carried
+`stock_short`: 200 kg of fish does not cover 2,503 bills, so the outlet was
+driven to −993 kg and **every one of those sales names the ingredient and the
+balance it left behind** rather than being refused. A sale that has already
+taken money is never thrown away; the shortfall is what a manager needs told.
+
 ## Running them
 
 ```bash
