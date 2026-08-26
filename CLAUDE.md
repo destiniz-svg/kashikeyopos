@@ -2178,11 +2178,44 @@ pins the exact response shape so nothing can ride in later. Every read lands
 on the audit trail as `platform_read`.
 
 **Mission Control** (`panel/`) is the seller's panel: a SEPARATE service
-(`node panel/server.js`) with its own small registry database. Admin sign-in
-is scrypt + HMAC tokens, first-run gated on `PANEL_SETUP_TOKEN`, the sign-in
-door rate-limited through `src/limit.js`. Each install's `PLATFORM_KEY` lives
-in the registry and is used SERVER-SIDE — the browser gets figures, never
-keys. The page (`panel/panel.html` + `panel.js`) is vanilla DOM through a
+(`node panel/server.js`). Admin sign-in is scrypt + HMAC tokens, first-run
+gated on `PANEL_SETUP_TOKEN`, the sign-in door rate-limited through
+`src/limit.js`.
+
+**It reads the REGISTRY now, and that is a change of premise rather than of
+plumbing.** The panel was built for a product sold one install per customer:
+the seller could reach neither the customer's app nor their database, so
+everything arrived over HTTPS from each install's own
+`/api/platform/summary` with a per-install `PLATFORM_KEY`. That premise is
+gone — one app, one cluster, a database per business, and the panel beside
+them. `chain.business` IS the customer list, and `panel/registry.js` reads it
+and each business's own database directly. Probing over HTTP for figures one
+query away was a control describing a world that no longer exists.
+
+**The licence is ONE copy.** The old design kept the seller's registry
+authoritative and pushed a copy to the install, reconciled on every dashboard
+load — necessary only because they were two databases the seller could not
+both reach. `chain.licence` in the business's own database is the record now,
+written directly through the owner connection (no outlet role has INSERT or
+UPDATE on it, migration 033), and there is nothing left to drift.
+
+**The per-customer Railway provisioning is off by default.** Building a whole
+project per customer is what the restructure exists to replace, and a button
+that creates an install the registry has never heard of — one that cannot
+sign a customer up, because signing up is what creates a business — is a
+control that does the wrong thing confidently. `PANEL_DEDICATED_INSTALLS=1`
+turns it back on for a seller who still sells installs on separate
+infrastructure; off, every one of those doors **refuses by name** rather than
+404ing, and the page does not draw the button at all. The page's vocabulary
+follows the mode: a row is a *business* beside a registry and an *install* on
+a dedicated deployment, because calling both "install" is how a screen ends
+up describing the wrong world.
+
+`src/routes/platform.js` went the same way: it answers about the database
+this process dialled, which is right exactly when that database is itself a
+business. `selfIsBusiness()` in `src/db.js` is the one definition of that
+question, and the door now says so rather than serving the empty figures of a
+database nobody trades in. The page (`panel/panel.html` + `panel.js`) is vanilla DOM through a
 textContent-only builder (a customer's install name must not script the
 seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.

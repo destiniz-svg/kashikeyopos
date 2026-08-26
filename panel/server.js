@@ -1,19 +1,35 @@
 'use strict';
 /* ═══ MISSION CONTROL — THE SELLER'S PANEL ══════════════════════════════════
-   The product is sold ONE INSTALL PER CUSTOMER: each customer gets their own
-   app service and their own database, which is what keeps every isolation
-   guarantee in this repository true per-customer by construction. This panel
-   is the seller's view across those installs — who is live, who is on trial,
-   whose tills have gone quiet, what today took — and it is a SEPARATE app in
-   the same repository, run as its own service (`node panel/server.js`) with
-   its own small registry database. It never touches a customer's database:
-   everything it knows arrives through each install's own
-   `/api/platform/summary`, which serves aggregates and refuses the rest.
+   The seller's view across every customer: who is live, who is on trial,
+   whose tills have gone quiet, what today took. A SEPARATE app in the same
+   repository, run as its own service (`node panel/server.js`).
 
-   THE KEYS LIVE HERE AND ONLY HERE. Each install's PLATFORM_KEY is held in
-   the registry and used server-side; the browser gets figures, never keys.
-   A panel page that carried the keys would make every seller's laptop a
-   master key to every customer.
+   IT READS THE REGISTRY NOW, and that is a change of premise rather than of
+   plumbing. This panel was built for a product sold ONE INSTALL PER CUSTOMER:
+   each customer had their own app service and their own database, the seller
+   could reach neither, and so everything the panel knew arrived over HTTPS
+   from each install's own `/api/platform/summary` with a per-install
+   PLATFORM_KEY.
+
+   That premise is gone. One app serves every customer, one Postgres cluster
+   holds a database per business, and this panel runs beside them:
+   `chain.business` IS the customer list. Probing over HTTP for figures that
+   are one query away was not merely redundant, it was a control describing a
+   world that no longer exists — the defect class this codebase has spent
+   months removing. `panel/registry.js` is the reader.
+
+   THE LICENCE IS ONE COPY, not two. The old design had the seller's registry
+   authoritative and the install holding a copy, reconciled by a push on every
+   dashboard load — necessary only because they were different databases the
+   seller could not both reach. They are both reachable now, so `chain.licence`
+   in the business's own database is the record, written directly, and there is
+   nothing left to reconcile or to drift.
+
+   WHAT THE PANEL TOUCHES IS UNCHANGED: company name, outlets, device
+   staleness, fourteen days of takings, the licence. Never a member, never a
+   staff row, never a line item — and every read lands on that business's own
+   trail, exactly as the platform door's did. A seller looking in is never
+   invisible.
 
    Same doctrine as the rest: Node, Express, pg, hand-written HTML, no build
    step. Same discipline too — scrypt passwords, HMAC tokens, a doorman on
@@ -208,6 +224,7 @@ async function probe(inst) {
    life where that matters — and it is spent the moment they do. */
 const EMAIL = require('../src/email');
 const RAILWAY = require('./railway');
+const REGISTRY = require('./registry');
 
 function handoverMessage(o) {
   const days = o.trialEnds
@@ -367,7 +384,52 @@ app.post('/api/signin',
 
 /* The whole dashboard in one answer: the registry rows (keys withheld) with
    each install's live probe beside them. */
+/* ── the overview ──────────────────────────────────────────────────────────
+   In registry mode every row is a BUSINESS, read straight from the cluster
+   this panel sits beside. Shaped here into what the card already renders
+   rather than in the browser: the page is a textContent-only builder on
+   purpose, and a second shape for it to branch on is a second thing to get
+   wrong.
+
+   `base_url` is the app's own address for every customer — one till hostname,
+   many businesses — so the Open button goes to the terminal rather than to a
+   per-install domain that no longer exists. */
+function asCard(b) {
+  const lic = b.licence || {};
+  const summary = b.state === 'live' ? {
+    company: b.company, outlets: b.outlets || [], devices: b.devices || {},
+    days: b.days || [], licence: b.licence || null, planRequest: b.planRequest || null,
+    install: b.db
+  } : null;
+  return {
+    id: b.id,
+    name: (b.company && b.company.name) || b.name,
+    base_url: String(process.env.APP_URL || '').replace(/\/+$/, ''),
+    kind: lic.kind || 'trial',
+    trial_ends: lic.trialEnds || null,
+    notes: null,
+    customer_note: lic.note || '',
+    contact_email: null,
+    archived: b.status === 'suspended',
+    created_at: b.createdAt,
+    db: b.db,
+    schema_version: b.schemaVersion,
+    live: { state: b.state, note: b.note || null, summary: summary }
+  };
+}
+
 app.get('/api/overview', authed, async (req, res, next) => {
+  if (REGISTRY.registryMode()) {
+    try {
+      const rows = await REGISTRY.overview();
+      return res.set('cache-control', 'no-store').json({
+        mode: 'registry',
+        dedicated: dedicatedOn(),
+        installs: rows.map(asCard),
+        at: new Date().toISOString()
+      });
+    } catch (e) { return next(e); }
+  }
   try {
     const q = await pool.query(
       'SELECT id, name, base_url, kind, trial_ends, notes, customer_note,'
@@ -396,6 +458,8 @@ app.get('/api/overview', authed, async (req, res, next) => {
     }));
 
     res.set('cache-control', 'no-store').json({
+      mode: 'installs',
+      dedicated: true,
       installs: q.rows.map((r, i) => Object.assign({}, r, { live: probes[i] })),
       at: new Date().toISOString()
     });
@@ -438,7 +502,37 @@ app.patch('/api/signups/:id', authed, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/installs', authed, async (req, res, next) => {
+/* ── THE DEDICATED-INSTALL PATH, AND WHY IT IS OFF BY DEFAULT ──────────────
+   Building a whole Railway project per customer — app service, Postgres,
+   volume, domain, five secrets — is what the database-per-business
+   restructure exists to replace. A customer signs up on the website now and
+   their database is created for them; nobody presses a button.
+
+   The code stays, because an install on somebody else's infrastructure is a
+   thing a seller may genuinely still want to sell, and the manual sheet
+   underneath it is how such an install gets registered at all. But it is not
+   OFFERED, because a button that builds an install the registry has never
+   heard of — one that cannot sign a customer up, because signing up is what
+   creates a business — is a control that does the wrong thing confidently.
+
+   PANEL_DEDICATED_INSTALLS=1 turns it back on, deliberately, for a seller who
+   means it. Off, every one of these doors refuses by name rather than 404ing:
+   whoever pressed it deserves to know it was a decision, not a fault. */
+function dedicatedOn() {
+  return String(process.env.PANEL_DEDICATED_INSTALLS || '') === '1';
+}
+function dedicatedOnly(req, res, next) {
+  if (dedicatedOn()) return next();
+  return res.status(409).json({
+    error: 'this panel is beside a registry, so customers create their own'
+      + ' business by signing up — there is no install to provision or'
+      + ' register by hand. Set PANEL_DEDICATED_INSTALLS=1 if you still sell'
+      + ' installs on separate infrastructure.',
+    dedicated: false
+  });
+}
+
+app.post('/api/installs', authed, dedicatedOnly, async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!String(b.name || '').trim()) return res.status(400).json({ error: 'the install needs a name' });
@@ -515,7 +609,7 @@ app.post('/api/installs', authed, async (req, res, next) => {
    request held open that long dies to a proxy somewhere and tells the operator
    nothing. The response is the install id; the dashboard already polls, and
    the row is the progress. */
-app.post('/api/installs/provision', authed, async (req, res, next) => {
+app.post('/api/installs/provision', authed, dedicatedOnly, async (req, res, next) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'the install needs a name' });
@@ -599,9 +693,16 @@ app.post('/api/installs/provision', authed, async (req, res, next) => {
 /* What the automated path would use, so the sheet can say so before anybody
    presses anything. Never the token itself. */
 app.get('/api/provision/config', authed, (req, res) => {
+  if (!dedicatedOn()) {
+    return res.json({ ok: false, dedicated: false,
+      why: 'customers create their own business by signing up — this panel is'
+        + ' beside the registry that records them. Set'
+        + ' PANEL_DEDICATED_INSTALLS=1 to sell installs on separate'
+        + ' infrastructure again.' });
+  }
   const gate3 = RAILWAY.ready();
   res.json({
-    ok: gate3.ok,
+    ok: gate3.ok, dedicated: true,
     why: gate3.why || null,
     warn: gate3.warn || null,
     repo: process.env.INSTALL_REPO || null,
@@ -665,7 +766,64 @@ app.post('/api/installs/:id/handover', authed, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/* ── the seller's one routine act ──────────────────────────────────────────
+   In registry mode this writes chain.licence in that business's own database,
+   which is the only copy. There is nothing to push and nothing to reconcile:
+   the old two-copy design existed because the seller could not reach the
+   install's database, and it can. */
+async function editLicence(businessId, body, res) {
+  const rows = await REGISTRY.overview();
+  const biz = rows.find((r) => Number(r.id) === Number(businessId));
+  if (!biz) return res.status(404).json({ error: 'no such business' });
+  if (biz.state !== 'live') {
+    return res.status(409).json({ error: 'that business is ' + biz.state
+      + ' — its database is not open to write a licence into' });
+  }
+  const cur = biz.licence || { kind: 'trial', trialEnds: null, note: '' };
+  const want = { kind: cur.kind, trialEnds: cur.trialEnds, note: cur.note };
+
+  if (body.kind !== undefined) {
+    if (!['trial', 'paid', 'internal'].includes(body.kind)) {
+      return res.status(400).json({ error: 'kind is trial, paid or internal' });
+    }
+    want.kind = body.kind;
+    /* A paid or internal install with a countdown on it is a contradiction
+       the customer's own screen would have to render, and the database
+       refuses it outright — so it is cleared here rather than written and
+       rejected. */
+    if (body.kind !== 'trial') want.trialEnds = null;
+  }
+  if (body.customerNote !== undefined) want.note = String(body.customerNote).slice(0, 400);
+  if (body.trialEnds !== undefined && body.extendDays === undefined) {
+    want.trialEnds = body.trialEnds || null;
+  }
+  /* EXTENDING A TRIAL by typing a date is how a trial gets extended to a day
+     in the past. `days` moves the deadline forward from whichever is later —
+     today, or where it already stood — so extending an expired trial gives
+     the customer the days rather than back-dating them into nothing. */
+  if (body.extendDays !== undefined) {
+    const n = Math.round(Number(body.extendDays));
+    if (!Number.isFinite(n) || n < 1 || n > 365) {
+      return res.status(400).json({ error: 'extend by 1 to 365 days' });
+    }
+    if (want.kind !== 'trial') {
+      return res.status(400).json({ error: 'only a trial has an end date to extend' });
+    }
+    const from = new Date();
+    const had = want.trialEnds ? new Date(want.trialEnds + 'T00:00:00Z') : null;
+    const base = had && had > from ? had : from;
+    base.setDate(base.getDate() + n);
+    want.trialEnds = base.toISOString().slice(0, 10);
+  }
+  const out = await REGISTRY.writeLicence(biz.db, want);
+  return res.json({ ok: true, licence: want, wrote: out.pushed === true });
+}
+
 app.patch('/api/installs/:id', authed, async (req, res, next) => {
+  if (REGISTRY.registryMode()) {
+    try { return await editLicence(req.params.id, req.body || {}, res); }
+    catch (e) { return next(e); }
+  }
   try {
     const b = req.body || {};
     const sets = [], vals = [];
@@ -739,7 +897,18 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 if (require.main === module) {
   migrate().then(() => {
     const port = Number(process.env.PORT) || 4095;
-    app.listen(port, () => console.log('[panel] listening on ' + port));
+    app.listen(port, () => {
+      console.log('[panel] listening on ' + port);
+      /* WHICH WORLD THIS PANEL IS IN, in one line, because the two behave
+         differently and a screen that looks the same either way is how
+         somebody spends an afternoon wondering why Provision refuses. */
+      console.log(REGISTRY.registryMode()
+        ? '[panel] reading the registry "' + process.env.CONTROL_DB + '" directly'
+          + (dedicatedOn() ? ' · dedicated installs ALSO enabled'
+            : ' · dedicated-install provisioning is off (PANEL_DEDICATED_INSTALLS)')
+        : '[panel] no CONTROL_DB — probing dedicated installs over HTTP with'
+          + ' their platform keys');
+    });
   }).catch((e) => {
     console.error('[panel] could not migrate its registry:', e.message);
     process.exit(1);

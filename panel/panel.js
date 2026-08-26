@@ -141,6 +141,20 @@
     live: "waiting for the first deploy"
   };
 
+  /* WHAT A ROW IS, in this panel's two worlds. Beside a registry a row is a
+     BUSINESS a customer created by signing up; on a dedicated deployment it is
+     an INSTALL a seller registered. Calling both "install" is how a screen
+     ends up describing a world that no longer exists — which is the whole
+     reason this file changed. Set from the overview's own answer, never
+     guessed. */
+  var WORD = { one: "install", many: "installs", One: "Install", Many: "Installs" };
+  function setWord(mode) {
+    WORD = mode === "registry"
+      ? { one: "business", many: "businesses", One: "Business", Many: "Businesses" }
+      : { one: "install", many: "installs", One: "Install", Many: "Installs" };
+  }
+  var DEDICATED = true;      // until /api/provision/config says otherwise
+
   function statusOf(inst) {
     var l = inst.live || {};
     if (l.state === "archived") return { cls: "mute", label: "Archived" };
@@ -389,15 +403,15 @@
     });
     var curKeys = Object.keys(byCur);
     var tiles = [
-      { k: "Installs", v: String(act.length), s: installs.length > act.length ? (installs.length - act.length) + " archived" : "every one on this page" },
-      { k: "Live now", v: String(live.length), s: act.length ? "of " + act.length + " installs" : "nothing to reach yet" },
+      { k: WORD.Many, v: String(act.length), s: installs.length > act.length ? (installs.length - act.length) + " archived" : "every one on this page" },
+      { k: "Live now", v: String(live.length), s: act.length ? "of " + act.length + " " + WORD.many : "nothing to reach yet" },
       { k: "Trials ending ≤7d", v: String(trialsSoon.length), s: trialsSoon.length ? trialsSoon.map(function (i) { return i.name; }).join(", ") : "no deadlines this week" },
-      { k: "Unreachable", v: String(unreachable.length), s: unreachable.length ? unreachable.map(function (i) { return i.name; }).join(", ") : "every install answered" }
+      { k: "Unreachable", v: String(unreachable.length), s: unreachable.length ? unreachable.map(function (i) { return i.name; }).join(", ") : "every " + WORD.one + " answered" }
     ];
     if (curKeys.length) tiles.push({
-      k: "Today, all live installs",
+      k: "Today, all live " + WORD.many,
       v: curKeys.map(function (c) { return fmtMoney(byCur[c], c); }).join("  ·  "),
-      s: "net of " + live.length + " live install" + (live.length === 1 ? "" : "s"), small: true });
+      s: "net of " + live.length + " live " + (live.length === 1 ? WORD.one : WORD.many), small: true });
     var fresh = (signups || []).filter(function (s) { return s.status === "new"; });
     if (fresh.length) tiles.unshift({
       k: "New store requests", v: String(fresh.length),
@@ -635,12 +649,22 @@
     if (timer) clearInterval(timer);
     var body = el("div", {});
     var updated = el("div", { class: "updated" });
+    /* Filled after the first load, because whether a seller can add anything
+       is the server's answer and not this page's assumption. Beside a registry
+       the customer creates their own business by signing up, and a button
+       whose only outcome is a refusal is the control this panel exists to stop
+       shipping. */
+    var addSlot = el("span", {});
     var page = el("div", { class: "wrap" }, [
       el("div", { class: "top" }, [
         el("div", { class: "brand" }, [el("span", { class: "dot" }),
           el("b", { text: "Mission Control" }), el("span", { text: "KashikeyoPOS" })]),
         el("span", { class: "grow" }),
-        el("button", { class: "primary", text: "Add install", onclick: function () { sheet(null, load); } }),
+        /* Only where a seller can actually add one. Beside a registry the
+           customer creates their own business by signing up, and a button
+           whose only outcome is a refusal is the control this panel exists to
+           stop shipping. */
+        addSlot,
         el("button", { class: "ghost", text: "Sign out", onclick: function () {
           setToken(null); if (timer) clearInterval(timer); showSignin();
         } })]),
@@ -657,6 +681,12 @@
             document.createTextNode((r.body && r.body.error) || "try again in a moment")]));
           return;
         }
+        setWord(r.body.mode);
+        DEDICATED = r.body.dedicated !== false;
+        addSlot.replaceChildren(DEDICATED
+          ? el("button", { class: "primary", text: "Add install",
+            onclick: function () { sheet(null, load); } })
+          : el("span", { class: "hint", text: "customers sign themselves up" }));
         var installs = r.body.installs || [];
         var signups = (rq.status === 200 && rq.body.signups) || [];
         var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
@@ -667,12 +697,14 @@
           out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));
         }
         if (installs.length) {
-          if (openReqs.length) out.push(el("div", { class: "sechead", text: "Installs" }));
+          if (openReqs.length) out.push(el("div", { class: "sechead", text: WORD.Many }));
           out.push(el("div", { class: "cards" }, installs.map(function (i) { return installCard(i, load); })));
         } else if (!openReqs.length) {
           out.push(el("div", { class: "empty" }, [
-            el("b", { text: "No installs registered yet" }),
-            document.createTextNode("Add your first customer's install — or wait for a store request from the website.")]));
+            el("b", { text: DEDICATED ? "No installs registered yet" : "No businesses yet" }),
+            document.createTextNode(DEDICATED
+              ? "Add your first customer's install — or wait for a store request from the website."
+              : "A customer creates their own the moment they sign up on the website and confirm their email. Nothing here to press.")]));
         }
         body.replaceChildren(frag(out));
         updated.textContent = "Updated " + new Date(r.body.at).toLocaleTimeString();

@@ -25,7 +25,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { owner, withEstate } = require('../db');
+const { owner, withEstate, selfIsBusiness, CONTROL_DB } = require('../db');
 
 const r = express.Router();
 
@@ -69,10 +69,39 @@ async function readPlanRequest(o) {
   return { at: x.at, by: x.by || null, want: x.want || null, note: x.note || '' };
 }
 
+/* THIS DOOR ANSWERS ABOUT THE DATABASE THIS PROCESS DIALLED, and that is only
+   the right answer when that database is itself a business. The door exists
+   for a REMOTE seller — one who cannot reach the customer's database — which
+   is the whole reason it is an HTTP endpoint with a key rather than a query.
+
+   Where the seller runs beside a registry, they are not remote: Mission
+   Control opens each business's database directly (panel/registry.js), and
+   this endpoint would be answering with the empty figures of a database
+   nobody trades in. A 200 carrying an empty company and no outlets reads as
+   "this customer has not set up yet", which is a worse answer than none.
+
+   So it says so instead. Found in the audit, and it is the same defect as the
+   lock screen's: owner() is a privilege AND an address, and only the
+   privilege had been re-examined when the boundary moved. */
+async function remoteMakesSense(res) {
+  if (await selfIsBusiness()) return true;
+  res.status(409).json({
+    error: 'this process serves many businesses from a registry'
+      + (CONTROL_DB() ? ' ("' + CONTROL_DB() + '")' : '')
+      + ' — its own database is not one of them, so there is nothing here to'
+      + ' summarise. A seller beside the registry reads each business database'
+      + ' directly; this door is for an install on infrastructure they cannot'
+      + ' reach.',
+    registry: true
+  });
+  return false;
+}
+
 r.get('/summary', async function (req, res, next) {
   const ok = keyOk(req);
   if (ok === null) return res.status(404).json({ error: 'not found' });
   if (!ok) return res.status(401).json({ error: 'platform key required' });
+  if (!(await remoteMakesSense(res))) return;
   try {
     const o = owner();
     const co = await o.query(
@@ -150,6 +179,9 @@ r.post('/licence', express.json({ limit: '8kb' }), async function (req, res, nex
   const ok = keyOk(req);
   if (ok === null) return res.status(404).json({ error: 'not found' });
   if (!ok) return res.status(401).json({ error: 'platform key required' });
+  // A licence written into a database nobody trades in is a licence nobody
+  // reads — and the seller would believe they had set it.
+  if (!(await remoteMakesSense(res))) return;
 
   const b = req.body || {};
   const kind = String(b.kind || '').trim();

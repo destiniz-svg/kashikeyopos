@@ -40,6 +40,13 @@ test('a fresh registry database', opts, async () => {
   // Read at module load, so set before the require.
   process.env.APP_URL = 'https://app.example.test';
   process.env.CANONICAL_HOST = 'example.test';
+  /* THE DEDICATED-INSTALL PATH IS OFF BY DEFAULT NOW, because customers create
+     their own business by signing up and a button that builds an install the
+     registry has never heard of is a control that does the wrong thing
+     confidently. It is still a supported thing to sell, so most of this file
+     exercises it and turns it on deliberately — and one test below asserts
+     that the default is off, and refuses BY NAME rather than 404ing. */
+  process.env.PANEL_DEDICATED_INSTALLS = '1';
 
   panel = require('../panel/server');
   site = require('../site/server');
@@ -300,6 +307,100 @@ test("the website forwards the till's paths and keeps its own", opts, async () =
   });
   assert.strictEqual(www.status, 301);
   assert.strictEqual(www.location, 'https://example.test/docs?x=1');
+});
+
+/* ═══ THE PANEL READS THE REGISTRY ══════════════════════════════════════════
+   O-3 of the readiness audit. Mission Control was built for a product sold one
+   install per customer: the seller could reach neither the customer's app nor
+   their database, so everything arrived over HTTPS from each install's own
+   /api/platform/summary with a per-install key.
+
+   That premise is gone — one app, one cluster, a database per business, and
+   this panel beside them. Probing over HTTP for figures one query away is a
+   control describing a world that no longer exists. */
+test('the dedicated-install path is off unless a seller means it', opts, async () => {
+  const keep = process.env.PANEL_DEDICATED_INSTALLS;
+  delete process.env.PANEL_DEDICATED_INSTALLS;
+  try {
+    const cfg = await call(panelBase, 'GET', '/api/provision/config', undefined, token);
+    assert.strictEqual(cfg.body.dedicated, false);
+    assert.match(cfg.body.why, /customers create their own business by signing up/,
+      'and says WHY, because a greyed-out control with no reason is one'
+      + ' somebody spends an afternoon on');
+    assert.match(cfg.body.why, /PANEL_DEDICATED_INSTALLS/, 'naming the switch');
+
+    for (const [path, body] of [
+      ['/api/installs', { name: 'X', baseUrl: 'https://x.test', platformKey: 'k'.repeat(32) }],
+      ['/api/installs/provision', { name: 'X' }]
+    ]) {
+      const r = await call(panelBase, 'POST', path, body, token);
+      assert.strictEqual(r.status, 409, path + ' refuses rather than builds');
+      assert.match(r.body.error, /there is no install to provision or register by hand/,
+        path + ' refuses by NAME — a 404 would read as a broken panel');
+    }
+  } finally {
+    if (keep === undefined) delete process.env.PANEL_DEDICATED_INSTALLS;
+    else process.env.PANEL_DEDICATED_INSTALLS = keep;
+  }
+});
+
+test('a business is read from the registry, and its licence written to it', opts, async () => {
+  const DB = require('./db');
+  if (!DB.configured()) return;
+  DB.secrets();       // the outlet-role secret a business database is built with
+
+  // A registry with one business in it, made the way the app makes them.
+  const keepControl = process.env.CONTROL_DB;
+  const keepPrefix = process.env.BUSINESS_DB_PREFIX;
+  process.env.BUSINESS_DB_PREFIX = 'kp_biz_';
+  await DB.freshControl('kashikeyo_control_panel');
+  const db = require('../src/db');
+  const REG = require('../panel/registry');
+  try {
+    await require('../src/scripts/migrate').migrateControl(() => {});
+    assert.strictEqual(REG.registryMode(), true,
+      'the panel knows which world it is in rather than inferring it from'
+      + ' whether a query happened to work');
+
+    const made = await require('../src/business').createBusiness({ name: 'Panel Cafe' });
+    const rows = await REG.overview();
+    const mine = rows.find((r) => r.db === made.db_name);
+    assert.ok(mine, 'the business is on the seller\'s list without anyone registering it');
+    assert.strictEqual(mine.state, 'live');
+    assert.strictEqual(mine.licence, null, 'and carries no licence it was never given');
+
+    /* THE LICENCE IS ONE COPY. The old design kept the seller's registry
+       authoritative and pushed a copy to the install over HTTP, reconciled on
+       every dashboard load — necessary only because they were two databases
+       the seller could not both reach. */
+    const out = await REG.writeLicence(made.db_name,
+      { kind: 'trial', trialEnds: '2026-12-31', note: 'Panel test' });
+    assert.strictEqual(out.pushed, true);
+
+    const back = await db.ownerFor(made.db_name).query(
+      'SELECT kind, trial_ends, set_by FROM chain.licence WHERE id = 1');
+    assert.strictEqual(back.rows[0].kind, 'trial');
+    assert.strictEqual(String(back.rows[0].trial_ends).slice(0, 10), '2026-12-31',
+      'written into the till\'s OWN database, which is where the countdown is read');
+    assert.strictEqual(back.rows[0].set_by, 'panel');
+
+    const again = await REG.writeLicence(made.db_name,
+      { kind: 'trial', trialEnds: '2026-12-31', note: 'Panel test' });
+    assert.strictEqual(again.same, true,
+      'and writing the same licence again is a comparison, never a row —'
+      + ' reconciling on every dashboard load must cost nothing');
+
+    const trail = await db.ownerFor(made.db_name).query(
+      "SELECT count(*)::int AS n FROM chain.audit WHERE action = 'licence_set'");
+    assert.strictEqual(trail.rows[0].n, 1, 'one change, one trail row');
+  } finally {
+    await db.shutdown().catch(() => {});
+    await DB.dropBusinessDatabases().catch(() => {});
+    if (keepControl === undefined) delete process.env.CONTROL_DB;
+    else process.env.CONTROL_DB = keepControl;
+    if (keepPrefix === undefined) delete process.env.BUSINESS_DB_PREFIX;
+    else process.env.BUSINESS_DB_PREFIX = keepPrefix;
+  }
 });
 
 test('shut down cleanly', opts, async () => {

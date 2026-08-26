@@ -251,6 +251,29 @@ async function ownerForOutlet(outletId) {
   return db ? ownerFor(db) : owner();
 }
 
+/* IS THE DATABASE THIS PROCESS DIALLED ITSELF A BUSINESS? Two places need to
+   know and they must not answer differently, which is why it lives here rather
+   than being probed twice.
+
+   It matters because owner() means "the database DATABASE_URL points at", and
+   in a registry install that is one nobody trades in. A handler that answers
+   ABOUT that database — the platform door's summary, anonymous onboarding —
+   is right exactly when the database is a business and wrong, silently and
+   with a 200, when it is not.
+
+   Cached: a database does not become a business between requests, and
+   re-asking on every call would put a round trip on the front door. An
+   unreachable database is not cached as "no" — that is a blip, not an answer. */
+let _selfIsBusiness = null;
+async function selfIsBusiness() {
+  if (_selfIsBusiness !== null) return _selfIsBusiness;
+  try {
+    const q = await owner().query("SELECT to_regclass('chain.company') IS NOT NULL AS yes");
+    _selfIsBusiness = !!q.rows[0].yes;
+  } catch (e) { return false; }
+  return _selfIsBusiness;
+}
+
 function poolFor(outletId, dbName) {
   const id = Number(outletId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('bad outlet id'), { status: 400 });
@@ -477,6 +500,7 @@ function forget(outletId) {
 
 module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
   owner, ownerFor, ownerForOutlet, dbFor, control, businessDb, dbPrefix, CONTROL_DB,
+  selfIsBusiness,
   poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };
