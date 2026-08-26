@@ -100,13 +100,34 @@ starting clean is simpler and skips the one irreversible step in this document.
 There is no seed data and no demo. A new business has no outlets, no dishes, no
 staff and no PIN until onboarding writes them.
 
-### Without a registry
+### There is no "without a registry"
 
-Leave `CONTROL_DB` unset and the app is what it always was: one database, one
-business, onboarding on first boot. Every install is that until its registry
-exists, and nothing about the till changes. What is missing is the account
-plane — which now lives in the registry — so `/account` cannot answer. Run
-single-database only for a local harness or a test box.
+This section used to say that leaving `CONTROL_DB` unset gave you the app as it
+always was — one database, one business, onboarding on first boot. **That has
+not been true since outlet ids and store addresses moved to the registry**, and
+nothing caught it because every test suite names a registry of its own.
+
+What actually happened was worse than a refusal: the app booted, answered
+`/readyz` 200, served the onboarding panel and accepted step 1, then threw
+`CONTROL_DB is not set` four calls deep inside `provisionOutlet()` and returned
+a bare 500. The same throw sits behind `handle_points_at()`, so a store that
+somehow existed would have a dead guest portal, and behind the handle check and
+rename on the outlet route. An install that can record a company and never an
+outlet is not a single-database install; it is a half-configured one that looks
+fine until somebody tries to trade.
+
+So the app now **says so at boot** and, in production, exits. The cost is one
+variable — the database itself need not exist, because the next boot creates
+it:
+
+```
+CONTROL_DB=kashikeyo_control
+```
+
+No default is picked. `control()` refuses to guess for the same reason it
+always did: a guess would make a business's own database its registry on a
+misconfigured deploy, with the accounts landing in the wrong place and nothing
+saying so until two customers had signed up.
 
 ## Moving a live install onto the registry
 

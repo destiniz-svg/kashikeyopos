@@ -131,9 +131,15 @@ async function registerOutlet(outletId, businessId) {
 /* Which business a database IS. A business database does not carry its own
    registry id — that would be a second source of truth for the thing routing
    depends on — so it is looked up by name. A database the registry has never
-   heard of registers itself: that is the single-database case (a local run, the
-   test suite, an install that predates the registry), and refusing it would
-   mean the ordinary path could not create an outlet at all. */
+   heard of registers itself: a local run, the test suite, an install being
+   adopted.
+
+   THIS NEEDS A REGISTRY, and that is not the caveat it reads as. control()
+   throws when CONTROL_DB is unset, so on an install without one this raises
+   four calls deep inside provisionOutlet and the onboarding panel's second
+   step comes back a bare 500 — an install that can record a company and never
+   an outlet. server.js names that at boot now rather than letting it surface
+   here; see registryNamed(). */
 async function businessForDb(dbName) {
   const found = await control().query(
     'SELECT id FROM chain.business WHERE db_name = $1', [dbName]);

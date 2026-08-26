@@ -195,3 +195,44 @@ test('the probe is removed and the cluster left clean', opts, async () => {
   await db.shutdown();
   await DB.dropBusinessDatabases();
 });
+
+/* AN INSTALL WITH NO REGISTRY IS REFUSED AT BOOT, NOT FOUR CALLS DEEP.
+
+   Found in the audit, by standing a server up the way CLAUDE.md's own local
+   harness describes — which does not set CONTROL_DB. It booted, answered
+   /readyz 200, served the onboarding panel and took step 1. Step 2 threw
+   `CONTROL_DB is not set` inside provisionOutlet and came back as a bare 500.
+   The same throw sits behind handle_points_at(), so the guest portal of a
+   store that somehow existed would be dead too, and behind the handle check
+   and rename on the outlet route.
+
+   Three comments in this repo said that without a registry this was simply a
+   single-database install behaving as it always had. That stopped being true
+   when outlet ids and handles moved to the registry and nothing noticed,
+   because every suite here names a registry of its own: there had never been
+   a run without one. This is that run. */
+test('an install with no registry says so at boot', async () => {
+  const keep = process.env.CONTROL_DB;
+  delete process.env.CONTROL_DB;
+  try {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.match(src, /function registryNamed\(\)/,
+      'boot checks for the registry by name');
+    assert.match(src, /if \(!registryNamed\(\) && process\.env\.NODE_ENV === 'production'\) process\.exit\(1\)/,
+      'production exits rather than serving an install that cannot make an outlet');
+
+    /* The message has to carry the remedy. A 503 saying "not ready" leaves
+       whoever is holding the pager exactly where the silent 500 left them. */
+    const say = src.slice(src.indexOf('function registryNamed()'),
+      src.indexOf('async function boot()'));
+    assert.match(say, /CONTROL_DB/, 'and names the variable');
+    assert.match(say, /created on the next boot/,
+      'and says the database does not have to exist first, because it does not');
+
+    // The thing it is protecting: this genuinely cannot answer without one.
+    assert.throws(() => require('../src/db').control(), /CONTROL_DB is not set/);
+  } finally {
+    if (keep === undefined) delete process.env.CONTROL_DB;
+    else process.env.CONTROL_DB = keep;
+  }
+});

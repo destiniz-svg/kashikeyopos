@@ -395,7 +395,44 @@ async function awaitDatabase() {
   }
 }
 
+/* THE REGISTRY IS NOT OPTIONAL, AND SAYING SO AT BOOT IS THE CHEAP PLACE.
+
+   Three comments in this repo — here, in src/business.js and in
+   src/routes/onboarding.js — used to say that without CONTROL_DB this is
+   simply a single-database install behaving as it always did. That stopped
+   being true when outlet ids and handles moved to the registry, and nothing
+   noticed, because every test suite names a registry of its own: there has
+   never been a run without one.
+
+   What actually happens is worse than a refusal. The app boots, answers
+   /readyz 200, serves the onboarding panel, accepts step 1 — and then step 2
+   throws `CONTROL_DB is not set` four calls deep in provisionOutlet and comes
+   back as a bare 500. The same throw is behind handle_points_at(), so a store
+   that somehow existed would have a dead guest portal, and behind the handle
+   check and rename on the outlet route. An install that can create a company
+   and never an outlet is not a working single-database install; it is a
+   half-configured one that looks fine until somebody tries to trade.
+
+   So it is named here, at the one moment somebody is reading the log, with
+   the remedy in the message. The cost to a self-hosted install is a single
+   variable: the database itself does not have to exist, because
+   ensureControlDb() creates it on the next boot. What is NOT done is picking
+   a default — control() refuses to guess for a reason, and a guess would make
+   a business's own database its registry on a misconfigured deploy, with the
+   accounts landing in the wrong place and nothing saying so. */
+function registryNamed() {
+  if (String(process.env.CONTROL_DB || '').trim()) return true;
+  bootError = 'CONTROL_DB is not set — this install has no registry, so it'
+    + ' cannot allocate an outlet id, claim a store address, or route a'
+    + ' request to a business. Set CONTROL_DB to the name you want the'
+    + ' registry database to have (kashikeyo_control is the usual one); it is'
+    + ' created on the next boot if it does not exist.';
+  console.error('[boot] ' + bootError);
+  return false;
+}
+
 async function boot() {
+  if (!registryNamed() && process.env.NODE_ENV === 'production') process.exit(1);
   if (process.env.SKIP_MIGRATE !== '1') {
     if (!(await awaitDatabase())) {
       bootError = 'the database is unreachable';
@@ -404,9 +441,10 @@ async function boot() {
     try {
       /* THE REGISTRY FIRST, THEN THE FLEET. With CONTROL_DB set this install is
          a multi-business one: the registry lists the fleet, so migrating
-         businesses before it would work from yesterday's list. Without it,
-         this is a single database and nothing changes — which is what every
-         existing install is until its registry exists. */
+         businesses before it would work from yesterday's list. Without it
+         there is nothing this app can do beyond migrate the one database it
+         is connected to — registryNamed() above has already said so and, in
+         production, already exited. */
       if (String(process.env.CONTROL_DB || '').trim()) {
         await migrateControl();
         const out = await fleet({});

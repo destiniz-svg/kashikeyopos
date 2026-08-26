@@ -93,6 +93,18 @@ own registry on a misconfigured deploy — the tables would create, the accounts
 would land in the wrong place, and nothing would say so until two customers had
 signed up. `control()` throws instead.
 
+**And an install that does not name one is refused at boot.** Three comments
+here said that without `CONTROL_DB` this was simply a single-database install
+behaving as it always had. That stopped being true when outlet ids and handles
+moved to the registry: `provisionOutlet()` cannot allocate an id, the guest
+portal cannot resolve a handle, and the outlet route cannot check or rename
+one. The install booted, answered `/readyz` 200, took onboarding step 1 and
+500'd on step 2. `registryNamed()` in `server.js` names it at boot with the
+remedy in the message, and production exits — the same doctrine as a schema it
+could not finish migrating. The database itself need not exist;
+`ensureControlDb()` creates it. `test/fleet.test.js` is the only run in the
+suite that happens without a registry, which is why this was invisible.
+
 **The account plane moved to the registry** (011 is now a tombstone that drops
 the tables). One account may own several businesses, so "is this address known"
 cannot be asked of one business's database without searching every database in

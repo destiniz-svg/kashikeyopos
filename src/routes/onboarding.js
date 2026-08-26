@@ -186,8 +186,11 @@ r.use(async function (req, res, next) {
    rejected promise — a throw deeper in would leave the request hanging with no
    response at all, which is what the first version of this did.
 
-   Only where a registry exists. Without one this is a single-database install
-   and onboarding is exactly what it always was. */
+   Only where a registry exists — and an install without one is refused at
+   boot now (server.js, registryNamed()), because outlet ids and store
+   addresses are the registry's to give and step 2 cannot run without it. What
+   is left of this branch is the anonymous claim on an install that has one,
+   which is fenced by ONBOARDING_CLAIM_TOKEN. */
 r.use(function (req, res, next) {
   if (!CONTROL_DB() || req.bizDb || !req.account) return next();
   /* An ACCOUNT with no business is the case that shipped broken: /account sent
