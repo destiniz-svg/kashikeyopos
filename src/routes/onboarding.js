@@ -99,6 +99,28 @@ const r = express.Router();
 function claim(req, res, next) {
   const want = process.env.ONBOARDING_CLAIM_TOKEN || '';
   if (want.length < 8) return next();                    // fence not enabled
+
+  /* AND THE RACE IT GUARDS DOES NOT EXIST FOR A BUSINESS THAT MADE ITSELF.
+     Everything above is the per-install world: one empty database on a public
+     hostname, three steps behind nothing, and whoever POSTs first is the
+     owner. A registry install is not that. `req.bizDb` is set only where a
+     VERIFIED, active account owns a live business in chain.account_business —
+     a database that account created itself, through POST /api/account/business,
+     which already requires a token, a confirmed address and a ceiling. There is
+     no gun to jump: a stranger cannot reach these steps at all, because the
+     middleware above answers 409 to an account with no business and the
+     account token is what names the database.
+
+     So the code is not asked for where the stronger credential is already
+     present. It is not weakened anywhere else: with no registry, or with an
+     account that owns nothing, the fence stands exactly as it did, and the
+     doorman stands in front of it either way.
+
+     Left in place, this asks a self-serve customer for a code no one ever
+     issued them — the install's own boot log says "unclaimed", and there is
+     nobody to ring. */
+  if (req.bizDb) return next();
+
   const got = String(req.get('x-claim-token') || '');
   const a = Buffer.from(got);
   const b = Buffer.from(want);
@@ -263,7 +285,11 @@ r.get('/state', async function (req, res, next) {
          exists there is nothing left to claim, so the panel should stop
          asking rather than keep a field on screen that does nothing. */
       claimRequired: (process.env.ONBOARDING_CLAIM_TOKEN || '').length >= 8
-        && !done.owner,
+        && !done.owner
+        // Not of a business that made itself — see claim() for why the code
+        // has nothing left to protect there. Asked for, it would be a field
+        // nobody can fill.
+        && !req.bizDb,
       /* WHAT THEY CALLED THE BUSINESS WHEN THEY SIGNED UP. Typed once, on the
          account form, and it is the registry's name for this customer — not
          the outlet's, which step 2 asks for separately, and not a trading

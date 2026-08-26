@@ -135,6 +135,30 @@ test('they onboard the company, the outlet and themselves', opts, async () => {
   assert.strictEqual(seeded.body.business, 'Seaside Cafe',
     'the panel is told what the signup called this business, to prefill step 1');
 
+  /* AND NOBODY ASKS A SELF-SERVE CUSTOMER FOR A CODE THEY WERE NEVER GIVEN.
+     ONBOARDING_CLAIM_TOKEN exists because, on a per-install deploy, the three
+     steps before a staff session are behind nothing and whoever POSTs first
+     owns the business. That race cannot happen here: these steps are reached
+     only with an account token naming a business this account created itself,
+     through a door that already wanted a verified address. Left in place the
+     fence asks for a code no seller ever issued, and the install's own boot
+     log says "unclaimed" with nobody to ring. */
+  const hadToken = process.env.ONBOARDING_CLAIM_TOKEN;
+  process.env.ONBOARDING_CLAIM_TOKEN = 'a-code-nobody-here-was-given';
+  try {
+    const asked = await call('GET', '/api/onboarding/state', undefined, acct);
+    assert.strictEqual(asked.body.claimRequired, false,
+      'the panel does not put a field on screen that nobody can fill');
+    // The stranger's door is unchanged: no account, no business, still fenced.
+    const stranger = await call('POST', '/api/onboarding/company',
+      { legalName: 'Squatter Ltd', regNo: 'X-1', address: 'nowhere' }, {});
+    assert.strictEqual(stranger.status, 403, 'and the fence still stands for everyone else');
+    assert.strictEqual(stranger.body.claim, true);
+  } finally {
+    if (hadToken === undefined) delete process.env.ONBOARDING_CLAIM_TOKEN;
+    else process.env.ONBOARDING_CLAIM_TOKEN = hadToken;
+  }
+
   let r = await step('/api/onboarding/company', {
     legalName: 'Seaside Cafe Pvt Ltd', regNo: 'C-9001/2026', gstRegistered: 'yes',
     tin: 'T9000001GST501', address: 'Boduthakurufaanu Magu, Malé'
