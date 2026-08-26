@@ -40,6 +40,36 @@ test('a dangling platform reference is named as one, not as a missing setting', 
     assert.doesNotMatch(h.reason, /no email transport is configured/);
   }));
 
+/* A KEY ARRIVES WITH WHATEVER WAS AROUND IT. Pasted into a dashboard, copied
+   out of a terminal, read off a page — a trailing newline or a stray space is
+   the ordinary case, not the exotic one. Untrimmed it is not even a 401: a
+   header value containing a newline makes fetch throw before the request is
+   built, and the error talks about headers rather than about the key, which
+   sends whoever reads it nowhere near the cause. */
+test('a credential is what it is, not what it is surrounded by', async () =>
+  withEnv({ RESEND_API_KEY: '  re_not_a_real_key\n',
+    EMAIL_FROM: ' KashikeyoPOS <hello@example.mv> ' }, async () => {
+    assert.strictEqual(email.health().ok, true,
+      'whitespace around a key does not make an install unconfigured');
+
+    const real = global.fetch;
+    let sent = null;
+    global.fetch = async (url, opts) => {
+      sent = opts;
+      return { status: 200, ok: true, headers: { get: () => null },
+        text: async () => '{"id":"eml_1"}' };
+    };
+    try {
+      await email.send({ to: 'a@b.mv', subject: 'x', text: 'y' });
+    } finally { global.fetch = real; }
+
+    assert.strictEqual(sent.headers.authorization, 'Bearer re_not_a_real_key',
+      'and the header carries the key alone — a newline in a header value'
+      + ' throws before the request is even built');
+    assert.strictEqual(JSON.parse(sent.body).from, 'KashikeyoPOS <hello@example.mv>',
+      'the From address the same way');
+  }));
+
 test('a transport that answered and refused is reported as a refusal', () =>
   withEnv({ RESEND_API_KEY: 're_not_a_real_key', EMAIL_FROM: 'x@example.mv' }, async () => {
     assert.strictEqual(email.health().ok, true, 'configured, and nothing tried yet');

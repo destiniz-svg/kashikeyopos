@@ -28,8 +28,18 @@
    than to a doomed request. */
 const unresolved = (v) => /\$\{\{[^}]*\}\}/.test(String(v || ''));
 
-const configured = () => !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
-  && !unresolved(process.env.RESEND_API_KEY) && !unresolved(process.env.EMAIL_FROM);
+/* A CREDENTIAL IS WHAT IT IS, NOT WHAT IT IS SURROUNDED BY. A key is pasted
+   into a dashboard, copied out of a terminal, or read off a page, and it
+   arrives with a trailing newline or a stray space more often than not. Left
+   alone that is not even a 401 — a header value containing a newline makes
+   fetch throw before the request is built, which surfaces as a error message
+   about headers and sends whoever reads it nowhere near the key. Trim once,
+   here, so every reader of these two variables sees the same thing. */
+const KEY = () => String(process.env.RESEND_API_KEY || '').trim();
+const FROM = () => String(process.env.EMAIL_FROM || '').trim();
+
+const configured = () => !!(KEY() && FROM())
+  && !unresolved(KEY()) && !unresolved(FROM());
 
 /* WHY A MESSAGE DID NOT GO IS AN INSTALL-WIDE FACT, and the screen needs it.
    "not sent" collapsed three different situations into one word: no transport,
@@ -49,8 +59,7 @@ let last = null;
 
 function health() {
   if (!configured()) {
-    return { ok: false, reason: (unresolved(process.env.RESEND_API_KEY)
-      || unresolved(process.env.EMAIL_FROM))
+    return { ok: false, reason: (unresolved(KEY()) || unresolved(FROM()))
       ? 'RESEND_API_KEY or EMAIL_FROM is an unresolved platform reference on'
         + ' this install — check the service name inside the braces'
       : 'no email transport is configured on this install' };
@@ -65,11 +74,11 @@ async function viaResend(msg) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      authorization: 'Bearer ' + process.env.RESEND_API_KEY,
+      authorization: 'Bearer ' + KEY(),
       'content-type': 'application/json'
     },
     body: JSON.stringify({
-      from: process.env.EMAIL_FROM,
+      from: FROM(),
       to: [msg.to],
       subject: msg.subject,
       text: msg.text,
