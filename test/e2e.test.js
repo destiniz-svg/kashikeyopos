@@ -326,6 +326,54 @@ test('and the shop is still trading after all of it', opts, async () => {
   assert.ok(boot.body.kpos, 'and gets its payload');
 });
 
+/* RETENTION SWEPT THE WRONG DATABASE, AND SILENCE LOOKED LIKE SUCCESS.
+
+   /readyz was generalised to walk every business when the tenancy boundary
+   moved; pruneHistory() was not. It kept calling owner() — the database this
+   process happens to be dialled at, which in a registry install is one no
+   customer trades in. So op_log, a replay window, and guest_request, a floor
+   board, grew for ever in every real business, a row per op and a row per
+   guest signal, on tables that are only ever appended to.
+
+   Nothing showed. A prune that removes nothing logs nothing, and that is
+   indistinguishable from "nothing was old enough yet" — which is why this
+   needed an audit rather than an error. Proved here rather than asserted from
+   the source, for the same reason: the only honest evidence is a row that was
+   there and is not. */
+test('retention reaches every business, not the one this process dialled', opts, async () => {
+  const server = require('../server.js');
+  assert.strictEqual(typeof server.pruneHistory, 'function');
+
+  const c = await db.ownerFor(bizDb).connect();
+  try {
+    await c.query('BEGIN');
+    await c.query('SET LOCAL search_path = outlet_' + outletId + ', chain, public');
+    await c.query("INSERT INTO op_log (op_id, lamport, client_at, kind, payload, applied_at)"
+      + " VALUES (gen_random_uuid(), 1, now() - interval '200 days', 'audit_probe',"
+      + " '{}'::jsonb, now() - interval '200 days'),"
+      + " (gen_random_uuid(), 2, now() - interval '1 day', 'audit_probe',"
+      + " '{}'::jsonb, now() - interval '1 day')");
+    await c.query('COMMIT');
+  } finally { c.release(); }
+
+  const count = async () => Number((await db.ownerFor(bizDb).query(
+    'SELECT count(*)::int AS n FROM outlet_' + outletId + '.op_log'
+    + " WHERE kind = 'audit_probe'")).rows[0].n);
+  assert.strictEqual(await count(), 2, 'both probes are in the BUSINESS database');
+
+  await server.pruneHistory();
+
+  assert.strictEqual(await count(), 1,
+    'the 200-day row is gone and the 1-day row is not — so the sweep opened'
+    + ' this business, which is the whole finding');
+
+  // And it is on the trail, in that business's own audit table.
+  const trail = await db.ownerFor(bizDb).query(
+    "SELECT after FROM chain.audit WHERE action = 'history_pruned' ORDER BY at DESC LIMIT 1");
+  assert.ok(trail.rows.length, 'a prune that removed something says so');
+  assert.ok(Number(trail.rows[0].after.op_log) >= 1);
+});
+
 test('the cluster is left clean', opts, async () => {
   if (srv) await new Promise((res) => srv.close(res));
   await db.shutdown();

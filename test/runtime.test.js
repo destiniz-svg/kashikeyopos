@@ -139,10 +139,16 @@ test('two tills selling the same last portion both reach the books',
          and persists it, which is what stops a drained outbox walking the
          number backwards; making the two comparable is the receive rule, and
          that needs a poll, which neither of these offline tills can do. */
+      /* Read the STORAGE, not the accessor. This assertion used to go through
+         local(), which is namespaced by outlet and short-circuits when none is
+         selected — so on a terminal that had not signed in it read null while
+         the clock ticked happily in memory, and the persistence this claims to
+         prove was not happening at all. The clock is the DEVICE's, so its key
+         is not an outlet's. */
       const walk = (p) => p.evaluate(() => {
         const a = window.KPOS_SYNC.tick(0);
         const b = window.KPOS_SYNC.tick(0);
-        return { a: a, b: b, stored: Number(window.KPOS_API.local('lamport')) };
+        return { a: a, b: b, stored: Number(localStorage.getItem('kashikeyo.lamport')) };
       });
       const ca = await walk(pa);
       const cc = await walk(pc);
@@ -151,6 +157,24 @@ test('two tills selling the same last portion both reach the books',
         assert.strictEqual(c.stored, c.b,
           'and till ' + who + ' persists it, so a drained outbox cannot walk it back');
       });
+
+      /* AND A DEVICE UPGRADING ACROSS THAT CHANGE DOES NOT WALK BACK. It holds
+         a number under the old outlet-namespaced key and none under the new
+         one; starting again from zero would be the very defect being fixed. */
+      const upgraded = await b.newContext();
+      const pu = await upgraded.newPage();
+      await pu.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+      await pu.evaluate(() => {
+        localStorage.removeItem('kashikeyo.lamport');
+        localStorage.setItem('kashikeyo.o1.lamport', '4096');
+      });
+      await pu.reload({ waitUntil: 'domcontentloaded' });
+      await pu.waitForTimeout(1600);
+      const carried = await pu.evaluate(() => window.KPOS_SYNC.tick(0));
+      assert.ok(carried > 4096,
+        'an old outlet-namespaced number is a FLOOR, so no number is ever'
+        + ' re-issued: got ' + carried);
+      await upgraded.close();
 
       // Persisted means persisted: reopen the page and it has not reset.
       await pa.close();

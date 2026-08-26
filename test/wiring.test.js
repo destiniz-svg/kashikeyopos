@@ -1129,8 +1129,24 @@ test('the sync clock is monotonic, persisted, and raised by what it receives', (
   const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
   const SYNC = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
 
-  assert.ok(/this\.local\("lamport", next\)/.test(API),
+  /* PERSISTED UNDER A DEVICE KEY, NOT AN OUTLET'S. This assertion used to
+     match `this.local("lamport", next)` — the CALL, not the storage — and
+     stayed green for months while the property was false: local() is
+     namespaced by outlet and short-circuits when none is selected, so on a
+     terminal that had not signed in the clock ticked in memory and persisted
+     nothing, restarting at one on every reload. A static check that matches a
+     call site cannot see that the callee returns early. The browser test in
+     test/runtime.test.js is what found it, the first time it was ever allowed
+     to run. */
+  assert.ok(/var LAMPORT_KEY = "kashikeyo\.lamport"/.test(API),
+    'the clock has a key of its own, because it is the device\'s and not an outlet\'s');
+  assert.ok(/localStorage\.setItem\(LAMPORT_KEY/.test(API),
     'the clock is persisted, so a drained outbox cannot walk it back');
+  assert.ok(!/this\.local\("lamport"/.test(API),
+    'and never through the outlet-namespaced accessor, which drops it before sign-in');
+  assert.ok(/kashikeyo\\\.o\\d\+\\\.lamport/.test(API),
+    'a device upgrading across that change reads its old number as a FLOOR,'
+    + ' so no number is ever re-issued');
   assert.ok(/seen\(n\)/.test(API) && /if \(top\) this\.seen\(top\)/.test(API),
     'and every poll raises it past what the outlet has already accepted');
   assert.ok(/tick: function \(atLeast\)/.test(BRIDGE),

@@ -343,19 +343,48 @@ const port = Number(process.env.PORT || 8080);
    archive, and the floor board is not a record. Daily, and once at boot —
    in-process because this build is one process, like the doorman. chain.audit
    is never pruned; setting either knob to 0 disables that table's pruning. */
+/* EVERY BUSINESS, NOT THE ONE THIS PROCESS DIALLED. /readyz was generalised
+   to walk the fleet when the tenancy boundary moved; this was not, and it took
+   an audit to notice, because a prune that removes nothing logs nothing —
+   there is no failure to see, only silence that looks exactly like "nothing
+   was old enough yet".
+
+   The connected database has no job in a registry install. op_log is a replay
+   window and guest_request is a floor board; left unpruned in every real
+   customer's database they grow for ever, a row per op and a row per guest
+   signal, on tables that are only ever appended to.
+
+   One business failing does not stop the others, for the same reason a
+   business behind head does not stop the fleet: one customer's disk is not
+   every customer's. */
+async function eachBusinessDb() {
+  const { control, CONTROL_DB, ownerFor } = require('./src/db');
+  if (!CONTROL_DB()) return [{ db: null, pool: owner() }];
+  const biz = await control().query(
+    "SELECT db_name FROM chain.business WHERE status = 'live' ORDER BY id");
+  return biz.rows.map((b) => ({ db: b.db_name, pool: ownerFor(b.db_name) }));
+}
+
 async function pruneHistory() {
   const opD = Number(process.env.RETAIN_OP_LOG_DAYS || 90);
   const grD = Number(process.env.RETAIN_GUEST_REQUEST_DAYS || 30);
   if (!opD || !grD) return;
-  try {
-    const q = await owner().query('SELECT * FROM chain.prune_history($1,$2)', [opD, grD]);
-    const op = q.rows.reduce((a, r) => a + Number(r.op_rows), 0);
-    const gr = q.rows.reduce((a, r) => a + Number(r.guest_rows), 0);
-    if (op || gr) {
-      console.log('[retention] pruned ' + op + ' op_log and ' + gr
-        + ' guest_request rows past ' + opD + '/' + grD + ' days');
+  let targets;
+  try { targets = await eachBusinessDb(); }
+  catch (e) { return console.error('[retention] could not list the fleet: ' + e.message); }
+  for (const t of targets) {
+    try {
+      const q = await t.pool.query('SELECT * FROM chain.prune_history($1,$2)', [opD, grD]);
+      const op = q.rows.reduce((a, r) => a + Number(r.op_rows), 0);
+      const gr = q.rows.reduce((a, r) => a + Number(r.guest_rows), 0);
+      if (op || gr) {
+        console.log('[retention] ' + (t.db || 'this database') + ': pruned ' + op
+          + ' op_log and ' + gr + ' guest_request rows past ' + opD + '/' + grD + ' days');
+      }
+    } catch (e) {
+      console.error('[retention] ' + (t.db || 'this database') + ': ' + e.message);
     }
-  } catch (e) { console.error('[retention] ' + e.message); }
+  }
 }
 
 /* A database that has not come up yet is not a broken schema, and saying so is
@@ -487,11 +516,31 @@ async function boot() {
       + ' below (then PGSSL=verify):');
     console.log(ca);
   }).catch(function () {});
-  /* What install did this boot land on? One line, because "is production
-     clean" must never require a database client to answer. It also catches
-     the surprise the promote just met: a database everyone believed empty
-     that an earlier build had already migrated. */
-  owner().query('SELECT legal_name FROM chain.company LIMIT 1').then(async (co) => {
+  /* WHAT DID THIS BOOT LAND ON? One line, because "is production clean" must
+     never require a database client to answer.
+
+     It used to ask the CONNECTED database for a company and an outlet count.
+     In a registry install that database has no job — no business keeps its
+     books there — so on a correctly configured one the line read "no company
+     yet, onboarding is open" for ever, and on an install pointed straight at
+     its registry it read "state unreadable: relation chain.company does not
+     exist" on every boot. Both describe a database nobody trades in.
+
+     The fleet is the answer now, and the claim fence is only mentioned where
+     it still means something: a single-database install, where the first
+     caller really does become the owner. */
+  (async function sayWhereWeAre() {
+    const { CONTROL_DB } = require('./src/db');
+    if (CONTROL_DB()) {
+      const b = await require('./src/db').control().query(
+        "SELECT count(*)::int AS live FROM chain.business WHERE status = 'live'");
+      const n = Number(b.rows[0].live);
+      console.log('[install] registry "' + CONTROL_DB() + '" \u00b7 ' + n
+        + ' business database(s)'
+        + (n ? '' : ' \u2014 the first signup creates one'));
+      return;
+    }
+    const co = await owner().query('SELECT legal_name FROM chain.company LIMIT 1');
     const ou = await owner().query('SELECT count(*)::int AS n FROM chain.outlet');
     console.log(co.rows.length
       ? '[install] company "' + co.rows[0].legal_name + '" \u00b7 ' + ou.rows[0].n + ' outlet(s)'
@@ -510,7 +559,7 @@ async function boot() {
             + ' Set ONBOARDING_CLAIM_TOKEN to require a setup code.');
       }
     }
-  }).catch((e) => console.error('[install] state unreadable: ' + e.message));
+  }()).catch((e) => console.error('[install] state unreadable: ' + e.message));
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();
   ['SIGTERM', 'SIGINT'].forEach(function (sig) {
@@ -524,4 +573,7 @@ async function boot() {
 
 if (require.main === module) boot();
 
-module.exports = { app, boot };
+// pruneHistory is exported so the fleet sweep can be PROVED rather than
+// asserted from its source: a prune that removes nothing logs nothing, which
+// is exactly how it went unnoticed that it was pruning the wrong database.
+module.exports = { app, boot, pruneHistory };

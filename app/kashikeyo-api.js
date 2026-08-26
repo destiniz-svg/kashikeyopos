@@ -22,6 +22,19 @@
   "use strict";
 
   var TOKEN_KEY = "kashikeyo.token";
+  /* THE CLOCK IS THE DEVICE'S, NOT AN OUTLET'S, so its key is not namespaced
+     by one. It was, and local() short-circuits with no outlet selected — so on
+     a terminal that had not signed in yet, tick() went 1, 2, 3 in memory and
+     persisted NONE of it. Reload and the sequence restarted at one, which is
+     precisely the walking-backwards defect the persistence was added to stop,
+     surviving in the window before sign-in. The outbox high-water floor
+     recovers the number once a bridge is there, but a floor is a repair, not
+     the guarantee.
+
+     Sharing one counter across outlets is harmless and correct: all a lamport
+     has to be is monotonic per device, and a higher starting number sorts the
+     same. */
+  var LAMPORT_KEY = "kashikeyo.lamport";
   var DB_NAME = "kashikeyo", STORE = "outbox", DB_VERSION = 1;
   var has = typeof localStorage !== "undefined";
 
@@ -240,20 +253,44 @@
        covers on one table still resolve last-write-wins; what changes is that
        "last" now means the later event rather than the luckier connection.
        Per-field versioning is the answer to the rest, and it is not here. */
+    _lamRead() {
+      if (!has) return 0;
+      var n = 0;
+      try { n = Number(localStorage.getItem(LAMPORT_KEY)) || 0; } catch (e) { n = 0; }
+      /* A DEVICE UPGRADING ACROSS THIS CHANGE MUST NOT WALK BACK. It has a
+         number under the old outlet-namespaced key and none under the new one,
+         and starting again from zero is the very thing being fixed. Every old
+         key is a floor — whichever outlet it was written for, all that matters
+         is that this device never re-issues a number it has already used. */
+      try {
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (!k || !/^kashikeyo\.o\d+\.lamport$/.test(k)) continue;
+          var was = Number(JSON.parse(localStorage.getItem(k) || "0")) || 0;
+          if (was > n) n = was;
+        }
+      } catch (e) { /* a browser that will not enumerate is no worse than none */ }
+      return n;
+    }
+    _lamWrite(v) {
+      this._lam = v;
+      if (!has) return v;
+      // A full quota is not a reason to stop selling; the in-memory clock still
+      // goes forward and the outbox floor still recovers it.
+      try { localStorage.setItem(LAMPORT_KEY, String(v)); } catch (e) {}
+      return v;
+    }
     clock() {
-      if (this._lam == null) this._lam = Number(this.local("lamport")) || 0;
+      if (this._lam == null) this._lam = this._lamRead();
       return this._lam;
     }
     seen(n) {
       var v = Number(n) || 0;
-      if (v > this.clock()) { this._lam = v; this.local("lamport", v); }
+      if (v > this.clock()) this._lamWrite(v);
       return this._lam;
     }
     tick(atLeast) {
-      var next = Math.max(this.clock(), Number(atLeast) || 0) + 1;
-      this._lam = next;
-      this.local("lamport", next);
-      return next;
+      return this._lamWrite(Math.max(this.clock(), Number(atLeast) || 0) + 1);
     }
 
     /* ── the tick ──────────────────────────────────────────────────────── */
