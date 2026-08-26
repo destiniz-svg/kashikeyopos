@@ -327,8 +327,97 @@ The database is the only state. The app writes nothing to disk at runtime;
 the browser's own IndexedDB holds an outlet's un-replayed operations, which is
 why a till keeps selling through an outage but is not a backup.
 
-Take Postgres backups at the platform level and **restore-test them**, because
-a backup nobody has restored is a hypothesis.
+**Two layers, and you want both.** The platform's volume snapshot and
+point-in-time recovery protect the CLUSTER, and they are the right tool for a
+disk that dies or a migration that went wrong across the board — turn them on.
+What they cannot do is restore ONE customer: a volume snapshot is all-or-
+nothing, so recovering a single shop from one means rolling every other shop
+back with it. That is the gap `npm run backup` fills — a logical archive per
+business, restorable on its own.
+
+### Taking them
+
+Set exactly one destination, and check it:
+
+```
+BACKUP_DIR=/var/lib/kashikeyo/backups        a MOUNTED volume, not the
+                                             container's ephemeral disk
+   — or —
+BACKUP_S3_BUCKET=…  BACKUP_S3_KEY=…  BACKUP_S3_SECRET=…
+BACKUP_S3_REGION=…  BACKUP_S3_ENDPOINT=…     (endpoint for R2/B2/MinIO;
+                                              leave empty for AWS)
+
+npm run backup -- --check     is this install able to take one, and when
+                              did the last good one land
+npm run backup                the registry, then every live business
+npm run backup -- --business 3
+npm run backup -- --list      what is on the shelf
+```
+
+With no destination set the install takes **no copies at all** and says so at
+boot, in `--check`, and on the Settings card. It never implies otherwise. With
+one set, an in-process schedule runs every `BACKUP_EVERY_HOURS` (24), keeps
+`BACKUP_RETAIN_DAYS` (30) — never removing a database's newest good copy,
+however old — and the watchdog raises an alert once the newest good archive
+passes `BACKUP_STALE_HOURS`. `/metrics` carries `kpos_backup_age_hours`, with
+`-1` for "never".
+
+Every run is a row in `chain.backup` in the registry, **including the ones that
+fail**: a shelf showing only successes reads as "backed up nightly" on an
+install whose last four nights did not.
+
+`pg_dump` and `pg_restore` come from the image (`postgresql-client` in the
+Dockerfile). The client's major must be **at least** the server's — pg_dump
+refuses a server newer than itself — and `src/backup.js` checks that and
+refuses by name with the remedy rather than letting it surface at 3 a.m.
+
+### Putting one back
+
+```
+npm run restore -- --db kashikeyo_biz_3
+```
+
+restores the newest good archive of that business **beside** the live database,
+into a new one, and re-applies its outlet login roles. Nothing a customer can
+see changes: the registry still routes every request to the original, so the
+shop keeps trading while somebody checks the copy holds what they think it
+holds. Then, as a separate and deliberate act:
+
+```
+npm run restore -- --adopt 3 --into kashikeyo_biz_3_restored_20260826t204424
+```
+
+points business 3 at the copy. The database that was live an instant ago is
+left on the cluster — it is the only copy of anything rung since the archive,
+and destroying it as part of a recovery is how a bad afternoon becomes an
+unrecoverable one.
+
+Restoring straight over a live database is possible and is not a default:
+`--into <db> --over`, both spelled out. The archive's sha256 is checked against
+the manifest before anything is created, because a truncated upload restores
+most of a database and reports success on the part that arrived.
+
+**There is no button for any of this**, deliberately. An earlier pass found the
+Restore card in Settings promising the tills would lock while it ran, over an
+op that did nothing. The answer to that is not a button that works; it is that
+this decision belongs to whoever holds the database, with the archive named out
+loud and the target typed.
+
+### What is verified, and what is not
+
+`test/backup.test.js` runs the whole drill on every CI run: a business trades,
+the archive is written and hashed, **the database is DROPPED**, it is restored,
+and every figure is compared — bills, gross, tax, the journal's own dr and cr,
+tenders, the install uuid, the audit depth, the schema version — then the
+outlet's own login role reads its sales back and a fresh connection is opened
+as that role.
+
+The S3 driver's request signing is verified against AWS's published SigV4 test
+vector. **Its live round trip is not verified**: there is no bucket in CI to
+fail against, so the first real upload to a new bucket is the first proof that
+its credentials, endpoint and permissions are right. Run `npm run backup` by
+hand once after configuring one, and read the `--list` output, before trusting
+the schedule.
 
 ### A business is TWO databases, and restoring one is not a restore
 

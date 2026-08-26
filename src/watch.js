@@ -136,6 +136,16 @@ function render(state) {
     'gauge', Number(s.failed || 0));
   line(out, 'kpos_devices_quiet', 'Writing devices that have not delivered a push in the window.',
     'gauge', Number(s.quiet || 0));
+  /* -1 rather than 0 for "never", because 0 hours old is the healthiest
+     possible answer and a gauge that reports the worst state as the best one
+     is worse than no gauge. An install with no destination configured emits
+     nothing at all: there is no age to report, and a permanently -1 series is
+     an alert somebody will end up silencing. */
+  if (s.backupAgeHours !== undefined) {
+    line(out, 'kpos_backup_age_hours',
+      'Hours since the last good backup completed. -1 when none ever has.',
+      'gauge', s.backupAgeHours === null ? -1 : Math.round(s.backupAgeHours * 100) / 100);
+  }
   return out.join('\n') + '\n';
 }
 
@@ -382,6 +392,44 @@ async function sweep(probes) {
     console.error('[watch] device probe failed: ' + e.message);
   }
 
+  /* 4 · IS THERE A RECENT COPY? A backup system nobody watches is the same
+     defect class as a screen that reports an action it did not take — an
+     install believing it is protected because something is scheduled. The
+     failure mode is silent by construction: nothing goes wrong on the night a
+     dump fails, only on the day somebody needs it.
+
+     Deliberately silent on an install with NO destination configured. That is
+     a stated choice (the boot line says so, and the Settings card says so),
+     not a fault, and paging somebody every six hours about a decision they
+     made is how an alert channel gets muted. What is a fault is a destination
+     that IS configured and is not receiving copies. */
+  try {
+    const b = await probes.backups();
+    state.backupAgeHours = b.ageHours;
+    if (b.configured) {
+      const stale = b.ageHours === null || b.ageHours > b.windowHours;
+      await say('backups', stale,
+        b.ageHours === null
+          ? 'no backup has ever completed on this install'
+          : 'the last good backup is ' + Math.round(b.ageHours) + 'h old',
+        'A destination is configured (' + b.where + ') and '
+        + (b.ageHours === null
+          ? 'nothing has ever been written to it.'
+          : 'the newest good archive is ' + Math.round(b.ageHours) + ' hours old,'
+            + ' past the ' + b.windowHours + 'h window.')
+        + (b.recentFailures
+          ? '\n\n' + b.recentFailures + ' of the last runs failed'
+            + (b.lastWhy ? ', most recently: ' + b.lastWhy : '') + '.'
+          : '')
+        + '\n\nNothing is lost yet. What is lost is the ability to go back.'
+        + '\n\nRemedy: npm run backup -- --check names what is wrong;'
+        + ' npm run backup takes one now.',
+      'a backup has completed again');
+    }
+  } catch (e) {
+    console.error('[watch] backup probe failed: ' + e.message);
+  }
+
   return state;
 }
 
@@ -392,7 +440,8 @@ function bootLine() {
   return off
     ? '[watch] alerting is OFF — ' + off + '. /metrics still counts.'
     : '[watch] alerting to ' + ALERT_TO() + ' (' + alertSource().name + ')'
-      + ' · readiness, schema drift and quiet devices · repeats every '
+      + ' · readiness, schema drift, quiet devices and stale backups'
+      + ' · repeats every '
       + Math.round(REPEAT_MS() / 3600e3) + 'h';
 }
 

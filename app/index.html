@@ -17796,22 +17796,27 @@ class Component extends DCLogic {
           rows: [["Length", "4 digits"], ["Authorises", "unlock · voids · discounts"], ["Proved by", "the PIN you are replacing"], ["Rejected", "runs and repeats"]],
           foot: "Yours to change here, and knowing the current one is what proves it is you. A manager resets someone else's from Users & Roles, which is the only way to change a PIN nobody knows.",
           goLabel: "Change my PIN", go: () => this.openForm("pin") },
-        /* Backups are taken where the database lives, and this app takes
-           none of its own. What used to be here was a picture of a backup
-           system: an archive list, a retention policy and a size, all
-           literals, over two controls that queued an audit-only op and
-           toasted a success. Pressing Restore told the operator the tills
-           would lock, and nothing whatever happened \u2014 the worst kind of
-           invented figure, because it is a destructive action reporting that
-           it ran. Both cards now say what is true and name where the work is
-           actually done. */
-        { title: "Backup", sub: "Taken where the database lives", chip: "Not in the app", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
-          rows: [["Taken by", "your hosting platform"], ["This app", "takes none of its own"], ["This device", "needs none"], ["Schedule", "set where the database runs"]],
-          foot: "The database is the only state \u2014 this terminal's offline cache rebuilds itself from the server, so nothing on the device needs backing up. The copies themselves are taken by the platform the database runs on. This screen deliberately shows no archive list rather than one it cannot read.",
+        /* WHAT THESE TWO CARDS MAY SAY IS BOUNDED BY WHERE THE ANSWER LIVES.
+           The app takes its own copies now — one archive per business plus the
+           registry, on a schedule — but the record of them is chain.backup in
+           the REGISTRY, and an outlet login role is refused at that database's
+           door (control/003). So this screen cannot read a last-backup time,
+           and it does not print one: the previous version of this card was a
+           picture of a backup system, with an archive list and a retention
+           policy that were literals, and inventing a date here would be the
+           same defect wearing the opposite claim.
+
+           What it CAN say is what is true of the install and of this device,
+           and where the state actually is. Whoever runs the install sees it in
+           the boot log, in `npm run backup -- --check`, on /metrics as
+           kpos_backup_age_hours, and — when it goes stale — in an alert. */
+        { title: "Backup", sub: "Taken against the database, on a schedule", chip: "Where the database lives", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["What is copied", "the whole business, per business"], ["Kept", "where the install was pointed"], ["This device", "needs none"], ["Its state", "with whoever runs the install"]],
+          foot: "The database is the only state \u2014 this terminal's offline cache rebuilds itself from the server, so nothing on the device needs backing up. Copies are taken against the database with the install's own credentials, so whether one landed is a fact this screen cannot read and deliberately does not guess at: `npm run backup -- --check` answers it where the answer is, and a copy that stops arriving raises an alert on its own.",
           goLabel: "", go: null },
         { title: "Restore", sub: "An operator procedure, not a button", chip: "Off the app", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
-          rows: [["Run by", "whoever holds the database"], ["Steps", "restore \u00b7 reprovision \u00b7 sign in"], ["Tills", "stop until it is done"], ["Rung since", "lost"]],
-          foot: "Restoring puts the database back to an earlier moment, so anything rung since is gone. It is done against the database with the install's own secrets \u2014 the outlet login roles live outside the backup and have to be recreated afterwards \u2014 which is why there is no button here that could do it half way.",
+          rows: [["Run by", "whoever holds the database"], ["Lands", "beside the live one first"], ["Tills", "keep trading until it is swapped"], ["Rung since", "lost on the swap"]],
+          foot: "A restore is put BESIDE the live database, not over it, so the shop keeps trading while somebody checks the copy holds what they think it holds; pointing the business at it is a separate, deliberate act. Everything rung between the archive and that moment is gone. The outlet login roles are cluster-wide and are not inside a backup, so they are re-applied as part of the restore \u2014 which is why this is a command with the archive named out loud, and not a button here that could do half of it.",
           goLabel: "", go: null },
         /* The count is measured now. Both figures here used to be literals
            on an install nobody had signed into twice, and the control queued

@@ -47,6 +47,9 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        036 a device says what it runs
                        037 your own PIN is yours to change
                        038 a PIN hash never leaves the database
+                       039 a database is not a lobby
+                       control/004 the archive shelf
+src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 panel/railway.js       Provision: it builds the whole install, or says why it cannot
@@ -2359,6 +2362,121 @@ after it, a true recovery, and the log-only path.
 | `DEVICE_QUIET_MINUTES` | How long a writing device may go without delivering (60). |
 | `WATCH_INTERVAL_SECONDS` | Sweep interval (60, floor 15). First sweep is delayed 20 s so a deploy does not alert on pools that have not opened. |
 
+## A backup is bytes somewhere else, or it is a rehearsal
+
+The app took none. `backup_run`, `backup_create` and `restore_run` were
+audit-only ops that recorded the press and did nothing, and the Settings cards
+said so out loud after an earlier pass found them claiming otherwise — an
+archive list, a retention policy and a size, all literals, over a Restore
+button that told the operator the tills would lock and then did nothing at all.
+
+The platform's own volume snapshot is still the right tool for the CLUSTER and
+should be on. What it cannot do is restore ONE customer: a snapshot is
+all-or-nothing, so recovering a single shop from one rolls every other shop
+back with it. The boundary of this product is the BUSINESS, and so is the
+boundary of a copy.
+
+**`pg_dump`, not something written here.** A dump has to survive every column
+type, extension, default and constraint this schema has or will have.
+Re-deriving that from the catalogs would be a second implementation of the one
+tool the whole recovery story rests on, and it would drift silently the first
+time a migration added a type it did not know. A backup that is subtly wrong is
+worse than none, because it is trusted. The cost is a binary in the image that
+must be **at least as new as the server** — pg_dump refuses a server newer than
+itself — and nothing assumes it: `tools()` finds it, reads its version,
+compares it to `SHOW server_version_num`, and refuses BY NAME with the remedy.
+An image whose Alpine package name goes stale says so on the Backup card rather
+than handing anybody a green tick over nothing.
+
+**One seam, two drivers**, the shape `src/email.js` already has: `file` for a
+mounted volume, `s3` for any S3-compatible bucket — signed with node's own
+crypto, so the two-runtime-dependency rule holds. **Unconfigured, there is no
+destination and it says so** at boot, in `npm run backup -- --check`, and on
+the Settings card. A dump written to a container's ephemeral disk and lost on
+the next deploy is not a backup, it is a rehearsal.
+
+**To disk first, then to the destination.** Piping pg_dump straight into an
+upload either holds the whole archive in memory or leaves a half-written object
+when the dump fails on its last table, and neither is a thing to discover
+during a restore. The temp file is bounded by disk, deleted in a `finally`, and
+the sha256 is computed from the bytes that were actually written rather than
+from the ones that were meant to be.
+
+**`chain.backup` is in the REGISTRY** (control/004), for the reason the account
+plane is: a business's own record of its backups lives inside the database
+those backups exist to replace, and the one moment you need to read it is the
+moment it is gone. It also spans businesses, and "which customers did last
+night's run miss" is not a question any single business database can answer.
+
+**A failed run is a row**, and it is the row that matters most. A shelf showing
+only successes reads as "backed up nightly" on an install whose last four
+nights failed. Both states are written and the watchdog reads `ok`.
+
+### Beside by default, never over by accident
+
+A restore into the live database destroys everything rung since the archive,
+and it is the single most destructive act this system can perform. So
+`npm run restore -- --db <name>` restores into a NEW database and re-applies
+the outlet roles; the live one keeps trading while somebody checks the copy
+holds what they think it holds. Pointing the business at it is a separate act
+(`--adopt <businessId> --into <db>`), it renames rather than drops — the
+database that was live an instant ago is the only copy of anything rung since
+the archive — and it lands on the trail as `business_db_swapped`. Going
+straight over needs `--into <db> --over`, both spelled out.
+
+**The archive is verified before it is trusted.** A truncated upload restores
+most of a database and reports success on the part that arrived, which is the
+worst failure available here: the shape looks right and the tail of the trading
+history is missing. sha256 against the manifest, before anything is created.
+
+**And the roles are not in the dump.** This is the finding the original restore
+drill produced and the one that makes an otherwise perfect restore useless: a
+`pg_dump` of one database carries no cluster-wide roles, so into a fresh
+cluster `pg_restore` drops every GRANT on the floor and the install answers
+`/readyz` 200 while every outlet request fails with `role "outlet_1_app" does
+not exist`. The archive is written `--no-owner --no-privileges` precisely so
+the restore does not depend on them, and `chain.provision_outlet()` re-applies
+them afterwards as part of the restore.
+
+**There is still no button.** The rule `test/wiring.test.js` pins did not
+soften when the feature became real — it sharpened. The record lives in the
+registry, which an outlet login role is refused at the door of, so the till
+cannot read whether a copy landed and still may not say. What the Backup card
+says now is what is true of the install and where the answer actually is; it
+prints no date, because it has no way to read one and inventing one would be
+the old defect wearing the opposite claim.
+
+### Watched, or it is the same defect one level up
+
+A backup system nobody watches is an install believing it is protected because
+something is scheduled — silent by construction, since nothing goes wrong on
+the night a dump fails, only on the day somebody needs it. The watchdog's
+fourth condition fires when a configured destination stops receiving copies,
+names how stale, where they were meant to land, how many recent runs failed and
+in whose words, and gives `npm run backup -- --check` as the remedy. `/metrics`
+carries `kpos_backup_age_hours`, **-1 for never** — 0 hours old is the
+healthiest possible answer, so it cannot also mean "never".
+
+An install with NO destination is deliberately never alerted: that is a stated
+choice, the boot line and the card both say it, and paging somebody every six
+hours about their own decision is how an alert channel gets muted.
+
+| Variable | Effect |
+| --- | --- |
+| `BACKUP_DIR` | A mounted path. The `file` driver. |
+| `BACKUP_S3_BUCKET` + `_KEY` `_SECRET` `_REGION` `_ENDPOINT` `_PREFIX` | Any S3-compatible store. Endpoint empty for AWS, set (path-style) for R2/B2/MinIO. A bucket with no key is refused by name rather than half-configured. |
+| `BACKUP_EVERY_HOURS` | Schedule interval (24). 0 turns the schedule off and leaves the CLI working. |
+| `BACKUP_RETAIN_DAYS` | 30. A database's newest good copy is never removed by age, however old. |
+| `BACKUP_STALE_HOURS` | When the watchdog says so (default: twice the interval). |
+| `PG_BIN_DIR` | Where pg_dump lives, if not on PATH. |
+
+`test/backup.test.js` runs the whole drill every CI run — trade, archive, **DROP
+the database**, restore, and compare every figure — plus the SigV4 signer
+against AWS's published test vector. **The S3 driver's live round trip is not
+verified**: there is no bucket in CI to fail against, so the first real upload
+is the first proof that a bucket's credentials, endpoint and permissions are
+right. DEPLOYMENT.md says so rather than letting a green suite imply otherwise.
+
 ## History has a horizon, the trail does not
 
 `chain.prune_history(op_days, guest_days)` (migration 025), called at boot and
@@ -2851,7 +2969,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 343 tests
+npm test                          # 440 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

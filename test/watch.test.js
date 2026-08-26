@@ -41,7 +41,9 @@ function capture(fn) {
 const clear = {
   readiness: async () => ({ outlets: 4, unreachable: [], businesses: [] }),
   fleet: async () => ({ head: 38, live: 2, behind: [], failed: [] }),
-  quietDevices: async () => []
+  quietDevices: async () => [],
+  backups: async () => ({ configured: true, where: 'file:/srv/backups',
+    windowHours: 48, ageHours: 3, recentFailures: 0, lastWhy: null })
 };
 const broken = {
   readiness: async () => ({ outlets: 4, businesses: [],
@@ -49,7 +51,10 @@ const broken = {
   fleet: async () => ({ head: 38, live: 2,
     behind: [{ db: 'biz_1', at: 36 }],
     failed: [{ db: 'biz_2', at: 30, error: 'relation already exists' }] }),
-  quietDevices: async () => ([{ db: 'biz_1', outlet: 1, name: 'Counter till', mins: 214 }])
+  quietDevices: async () => ([{ db: 'biz_1', outlet: 1, name: 'Counter till', mins: 214 }]),
+  backups: async () => ({ configured: true, where: 's3://shelf/kashikeyo',
+    windowHours: 48, ageHours: 91, recentFailures: 2,
+    lastWhy: 'pg_dump exited 1: could not connect' })
 };
 
 function reset() {
@@ -84,8 +89,10 @@ test('each condition fires once, with the remedy in the message', async () => {
   assert.match(all, /\[alert\] new · devices/);
   assert.match(all, /Counter till — last delivered 214 minutes ago/);
 
+  // Four conditions now, and this list is the point: a new one that forgets
+  // to register itself here is a new one nobody is told about twice.
   assert.deepStrictEqual(Object.keys(watch._firing).sort(),
-    ['devices', 'readyz', 'schema']);
+    ['backups', 'devices', 'readyz', 'schema']);
 });
 
 test('a second tick inside the window repeats nothing', async () => {
@@ -375,4 +382,70 @@ test('outlets that vanish are a catastrophe, not a fresh install', async () => {
 
   const back = await capture(() => watch.sweep(some));
   assert.match(back.join('\n'), /RECOVERED — the outlets are back/);
+});
+
+/* ═══ A BACKUP SYSTEM NOBODY WATCHES ════════════════════════════════════════
+   The same defect class as a screen that reports an action it did not take:
+   an install believing it is protected because something is scheduled. It is
+   silent by construction — nothing goes wrong on the night a dump fails, only
+   on the day somebody needs it. */
+test('a stale backup fires, and names what is wrong and what to run', async () => {
+  reset();
+  const lines = await capture(() => watch.sweep(broken));
+  const all = lines.join('\n');
+  assert.match(all, /\[alert\] new · backups/);
+  assert.match(all, /91h old/, 'it says how stale, not just that it is');
+  assert.match(all, /s3:\/\/shelf\/kashikeyo/,
+    'and where the copies were supposed to be landing');
+  assert.match(all, /2 of the last runs failed/,
+    'plus the failures behind it, which is usually the actual cause');
+  assert.match(all, /pg_dump exited 1/, 'in the words the run itself gave');
+  assert.match(all, /npm run backup -- --check/,
+    'and the command that answers it, because an alert without a remedy leaves'
+    + ' whoever reads it where they were');
+  assert.match(all, /What is lost is the ability to go back/,
+    'and it is honest about the stake: nothing has been lost YET');
+});
+
+test('an install that has never completed one is told so in those words', async () => {
+  reset();
+  const never = Object.assign({}, clear, {
+    backups: async () => ({ configured: true, where: 'file:/srv/backups',
+      windowHours: 48, ageHours: null, recentFailures: 0, lastWhy: null })
+  });
+  const all = (await capture(() => watch.sweep(never))).join('\n');
+  assert.match(all, /no backup has ever completed on this install/,
+    '"never" and "stale" need different answers — one is a broken schedule,'
+    + ' the other is a schedule that was never configured to work');
+});
+
+/* AND AN INSTALL THAT CHOSE NOT TO HAVE THEM IS NOT PAGED ABOUT ITS OWN
+   DECISION. The boot line says it, the Settings card says it; an alert every
+   six hours on top of that is how an alert channel gets muted, and then the
+   message that matters arrives in a folder. */
+test('with no destination configured the watchdog stays silent about backups',
+  async () => {
+    reset();
+    const none = Object.assign({}, clear, {
+      backups: async () => ({ configured: false, where: null, windowHours: 48,
+        ageHours: null, recentFailures: 0, lastWhy: null })
+    });
+    const lines = await capture(() => watch.sweep(none));
+    assert.deepStrictEqual(lines, [],
+      'an install with no backup destination has made a choice, and being'
+      + ' paged about it every six hours is not news');
+  });
+
+test('the backup age reaches /metrics, with -1 for never', async () => {
+  const withAge = watch.render({ ready: 1, outlets: 4, backupAgeHours: 3.25 });
+  assert.match(withAge, /kpos_backup_age_hours 3\.25/);
+  const never = watch.render({ ready: 1, outlets: 4, backupAgeHours: null });
+  assert.match(never, /kpos_backup_age_hours -1/,
+    '0 hours old is the HEALTHIEST possible answer, so it cannot also mean'
+    + ' "never" — a gauge that reports the worst state as the best one is'
+    + ' worse than no gauge');
+  const off = watch.render({ ready: 1, outlets: 4 });
+  assert.doesNotMatch(off, /kpos_backup_age_hours/,
+    'and an install with no destination emits no series at all rather than a'
+    + ' permanently -1 one somebody will end up silencing');
 });

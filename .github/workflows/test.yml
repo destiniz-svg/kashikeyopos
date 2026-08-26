@@ -70,6 +70,19 @@ jobs:
       # drift, instead of quietly resolving something else.
       - run: npm ci --omit=dev
 
+      # THE BACKUP SUITE IS NOT ALLOWED TO SKIP (see "No test may skip in CI"),
+      # and it cannot run without pg_dump/pg_restore. The runner ships a client
+      # already; this names its version in the log so a mismatch with the
+      # service container is visible at the top of the job rather than as an
+      # obscure failure halfway down. pg_dump refuses a server NEWER than
+      # itself, so client >= service major is the thing to keep true here and
+      # in the Dockerfile.
+      - name: Postgres client tools (pg_dump / pg_restore)
+        run: |
+          pg_dump --version
+          pg_restore --version
+          psql -V
+
       # Fail the build on a known-exploitable dependency rather than finding out
       # from an advisory email. Scoped to production deps (the only ones the
       # image ships) and to high/critical, so a dev-only moderate cannot block a

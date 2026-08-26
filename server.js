@@ -537,6 +537,30 @@ async function eachBusinessDb() {
   return biz.rows.map((b) => ({ db: b.db_name, pool: ownerFor(b.db_name) }));
 }
 
+/* WHEN DID A COPY LAST LAND? One question, asked by the watchdog and by
+   `npm run backup -- --check`, so the alert and the command a person runs
+   after reading it cannot disagree.
+
+   `configured: false` is a real answer and the watchdog stays silent on it:
+   an install with no destination has made a choice, and paging somebody every
+   six hours about their own decision is how an alert channel gets muted. */
+async function backupState() {
+  const backup = require('./src/backup');
+  const h = await backup.health();
+  const windowHours = Number(process.env.BACKUP_STALE_HOURS
+    || (Number(process.env.BACKUP_EVERY_HOURS || 24) * 2));
+  const at = h.lastGood && h.lastGood.finished_at
+    ? new Date(h.lastGood.finished_at).getTime() : null;
+  return {
+    configured: !!h.configured,
+    where: h.where,
+    windowHours: windowHours,
+    ageHours: at === null ? null : (Date.now() - at) / 3600e3,
+    recentFailures: h.recentFailures || 0,
+    lastWhy: h.last && !h.last.ok ? h.last.why : null
+  };
+}
+
 async function pruneHistory() {
   const opD = Number(process.env.RETAIN_OP_LOG_DAYS || 90);
   const grD = Number(process.env.RETAIN_GUEST_REQUEST_DAYS || 30);
@@ -735,6 +759,58 @@ async function boot() {
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();
 
+  /* ── THE NIGHTLY COPY ────────────────────────────────────────────────────
+     The registry, then every live business, each to its own archive. In
+     process and on an interval like the retention sweep, and for the same
+     reason: one app, one process, and a cron container that has to hold the
+     database credentials is a second place to leak them from.
+
+     OFF UNLESS A DESTINATION IS CONFIGURED, and it says which of the two it
+     is at boot. A schedule that runs against nowhere is the defect this whole
+     feature exists to end — an install believing it has backups because
+     something is scheduled. The first run is delayed past boot so a deploy
+     does not dump every customer while the pools are still opening, and it is
+     staggered off the hour because a fleet all dumping at 03:00 is a fleet
+     competing with itself for the same cluster.
+
+     A failure does not stop the others and does not stop the process: each
+     database's run is its own row in chain.backup, and the watchdog reads
+     them. */
+  (function scheduleBackups() {
+    const backup = require('./src/backup');
+    const hours = Number(process.env.BACKUP_EVERY_HOURS || 24);
+    backup.health().then((h) => {
+      if (!h.driver) {
+        return console.log('[backup] no destination configured \u2014 this install'
+          + ' takes NO backups of its own. ' + h.reason);
+      }
+      if (!h.configured) {
+        return console.error('[backup] a destination is configured (' + h.where
+          + ') but backups cannot run: ' + h.reason);
+      }
+      if (!(hours > 0)) {
+        return console.log('[backup] destination ' + h.where
+          + ' \u2014 scheduled runs are OFF (BACKUP_EVERY_HOURS=0); `npm run'
+          + ' backup` still works');
+      }
+      console.log('[backup] ' + h.driver + ' \u2192 ' + h.where + ' \u00b7 every '
+        + hours + 'h \u00b7 keeping ' + (process.env.BACKUP_RETAIN_DAYS || 30)
+        + ' days \u00b7 ' + h.tool);
+      const run = () => backup.backupAll({ by: 'schedule', log: console.log })
+        .then((r) => backup.prune(null, console.log).then(() => r))
+        .then((r) => {
+          if (!r.ok) {
+            console.error('[backup] ' + (r.failed || []).length + ' of '
+              + (r.runs || []).length + ' failed');
+          }
+        })
+        .catch((e) => console.error('[backup] run failed: ' + (e.message || e)));
+      setTimeout(run, Number(process.env.BACKUP_FIRST_DELAY_MS || 120000)).unref();
+      setInterval(run, hours * 3600e3).unref();
+    }).catch((e) => console.error('[backup] could not read its own state: '
+      + (e.message || e)));
+  }());
+
   /* ── THE WATCHDOG ────────────────────────────────────────────────────────
      Nothing in this build could tell anybody it had gone wrong: no metrics,
      no alerts, no error aggregation. A store that stopped syncing would be
@@ -755,7 +831,11 @@ async function boot() {
       const q = await quietDevices(mins);
       lastQuiet = q.length;
       return q;
-    }
+    },
+    /* Injected like the other three so the alert and the CLI can never
+       disagree about the same fact — `npm run backup -- --check` reads
+       exactly this. */
+    backups: backupState
   };
   const everySec = Math.max(15, Number(process.env.WATCH_INTERVAL_SECONDS || 60));
   const tick = () => watch.sweep(probes).catch(
@@ -776,4 +856,5 @@ if (require.main === module) boot();
 // pruneHistory is exported so the fleet sweep can be PROVED rather than
 // asserted from its source: a prune that removes nothing logs nothing, which
 // is exactly how it went unnoticed that it was pruning the wrong database.
-module.exports = { app, boot, pruneHistory, readiness, fleetState, quietDevices };
+module.exports = { app, boot, pruneHistory, readiness, fleetState, quietDevices,
+  backupState };

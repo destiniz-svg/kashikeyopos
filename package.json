@@ -12,6 +12,8 @@
     "start": "node server.js",
     "migrate": "node src/scripts/migrate.js",
     "provision:outlet": "node src/scripts/provision-outlet.js",
+    "backup": "node src/scripts/backup.js",
+    "restore": "node src/scripts/restore.js",
     "leak-test": "node src/scripts/leak-test.js",
     "test": "node --test test/*.test.js",
     "reset:database": "node src/scripts/reset-database.js",

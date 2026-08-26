@@ -2076,11 +2076,19 @@ test('the poll loop cannot be started twice while its first tick is in flight', 
    same install uuid — but the app's own Backup and Restore screens turned out
    to be a picture of a backup system. `backup_run`, `backup_create`,
    `restore_run` and `store_reset` are all AUDIT_ONLY: they record the press
-   and do nothing. `grep pg_dump` over this repo returns nothing, and there is
-   no route for either. Yet the Restore card listed archives with dates and
+   and do nothing. Yet the Restore card listed archives with dates and
    sizes, the form demanded a typed RESTORE, and the toast said the tills would
    stay locked until it finished. An operator who trusted that screen believed
    they had backups and a way back; they had neither.
+
+   THE APP TAKES BACKUPS NOW (src/backup.js, `npm run backup`), and that does
+   not soften this rule by a word - it sharpens it. The archives are taken
+   against the database with the install's own credentials and recorded in the
+   REGISTRY, which an outlet login role is refused at the door of; so the till
+   still cannot read whether one landed, and still may not say. The three op
+   kinds stay audit-only and unbuttoned for the same reason they always were:
+   a restore is a destructive act belonging to whoever holds the database, not
+   a control on a counter.
 
    The same shape had "3 active" sessions on an install nobody had signed into
    twice, over a control that queued an audit-only op and toasted a "+2" it had
@@ -2101,6 +2109,23 @@ test('no screen claims an action this build only records', () => {
   ['Newest archive', 'Oldest retained', '30 nightly', '41 MB', '39 MB'].forEach((lie) => {
     assert.ok(SRC.indexOf(lie) < 0, 'an invented backup figure is still on screen: ' + lie);
   });
+
+  /* THE CARD MUST NOT SWING THE OTHER WAY EITHER. It used to say "This app
+     takes none of its own", which was true when it was written and is false
+     now - and a screen that is confidently wrong in the reassuring direction
+     is the same defect as one that is confidently wrong in the alarming one.
+     What it may not do is print a last-backup time, because that record is in
+     the registry and this page cannot reach it. */
+  assert.ok(SRC.indexOf('takes none of its own') < 0,
+    'the Backup card still claims the app takes no copies, which stopped being'
+    + ' true when src/backup.js landed');
+  assert.ok(!/Last (backup|archive)[^\n]{0,40}(ago|20\d\d)/.test(SRC),
+    'and it must not print a last-backup time it has no way of reading');
+  assert.match(SRC, /npm run backup -- --check/,
+    'it names where the answer actually is instead');
+  assert.match(SRC, /beside the live one first/i,
+    'and the Restore card says a restore lands beside, not over - which is'
+    + ' what makes it safe to describe at all');
 
   /* The Terminal card beside them carried two more of the same: an app version
      of "4.2.1" on a build numbered otherwise — the figure somebody rings
@@ -2489,10 +2514,12 @@ test('the copy on Users & Roles describes this build', () => {
   assert.match(SRC, /Give them a name, a role and a four-digit PIN/,
     'which is what creating an account actually needs');
 
-  // Backups are not a rank's power here; they are taken where the database lives.
+  /* Backups are not a rank's power here. The app takes them now, but against
+     the database and with the install's own credentials - no rank on a till
+     grants that, so no rank may be described as carrying it. */
   const ranks = SRC.slice(SRC.indexOf('  RANKS() {'), SRC.indexOf('  RANKS() {') + 900);
   assert.ok(ranks.indexOf('backups') < 0 && ranks.indexOf('Restore a backup') < 0,
-    'no rank restores a backup, because this app takes none');
+    'no rank on a till restores a backup: it is done where the database lives');
 
   assert.match(SRC, /lands on the audit trail as a permission_change/,
     'and the trail is named for the table it is actually written to');
