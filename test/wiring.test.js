@@ -1900,6 +1900,36 @@ test('a code that was not sent is never reported as one that was', () => {
     + ' boxes is the same claim in smaller type');
 });
 
+/* A CREDENTIAL EVERY CALLER HAS TO REMEMBER IS ONE A CALLER WILL FORGET.
+
+   app/account.html's api() attached the account token only where a caller
+   passed it as a header, and exactly one of eleven callers did. The one that
+   did not, and mattered, was POST /api/account/business — made the instant a
+   six-digit code verifies, to create the business the account is about to
+   onboard into. It went out bare, was refused "sign in again", and the
+   customer read that as the code having been rejected, because typing the code
+   is the last thing they did.
+
+   The fix is that api() attaches it, once, for everybody. This pins the shape
+   so nobody puts the remembering back on the call sites. */
+test('the account token rides on every call, not on whoever remembers it', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  const api = page.slice(page.indexOf('function api(path, body, headers)'),
+    page.indexOf('function paint()'));
+  assert.ok(api.length > 100, 'found api()');
+
+  assert.match(api, /token\(\)[\s\S]*authorization[\s\S]*Bearer/,
+    'api() builds the header itself from the stored token');
+  assert.match(api, /Object\.assign\([^)]*auth/,
+    'and merges it into every request rather than waiting to be handed one');
+
+  /* And no call site hand-rolls one any more: a second way to attach it is a
+     second thing to get wrong, which is how this started. */
+  const calls = page.match(/api\("\/[^)]*authorization/g) || [];
+  assert.deepStrictEqual(calls, [],
+    'no caller composes its own Authorization header');
+});
+
 /* A CONTROL DOES WHAT IT SAYS, OR IT IS NOT A CONTROL.
 
    Found by running the restore drill the deployment guide asks for. The

@@ -256,6 +256,21 @@ The flow is: `/account` → sign up → `/onboarding` (the panel carries
 `x-account-token` on every step) → the account that completes it becomes the
 outlet's **owner** and keeps the rank-5 staff record it created for the floor.
 
+**And the token rides on every call, not on whoever remembers it.** `api()` in
+`app/account.html` attached it only where a CALLER passed a header, and one of
+eleven did (`/me`). The one that did not was `POST /api/account/business` —
+made the instant a six-digit code verifies, to create the business the account
+is about to onboard into — so it went out bare and was refused *sign in
+again*. Every new customer hit it, at the moment they finished typing the
+code, and it reads as the CODE being rejected: the last thing they did was
+type six digits, and the screen said no. It was reported exactly that way.
+`api()` composes the header itself now, and no call site hand-rolls one.
+
+`test/e2e.test.js` walks this same road over HTTP and was blind to it, because
+a test that writes its own headers cannot notice a page that forgets one.
+`test/signup.test.js` drives the shipped page in real Chromium — form, six
+boxes, code, landing on step one — and fails against the version that shipped.
+
 Email goes through `src/email.js` — one seam, Resend as the driver. With no
 transport configured the code is written to the audit trail and the call
 **says so** (`sent: false`); it never pretends.

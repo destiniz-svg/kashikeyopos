@@ -361,10 +361,24 @@ button.link:hover{text-decoration:underline}
     el.addEventListener("focus", function () { el.select(); });
   });
 
+  /* THE TOKEN RIDES ON EVERY CALL, because forgetting it on ONE of them is
+     what happened. Only /me ever attached it, so POST /business — the call
+     made the instant a code verifies, to create the business the account is
+     about to onboard — went out bare and was refused "sign in again". Every
+     new customer hit that at the exact moment they finished typing the code,
+     which reads as the code having been rejected. It is not: the sign-in
+     worked and the next request had no credential.
+
+     Attaching it here rather than at each call site is the point — a seam
+     eleven callers have to remember is a seam one of them will forget, and
+     this one did. The anonymous doors (/signup, /code, /signin, /code/verify)
+     never read it; the request is same-origin either way. An explicit header
+     still wins, so a caller can send a token that is not the stored one. */
   function api(path, body, headers) {
+    var auth = token() ? { authorization: "Bearer " + token() } : {};
     return fetch("/api/account" + path, {
       method: body ? "POST" : "GET",
-      headers: Object.assign({ "content-type": "application/json" }, headers || {}),
+      headers: Object.assign({ "content-type": "application/json" }, auth, headers || {}),
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
       return r.text().then(function (t) {
@@ -611,7 +625,7 @@ button.link:hover{text-decoration:underline}
 
   // Already signed in? Go where this account belongs.
   if (token()) {
-    api("/me", null, { authorization: "Bearer " + token() })
+    api("/me", null)
       .then(function (s) { land(s); })
       .catch(function () { forget(); paint(); });
   } else { paint(); }
