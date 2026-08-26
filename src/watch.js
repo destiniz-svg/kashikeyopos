@@ -162,7 +162,9 @@ function configured() {
 function why() {
   if (!ALERT_TO()) return 'ALERT_EMAIL is not set, so there is nobody to tell';
   const h = email.health();
-  if (!h.ok) return h.reason;
+  // The operator's half. `reason` is what an anonymous caller is told; the
+  // boot log and the alert log get the transport's own words.
+  if (!h.ok) return h.detail || h.reason;
   return null;
 }
 

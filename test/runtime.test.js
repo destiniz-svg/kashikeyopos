@@ -81,6 +81,27 @@ async function tillContext(browser) {
   return c;
 }
 
+/* A FIXED SLEEP IS A GUESS, AND IT WAS WRONG UNDER LOAD. Every page here
+   waited 1.8 s for the bridge to boot, which is generous on an idle box and
+   not enough on one running the rest of the suite beside it — two browser
+   contexts starting together took longer than that and the next line read
+   `setOffline` off an undefined bridge. The test then failed for a reason that
+   had nothing to do with what it was proving, which is the worst kind of
+   failure: it teaches whoever sees it to re-run rather than to look.
+
+   Wait for the thing itself. The bridge is on the page or it is not. */
+async function booted(page, ms) {
+  await page.waitForFunction(
+    () => !!(window.KPOS_API && window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline),
+    null, { timeout: ms || 20000 });
+}
+
+/* Same rule for the clock: it is on the page or it is not. */
+async function synced(page, ms) {
+  await page.waitForFunction(
+    () => !!(window.KPOS_SYNC && window.KPOS_SYNC.tick), null, { timeout: ms || 20000 });
+}
+
 async function signedIn(page) {
   return page.evaluate(() => !!(window.KPOS_API && window.KPOS_API.signedIn
     && window.KPOS_API.signedIn()));
@@ -95,7 +116,7 @@ test('an op queued offline survives the tab being killed', { skip }, async (t) =
     const ctx = await tillContext(b);
     let page = await ctx.newPage();
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1800);
+    await booted(page);
 
     assert.ok(await page.evaluate(() => !!window.KPOS_API),
       'the API client is on the page');
@@ -115,7 +136,7 @@ test('an op queued offline survives the tab being killed', { skip }, async (t) =
     await page.close();
     page = await ctx.newPage();
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1800);
+    await booted(page);
 
     const after = await page.evaluate(PENDING);
     const mine = after.filter((o) => o.opId === id);
@@ -142,7 +163,7 @@ test('two tills selling the same last portion both reach the books',
       const pc = await c.newPage();
       for (const p of [pa, pc]) {
         await p.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-        await p.waitForTimeout(1800);
+        await booted(p);
         await p.evaluate(() => { window.KPOS_BRIDGE.setOffline(true); });
       }
 
@@ -196,7 +217,7 @@ test('two tills selling the same last portion both reach the books',
         localStorage.setItem('kashikeyo.o1.lamport', '4096');
       });
       await pu.reload({ waitUntil: 'domcontentloaded' });
-      await pu.waitForTimeout(1600);
+      await synced(pu);
       const carried = await pu.evaluate(() => window.KPOS_SYNC.tick(0));
       assert.ok(carried > 4096,
         'an old outlet-namespaced number is a FLOOR, so no number is ever'
@@ -207,7 +228,7 @@ test('two tills selling the same last portion both reach the books',
       await pa.close();
       const pa2 = await a.newPage();
       await pa2.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
-      await pa2.waitForTimeout(1600);
+      await synced(pa2);
       const again = await pa2.evaluate(() => window.KPOS_SYNC.tick(0));
       assert.ok(again > ca.b,
         'a reopened terminal carries on from where it was, rather than from one —'

@@ -55,7 +55,7 @@ function health() {
         + ' this install — check the service name inside the braces'
       : 'no email transport is configured on this install' };
   }
-  if (last && !last.ok) return { ok: false, reason: last.reason };
+  if (last && !last.ok) return { ok: false, reason: last.reason, detail: last.detail || last.reason };
   return { ok: true };
 }
 
@@ -79,10 +79,26 @@ async function viaResend(msg) {
   });
   const body = await res.text();
   if (!res.ok) {
+    /* TWO AUDIENCES, TWO SENTENCES — and until now they shared one.
+       `reason` is answered to whoever POSTed the address, and /signup and
+       /code are open to the internet: a stranger typing any address into the
+       form was handed the provider's own JSON, naming the transport and
+       quoting its error verbatim. That is the rule this build already keeps
+       for the database ("the error handler never returns a database message")
+       and had not kept for the mail provider.
+
+       The class and the status are enough for the person waiting — they tell
+       them it is the install and not their address, which is the only thing
+       they can act on. The provider's words are what the OPERATOR needs, and
+       they still reach the two places an operator looks: the thrown message,
+       which `issueCode` writes to the trail as account_code_failed, and the
+       log line below. Nothing is lost; it stops being shouted. */
     const err = new Error('the email transport refused this install: ' + res.status
       + ' ' + body.slice(0, 200));
     err.status = 502;
-    last = { ok: false, reason: err.message };
+    err.publicReason = 'the email transport refused this install (HTTP ' + res.status + ')';
+    last = { ok: false, reason: err.publicReason, detail: err.message };
+    console.error('[email] ' + err.message);
     throw err;
   }
   last = { ok: true };

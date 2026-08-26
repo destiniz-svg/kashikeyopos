@@ -267,7 +267,35 @@ dangling `${{reference}}`, and a transport that ANSWERED AND REFUSED — and
 That is false for the last two and sends whoever reads it to check variables
 that are correct: a wrong key, an unverified From domain and a suppressed
 recipient all look like a missing setting. `email.health()` carries the
-transport's own words now, and the screen prints them.
+transport's own words now.
+
+**But not to whoever POSTed the address.** `/signup` and `/code` are open to
+the internet, and the transport's own words were answered to every caller — a
+stranger typing any address into the form was handed the provider's JSON,
+naming the mail provider and quoting its error verbatim. That is the rule this
+build already keeps for the database ("the error handler never returns a
+database message") and had not kept for the mail provider. `health()` carries
+two sentences now: `reason` is the class and the status
+(`the email transport refused this install (HTTP 401)`), which is what the
+person waiting can act on — it tells them it is the install and not their
+address — and `detail` is the transport verbatim, for the operator. Nothing is
+lost: `detail` goes to the three places an operator looks, and only there —
+the trail (`account_code_failed`), the process log, and the boot line via
+`watch.why()`.
+
+**A REFUSAL PRINTED IN GREEN, which is the same defect wearing a colour.**
+Found in a screenshot of the live install's own `/account`: the heading read
+"Check your email", the subtitle read "We sent a six-digit code to …", the
+label over six empty boxes read "The six digits we sent you", and underneath,
+in the SUCCESS box, sat the mail provider's 401. Four statements of a send that
+did not happen. The page had two message elements and `say()` wrote into
+whichever it was NOT, so anything that was not an error became a success by
+default. Three temperatures now — `.msg.err` · `.msg.warn` · `.msg.ok`, one
+element, from the shared `--warn-*` tier — and a send that did not happen is
+the middle one: the account WAS made and no code is coming, which is neither a
+failure nor a success. The three sentences that state a fact read off `sent`,
+which is derived from the answer rather than assumed, and say where the code
+actually is. Measured in both themes: 9.1:1 light, 8.5:1 dark.
 
 **And `delivered` was an account-enumeration oracle.** It was attached only on
 the branches where an account EXISTS, so its mere presence answered "is this

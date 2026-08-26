@@ -55,9 +55,23 @@ test('a transport that answered and refused is reported as a refusal', () =>
     const h = email.health();
     assert.strictEqual(h.ok, false);
     assert.match(h.reason, /401/, "the transport's own answer, not our guess at it");
-    assert.match(h.reason, /API key is invalid/);
     assert.doesNotMatch(h.reason, /not configured|no email transport/,
       'the variables are set — saying otherwise sends somebody to check them for nothing');
+
+    /* TWO AUDIENCES, AND THEY ARE NOT THE SAME SENTENCE. `reason` is what an
+       anonymous caller is answered — /signup and /code are open to the
+       internet, so a stranger typing any address into the form used to be
+       handed the provider's own JSON, naming the transport and quoting its
+       error word for word. That is the rule this build already keeps for the
+       database and had not kept for the mail provider. `detail` is what the
+       operator needs, and it goes where an operator looks: the trail, the log
+       and the boot line. */
+    assert.doesNotMatch(h.reason, /API key is invalid/,
+      "the provider's own words are not owed to whoever POSTed an address");
+    assert.doesNotMatch(h.reason, /\{|\}/, 'and its JSON even less so');
+    assert.match(h.detail, /API key is invalid/,
+      'but nothing is lost — the operator still gets the transport verbatim');
+    assert.match(h.detail, /401/);
   }));
 
 test('a refusal is install-wide, so reporting it tells nobody about anybody', () =>
@@ -74,7 +88,10 @@ test('a refusal is install-wide, so reporting it tells nobody about anybody', ()
        whether or not the address is a customer here. */
     const a = email.health(), b = email.health();
     assert.deepStrictEqual(a, b);
-    assert.match(a.reason, /domain is not verified/);
+    assert.match(a.reason, /refused this install \(HTTP 403\)/,
+      'the class and the status, which is what the person waiting can act on');
+    assert.match(a.detail, /domain is not verified/,
+      'and the reason itself, for whoever runs the install');
   }));
 
 test('a send that succeeds clears the install back to healthy', () =>

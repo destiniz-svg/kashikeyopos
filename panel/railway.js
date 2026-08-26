@@ -125,7 +125,7 @@ function mailReady() {
   const h = EMAIL.health();
   if (!h.ok) {
     return { ok: false, why: 'the last message this panel tried to send was not'
-      + ' delivered: ' + h.reason };
+      + ' delivered: ' + (h.detail || h.reason) };
   }
   return { ok: true };
 }

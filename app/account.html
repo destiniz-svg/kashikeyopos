@@ -99,10 +99,18 @@ input:focus{border-color:var(--amber);background:var(--bg-1);
 .otp input:focus{box-shadow:0 0 0 3px var(--amber-dim)}
 
 /* ── what happened ──────────────────────────────────────────────────────── */
-.err,.ok{font-size:13px;font-weight:600;margin:0 0 16px;text-wrap:pretty;
+/* THREE TEMPERATURES, NOT TWO. There were two boxes — red for a refusal and
+   green for a success — and a mail transport that ANSWERED AND REFUSED had
+   nowhere to land, so it rendered in the green one: a 401 from the mail
+   provider printed as reassurance, under a heading saying the code was on its
+   way. That is a control reporting work it did not do, wearing the colour of
+   work that succeeded. A send that did not happen is neither: the account was
+   made and no code is coming, which is a WARNING and now reads as one. */
+.msg{font-size:13px;font-weight:600;margin:0 0 16px;text-wrap:pretty;
   padding:11px 13px;border-radius:11px;border:1px solid transparent;line-height:1.5}
-.err{color:var(--danger-bright);background:var(--bad-dim);border-color:var(--danger-line)}
-.ok{color:var(--go-bright);background:var(--ok-dim);border-color:var(--go-line)}
+.msg.err{color:var(--danger-bright);background:var(--bad-dim);border-color:var(--danger-line)}
+.msg.ok{color:var(--go-bright);background:var(--ok-dim);border-color:var(--go-line)}
+.msg.warn{color:var(--warn-bright);background:var(--warn-dim);border-color:var(--warn-line)}
 
 /* ── actions ────────────────────────────────────────────────────────────── */
 button{font:inherit;cursor:pointer}
@@ -185,8 +193,7 @@ button.link:hover{text-decoration:underline}
         <button type="button" role="tab" id="segSignin" data-mode="signin" aria-selected="false">Sign in</button>
       </div>
 
-      <p class="err" id="err" style="display:none"></p>
-      <p class="ok" id="ok" style="display:none"></p>
+      <p class="msg" id="msg" style="display:none" role="status" aria-live="polite"></p>
 
       <form id="form" novalidate>
         <div class="f" id="bizWrap">
@@ -214,7 +221,7 @@ button.link:hover{text-decoration:underline}
         </div>
         <div id="codeWrap" style="display:none">
           <div class="f">
-            <label for="d1">The six digits we sent you</label>
+            <label for="d1" id="codeLabel">The six digits we sent you</label>
             <div class="otp" id="otp">
               <input id="d1" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Digit 1">
               <input id="d2" inputmode="numeric" maxlength="1" aria-label="Digit 2">
@@ -291,6 +298,12 @@ button.link:hover{text-decoration:underline}
   var $ = function (id) { return document.getElementById(id); };
   var mode = "signup";                       // signup | signin | code
   var pending = "";                          // the address a code went to
+  /* WHETHER IT ACTUALLY WENT. "Check your email" and "We sent a six-digit code
+     to …" are both statements of fact, and on an install whose transport
+     refused they were both false — printed over an inbox that was never going
+     to receive anything. The screen has to know, or it describes a send that
+     did not happen. */
+  var sent = true;
   var busy = false;
   var DIGITS = ["d1", "d2", "d3", "d4", "d5", "d6"];
 
@@ -298,10 +311,14 @@ button.link:hover{text-decoration:underline}
   function keep(t) { try { localStorage.setItem(KEY, t); } catch (e) {} }
   function forget() { try { localStorage.removeItem(KEY); } catch (e) {} }
 
+  /* kind is "err" · "warn" · "ok", and the old shape is exactly why a warning
+     tier had to exist: it wrote into whichever of two elements it was not, so
+     anything that was not an error became a success by default. */
   function say(kind, msg) {
-    $("err").style.display = kind === "err" && msg ? "block" : "none";
-    $("ok").style.display = kind === "ok" && msg ? "block" : "none";
-    $(kind === "err" ? "err" : "ok").textContent = msg || "";
+    var el = $("msg");
+    el.className = "msg " + (kind || "");
+    el.style.display = kind && msg ? "block" : "none";
+    el.textContent = msg || "";
   }
 
   /* ── the six boxes ────────────────────────────────────────────────────────
@@ -361,10 +378,14 @@ button.link:hover{text-decoration:underline}
 
   function paint() {
     var signup = mode === "signup", code = mode === "code";
-    $("title").textContent = code ? "Check your email"
+    $("title").textContent = code ? (sent ? "Check your email" : "No code was sent")
       : signup ? "Create your account" : "Sign in";
     $("sub").textContent = code
-      ? "We sent a six-digit code to " + pending + "."
+      ? (sent
+        ? "We sent a six-digit code to " + pending + "."
+        : "Your account is made. The code for " + pending + " could not be"
+          + " delivered, so it is waiting in this install's audit trail —"
+          + " whoever runs it can read it out, and it goes in below.")
       : signup
         ? "One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that."
         : "Welcome back.";
@@ -378,6 +399,9 @@ button.link:hover{text-decoration:underline}
     $("emailWrap").style.display = code ? "none" : "flex";
     $("pwWrap").style.display = code ? "none" : "flex";
     $("codeWrap").style.display = code ? "block" : "none";
+    // The label is a claim as much as the heading is.
+    $("codeLabel").textContent = sent ? "The six digits we sent you"
+      : "The six digits from the audit trail";
     $("alts").style.display = code ? "none" : "block";
     $("submit").textContent = code ? "Verify and continue"
       : signup ? "Create account" : "Sign in";
@@ -485,10 +509,10 @@ button.link:hover{text-decoration:underline}
       rememberStore(store);
       run(api("/signup", { email: email, password: password, name: name })
         .then(function (r) {
-          pending = email; mode = "code"; paint();
-          say("ok", r.delivered === "not-sent"
-            ? undelivered(r, " It is in the audit trail.")
-            : "Code sent. It lasts ten minutes.");
+          pending = email; mode = "code"; sent = r.delivered !== "not-sent"; paint();
+          say(sent ? "ok" : "warn", sent
+            ? "Code sent. It lasts ten minutes."
+            : undelivered(r, " It is in the audit trail."));
           if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
         }));
       return;
@@ -507,6 +531,7 @@ button.link:hover{text-decoration:underline}
      already correct. The reason is the install's own words when it has some. */
   function undelivered(r, tail) {
     var why = r && r.why ? String(r.why) : "";
+    if (why) why = why.charAt(0).toUpperCase() + why.slice(1);
     return (why || "No email is configured on this install yet")
       + " \u2014 ask whoever runs it for your code." + tail;
   }
@@ -517,10 +542,10 @@ button.link:hover{text-decoration:underline}
       return say("err", "Type your email address first, and we will send a code to it.");
     }
     run(api("/code", { email: email }).then(function (r) {
-      pending = email; mode = "code"; paint();
-      say("ok", r.delivered === "not-sent"
-        ? undelivered(r, "")
-        : "Code sent. It lasts ten minutes.");
+      pending = email; mode = "code"; sent = r.delivered !== "not-sent"; paint();
+      say(sent ? "ok" : "warn", sent
+        ? "Code sent. It lasts ten minutes."
+        : undelivered(r, ""));
       if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
     }));
   }
@@ -541,7 +566,7 @@ button.link:hover{text-decoration:underline}
   });
   $("useCode").addEventListener("click", useCode);
   $("startOver").addEventListener("click", function () {
-    mode = "signup"; pending = ""; otpSet(""); say("", ""); paint();
+    mode = "signup"; pending = ""; sent = true; otpSet(""); say("", ""); paint();
   });
   $("google").addEventListener("click", function () { location.href = "/api/account/oauth/google/start"; });
   $("apple").addEventListener("click", function () { location.href = "/api/account/oauth/apple/start"; });

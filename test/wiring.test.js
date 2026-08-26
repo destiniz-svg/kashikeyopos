@@ -1847,6 +1847,59 @@ test('the code button is offered only on the door that can send one', () => {
     'creating the account is the passwordless path, and the form says so');
 });
 
+/* A REFUSAL PRINTED IN GREEN.
+
+   Found on the live install, in a screenshot of its own /account screen: the
+   heading read "Check your email", the subtitle read "We sent a six-digit code
+   to <address>", and underneath, in the SUCCESS box, sat
+
+     the email transport refused this install: 401 {"statusCode":401,
+     "name":"validation_error","message":"API key is invalid"}
+
+   All three are the same defect wearing three faces. The transport answered
+   and refused; no message was sent; and the screen said one was on its way,
+   twice as fact and once in the colour of work that succeeded. A customer
+   reading it waits for an email that will never arrive.
+
+   The page had two boxes and say() wrote into whichever it was not, so
+   anything that was not an error became a success by default — the same shape
+   as every other control this file exists to refuse. Three temperatures now,
+   and the two sentences that state a fact read off the flag that knows. */
+test('a code that was not sent is never reported as one that was', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+
+  // The refusal never rides the success style.
+  assert.ok(!/say\(\s*"ok"[^;]*undelivered\(/.test(page),
+    'the undelivered branch is not a success — it is a send that did not'
+    + ' happen, and green is the one colour it may never wear');
+  assert.strictEqual((page.match(/: undelivered\(r,/g) || []).length, 2,
+    'both senders — creating an account and asking for a code — report it');
+  assert.strictEqual((page.match(/say\(sent \? "ok" : "warn"/g) || []).length, 2,
+    'and both choose the temperature from whether the send actually happened');
+
+  // That temperature has to exist, or "warn" silently renders as unstyled text.
+  assert.match(page, /\.msg\.warn\{[^}]*--warn-bright/,
+    'the warning tier is its own colour, from the shared token set');
+  assert.ok(!/^\.ok\{/m.test(page) && !/^\.err,\.ok\{/m.test(page),
+    'and the two-element shape that caused this is gone, not patched');
+
+  /* THE HEADING IS A STATEMENT OF FACT. Colour was the visible half; the other
+     half is that "Check your email" and "We sent a six-digit code to …" were
+     printed whether or not anything was sent. */
+  const paint = page.slice(page.indexOf('function paint()'),
+    page.indexOf('function rememberStore'));
+  assert.ok(paint.length > 200, 'found paint()');
+  assert.match(paint, /sent \? "Check your email" : "No code was sent"/,
+    'the heading says which of the two happened');
+  assert.match(paint, /could not be/,
+    'and the subtitle stops claiming a send it did not make');
+  assert.match(paint, /audit trail/,
+    'and says where the code actually is, which is the only thing left to do');
+  assert.match(paint, /codeLabel/,
+    'and so does the field label — "The six digits we sent you" over six empty'
+    + ' boxes is the same claim in smaller type');
+});
+
 /* A CONTROL DOES WHAT IT SAYS, OR IT IS NOT A CONTROL.
 
    Found by running the restore drill the deployment guide asks for. The
