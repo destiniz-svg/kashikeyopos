@@ -1272,6 +1272,29 @@ The same rule applies to anything else on screen. If you cannot measure it, say
 what is true — "Nothing counted on this outlet yet" — and never a plausible
 number.
 
+**And DEMO CONTENT is not an exception to that rule; it is the most persuasive
+way to break it.** Reported by a real customer on the day they opened their
+store: Recipes & Costing → Yields and trim loss came up with EIGHT rows of data
+on an install where nobody had entered anything —
+
+```
+Item #1 · 100% · 2% · 98% · MVR 0.00 / kg · MVR 0.00 / kg · +-100% · default
+```
+
+— a name that is a placeholder for a missing row, the shipped "nobody has
+assessed this" fallback rendered as the ingredient's own yield, a cost of zero,
+and an uplift of minus a hundred per cent from dividing by it. They came from
+the three demo batches `SUBS()` showed any store that had saved none of its
+own: the yields tab lists every ingredient a recipe or batch draws on, and
+those lines carry ingredient ids from an old seed belonging to no real outlet.
+`SUBS()` is the outlet's batches and this browser's un-synced edits now, and
+nothing else; the yields table skips any ingredient the item master does not
+have, because a recipe can still name one that was deleted. The empty state was
+already written and correct — it just could not be reached.
+
+`test/audit.test.js` asked this of the ribbon CARDS from the day it was
+written and never of the screens behind them. It asks both now.
+
 ## Every store has an address
 
 A store's public face is a subdomain, not a path:

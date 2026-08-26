@@ -3537,29 +3537,35 @@ class Component extends DCLogic {
   // five dishes disagree about what the same sauce costs; costing it once, per
   // gram of finished batch, means they cannot.
   SUBS() {
-    const seeded = [
-      { id: "S1", name: "Reef fish stock", batch: 4000, unit: "ml", loss: 0.18, lines: [[1, 1200], [21, 300], [23, 200], [30, 40]],
-        note: "Frames and heads from the day's filleting, simmered 40 minutes. The 18% is evaporation — real, and the reason a litre of stock costs more than its inputs divided by four." },
-      { id: "S2", name: "Coconut sambol", batch: 1200, unit: "g", loss: 0.04, lines: [[26, 700], [21, 180], [28, 60], [30, 25]],
-        note: "Made twice a service. Short shelf life, so the batch is sized to the sitting rather than the week." },
-      { id: "S3", name: "Maldivian curry base", batch: 3000, unit: "g", loss: 0.12, lines: [[21, 900], [22, 300], [24, 250], [26, 400], [30, 120]],
-        note: "The backbone of six dishes. Costed once here, so a rise in the price of onions moves all six at the same moment and by the same amount." }
-    ];
-    /* THE OUTLET'S BATCHES, layered exactly the way yields are: what the outlet
-       published, then anything shipped, then this browser's own un-synced
-       edits on top. The three above are demo content — they carry ingredient
-       ids from an old seed and belong to no real outlet — so a store that has
-       saved any batch of its own reads its own, and one that has not still has
-       something to look at.
+    /* THE OUTLET'S BATCHES, and this browser's un-synced edits on top. Nothing
+       else.
 
-       Before this, SUBS() was those three plus state.local and nothing else:
-       a kitchen costing its curry base costed it in one browser, and the op
-       that was meant to record it had no handler and no payload. */
+       There used to be three demo batches hard-coded here — a fish stock, a
+       sambol and a curry base — shown to any store that had saved none of its
+       own, on the reasoning that an empty screen has nothing to look at. A
+       real customer reported the consequence on the day they opened their
+       store: Recipes & Costing → Yields and trim loss came up with EIGHT rows
+       of data on an install where nobody had entered anything.
+
+       They were not the batches themselves. The yields tab lists every
+       ingredient any recipe or batch draws on, so the demo batches' lines
+       populated it — and those lines carry ingredient ids from an old seed
+       that belong to no real outlet. Measured on an empty install: eight rows
+       reading `Item #1 · 100% · 2% · 98% · MVR 0.00/kg · MVR 0.00/kg · +-100%`.
+       A name that is a placeholder for a missing row, the shipped "nobody has
+       assessed this" fallback presented as the ingredient's yield, a cost of
+       zero, and an uplift of minus a hundred per cent from dividing by it.
+
+       Every figure on that screen was invented, about ingredients that do not
+       exist, on the first day of a real business. That is the rule this build
+       keeps everywhere else — if you cannot measure it, say what is true and
+       never a plausible number — and demo content is not an exception to it,
+       it is the most persuasive way to break it. An empty screen that says so
+       is what an empty store should show. */
     const published = (K() || {}).SUBS || [];
     const local = this.state.local.subs || [];
     const byId = {};
-    (published.length ? published : seeded).forEach((x) => { byId[String(x.id)] = x; });
-    if (published.length) seeded.forEach((x) => { if (!byId[String(x.id)]) byId[String(x.id)] = x; });
+    published.forEach((x) => { byId[String(x.id)] = x; });
     local.forEach((x) => {
       byId[String(x.id)] = Object.assign({}, byId[String(x.id)] || {}, x);
     });
@@ -11072,7 +11078,19 @@ class Component extends DCLogic {
       const ids = {};
       list.forEach((m) => (m.recipe || []).forEach((r) => { if (!this.isSub(r[0])) ids[String(r[0])] = r[0]; }));
       this.SUBS().forEach((sb) => (sb.lines || []).forEach((l) => { if (!this.isSub(l[0])) ids[String(l[0])] = l[0]; }));
-      const rows = Object.keys(ids).map((k) => ids[k]).map((id) => {
+      /* AN INGREDIENT THIS OUTLET DOES NOT HAVE CANNOT BE COSTED, and a row
+         for one can only invent figures: `this.item(id)` comes back undefined,
+         so the name falls to a placeholder, both cost columns read MVR 0.00,
+         the uplift divides by that zero, and the yield column shows the
+         shipped "nobody has assessed this" fallback as though it were the
+         ingredient's own. Measured on an empty install before the demo batches
+         were taken out: eight such rows, every figure on them invented.
+
+         A recipe that names an ingredient the item master has since lost is
+         still possible, so this stays after that fix rather than instead of
+         it. Nothing is hidden that could be shown — a row with no item behind
+         it has nothing to say. */
+      const rows = Object.keys(ids).map((k) => ids[k]).filter((id) => !!this.item(id)).map((id) => {
         const it = this.item(id) || [];
         const y = this.yieldOf(id), nf = this.netFactor(id);
         const asBought = this.costPerBase(it), asUsed = this.costPerUsable(it);

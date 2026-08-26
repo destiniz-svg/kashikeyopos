@@ -144,3 +144,67 @@ test('no ribbon card invents a figure on an empty install', () => {
   assert.deepStrictEqual(bad, [],
     'these read as measurements on an empty install:\n  ' + bad.join('\n  '));
 });
+
+/* AND NO TABLE INVENTS ONE EITHER. The ribbon sweep above has guarded the
+   cards since it was written; the screens BEHIND them were never asked the
+   same question, and a real customer found the gap on the day they opened
+   their store.
+
+   Recipes & Costing → Yields and trim loss came up with EIGHT rows of data on
+   an install where nobody had entered anything:
+
+     Item #1 · 100% · 2% · 98% · MVR 0.00 / kg · MVR 0.00 / kg · +-100% · default
+
+   A name that is a placeholder for a missing row, the shipped "nobody has
+   assessed this" fallback rendered as the ingredient's own yield, a cost of
+   zero, and an uplift of minus a hundred per cent from dividing by it.
+
+   They came from three DEMO batches hard-coded in the terminal and shown to
+   any store that had saved none of its own. The yields tab lists every
+   ingredient any recipe or batch draws on, so the demo lines populated it —
+   and those lines carry ingredient ids from an old seed belonging to no real
+   outlet. Demo content is not an exception to "no invented figures"; it is
+   the most persuasive way to break it. */
+test('no costing table invents a figure on an empty install', () => {
+  const F = H.makeInstance({});
+
+  /* Lengths, not deepStrictEqual: the logic runs in a vm, so the arrays it
+     returns carry that realm's Array.prototype and a strict deep-equal against
+     a literal [] fails on the prototype alone — which reads as "the fix did
+     not work" and is nothing of the kind. */
+  assert.strictEqual(F.SUBS().length, 0,
+    'a store that has saved no batches has none — the three shipped demo'
+    + ' batches are not a real outlet\'s data and must not stand in for it:'
+    + ' ' + JSON.stringify(F.SUBS().map((x) => x.name)));
+
+  const tabs = { 1: 'dishes', 2: 'sub-recipes', 3: 'yields & trim loss' };
+  Object.keys(tabs).forEach((t) => {
+    F.state.tab = Object.assign({}, F.state.tab, { rec: Number(t) });
+    const out = F.g_recipes();
+    const rows = [].concat(out.rows || [], out.cards || []);
+    assert.strictEqual(rows.length, 0,
+      'the ' + tabs[t] + ' tab shows nothing on an install with nothing in it,'
+      + ' rather than demo content: ' + JSON.stringify(rows).slice(0, 200));
+  });
+
+  /* And the empty state SAYS so, rather than being a blank panel — which is
+     the other half of the same rule. */
+  F.state.tab = Object.assign({}, F.state.tab, { rec: 3 });
+  assert.match(String(F.g_recipes().empty || ''), /\S/,
+    'the yields tab says what is true when it has nothing to show');
+});
+
+/* A ROW FOR AN INGREDIENT THIS OUTLET DOES NOT HAVE CAN ONLY INVENT FIGURES.
+   Taking the demo batches out is the cause; this is the guard, because a
+   recipe can still name an ingredient the item master has since lost. */
+test('the yields table skips ingredients the item master does not have', () => {
+  const F = H.makeInstance({});
+  F.state.local = Object.assign({}, F.state.local, {
+    subs: [{ id: 'S9', name: 'Ghost batch', batch: 1000, unit: 'g', loss: 0,
+      lines: [['no-such-ingredient', 100]] }]
+  });
+  F.state.tab = Object.assign({}, F.state.tab, { rec: 3 });
+  assert.strictEqual((F.g_recipes().rows || []).length, 0,
+    'an ingredient with no row behind it has nothing to say, and saying it'
+    + ' anyway is a name placeholder, a zero cost and an uplift of -100%');
+});
