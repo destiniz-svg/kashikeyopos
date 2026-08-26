@@ -157,15 +157,42 @@ r.use(async function (req, res, next) {
        wrote into whichever database the app happened to be connected to,
        which is the whole tenancy boundary failing open at step one. */
     if (req.account && CONTROL_DB()) {
-      const b = await control().query(
+      /* WHICH BUSINESS, when an account owns more than one. This took the
+         NEWEST — `ORDER BY b.id DESC LIMIT 1` — and there was no way to say
+         otherwise. For the ordinary customer, who owns exactly one, that is
+         the right answer and always will be. For a group that has signed up a
+         second company it is a coin toss that writes a company, an outlet and
+         a staff record into whichever database happened to be created last,
+         silently, with nothing on any screen naming it.
+
+         So the panel may say. `?business=<id>` is honoured when this account
+         actually owns it, and REFUSED by name when it does not — an account
+         naming somebody else's business is either a mistake worth reporting
+         or an attempt worth refusing, and neither should quietly fall back to
+         one of their own. With nothing asked for, the newest still wins,
+         because that is what a customer who has just created one expects. */
+      const mine = await control().query(
         'SELECT b.id, b.db_name, b.name FROM chain.account_business ab'
         + ' JOIN chain.business b ON b.id = ab.business_id'
         + " WHERE ab.account_id = $1 AND b.status = 'live'"
-        + ' ORDER BY b.id DESC LIMIT 1', [req.account.id]);
-      if (b.rows.length) {
-        req.bizDb = b.rows[0].db_name;
-        req.bizId = b.rows[0].id;
-        req.bizName = b.rows[0].name;
+        + ' ORDER BY b.id DESC', [req.account.id]);
+      req.businesses = mine.rows.map((x) => ({ id: x.id, name: x.name }));
+
+      const asked = Number(req.query.business || req.get('x-business-id') || 0);
+      let pick = mine.rows[0] || null;
+      if (asked) {
+        pick = mine.rows.find((x) => Number(x.id) === asked) || null;
+        if (!pick) {
+          return res.status(403).json({
+            error: 'business ' + asked + ' is not one this account owns',
+            businesses: req.businesses
+          });
+        }
+      }
+      if (pick) {
+        req.bizDb = pick.db_name;
+        req.bizId = pick.id;
+        req.bizName = pick.name;
       }
     }
     next();
@@ -331,7 +358,13 @@ r.get('/state', async function (req, res, next) {
          answer is not given twice; step 1 then writes back, because the
          registered name is the one that matters and the signup's was a
          working title. */
-      business: req.bizName || null
+      business: req.bizName || null,
+      businessId: req.bizId || null,
+      /* EVERY business this account owns, so a group with two can be told
+         which one it is setting up rather than discovering it afterwards from
+         the company name on a receipt. One business is the ordinary case and
+         the panel says nothing about it. */
+      businesses: req.businesses || []
     });
   } catch (e) { next(e); }
 });

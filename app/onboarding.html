@@ -726,6 +726,15 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     return map[base + ":" + stock] || 1;
   }
 
+  /* Read once, from the address, because a link from Settings or from the
+     seller's own email is where a second business would be named. */
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search).get("business");
+      if (q && /^\d+$/.test(q)) state.businessId = Number(q);
+    } catch (e) { /* no URLSearchParams is no query to read */ }
+  }());
+
   function api(method, path, body) {
     var headers = { "content-type": "application/json" };
     if (state.token) headers.authorization = "Bearer " + state.token;
@@ -741,6 +750,13 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     // sessionStorage rather than local, because it is spent on this sitting
     // and a code left on a shared counter terminal is a code lying around.
     if (state.claim) headers["x-claim-token"] = state.claim;
+    /* WHICH BUSINESS, for the account that owns more than one. Silent for the
+       ordinary customer who owns exactly one; for a group that has signed up a
+       second company, this is what stops fourteen steps of setup landing in
+       whichever database happened to be created last. Read once from the
+       address, because that is where a link from Settings or an email would
+       carry it. */
+    if (state.businessId) headers["x-business-id"] = String(state.businessId);
     return fetch(path, {
       method: method, headers: headers,
       body: body === undefined ? undefined : JSON.stringify(body)
@@ -787,6 +803,8 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       state.gst = r.gstRegistered;
       state.claimWanted = !!r.claimRequired;
       state.business = r.business || "";
+      state.businessId = r.businessId || state.businessId || null;
+      state.businesses = r.businesses || [];
       return api("GET", "/api/auth/install");
     }).then(function (i) {
       state.install = i;
@@ -931,6 +949,16 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     var h = el("div");
     h.appendChild(el("div", { class: "chip" + (state.done[step.key] ? " ok" : "") },
       state.done[step.key] ? "Step " + step.n + " of 14 · done" : "Step " + step.n + " of 14"));
+    /* WHICH BUSINESS THIS IS SETTING UP, but only where there is a choice to
+       get wrong. An account owns exactly one in the ordinary case, and naming
+       it on every screen is noise; an account that owns two is fourteen steps
+       away from finding out from the company name on a receipt which one it
+       just configured. */
+    if ((state.businesses || []).length > 1 && state.business) {
+      var which = el("div", { class: "chip" }, "Setting up " + state.business);
+      which.style.marginTop = "8px";
+      h.appendChild(which);
+    }
     var title = el("h1", {}, view.title);
     title.style.marginTop = "12px";
     h.appendChild(title);

@@ -2701,6 +2701,21 @@ money landed in that customer's database and nobody else's. Four separate
 routing defects were invisible to every unit test and fell out of it in
 sequence.
 
+**An account that owns TWO businesses says which one it is setting up.**
+Onboarding resolved the account's business with `ORDER BY b.id DESC LIMIT 1`
+and offered no way to say otherwise. For the ordinary customer — one account,
+one business — that is right and always will be. For a group that has signed
+up a second company it is a coin toss that writes a company, an outlet and a
+staff record into whichever database happened to be created last, silently,
+with nothing on any screen naming it. `?business=<id>` (or `x-business-id`) is
+honoured when the account actually owns it and **refused by name** when it does
+not — an account naming somebody else's business is either a mistake worth
+reporting or an attempt worth refusing, and neither may quietly fall back to
+one of their own. `/state` carries `businessId` and every business the account
+owns, and the panel names the one it is setting up **only where there is more
+than one**, because naming it on every screen for the ordinary customer is
+noise.
+
 **Onboarding refuses an account that owns no business.** `/account` sent a
 verified account straight to `/onboarding` and nothing had created a business,
 so the route fell back to the connection's own database — the one every

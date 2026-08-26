@@ -29,7 +29,7 @@ const opts = DB.configured() ? {}
   : { skip: 'no Postgres configured (set PGHOST or DATABASE_URL)' };
 
 let db, BIZ, app, srv, base;
-let accountToken, businessId, bizDb, outletId, tillToken, memberId;
+let accountToken, accountId, businessId, bizDb, outletId, tillToken, memberId;
 
 const call = (method, path, body, headers) => fetch(base + path, {
   method: method,
@@ -98,6 +98,8 @@ test('a customer signs up and confirms the address is theirs', opts, async () =>
   const ver = await post('/api/account/code/verify', { email: email, code: up.body.code });
   assert.strictEqual(ver.status, 200, JSON.stringify(ver.body));
   accountToken = ver.body.token;
+  accountId = ver.body.account && ver.body.account.id;
+  assert.ok(accountId, 'the account has an id to own businesses by');
   assert.strictEqual(ver.body.next, 'onboarding', 'they own nothing yet');
   assert.deepStrictEqual(ver.body.outlets, []);
 });
@@ -462,6 +464,75 @@ test('privileged reads and writes open the right business', opts, async () => {
     'SELECT name FROM chain.handle WHERE outlet_id = $1', [outletId]);
   assert.strictEqual(claim.rows[0].name, 'seaside-e2e-moved',
     'and the registry and the store agree, which they did not before');
+});
+
+/* AN ACCOUNT THAT OWNS TWO BUSINESSES CAN SAY WHICH ONE IT IS SETTING UP.
+
+   Onboarding resolved the account's business with ORDER BY id DESC LIMIT 1 and
+   offered no way to say otherwise. For the ordinary customer, who owns exactly
+   one, that is right and always will be. For a group that has signed up a
+   second company it is a coin toss that writes a company, an outlet and a
+   staff record into whichever database happened to be created last — silently,
+   with nothing on any screen naming it.
+
+   Found in the audit while driving two businesses through the same account. */
+test('an account with two businesses says which one it is onboarding', opts, async () => {
+  const acct = { 'x-account-token': accountToken };
+  const second = await BIZ.createBusiness({ name: 'Second Company' });
+  await db.control().query(
+    'INSERT INTO chain.account_business (account_id, business_id, role)'
+    + " VALUES ($1,$2,'owner') ON CONFLICT DO NOTHING",
+    [accountId, second.id]);
+  try {
+    // With nothing asked for the NEWEST still wins — what a customer who has
+    // just created one expects — and the panel is told which, and what else.
+    const dflt = await call('GET', '/api/onboarding/state', undefined, acct);
+    assert.strictEqual(Number(dflt.body.businessId), Number(second.id));
+    assert.strictEqual(dflt.body.business, 'Second Company');
+    assert.strictEqual((dflt.body.businesses || []).length, 2,
+      'and every business it owns, so a screen can name the choice');
+
+    // Named, by either route the panel might use.
+    for (const [how, opt] of [
+      ['query', { path: '?business=' + businessId, headers: acct }],
+      ['header', { path: '', headers: Object.assign({ 'x-business-id': String(businessId) }, acct) }]
+    ]) {
+      const r = await call('GET', '/api/onboarding/state' + opt.path, undefined, opt.headers);
+      assert.strictEqual(Number(r.body.businessId), Number(businessId),
+        'by ' + how + ': the one that was named, not the newest');
+    }
+
+    /* AND A WRITE LANDS THERE. Resolving the read correctly while the write
+       went somewhere else would be worse than not offering the choice at all.
+       Written into the SECOND business by name; the first already has a
+       company from earlier in this file, so it is the one that must not
+       change. */
+    const before = await db.ownerFor(bizDb).query(
+      'SELECT legal_name FROM chain.company WHERE id = 1');
+    const wrote = await call('POST', '/api/onboarding/company?business=' + second.id, {
+      legalName: 'Second Company Pvt Ltd', regNo: 'C-7777/2026', gstRegistered: 'no',
+      address: 'Hulhumale'
+    }, acct);
+    assert.strictEqual(wrote.status, 200, JSON.stringify(wrote.body));
+
+    const landed = await db.ownerFor(second.db_name).query(
+      'SELECT legal_name FROM chain.company WHERE id = 1');
+    assert.strictEqual(landed.rows[0].legal_name, 'Second Company Pvt Ltd',
+      'the company went into the business that was NAMED');
+    const after = await db.ownerFor(bizDb).query(
+      'SELECT legal_name FROM chain.company WHERE id = 1');
+    assert.strictEqual(after.rows[0].legal_name, before.rows[0].legal_name,
+      'and the other business is untouched — which is the whole point');
+
+    // A business this account does not own is refused by name, never quietly
+    // swapped for one of its own.
+    const nope = await call('GET', '/api/onboarding/state?business=999999', undefined, acct);
+    assert.strictEqual(nope.status, 403);
+    assert.match(nope.body.error, /is not one this account owns/);
+  } finally {
+    await db.control().query(
+      'DELETE FROM chain.account_business WHERE business_id = $1', [second.id]);
+  }
 });
 
 test('the cluster is left clean', opts, async () => {
