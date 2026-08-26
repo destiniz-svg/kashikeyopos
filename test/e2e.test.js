@@ -127,11 +127,26 @@ test('they onboard the company, the outlet and themselves', opts, async () => {
   const acct = { 'x-account-token': accountToken };
   const step = (p, b) => call('POST', p, b, acct);
 
+  /* A BUSINESS AND AN OUTLET ARE DIFFERENT NAMES. The signup took "Seaside
+     Cafe" — a working title, given before anybody had been asked for a
+     registration number — and the panel offers it back on step 1 so the same
+     answer is not typed twice. */
+  const seeded = await call('GET', '/api/onboarding/state', undefined, acct);
+  assert.strictEqual(seeded.body.business, 'Seaside Cafe',
+    'the panel is told what the signup called this business, to prefill step 1');
+
   let r = await step('/api/onboarding/company', {
     legalName: 'Seaside Cafe Pvt Ltd', regNo: 'C-9001/2026', gstRegistered: 'yes',
     tin: 'T9000001GST501', address: 'Boduthakurufaanu Magu, Malé'
   });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+
+  /* THE REGISTRY ADOPTS THE REGISTERED NAME. Left alone it would keep the
+     working title for ever, so the seller's list and the customer's own
+     receipts would disagree about who this is. */
+  const adopted = await db.control().query(
+    'SELECT name FROM chain.business WHERE id = $1', [businessId]);
+  assert.strictEqual(adopted.rows[0].name, 'Seaside Cafe Pvt Ltd');
 
   r = await step('/api/onboarding/outlet', {
     name: 'Seaside Cafe', code: 'SEAS', kind: 'restaurant',

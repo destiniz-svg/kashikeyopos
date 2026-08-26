@@ -1769,6 +1769,39 @@ test('an account code that could not be sent is where the screen says it is', ()
     'the sign-in screen still points at the trail — which is now true');
 });
 
+/* THE PASSWORDLESS DOOR ON THE SIGNUP FORM SENT NOTHING.
+
+   Found in a live install's own HTTP log: two POSTs to /api/account/code at
+   00:33 and 00:39 and never one to /signup, against a Resend account whose
+   most recent send was five days earlier. The customer was pressing "Email me
+   a code instead" on the CREATE ACCOUNT form.
+
+   /code is the existing-account door. For an address it has never seen it
+   answers "if that address has an account, a code is on its way" and sends
+   nothing — deliberately, because any other answer enumerates the customer
+   list. The page then reported "Code sent. It lasts ten minutes" and showed
+   Check your email over an inbox that would never receive one: the exact
+   shape this file exists to refuse, and worse than the backup screen, because
+   it stops a customer signing up at all.
+
+   Nothing is lost by taking it off that form. Creating an account with the
+   password left blank IS the passwordless path, and it sends a code. */
+test('the code button is offered only on the door that can send one', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  const paint = page.match(/\$\("useCode"\)\.style\.display\s*=\s*([^;]+);/);
+  assert.ok(paint, 'account.html still decides when the code button is shown');
+  assert.match(paint[1], /mode === "signin"/,
+    'the code button is a SIGN-IN affordance: on the signup form it reports a'
+    + ' send the server deliberately never makes');
+  assert.ok(!/code \? "none" : "inline-block"/.test(paint[1]),
+    'the old rule showed it on every door but the code step, signup included');
+
+  // The blank-password path has to stay discoverable, or removing the button
+  // takes the only passwordless route with it.
+  assert.match(page, /leave it blank and sign in with a code/,
+    'creating the account is the passwordless path, and the form says so');
+});
+
 /* A CONTROL DOES WHAT IT SAYS, OR IT IS NOT A CONTROL.
 
    Found by running the restore drill the deployment guide asks for. The

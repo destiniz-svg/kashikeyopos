@@ -192,8 +192,11 @@ button.link:hover{text-decoration:underline}
         <div class="f" id="bizWrap">
           <label for="bizName">Business name</label>
           <input id="bizName" name="bizName" autocapitalize="words" autocomplete="organization"
-                 placeholder="Seaside Café">
-          <span class="hint">The trading name. You can change it in Settings later.</span>
+                 placeholder="Seaside Holdings Pvt Ltd">
+          <span class="hint">The business itself &mdash; the company that files the return, not
+            the caf&eacute;. Your outlets are named separately, and one business may have
+            several. Setup asks for the registered name, number and address next; this is
+            what we call you until then.</span>
         </div>
         <div class="f" id="nameWrap">
           <label for="name">Your name</label>
@@ -380,7 +383,16 @@ button.link:hover{text-decoration:underline}
       : signup ? "Create account" : "Sign in";
     $("password").setAttribute("autocomplete", signup ? "new-password" : "current-password");
     $("pwHint").style.display = signup ? "block" : "none";
-    $("useCode").style.display = code ? "none" : "inline-block";
+    /* SIGNING IN IS THE ONLY DOOR THIS OPENS. It was shown on the create-account
+       form too, where it is not a shortcut but a dead end: POST /code on an
+       address with no account answers "if that address has an account, a code
+       is on its way" and sends NOTHING — deliberately, because a different
+       answer enumerates the customer list. The page then said "Code sent. It
+       lasts ten minutes" and showed Check your email over an inbox that was
+       never going to receive one. Creating the account is what sends a code to
+       a new address, and it does that with the password left blank, so nothing
+       is lost by taking this off that form. */
+    $("useCode").style.display = mode === "signin" ? "inline-block" : "none";
     // Landing in the code step with no way out is a dead end: the address may
     // simply have been typed wrong.
     $("startOver").style.display = code ? "inline-block" : "none";

@@ -136,11 +136,15 @@ r.use(async function (req, res, next) {
        which is the whole tenancy boundary failing open at step one. */
     if (req.account && CONTROL_DB()) {
       const b = await control().query(
-        'SELECT b.db_name FROM chain.account_business ab'
+        'SELECT b.id, b.db_name, b.name FROM chain.account_business ab'
         + ' JOIN chain.business b ON b.id = ab.business_id'
         + " WHERE ab.account_id = $1 AND b.status = 'live'"
         + ' ORDER BY b.id DESC LIMIT 1', [req.account.id]);
-      if (b.rows.length) req.bizDb = b.rows[0].db_name;
+      if (b.rows.length) {
+        req.bizDb = b.rows[0].db_name;
+        req.bizId = b.rows[0].id;
+        req.bizName = b.rows[0].name;
+      }
     }
     next();
   } catch (e) {
@@ -259,7 +263,15 @@ r.get('/state', async function (req, res, next) {
          exists there is nothing left to claim, so the panel should stop
          asking rather than keep a field on screen that does nothing. */
       claimRequired: (process.env.ONBOARDING_CLAIM_TOKEN || '').length >= 8
-        && !done.owner
+        && !done.owner,
+      /* WHAT THEY CALLED THE BUSINESS WHEN THEY SIGNED UP. Typed once, on the
+         account form, and it is the registry's name for this customer — not
+         the outlet's, which step 2 asks for separately, and not a trading
+         fascia. The panel prefills step 1's legal name with it so the same
+         answer is not given twice; step 1 then writes back, because the
+         registered name is the one that matters and the signup's was a
+         working title. */
+      business: req.bizName || null
     });
   } catch (e) { next(e); }
 });
@@ -350,6 +362,28 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
         + ' WHERE id = 1', [req.account.id]);
     }
     await c.query('COMMIT');
+
+    /* THE REGISTRY LEARNS THE REGISTERED NAME. What the customer typed on the
+       signup form was a working title — enough to name a database by, given
+       before anybody asked for a registration number. The legal name is the
+       one on the return, and if the registry keeps the working title for ever
+       then the seller's list and the customer's own receipts disagree about
+       who this is, which is the kind of difference nobody notices until it is
+       on an invoice.
+
+       Deliberately AFTER the commit and deliberately not fatal: this is one
+       name in one list, and the company is already correctly written. Failing
+       the step here would tell a customer their company did not save when it
+       did. It goes on the trail instead. */
+    if (req.bizId && b.legalName) {
+      try {
+        await control().query(
+          'UPDATE chain.business SET name = $2 WHERE id = $1 AND name IS DISTINCT FROM $2',
+          [req.bizId, String(b.legalName).trim()]);
+      } catch (e) {
+        console.error('[onboarding] the registry kept the signup name: ' + e.message);
+      }
+    }
     res.json({ ok: true, step: 'company', gstRegistered: registered });
   } catch (e) {
     await c.query('ROLLBACK').catch(() => {});

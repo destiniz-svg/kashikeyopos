@@ -274,7 +274,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       key: "company", n: 1, label: "Company",
       sub: "The entity that files the return",
       title: "Who is trading?",
-      lede: "This is the legal entity — the name on the return and the registration number. The fascia a guest sees is set separately, per outlet, under branding.",
+      lede: "This is the legal entity — the name on the return, its registration number, its registered address and who to reach. It is not the name over the door: your outlets are named on the next step, and one business may have several. The fascia a guest sees is set per outlet, under branding.",
       why: "A receipt carries the TIN of the entity that took the money, so it is asked for only if you have one. A business below the GST threshold has none, and inventing one here would be a false statement to a tax authority — which is also why nothing is pre-filled.",
       edit: "Settings → Company",
       fields: [
@@ -305,11 +305,12 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       key: "outlet", n: 2, label: "First outlet",
       sub: "Its own schema and its own login role",
       title: "The first place you trade from",
-      lede: "An outlet is not a filter on shared data. It gets its own Postgres schema and its own database login, granted access to that schema alone — another outlet's tables are unreachable, not merely hidden.",
+      lede: "An outlet sits under the business you named on step 1 — one business, one or many outlets, and this is the first. Give it the name a guest would recognise on the door; the company's registered name stays on step 1 and prints on the tax line. An outlet is not a filter on shared data: it gets its own Postgres schema and its own database login, granted access to that schema alone — another outlet's tables are unreachable, not merely hidden.",
       why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Whether there is a rate at all was answered on step 1 — a business below the threshold charges nothing rather than quietly assuming 8%.",
       edit: "Chain & Outlets → the outlet",
       fields: [
-        { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee" },
+        { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee",
+          hint: "The store, not the company. It is what the fascia says, what a docket is headed with, and what you pick between when the business has more than one." },
         { k: "code", label: "Short code", req: true, mono: true, ph: "KOCHA", hint: "Goes in front of every document number. Letters and digits, up to eight." },
         { k: "slug", label: "Store address", type: "handle", from: "name", full: true,
           ph: "chaandhanee",
@@ -785,6 +786,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       state.counts = r.counts || {};
       state.gst = r.gstRegistered;
       state.claimWanted = !!r.claimRequired;
+      state.business = r.business || "";
       return api("GET", "/api/auth/install");
     }).then(function (i) {
       state.install = i;
@@ -808,6 +810,13 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       if (f.v !== undefined) { v[f.k] = f.v; return; }
       v[f.k] = f.type === "select" ? ((f.options || [])[0] || [""])[0] : "";
     });
+    /* ASKED ONCE. The business name was typed on the account form, before
+       anybody had been asked for a registration number, so it is a working
+       title rather than the registered one — and it is the registry's name
+       for this customer, not the outlet's, which step 2 asks for on its own.
+       Offering it here is a prefill and nothing more: whatever is saved on
+       this step is the registered name, and the registry adopts it. */
+    if (step.key === "company" && state.business) v.legalName = state.business;
     if (step.key === "series") {
       v.series = [
         { kind: "SALE", prefix: pfx("R"), start: 1 },
