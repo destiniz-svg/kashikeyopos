@@ -2033,6 +2033,67 @@ Verified end to end against a live outlet: enrol → wrong code refused → clai
 untouched and it can sign back in; deregister → token refused AND keypad
 refused; change a PIN → old refused, new works.
 
+## How somebody finds out
+
+The readiness audit's largest open item: this build had structured boot lines,
+an audit trail, `/healthz` and a genuinely good `/readyz` — and no way at all
+to LEARN that something had gone wrong. Nobody would discover a store had
+stopped syncing except by the shop ringing up. `src/watch.js` is the answer,
+and it is two different things.
+
+**Counting is passive.** `/metrics` emits Prometheus text — process, request
+counts by status CLASS (never by path: one series per outlet is how a scrape
+melts), and the gauges the health probes already compute. No dependency: the
+format is a handful of lines of string building. It is **guarded by
+`METRICS_KEY` and a 404 until one is set**, because what it returns is the
+shape of the install and an unguarded metrics endpoint is a reconnaissance
+gift — the same doctrine as the platform door.
+
+**Alerting is active, and it is the half that matters at 2 a.m.** Three
+conditions, chosen because each is a fault nobody outside the shop would
+otherwise see:
+
+- **`/readyz` is not 200** — that probe checks out every outlet's own login
+  role against its own schema, so a failure means no request for that outlet
+  can be served;
+- **a business is behind head or its migration failed** — that customer's till
+  is talking to a schema the code does not expect, and `requireAtHead()`
+  refuses its requests by name, silently as far as anyone else is concerned;
+- **a writing device has gone quiet** — a signed-in till holding the only copy
+  of an evening behind a dead link. `chain.device.last_push_at` has answered
+  this for months with nobody watching. Printers and displays never push and
+  are not counted, because a warning that fires on every printer in the shop
+  is one nobody reads.
+
+**An alert fires on a TRANSITION, never on a tick.** One message when a
+condition goes bad, one when it clears, and a reminder only after
+`ALERT_REPEAT_HOURS` (6) if it still holds. State is in memory and resets on a
+restart, which is the correct failure — a fresh process re-evaluates.
+
+Two things the first version got wrong, both the shape this file exists to
+refuse. It **returned before logging** when no transport was configured, so an
+install with no `ALERT_EMAIL` had a watchdog that saw the fault and told nobody
+anywhere; the log is the channel of last resort and gets the whole body,
+exactly as `src/email.js` writes a sign-in code to the trail where it could not
+send it. And **recovery reused the alarm's own body**, so clearing read
+"RECOVERED: 0 of 4 outlets cannot be reached" over "No request for these
+outlets can be served" and an empty list — a message that states the opposite
+of what happened, which sends somebody to check a shop that is fine.
+
+The probes are **injected from `server.js`** rather than reimplemented, so an
+alert can never disagree with the endpoint it is watching about the same fact.
+Unconfigured, the boot log says so by name. `test/watch.test.js` pins all of
+it: silence when healthy, fire once, no repeat inside the window, a repeat
+after it, a true recovery, and the log-only path.
+
+| Variable | Effect |
+| --- | --- |
+| `METRICS_KEY` | ≥16 chars. Unset, `/metrics` is a 404. |
+| `ALERT_EMAIL` | Where alerts go. Unset, they are logged and the boot says so. |
+| `ALERT_REPEAT_HOURS` | Reminder interval while a condition holds (6). |
+| `DEVICE_QUIET_MINUTES` | How long a writing device may go without delivering (60). |
+| `WATCH_INTERVAL_SECONDS` | Sweep interval (60, floor 15). First sweep is delayed 20 s so a deploy does not alert on pools that have not opened. |
+
 ## History has a horizon, the trail does not
 
 `chain.prune_history(op_days, guest_days)` (migration 025), called at boot and

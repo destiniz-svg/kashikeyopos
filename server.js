@@ -4,11 +4,16 @@ const express = require('express');
 const { owner, withOutletRead, shutdown, peerCaPem } = require('./src/db');
 const { migrate, migrateControl, fleet } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
+const watch = require('./src/watch');
 const directory = require('./src/directory');
 
 // Set when a migration could not finish, and reported by both health
 // endpoints so a half-migrated schema cannot pass for a healthy one.
 let bootError = null;
+/* The last device sweep's count, so a /metrics scrape reports what the
+   watchdog last actually saw rather than opening every business database on
+   somebody else's polling interval. */
+let lastQuiet = 0;
 
 const app = express();
 app.set('trust proxy', 1);              // Railway terminates TLS at the edge
@@ -129,6 +134,37 @@ app.use(function (req, res, next) {
   next();
 });
 
+/* COUNTED BEFORE ANYTHING ROUTES, so a 404 and a refusal are counted too —
+   those are exactly the requests an operator wants a number for. */
+app.use(watch.meter());
+
+/* ── /metrics ──────────────────────────────────────────────────────────────
+   Guarded, and a 404 until it is. What this returns is the shape of the
+   install — how many businesses, how many outlets, how much traffic — which is
+   nobody's business but the operator's, and an unguarded metrics endpoint is a
+   reconnaissance gift. Same doctrine as the platform door: unset, it does not
+   exist; set, it is compared in constant time. */
+app.get('/metrics', async function (req, res) {
+  const want = String(process.env.METRICS_KEY || '');
+  if (want.length < 16) return res.status(404).end();
+  const got = String(req.get('x-metrics-key') || '');
+  const a = Buffer.from(got);
+  const b = Buffer.from(want);
+  if (a.length !== b.length || !cspCrypto.timingSafeEqual(a, b)) return res.status(404).end();
+  try {
+    const [r, f] = await Promise.all([readiness(), fleetState()]);
+    res.type('text/plain; version=0.0.4').send(watch.render({
+      ready: !r.unreachable.length, outlets: r.outlets,
+      unreachable: r.unreachable.length,
+      businesses: f.live, behind: f.behind.length, failed: f.failed.length,
+      quiet: lastQuiet
+    }));
+  } catch (e) {
+    // A scrape must never be the thing that pages you. Serve what is knowable.
+    res.type('text/plain; version=0.0.4').send(watch.render({ ready: false }));
+  }
+});
+
 app.get('/healthz', function (req, res) {
   if (bootError) return res.status(503).json({ ok: false, migration: bootError });
   res.json({ ok: true });
@@ -203,6 +239,74 @@ async function everyOutlet() {
       // A business whose database cannot be opened is itself unreachable, and
       // saying nothing about it is how the old probe reported green.
       out.push({ id: null, code: b.db_name, dead: e.message });
+    }
+  }
+  return out;
+}
+
+/* ── what the watchdog asks ────────────────────────────────────────────────
+   Injected into src/watch.js rather than reimplemented there, so an alert can
+   never disagree with the endpoint it is watching about the same fact. */
+
+// Every live business and how far its schema has actually got.
+async function fleetState() {
+  const { control, CONTROL_DB } = require('./src/db');
+  const head = require('./src/scripts/migrate').headCount();
+  if (!CONTROL_DB()) return { head: head, live: 1, behind: [], failed: [] };
+  const q = await control().query(
+    'SELECT id, db_name, status, schema_version, build_state FROM chain.business'
+    + " WHERE status IN ('live','failed') ORDER BY id");
+  const behind = [];
+  const failed = [];
+  q.rows.forEach((b) => {
+    const at = Number(b.schema_version || 0);
+    if (b.status === 'failed') {
+      failed.push({ db: b.db_name, at: at, error: b.build_state || 'unknown' });
+    } else if (at < head) {
+      behind.push({ db: b.db_name, at: at });
+    }
+  });
+  return {
+    head: head,
+    live: q.rows.filter((b) => b.status === 'live').length,
+    behind: behind, failed: failed
+  };
+}
+
+/* A DEVICE THAT CANNOT DELIVER ITS WRITES. chain.device.last_push_at answers
+   "when did it last get its writes out", which is a different question from
+   last_seen ("when was somebody standing at it") and the one that matters when
+   a signed-in till is holding the only copy of an evening. Printers and
+   displays never push, so they are not counted — a warning that fires on every
+   printer in the shop is one nobody reads. */
+async function quietDevices(mins) {
+  const { control, CONTROL_DB, ownerFor, owner } = require('./src/db');
+  const dbs = [];
+  if (CONTROL_DB()) {
+    const q = await control().query(
+      "SELECT db_name FROM chain.business WHERE status = 'live' ORDER BY id");
+    q.rows.forEach((b) => dbs.push({ name: b.db_name, pool: ownerFor(b.db_name) }));
+  } else {
+    dbs.push({ name: 'this database', pool: owner() });
+  }
+  const out = [];
+  for (const d of dbs) {
+    try {
+      const q = await d.pool.query(
+        "SELECT outlet_id, label, last_push_at FROM chain.device"
+        + " WHERE NOT revoked AND kind NOT IN ('printer','display')"
+        + '   AND (last_push_at IS NULL OR last_push_at < now() - ($1 || \' minutes\')::interval)'
+        + '   AND last_seen > now() - interval \'7 days\''
+        + ' ORDER BY outlet_id', [String(mins)]);
+      q.rows.forEach((r) => out.push({
+        db: d.name, outlet: r.outlet_id, name: r.label,
+        mins: r.last_push_at
+          ? Math.round((Date.now() - new Date(r.last_push_at).getTime()) / 60000)
+          : null
+      }));
+    } catch (e) {
+      // A business that cannot be opened is already the readiness probe's
+      // problem; saying it twice is two pages for one fault.
     }
   }
   return out;
@@ -562,6 +666,34 @@ async function boot() {
   }()).catch((e) => console.error('[install] state unreadable: ' + e.message));
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();
+
+  /* ── THE WATCHDOG ────────────────────────────────────────────────────────
+     Nothing in this build could tell anybody it had gone wrong: no metrics,
+     no alerts, no error aggregation. A store that stopped syncing would be
+     discovered by the shop ringing up.
+
+     In-process and on an interval, like the doorman and the retention sweep,
+     for the same reason: this product is sold one install per customer, so
+     there is one process. Sixty seconds by default — long enough that the
+     sweep's own cost is nothing, short enough that a dead outlet is named
+     within the minute. The FIRST sweep is deliberately delayed: a probe run
+     during boot reports on pools that have not opened yet, which is how a
+     watchdog earns a reputation for crying wolf on every deploy. */
+  console.log(watch.bootLine());
+  const probes = {
+    readiness: readiness,
+    fleet: fleetState,
+    quietDevices: async (mins) => {
+      const q = await quietDevices(mins);
+      lastQuiet = q.length;
+      return q;
+    }
+  };
+  const everySec = Math.max(15, Number(process.env.WATCH_INTERVAL_SECONDS || 60));
+  const tick = () => watch.sweep(probes).catch(
+    (e) => console.error('[watch] sweep failed: ' + e.message));
+  setTimeout(tick, 20000).unref();
+  setInterval(tick, everySec * 1000).unref();
   ['SIGTERM', 'SIGINT'].forEach(function (sig) {
     process.on(sig, function () {
       server.close(function () { shutdown().then(() => process.exit(0)); });
@@ -576,4 +708,4 @@ if (require.main === module) boot();
 // pruneHistory is exported so the fleet sweep can be PROVED rather than
 // asserted from its source: a prune that removes nothing logs nothing, which
 // is exactly how it went unnoticed that it was pruning the wrong database.
-module.exports = { app, boot, pruneHistory };
+module.exports = { app, boot, pruneHistory, readiness, fleetState, quietDevices };
