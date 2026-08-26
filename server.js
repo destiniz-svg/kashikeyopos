@@ -292,16 +292,37 @@ async function quietDevices(mins) {
   const out = [];
   for (const d of dbs) {
     try {
+      /* A DEVICE THAT HAS NEVER PUSHED IS NOT A DEVICE THAT HAS STOPPED.
+         `last_push_at IS NULL` fired the moment a till first signed in — so
+         every newly enrolled terminal, and the only till on every brand-new
+         store, was reported as having gone quiet before anybody had rung
+         anything. A warning that fires on every new install is one nobody
+         reads by the second one, which is the rule this file already keeps for
+         printers and for the tax sweep.
+
+         So the clock starts when the device BECAME one that should be
+         pushing — it paired, or failing that it was first seen — and only
+         then does silence mean anything. A till paired three hours ago that
+         has delivered nothing is still named; a till paired two minutes ago
+         is not. */
       const q = await d.pool.query(
-        "SELECT outlet_id, label, last_push_at FROM chain.device"
+        'SELECT outlet_id, label, last_push_at,'
+        + ' coalesce(last_push_at, paired_at, last_seen) AS quiet_since'
+        + ' FROM chain.device'
         + " WHERE NOT revoked AND kind NOT IN ('printer','display')"
-        + '   AND (last_push_at IS NULL OR last_push_at < now() - ($1 || \' minutes\')::interval)'
+        + '   AND coalesce(last_push_at, paired_at, last_seen)'
+        + '       < now() - ($1 || \' minutes\')::interval'
         + '   AND last_seen > now() - interval \'7 days\''
         + ' ORDER BY outlet_id', [String(mins)]);
       q.rows.forEach((r) => out.push({
         db: d.name, outlet: r.outlet_id, name: r.label,
+        // How long it has been silent, measured from whichever of those the
+        // row actually has. `mins: null` still means it has never delivered.
         mins: r.last_push_at
           ? Math.round((Date.now() - new Date(r.last_push_at).getTime()) / 60000)
+          : null,
+        since: r.quiet_since
+          ? Math.round((Date.now() - new Date(r.quiet_since).getTime()) / 60000)
           : null
       }));
     } catch (e) {
@@ -312,11 +333,25 @@ async function quietDevices(mins) {
   return out;
 }
 
+/* TWO FAULTS, TWO SENTENCES, TWO REMEDIES — and they were one.
+
+   A business whose DATABASE cannot be opened was pushed into the outlet list
+   and reported as "an outlet that cannot be reached with its own login role",
+   under a remedy that recreates login roles. That remedy cannot fix a missing
+   database, so whoever read the 503 would run it, watch it change nothing, and
+   still be holding the pager. It is the same defect the restore drill found in
+   this endpoint's own remedy, one level up: a message naming a fix that does
+   not fit the fault.
+
+   So they are counted apart. An unreachable DATABASE is one customer's whole
+   install; an unreachable OUTLET is one store inside a database that opened
+   fine. */
 async function readiness() {
   const rows = await everyOutlet();
   const unreachable = [];
+  const businesses = [];
   for (const o of rows) {
-    if (o.dead) { unreachable.push({ outlet: o.code, code: o.code, error: o.dead }); continue; }
+    if (o.dead) { businesses.push({ db: o.code, error: o.dead }); continue; }
     try {
       // The outlet's own role, its own schema, its own grants — every belt a
       // real request crosses, and nothing the owner connection could stand in
@@ -327,7 +362,11 @@ async function readiness() {
       unreachable.push({ outlet: o.id, code: o.code, error: e.message });
     }
   }
-  return { outlets: rows.length, unreachable: unreachable };
+  // Only the real ones are counted as outlets — a placeholder standing in for
+  // a database that would not open is not a store, and counting it as one is
+  // how "4 of 5 outlets" described an install with no such outlets in it.
+  return { outlets: rows.length - businesses.length,
+    unreachable: unreachable, businesses: businesses };
 }
 
 app.get('/readyz', async function (req, res) {
@@ -340,19 +379,36 @@ app.get('/readyz', async function (req, res) {
     if (!readyAnswer || Date.now() - readyChecked > readyTtl()) {
       const now = await readiness();
       readyAnswer = now;
-      readyChecked = now.unreachable.length ? 0 : Date.now();
+      readyChecked = (now.unreachable.length || now.businesses.length)
+        ? 0 : Date.now();
     }
     const bad = readyAnswer.unreachable;
-    if (bad.length) {
+    const dead = readyAnswer.businesses || [];
+    if (bad.length || dead.length) {
+      const said = [];
+      const fix = [];
+      if (dead.length) {
+        said.push(dead.length + ' business database(s) cannot be opened');
+        fix.push('For a database that cannot be opened: restore it, or — if it'
+          + ' is gone deliberately — take its row out of the live set'
+          + " (chain.business.status) so the fleet stops counting it."
+          + ' Recreating login roles does nothing for this one.');
+      }
+      if (bad.length) {
+        said.push(bad.length + ' of ' + readyAnswer.outlets + ' outlet(s)'
+          + ' cannot be reached with their own login role');
+        fix.push('For an outlet whose own role cannot serve it:'
+          + " npm run provision:outlet -- --all, with the install's own"
+          + ' OUTLET_ROLE_SECRET. Outlet login roles are cluster-wide and a'
+          + ' pg_dump of one database does not carry them.');
+      }
       return res.status(503).json({
         ok: false,
-        error: 'the control plane answers but ' + bad.length + ' of '
-          + readyAnswer.outlets + ' outlet(s) cannot be reached with their own'
-          + ' login role — no request for them can be served',
+        error: 'the control plane answers but ' + said.join(', and ')
+          + ' — no request for them can be served',
         unreachable: bad,
-        remedy: 'npm run provision:outlet -- --all, with the install\'s own'
-          + ' OUTLET_ROLE_SECRET. Outlet login roles are cluster-wide and a'
-          + ' pg_dump of one database does not carry them.'
+        businesses: dead,
+        remedy: fix.join(' ')
       });
     }
     res.json({ ok: true, outlets: readyAnswer.outlets, at: new Date().toISOString() });

@@ -1990,6 +1990,15 @@ nothing the owner connection can stand in for.
 - **A failing outlet is NAMED**, with `npm run provision:outlet -- --all` in the
   body. A 503 saying "not ready" leaves whoever is holding the pager exactly
   where the old 200 left them.
+- **And a business whose DATABASE will not open is a different page from an
+  outlet whose LOGIN ROLE will not serve.** They were one message under one
+  remedy — the role one — which cannot do a thing about a missing database, so
+  whoever read it at 2 a.m. would run it, watch nothing change, and still be
+  holding the pager. Same defect the restore drill found in this endpoint's own
+  remedy, one level up. They are counted apart now, each with the remedy that
+  fits, and a placeholder for an unopenable database is no longer counted as an
+  outlet — which is how "4 of 5 outlet(s)" once described an install with no
+  such outlets in it.
 - **No outlets is not a failure.** That is a fresh install on its way to
   onboarding, and a probe that never goes green there is an install that can
   never be set up.
@@ -2106,7 +2115,13 @@ otherwise see:
   of an evening behind a dead link. `chain.device.last_push_at` has answered
   this for months with nobody watching. Printers and displays never push and
   are not counted, because a warning that fires on every printer in the shop
-  is one nobody reads.
+  is one nobody reads. **And a device that has never pushed is not a device
+  that has stopped**: the predicate was `last_push_at IS NULL OR …`, whose NULL
+  half fires the instant a till first signs in, so the only terminal on every
+  brand-new store was reported quiet before anybody had rung anything. The
+  clock starts from `coalesce(last_push_at, paired_at, last_seen)` — when the
+  device began owing pushes — and the message says which of the two silences
+  it is.
 
 **An alert fires on a TRANSITION, never on a tick.** One message when a
 condition goes bad, one when it clears, and a reminder only after

@@ -39,12 +39,12 @@ function capture(fn) {
 }
 
 const clear = {
-  readiness: async () => ({ outlets: 4, unreachable: [] }),
+  readiness: async () => ({ outlets: 4, unreachable: [], businesses: [] }),
   fleet: async () => ({ head: 38, live: 2, behind: [], failed: [] }),
   quietDevices: async () => []
 };
 const broken = {
-  readiness: async () => ({ outlets: 4,
+  readiness: async () => ({ outlets: 4, businesses: [],
     unreachable: [{ outlet: 3, error: 'role "outlet_3_app" does not exist' }] }),
   fleet: async () => ({ head: 38, live: 2,
     behind: [{ db: 'biz_1', at: 36 }],
@@ -114,7 +114,7 @@ test('a recovery says what is true, not the alarm with zeroes in it', async () =
   const lines = await capture(() => watch.sweep(clear));
   const all = lines.join('\n');
 
-  assert.match(all, /RECOVERED — every outlet answers with its own login role again/);
+  assert.match(all, /RECOVERED — every business opens and every outlet answers/);
   assert.match(all, /RECOVERED — every live business database is at head again/);
   assert.match(all, /RECOVERED — every writing device is delivering its pushes again/);
   assert.ok(!/cannot be reached/.test(all),
@@ -243,6 +243,83 @@ test('an alert address that is a dangling reference is no address at all', () =>
   }
 });
 
+/* A DEVICE THAT HAS NEVER PUSHED IS NOT A DEVICE THAT HAS STOPPED.
+
+   Found by auditing a real store's first hour. The probe's predicate was
+   `last_push_at IS NULL OR last_push_at < now() - interval`, and the NULL half
+   fires the instant a till first signs in — so the only terminal on every
+   brand-new store was reported as having gone quiet before anybody had rung a
+   thing, and every newly enrolled till after that.
+
+   A warning that fires on every new install is one nobody reads by the second
+   one. Same rule the printers already get, and the same rule the tax sweep
+   keeps: flag a wrong figure, never the absence of one. */
+/* A DATABASE THAT WILL NOT OPEN IS NOT AN OUTLET THAT WILL NOT SERVE, and the
+   difference is which remedy to run. They were one message under one remedy —
+   "npm run provision:outlet -- --all" — which recreates login roles and cannot
+   do a thing about a missing database. Found by auditing a real store: the
+   local registry held four businesses whose databases had been dropped, and
+   /readyz reported them as four unreachable OUTLETS with that remedy attached. */
+test('a missing database and a refused outlet are two pages, not one', async () => {
+  reset();
+  const lines = await capture(() => watch.sweep(Object.assign({}, clear, {
+    readiness: async () => ({ outlets: 2,
+      unreachable: [{ outlet: 7, error: 'role "outlet_7_app" does not exist' }],
+      businesses: [{ db: 'kashikeyo_biz_4', error: 'database "kashikeyo_biz_4" does not exist' }] })
+  })));
+  const all = lines.join('\n');
+
+  assert.match(all, /1 business database\(s\) cannot be opened/);
+  assert.match(all, /1 of 2 outlet\(s\) cannot be reached/);
+  assert.match(all, /kashikeyo_biz_4 — database "kashikeyo_biz_4" does not exist/);
+  assert.match(all, /outlet 7 — role "outlet_7_app" does not exist/);
+
+  assert.match(all, /Recreating login roles does nothing for this one/,
+    'the database half says so, rather than pointing at the role remedy');
+  assert.match(all, /provision:outlet -- --all/,
+    'and the outlet half still carries the remedy that does fit it');
+});
+
+test('the quiet-device probe measures from when a device started owing pushes', () => {
+  const SRV = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const probe = SRV.slice(SRV.indexOf('async function quietDevices'),
+    SRV.indexOf('async function pruneHistory'));
+  assert.ok(probe.length > 200, 'found quietDevices()');
+
+  assert.ok(!/last_push_at IS NULL OR/.test(probe),
+    'a device that has never pushed no longer counts as one that has stopped');
+  assert.match(probe, /coalesce\(last_push_at, paired_at, last_seen\)/,
+    'the clock starts when it paired, or failing that when it was first seen');
+  assert.match(probe, /kind NOT IN \('printer','display'\)/,
+    'and printers and displays never push, so they are still never counted');
+});
+
+/* And the message says WHICH silence it is, because they need different
+   answers: a till that delivered an hour ago and stopped is a link that has
+   just died; one that has never delivered at all may never have been able to. */
+test('the alert distinguishes never-delivered from stopped-delivering', () => {
+  const out = [];
+  const was = console.error;
+  console.error = (...a) => out.push(a.join(' '));
+  return Promise.resolve()
+    .then(() => {
+      reset();
+      return watch.sweep(Object.assign({}, clear, {
+        quietDevices: async () => ([
+          { db: 'biz_1', outlet: 1, name: 'Counter till', mins: 214 },
+          { db: 'biz_1', outlet: 1, name: 'New till', mins: null, since: 95 }
+        ])
+      }));
+    })
+    .finally(() => { console.error = was; })
+    .then(() => {
+      const all = out.join('\n');
+      assert.match(all, /Counter till — last delivered 214 minutes ago/);
+      assert.match(all, /New till — has NEVER delivered a push, and has been up 95 minutes/,
+        'never-delivered is named as that, with how long it has had the chance');
+    });
+});
+
 test('/metrics is the shape of the install, so it is a 404 until it is keyed', () => {
   const SRV = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const block = SRV.slice(SRV.indexOf("app.get('/metrics'"), SRV.indexOf("app.get('/healthz'"));
@@ -281,9 +358,9 @@ test('the text format is Prometheus, and carries no per-outlet cardinality', () 
 test('outlets that vanish are a catastrophe, not a fresh install', async () => {
   reset();
   const some = Object.assign({}, clear,
-    { readiness: async () => ({ outlets: 4, unreachable: [] }) });
+    { readiness: async () => ({ outlets: 4, unreachable: [], businesses: [] }) });
   const none = Object.assign({}, clear,
-    { readiness: async () => ({ outlets: 0, unreachable: [] }) });
+    { readiness: async () => ({ outlets: 0, unreachable: [], businesses: [] }) });
 
   // A genuinely fresh install: none, and never any. Silence is right.
   assert.deepStrictEqual(await capture(() => watch.sweep(none)), [],

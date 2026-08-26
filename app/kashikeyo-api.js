@@ -91,6 +91,7 @@
       this._db = null;
       this._subs = [];
       this._timer = null;
+      this._running = false;
       this._flushing = false;
       this._since = 0;
       this._online = typeof navigator === "undefined" ? true : navigator.onLine !== false;
@@ -327,11 +328,29 @@
       } catch (e) { return null; }
     }
 
+    /* ONE LOOP, AND THE SLOT IS CLAIMED SYNCHRONOUSLY.
+
+       `_timer` used to be assigned only AFTER the first `await this.pull()`
+       resolved, so the guard was open for the length of a network round trip:
+       a second subscriber registering inside that window saw no timer and
+       started a second chain, and from then on the terminal polled its outlet
+       twice every five seconds, for ever. `stop()` had the mirror of it — it
+       cleared a timer while a tick was in flight, and the in-flight tick then
+       set `_timer` again and resurrected the loop it had just stopped.
+
+       Neither is reachable today: the bridge's start() has a guard of its own
+       and is the only caller, and nothing calls stop(). That is exactly why it
+       is worth closing now — it is latent, it is three lines, and the symptom
+       would be twice the poll load on every terminal in the estate with
+       nothing on any screen to say so. `_running` is set before anything is
+       awaited, so the window does not exist. */
     onTick(fn) {
       this._subs.push(fn);
-      if (!this._timer) {
+      if (!this._running) {
+        this._running = true;
         var tick = async () => {
           var s = await this.pull();
+          if (!this._running) return;          // stopped while that was in flight
           if (s) this._subs.forEach(function (f) { try { f(s); } catch (e) {} });
           this._timer = setTimeout(tick, this.pollMs);
         };
@@ -339,7 +358,10 @@
       }
       return () => { this._subs = this._subs.filter(function (f) { return f !== fn; }); };
     }
-    stop() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } }
+    stop() {
+      this._running = false;
+      if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    }
 
     /* ── writes: durable first, network second ─────────────────────────── */
     async queue(op) {

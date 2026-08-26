@@ -302,17 +302,38 @@ async function sweep(probes) {
       + ' unreachable.\n\nCheck CONTROL_DB and whether chain.business still'
       + ' has its rows before anything writes.',
       'the outlets are back');
-    state.unreachable = r.unreachable.length;
-    state.ready = !r.unreachable.length;
-    await say('readyz', !state.ready,
-      state.unreachable + ' of ' + state.outlets + ' outlet(s) cannot be reached',
-      'No request for these outlets can be served — they answer neither with'
-      + ' their own login role nor from their own schema:\n\n'
-      + r.unreachable.map((u) => '  · outlet ' + u.outlet + ' — ' + u.error).join('\n')
-      + '\n\nRemedy: npm run provision:outlet -- --all, with this install\'s own'
-      + ' OUTLET_ROLE_SECRET. Outlet login roles are cluster-wide and a pg_dump'
-      + ' of one database does not carry them.',
-    'every outlet answers with its own login role again');
+    /* A DATABASE THAT WILL NOT OPEN AND AN OUTLET THAT WILL NOT SERVE ARE
+       DIFFERENT PAGES. They were one message under one remedy, and that remedy
+       — recreating login roles — cannot fix a missing database. Whoever read
+       it at 2 a.m. would run it, watch nothing change, and still be holding the
+       pager. The endpoint separates them now, and so does this. */
+    const dead = r.businesses || [];
+    state.unreachable = r.unreachable.length + dead.length;
+    state.ready = !state.unreachable;
+    const said = [];
+    const body = [];
+    if (dead.length) {
+      said.push(dead.length + ' business database(s) cannot be opened');
+      body.push('One customer\'s whole install is unreachable — not one store'
+        + ' inside it:\n\n'
+        + dead.map((d) => '  · ' + d.db + ' — ' + d.error).join('\n')
+        + '\n\nRemedy: restore that database, or — if it is gone'
+        + ' deliberately — take its row out of the live set'
+        + ' (chain.business.status) so the fleet stops counting it.'
+        + ' Recreating login roles does nothing for this one.');
+    }
+    if (r.unreachable.length) {
+      said.push(r.unreachable.length + ' of ' + state.outlets
+        + ' outlet(s) cannot be reached');
+      body.push('No request for these outlets can be served — they answer'
+        + ' neither with their own login role nor from their own schema:\n\n'
+        + r.unreachable.map((u) => '  · outlet ' + u.outlet + ' — ' + u.error).join('\n')
+        + '\n\nRemedy: npm run provision:outlet -- --all, with this install\'s'
+        + ' own OUTLET_ROLE_SECRET. Outlet login roles are cluster-wide and a'
+        + ' pg_dump of one database does not carry them.');
+    }
+    await say('readyz', !state.ready, said.join(', and '), body.join('\n\n'),
+      'every business opens and every outlet answers with its own login role again');
   } catch (e) {
     state.ready = false;
     await say('readyz', true, 'the readiness probe itself failed',
@@ -350,7 +371,10 @@ async function sweep(probes) {
       + ' copy of what it has rung. Nothing is lost yet — the outbox is'
       + ' durable — but it is on one device:\n\n'
       + q.map((d) => '  · ' + d.db + ' outlet ' + d.outlet + ' · ' + d.name
-        + ' — last delivered ' + (d.mins === null ? 'never' : d.mins + ' minutes ago'))
+        + ' — ' + (d.mins === null
+          ? 'has NEVER delivered a push'
+            + (d.since === null ? '' : ', and has been up ' + d.since + ' minutes')
+          : 'last delivered ' + d.mins + ' minutes ago'))
         .join('\n')
       + '\n\nCheck the shop\'s connectivity before the till is switched off.',
     'every writing device is delivering its pushes again');

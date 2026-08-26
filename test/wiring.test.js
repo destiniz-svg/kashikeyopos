@@ -1930,6 +1930,52 @@ test('the account token rides on every call, not on whoever remembers it', () =>
     'no caller composes its own Authorization header');
 });
 
+/* CREATING A BUSINESS IS THE MOST CONSEQUENTIAL THING THIS INSTALL DOES, AND
+   IT WAS SILENT. Audited against a real store's first hour: boot logs
+   "[migrate] N business database(s) at head 38", and creating one logged
+   NOTHING — a CREATE DATABASE and thirty-eight migrations, no line anywhere.
+   The progress is recorded in chain.business.build_state, which is right for a
+   half-built row; the process log is where somebody looks when a customer says
+   the signup hung, and it had nothing to show them. */
+test('creating a business says so, and says so when it fails', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'business.js'), 'utf8');
+  const make = src.slice(src.indexOf('async function createBusiness'),
+    src.indexOf('module.exports'));
+  assert.ok(make.length > 400, 'found createBusiness()');
+
+  assert.ok(!/migrateBusiness\(db, \(\) => \{\}\)/.test(make),
+    'the migration logger is no longer thrown away');
+  assert.match(make, /migrateBusiness\(db, \(line\) => console\.log/,
+    'every migration line reaches the log, named by business');
+  assert.match(make, /console\.log\('\[business\] ' \+ id[\s\S]*creating /,
+    'and the create is announced before it happens');
+  assert.match(make, /console\.log\('\[business\] ' \+ id[\s\S]*live/,
+    'and the finish is announced with where it landed');
+  assert.match(make, /console\.error\('\[business\] ' \+ id[\s\S]*FAILED/,
+    'and a failure is an error line, not only a column nobody is watching');
+});
+
+/* ONE POLL LOOP, AND THE SLOT IS CLAIMED SYNCHRONOUSLY. `_timer` was assigned
+   only after the first `await this.pull()` resolved, so the re-entrancy guard
+   was open for a whole network round trip. Nothing reaches it today — the
+   bridge's own start() guard is the only caller — but the symptom would be
+   every terminal polling its outlet twice for ever, with nothing on any screen
+   to say so. */
+test('the poll loop cannot be started twice while its first tick is in flight', () => {
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const tick = api.slice(api.indexOf('onTick(fn)'), api.indexOf('/* ── writes:'));
+  assert.ok(tick.length > 200, 'found onTick()');
+
+  assert.ok(!/if \(!this\._timer\) \{/.test(tick),
+    'the guard is no longer the timer handle, which only exists after an await');
+  assert.match(tick, /if \(!this\._running\)[\s\S]*this\._running = true;/,
+    'the slot is claimed before anything is awaited');
+  assert.match(tick, /if \(!this\._running\) return;/,
+    'and a tick that lands after stop() does not resurrect the loop it stopped');
+  assert.match(tick, /stop\(\) \{\s*this\._running = false;/,
+    'which is the half stop() was missing');
+});
+
 /* A CONTROL DOES WHAT IT SAYS, OR IT IS NOT A CONTROL.
 
    Found by running the restore drill the deployment guide asks for. The
@@ -2168,8 +2214,11 @@ test('the devices screen shows the outlet roll, not seven invented terminals', (
    a one-word edit back to owner(). */
 test('readiness crosses the belts a real request crosses', () => {
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  // To the end of the handler, not a fixed number of characters — a window
+  // measured in bytes silently stops covering the thing it was written for the
+  // first time the block grows.
   const block = srv.slice(srv.indexOf('async function readiness()'),
-    srv.indexOf("app.get('/readyz'") + 1400);
+    srv.indexOf('/* Which store this request is addressed to'));
   assert.ok(block.length > 400, 'found the readiness block');
 
   assert.match(block, /withOutletRead\(\{ outletId: o\.id/,
@@ -2191,8 +2240,20 @@ test('readiness crosses the belts a real request crosses', () => {
   assert.match(block, /provision:outlet -- --all/, 'with the command that fixes it');
 
   // Fail slow, recover fast.
-  assert.match(block, /readyChecked = now\.unreachable\.length \? 0 : Date\.now\(\)/,
+  assert.match(block, /readyChecked = \(now\.unreachable\.length \|\| now\.businesses\.length\)/,
     'only a good answer is cached, so recovery needs no restart and no wait');
+
+  /* TWO FAULTS, TWO REMEDIES. A business whose DATABASE will not open was
+     reported as an outlet whose LOGIN ROLE will not serve, under the remedy for
+     the latter — which recreates roles and cannot do a thing about a missing
+     database. Found by auditing a real store against a registry holding four
+     businesses whose databases had been dropped. */
+  assert.match(block, /businesses\.push\(\{ db: o\.code, error: o\.dead \}\)/,
+    'a database that would not open is counted apart from an outlet that would not serve');
+  assert.match(block, /outlets: rows\.length - businesses\.length/,
+    'and is not counted as an outlet, which is how "4 of 5 outlets" named none');
+  assert.match(block, /Recreating login roles does nothing for this one/,
+    'the database half carries its own remedy, and says the other one will not help');
 });
 
 /* A TOKEN SAYS WHAT PLANE IT IS FOR.

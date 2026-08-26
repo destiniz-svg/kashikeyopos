@@ -80,11 +80,20 @@ async function createBusiness(opts) {
        opens none for a bare query — but it also cannot be parameterised, hence
        safeDbName above. The owner connection is the only one with the right to
        do this, and this file is the only caller. */
+    /* THE MOST CONSEQUENTIAL ACT THIS INSTALL PERFORMS, AND IT WAS SILENT.
+       Boot says "[migrate] N business database(s) at head 38"; creating one
+       said nothing at all — CREATE DATABASE and thirty-eight migrations, no
+       line in the log. The progress IS recorded, in chain.business.build_state,
+       which is the right place for a half-built row to be visible; but the
+       process log is where somebody looks when a customer says the signup hung,
+       and it had nothing to show them. Same reason the watchdog logs before it
+       emails: the log is the channel of last resort. */
     await step(id, 'creating the database');
+    console.log('[business] ' + id + ' "' + name + '" · creating ' + db);
     await owner().query('CREATE DATABASE ' + db);
 
     await step(id, 'migrating');
-    await migrateBusiness(db, () => {});
+    await migrateBusiness(db, (line) => console.log('[business] ' + id + ' · ' + line));
     /* How far the database IS, read from its own ledger — not how many files
        this run happened to apply. A re-run applies none, and recording that as
        the version would say a migrated database was at zero. */
@@ -95,11 +104,15 @@ async function createBusiness(opts) {
       'UPDATE chain.business SET status = $2, build_state = NULL,'
       + ' schema_version = $3, live_at = now() WHERE id = $1',
       [id, 'live', Number(at.rows[0].n)]);
+    console.log('[business] ' + id + ' "' + name + '" · live · ' + db
+      + ' at ' + Number(at.rows[0].n));
   } catch (e) {
     /* Named, never rounded up. The row carries which step failed in the
        database's own words, and the database — if one was made — is left where
        a person can see it. Dropping it here would destroy the only evidence of
        what went wrong. */
+    console.error('[business] ' + id + ' "' + name + '" · FAILED · '
+      + String(e.message || e));
     await control().query(
       "UPDATE chain.business SET status = 'failed', build_state = $2 WHERE id = $1",
       [id, String(e.message || e)]).catch(() => {});
