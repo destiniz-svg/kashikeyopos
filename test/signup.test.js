@@ -128,3 +128,75 @@ test('a new customer gets from the sign-up form to step one', { skip }, async (t
       + ' sign-in read as a rejected code');
   } finally { await b.close(); }
 });
+
+/* AND THE PATH EVERY CUSTOMER CAUGHT BY THAT DEFECT IS NOW ON.
+
+   Their account verified — the code always worked — and no business was ever
+   created, so they come back to a verified account that owns nothing. The page
+   handled that by dropping into SIGN UP mode and asking for the business name
+   on the create-account form, which means the next press posts /signup, issues
+   a SECOND code, and walks them through the six boxes again to learn one word.
+
+   Somebody who has just proved who they are should not be asked to prove it
+   twice. One question, one answer, straight to step one. */
+test('a verified account with no business is asked one thing, not asked again', { skip }, async (t) => {
+  if (!needServer(t, await reachable(), BASE)) return;
+  if (!(await echoing())) return needServer(t, false, BASE + ' (ACCOUNT_CODE_ECHO=1 is not set)');
+
+  const addr = 'stranded-' + Date.now() + '@example.mv';
+  const post = async (path, body) => (await fetch(BASE + '/api/account' + path, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })).json();
+
+  // Put an account in exactly that state: verified, owning nothing.
+  const up = await post('/signup', { email: addr, name: 'Stranded' });
+  const v = await post('/code/verify', { email: addr, code: up.code });
+  assert.strictEqual(v.account.verified, true);
+  assert.strictEqual(v.businesses.length, 0, 'verified, and owning nothing');
+
+  const b = await chromium.launch({ executablePath: PW });
+  try {
+    const p = await (await b.newContext()).newPage();
+    const posts = [];
+    p.on('request', (r) => {
+      if (r.method() === 'POST' && r.url().includes('/api/account')) {
+        posts.push(r.url().replace(BASE, '').replace('/api/account', ''));
+      }
+    });
+
+    await p.goto(BASE + '/account', { waitUntil: 'domcontentloaded' });
+    await p.click('#segSignin');
+    await p.fill('#email', addr);
+    await p.click('#submit');                        // blank password asks for a code
+    await p.waitForFunction(
+      () => document.getElementById('codeWrap').style.display === 'block',
+      null, { timeout: 20000 });
+
+    const code = ((await p.evaluate(
+      () => document.getElementById('msg').textContent)).match(/\b(\d{6})\b/) || [])[1];
+    assert.ok(code, 'a code was issued');
+    await p.evaluate(() => {
+      ['d1', 'd2', 'd3', 'd4', 'd5', 'd6'].forEach(
+        (d) => { document.getElementById(d).value = ''; });
+      document.getElementById('code').value = '';
+    });
+    await p.click('#d1');
+    for (const ch of code) await p.keyboard.type(ch);
+
+    await p.waitForFunction(
+      () => (document.getElementById('title') || {}).textContent === 'One more thing',
+      null, { timeout: 20000 });
+    await p.fill('#bizName', 'The Stranded Cafe');
+    await p.click('#submit');
+
+    await p.waitForURL(/\/onboarding/, { timeout: 20000 });
+    await p.waitForFunction(
+      () => /\S/.test((document.querySelector('h1, h2') || {}).textContent || ''),
+      null, { timeout: 20000 });
+
+    assert.deepStrictEqual(posts, ['/code', '/code/verify', '/business'],
+      'one code, one verification, one business — not a second trip through'
+      + ' the six boxes to learn the name of a shop');
+  } finally { await b.close(); }
+});

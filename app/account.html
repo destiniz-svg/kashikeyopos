@@ -304,6 +304,13 @@ button.link:hover{text-decoration:underline}
      to receive anything. The screen has to know, or it describes a send that
      did not happen. */
   var sent = true;
+  /* SIGNED IN ALREADY, AND ONLY THE NAME IS MISSING. Reachable by signing in
+     on a device that never typed one — and by every customer who was caught by
+     the missing-token defect, because their account verified while their
+     business was never created. Without this the form drops back into SIGN UP
+     mode, so pressing the button posts /signup, which issues a SECOND code and
+     walks them through the six boxes again to learn one word. */
+  var needBusiness = false;
   var busy = false;
   var DIGITS = ["d1", "d2", "d3", "d4", "d5", "d6"];
 
@@ -485,10 +492,20 @@ button.link:hover{text-decoration:underline}
       /* Only reachable by signing in later on a device that never typed one.
          Ask on the form rather than in a dialog: a browser prompt cannot be
          styled, cannot be corrected, and is blocked outright by some of them. */
+      needBusiness = true;
       mode = "signup"; paint();
       $("bizWrap").style.display = "flex";
+      $("emailWrap").style.display = "none";
+      $("pwWrap").style.display = "none";
+      $("seg").style.display = "none";
+      $("nameWrap").style.display = "none";
+      $("submit").textContent = "Create the business";
+      $("title").textContent = "One more thing";
+      $("sub").textContent = "You are signed in. What is your business called?"
+        + " It is the company that files the return, not the caf\u00e9 — you"
+        + " name the store itself in the next step.";
       $("bizName").focus();
-      say("err", "One more thing — what is your business called?");
+      say("", "");
       return;
     }
     run(api("/business", { name: name })
@@ -502,6 +519,17 @@ button.link:hover{text-decoration:underline}
     var password = $("password").value || "";
     var name = ($("name").value || "").trim();
 
+    /* Signed in, one word short. Answer that and nothing else — asking for
+       the address and the password again would be asking somebody who has
+       just proved who they are to prove it twice. */
+    if (needBusiness) {
+      var biz = ($("bizName").value || "").trim();
+      if (!biz) return say("err", "What is your business called?");
+      rememberStore(biz);
+      run(api("/business", { name: biz })
+        .then(function () { rememberStore(""); location.href = "/onboarding"; }));
+      return;
+    }
     if (mode === "code") {
       var value = ($("code").value || "").trim();
       if (value.length < 4) return say("err", "Enter the six digits from the email.");
