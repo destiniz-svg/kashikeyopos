@@ -24,6 +24,20 @@ BEGIN
     EXECUTE format('ALTER ROLE %I PASSWORD %L', r, p_role_password);
   END IF;
 
+  -- A DATABASE IS NOT A LOBBY. Postgres grants CONNECT on every database to
+  -- PUBLIC, so before this an outlet role could open a session on ANY business
+  -- database in the cluster. It could read nothing there — every schema is
+  -- denied, which is belt one doing its job — but it could sit inside another
+  -- customer's database and enumerate the catalogs, which are world-readable:
+  -- the schema names, the object counts, the shape of somebody else's install.
+  --
+  -- Not a data leak, and closed anyway: the guarantee this build states is that
+  -- an outlet role is refused AT another business's database, and refusing it
+  -- one layer earlier is what makes that sentence literally true. It also means
+  -- `provision:outlet --all` — the remedy /readyz prints — restores this along
+  -- with everything else, rather than leaving a store connected but blind.
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), r);
+
   -- The role reaches its own schema and the control plane, nothing else. No
   -- CREATE, so it cannot add an object that escapes these grants.
   EXECUTE format('REVOKE ALL ON SCHEMA public FROM %I', r);

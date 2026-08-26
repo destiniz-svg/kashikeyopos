@@ -39,8 +39,29 @@ async function dropOutletRoles() {
     database: process.env.PGDATABASE
   });
   await admin.connect();
+  /* ONLY THIS SUITE'S OWN ROLES. A ROLE IS CLUSTER-WIDE — the lesson this
+     codebase already learned about CREATE ROLE racing across the fleet — and
+     `npm test` runs these files CONCURRENTLY, each against its own database on
+     one cluster. Dropping every outlet_%_app in the cluster therefore yanked
+     the login role out from under whichever suites were mid-run.
+
+     It was survivable while Postgres granted CONNECT on every database to
+     PUBLIC: the victim's next connection re-authenticated against a role some
+     other suite had just re-created, and got in on the public grant. Migration
+     039 shuts that door, and the collision stopped being silent — 44 tests in
+     five files failed on "permission denied for database", every one of them
+     passing alone. The collision was always there; the door was covering it.
+
+     So the drop is scoped to the outlets whose schemas are in THIS database.
+     A role another suite is using is not this suite's to delete, which is the
+     same reason test/adopt.test.js has never called this at all. */
   const q = await admin.query(
-    "SELECT rolname FROM pg_roles WHERE rolname ~ '^outlet_[0-9]+_app$'");
+    "SELECT 'outlet_' || substring(nspname FROM '^outlet_([0-9]+)$') || '_app' AS rolname"
+    + "   FROM pg_namespace"
+    + "  WHERE nspname ~ '^outlet_[0-9]+$'"
+    + "    AND EXISTS (SELECT 1 FROM pg_roles p"
+    + "                 WHERE p.rolname = 'outlet_'"
+    + "                   || substring(nspname FROM '^outlet_([0-9]+)$') || '_app')");
   for (const r of q.rows) {
     await admin.query('DROP OWNED BY ' + ident(r.rolname)).catch(() => {});
     await admin.query('DROP ROLE IF EXISTS ' + ident(r.rolname)).catch(() => {});

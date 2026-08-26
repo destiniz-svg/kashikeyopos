@@ -1900,6 +1900,41 @@ test('a code that was not sent is never reported as one that was', () => {
     + ' boxes is the same claim in smaller type');
 });
 
+/* A DATABASE IS NOT A LOBBY. Postgres grants CONNECT on every database to
+   PUBLIC, so an outlet role could open a session on any business database in
+   the cluster. It could read nothing there — every schema denied, belt one
+   holding — but it could sit inside another customer's database and read the
+   world-readable catalogs: schema names, object counts, the shape of somebody
+   else's install. Metadata, not data, and closed anyway, because the guarantee
+   this build states is refusal AT another business's database. */
+test('a business database, and the registry, are shut to everyone not named', () => {
+  const dir = path.join(__dirname, '..', 'src', 'migrations');
+  const biz = fs.readFileSync(path.join(dir, '039_a_database_is_not_a_lobby.sql'), 'utf8');
+  const reg = fs.readFileSync(path.join(dir, 'control', '003_the_registry_is_not_a_lobby.sql'), 'utf8');
+
+  assert.match(biz, /REVOKE CONNECT ON DATABASE %I FROM PUBLIC/);
+  assert.match(reg, /REVOKE CONNECT ON DATABASE %I FROM PUBLIC/);
+
+  /* ORDER IS THE WHOLE SAFETY OF THAT FILE: the grants come first and the
+     revoke last, in one transaction, so there is no instant at which a store's
+     own role has lost CONNECT and not yet been given it back. */
+  assert.ok(biz.indexOf('GRANT CONNECT ON DATABASE %I TO %I')
+    < biz.indexOf('REVOKE CONNECT ON DATABASE %I FROM PUBLIC'),
+  'every outlet role here keeps its way in BEFORE the door closes');
+  assert.match(biz, /kashikeyo_report/,
+    'and so does the estate read role, which is the one deliberate crossing');
+
+  // The roles are discovered from the schemas that are actually here, not from
+  // a list somebody has to remember to update.
+  assert.match(biz, /FROM pg_namespace[\s\S]*nspname ~ '\^outlet_\[0-9\]\+\$'/);
+
+  /* And a NEW outlet gets it at provision time, which is also what makes
+     `provision:outlet --all` — the remedy /readyz prints — actually restore
+     this rather than leaving a store connected but blind. */
+  const prov = fs.readFileSync(path.join(dir, '003_outlet_provision.sql'), 'utf8');
+  assert.match(prov, /GRANT CONNECT ON DATABASE %I TO %I', current_database\(\), r/);
+});
+
 /* A CREDENTIAL EVERY CALLER HAS TO REMEMBER IS ONE A CALLER WILL FORGET.
 
    app/account.html's api() attached the account token only where a caller
@@ -2217,7 +2252,7 @@ test('readiness crosses the belts a real request crosses', () => {
   // To the end of the handler, not a fixed number of characters — a window
   // measured in bytes silently stops covering the thing it was written for the
   // first time the block grows.
-  const block = srv.slice(srv.indexOf('async function readiness()'),
+  const block = srv.slice(srv.indexOf('async function everyOutlet()'),
     srv.indexOf('/* Which store this request is addressed to'));
   assert.ok(block.length > 400, 'found the readiness block');
 
@@ -2225,6 +2260,17 @@ test('readiness crosses the belts a real request crosses', () => {
     'each outlet is checked out with its OWN login role');
   assert.match(block, /SELECT 1 FROM item LIMIT 1/,
     'and reads a table in that outlet\'s own schema, which is where the grants are');
+
+  /* AND THE HALF A POOL CANNOT TEST. A pool authenticates once and then serves
+     for as long as it holds the connection, so a revoked CONNECT, a dropped
+     role or a rotated OUTLET_ROLE_SECRET stayed invisible: measured on a live
+     outlet, this endpoint answered 200 for three minutes while a fresh
+     connection was refused the whole time. It was proving the GRANTS and
+     calling that the credential. */
+  assert.match(block, /await canConnect\(o\.id, o\.db\)/,
+    'readiness opens a connection of its own, outside the pool');
+  assert.match(block, /q\.rows\.forEach\(\(r\) => out\.push\(Object\.assign\(\{ db: b\.db_name \}/,
+    'and knows which database each outlet is in, so it connects to the right one');
   assert.ok(!/owner\(\)[\s\S]{0,80}unreachable/.test(block),
     'the owner connection cannot stand in for an outlet role here');
 

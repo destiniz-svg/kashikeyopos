@@ -156,6 +156,34 @@ password = hmac_sha256(OUTLET_ROLE_SECRET, "outlet:" + id)
 Nothing readable inside the database yields another outlet's credentials. The
 cost is a rotation step — see `npm run provision:outlet`.
 
+**A DATABASE IS NOT A LOBBY** (migration 039, and `control/003` for the
+registry). Postgres grants `CONNECT` on every database to `PUBLIC`, so one app
+serving many customers off one cluster meant an outlet's login role could open
+a session on ANY business's database. It could read nothing there — every
+schema answered "permission denied", belt one holding exactly as designed, no
+money, no members, no staff, no recipes, measured against two real stores — but
+it could sit inside another customer's database and read the world-readable
+catalogs: schema names, object counts, the shape of somebody else's install.
+Metadata, not data, and shut anyway, because the guarantee this build states is
+refusal AT another business's database and refusing a layer earlier is what
+makes that sentence true rather than true-about-the-rows.
+
+The grants come first and the revoke last, in one transaction, so there is no
+instant at which a store has lost its own way in. Roles are discovered from the
+`outlet_%` schemas actually present rather than from a list somebody maintains;
+`kashikeyo_report` keeps its way in, because the estate read is the one
+deliberate crossing; and `chain.provision_outlet()` grants it for every new
+outlet, which is also what makes `provision:outlet --all` — the remedy
+`/readyz` prints — genuinely restore this.
+
+**And `/readyz` was proving the GRANTS and calling that the credential.** A pool
+authenticates once and then serves for as long as it holds the connection, so a
+revoked `CONNECT`, a dropped role or a rotated `OUTLET_ROLE_SECRET` were
+invisible to it. Measured: `CONNECT` revoked on a live outlet, the endpoint
+green for three minutes, a fresh connection refused the whole time. `canConnect()`
+in `src/db.js` opens one outside the pool and closes it — the half a warm pool
+can never test — bounded by the probe's own ten-second positive cache.
+
 **Belt two — `FORCE ROW LEVEL SECURITY` on the shared control plane** (`chain.*`:
 company, outlet, staff, device, session, tax_version, doc_series, member,
 supplier, setting, audit). The policies read the transaction's own context.

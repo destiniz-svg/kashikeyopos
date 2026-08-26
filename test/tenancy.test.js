@@ -190,11 +190,21 @@ test('one business cannot reach another, and the outlet belt is unchanged',
       await mine.query('COMMIT');
     } finally { await mine.end().catch(() => {}); }
 
-    // The same role, pointed at ANOTHER customer's database.
+    /* The same role, pointed at ANOTHER customer's database.
+
+       REFUSED AT THE DOOR, not merely at the table. Postgres grants CONNECT on
+       every database to PUBLIC, so until migration 039 this connection OPENED
+       and only the reads were denied. Nothing leaked — every schema said
+       "permission denied" — but the session existed, and inside it the
+       world-readable catalogs gave up the schema names and object counts of
+       somebody else's install. This build's stated guarantee is refusal at the
+       database, so that is what is asserted. */
     const crossing = at(other.db_name);
     let crossed = null;
+    let opened = false;
     try {
       await crossing.connect();
+      opened = true;
       await crossing.query('SELECT count(*) FROM chain.member');
       crossed = 'it read another business\'s members';
     } catch (e) {
@@ -202,12 +212,18 @@ test('one business cannot reach another, and the outlet belt is unchanged',
         'refused, and the reason names a privilege: ' + e.message);
     } finally { await crossing.end().catch(() => {}); }
     assert.strictEqual(crossed, null, crossed || 'refused');
+    assert.strictEqual(opened, false,
+      'and the session never opened at all — a role that cannot connect cannot'
+      + ' read the catalogs either, which is the half that was reachable');
 
-    // And it cannot reach the registry either — that is where accounts live.
+    // And it cannot reach the registry either — that is where accounts live,
+    // and control/003 shuts that door the same way.
     const atControl = at(CONTROL);
     let reached = null;
+    let openedControl = false;
     try {
       await atControl.connect();
+      openedControl = true;
       await atControl.query('SELECT email FROM chain.account');
       reached = 'an outlet role read the account plane';
     } catch (e) {
@@ -215,6 +231,9 @@ test('one business cannot reach another, and the outlet belt is unchanged',
         'refused: ' + e.message);
     } finally { await atControl.end().catch(() => {}); }
     assert.strictEqual(reached, null, reached || 'refused');
+    assert.strictEqual(openedControl, false,
+      'and the registry refuses the session itself — no outlet role has ever'
+      + ' had a reason to open one there');
   });
 
 test('an owner whose business cannot be read is told so, not sent to onboarding',

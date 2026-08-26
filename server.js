@@ -1,7 +1,7 @@
 'use strict';
 const path = require('path');
 const express = require('express');
-const { owner, withOutletRead, shutdown, peerCaPem } = require('./src/db');
+const { owner, canConnect, withOutletRead, shutdown, peerCaPem } = require('./src/db');
 const { migrate, migrateControl, fleet } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
 const watch = require('./src/watch');
@@ -234,7 +234,9 @@ async function everyOutlet() {
     try {
       const q = await ownerFor(b.db_name).query(
         'SELECT id, code FROM chain.outlet WHERE active ORDER BY id');
-      q.rows.forEach((r) => out.push(r));
+      // Which database this outlet lives in, so the probe can open a
+      // connection to it rather than to whatever the process happens to be on.
+      q.rows.forEach((r) => out.push(Object.assign({ db: b.db_name }, r)));
     } catch (e) {
       // A business whose database cannot be opened is itself unreachable, and
       // saying nothing about it is how the old probe reported green.
@@ -353,9 +355,19 @@ async function readiness() {
   for (const o of rows) {
     if (o.dead) { businesses.push({ db: o.code, error: o.dead }); continue; }
     try {
-      // The outlet's own role, its own schema, its own grants — every belt a
-      // real request crosses, and nothing the owner connection could stand in
-      // for.
+      /* TWO HALVES, AND ONE OF THEM A POOL CANNOT TEST.
+
+         The grants: the outlet's own role, its own schema, its own privileges —
+         every belt a real request crosses, and nothing the owner connection
+         could stand in for.
+
+         And the credential: a pool authenticates once and then serves for as
+         long as it holds the connection, so a revoked CONNECT, a dropped role
+         or a rotated OUTLET_ROLE_SECRET stayed invisible here. Measured on a
+         live outlet — CONNECT revoked, this endpoint green for three minutes,
+         a fresh connection refused the whole time. canConnect() opens one
+         outside the pool and closes it, which is the only way to ask. */
+      await canConnect(o.id, o.db);
       await withOutletRead({ outletId: o.id, rank: 0, scope: 'outlet' },
         (c) => c.query('SELECT 1 FROM item LIMIT 1'));
     } catch (e) {

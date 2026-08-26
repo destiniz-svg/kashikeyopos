@@ -228,6 +228,15 @@ async function ensureReportRole(db, say, opts) {
      "somebody else created it a millisecond ago", which is the outcome we
      wanted. The ALTER and the GRANTs below are idempotent and run either way. */
   if (!opts || !opts.roleAlreadyDone) await ensureReportRoleExists(db, say);
+  /* CONNECT is revoked from PUBLIC on every business database (039), so the
+     estate role needs it named the same way an outlet role does — otherwise
+     the one deliberate cross-outlet read stops working the moment that
+     migration lands. The connection is asked which database it is on rather
+     than told: this is called with a pool, and the pool is the only party that
+     actually knows. */
+  await db.query("DO $g$ BEGIN EXECUTE format("
+    + "'GRANT CONNECT ON DATABASE %I TO kashikeyo_report', current_database());"
+    + ' END $g$');
   await db.query('REVOKE ALL ON SCHEMA public FROM kashikeyo_report');
   await db.query('GRANT USAGE ON SCHEMA chain, app TO kashikeyo_report');
   await db.query('GRANT SELECT ON chain.outlet, chain.company TO kashikeyo_report');

@@ -1,5 +1,5 @@
 'use strict';
-const { Pool, types } = require('pg');
+const { Pool, Client, types } = require('pg');
 const { outletPassword } = require('./secrets');
 
 /* A business date is a DATE, not an instant. Left to the driver, Postgres
@@ -304,6 +304,35 @@ function poolFor(outletId, dbName) {
   return pools.get(key);
 }
 
+/* CAN THIS OUTLET STILL OPEN A SESSION AT ALL?
+
+   Everything else here runs on a POOL, and a pool authenticates once. Revoke
+   the role's CONNECT, drop the role, rotate OUTLET_ROLE_SECRET — and every
+   query keeps working through the connection that is already open, for as long
+   as the pool keeps it. /readyz probed through that pool and answered 200 while
+   a fresh connection was refused; measured, on a live outlet, by revoking
+   CONNECT and watching the endpoint stay green for three minutes. The probe was
+   proving the GRANTS and calling it the credential.
+
+   So readiness opens one connection of its own, outside the pool, and closes
+   it. That is the half a warm pool can never test. It costs one connect per
+   outlet per probe, and the probe caches a good answer for ten seconds, so the
+   ceiling is one connect per outlet per ten seconds. */
+async function canConnect(outletId, dbName) {
+  const id = Number(outletId);
+  const c = new Client(Object.assign(baseConn(), dbName ? { database: dbName } : {}, {
+    user: 'outlet_' + id + '_app',
+    password: outletPassword(id),
+    ssl,
+    connectionTimeoutMillis: CHECKOUT_MS,
+    application_name: 'kashikeyo-readyz-' + id
+  }));
+  try {
+    await c.connect();
+    await c.query('SELECT 1');
+  } finally { await c.end().catch(() => {}); }
+}
+
 /* Every request query runs inside a transaction that first declares who is
    asking. SET LOCAL is transaction-scoped: it cannot survive back into the
    pool and carry one outlet's context into the next request. This is not a
@@ -501,6 +530,6 @@ function forget(outletId) {
 module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
   owner, ownerFor, ownerForOutlet, dbFor, control, businessDb, dbPrefix, CONTROL_DB,
   selfIsBusiness,
-  poolFor, withOutlet, withOutletRead, withEstate, withOwner,
+  poolFor, canConnect, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };
