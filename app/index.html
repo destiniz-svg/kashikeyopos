@@ -2617,10 +2617,20 @@ class Component extends DCLogic {
        render that causes the fault. Fifty entries, oldest out first; the
        point is "what broke this shift", not a full log. */
     this._faults = this._faults || [];
-    window.addEventListener("error", (e) => this.fault("window", (e && e.message) || "script error"));
+    /* WHOSE FAULT IT IS, is part of the fault. A browser extension injected
+       into this page throws into the same handlers the terminal's own code
+       does — a wallet failing to connect, a password manager, an ad blocker —
+       and the diagnostics screen was reporting every one of them as "a bug to
+       report", which sends an operator to raise a ticket against the wrong
+       software. The scheme on the frame says where it came from, so it is
+       recorded rather than guessed at, and nothing is hidden: a foreign fault
+       is still counted and still shown, under its own name. */
+    window.addEventListener("error", (e) => this.fault(
+      this.faultFrom(e && e.filename) || "window", (e && e.message) || "script error"));
     window.addEventListener("unhandledrejection", (e) => {
       const r = e && e.reason;
-      this.fault("promise", (r && (r.message || String(r))) || "unhandled rejection");
+      this.fault(this.faultFrom(r && r.stack) || "promise",
+        (r && (r.message || String(r))) || "unhandled rejection");
     });
     // Ages and the top-bar clock are minute-resolution; a 15s tick keeps them
     // honest without re-rendering the whole floor every second.
@@ -2990,6 +3000,12 @@ class Component extends DCLogic {
     return all.filter((o) => granted.indexOf(o.id) >= 0 || granted.indexOf(o.parent) >= 0);
   }
   toast(msg, tone) { this.setState({ toast: { msg: msg, tone: tone || "ok", id: Date.now() } }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 2800); }
+  // A frame that belongs to a browser extension rather than to this app.
+  // Every browser spells it differently and all of them spell it in the URL.
+  faultFrom(where) {
+    return /(?:chrome|moz|safari-web|ms-browser)-extension:\/\//.test(String(where || ""))
+      ? "extension" : null;
+  }
   fault(where, msg) {
     this._faults = (this._faults || []).slice(-49);
     this._faults.push({ at: this.clock(), where: where, msg: String(msg || "").slice(0, 200) });
@@ -4826,19 +4842,53 @@ class Component extends DCLogic {
     if (cat === "starters" || cat === "sides") return "cold";
     return "hot";
   }
+  /* A section's five properties, in the order that settles a disagreement:
+     what the OUTLET published, then this terminal's un-synced edit on top, then
+     the shipped default underneath where nobody has chosen at all. `null` from
+     the bootstrap means "nobody has chosen", which is why it is skipped rather
+     than assigned — a published null must not overwrite the default. */
   catMeta(id) {
     const K0 = K();
     const list = K0.MENU_CATEGORIES || [];
-    const base = list.find((c) => c.id === id) || { id: id, name: id, icon: "main" };
+    const base = list.find((c) => c.id === id) || { id: id, name: id };
     const idx = Math.max(0, list.findIndex((c) => c.id === id));
     const pal = this.CATCOLORS();
-    return Object.assign({ color: this.catHue(id) || pal[idx % pal.length], station: this.defaultStation(id), hidden: false }, base, (this.state.catMeta || {})[id] || {});
+    const out = { id: id, name: base.name || id, icon: "main",
+      color: this.catHue(id) || pal[idx % pal.length],
+      station: this.defaultStation(id), hidden: false, section: base.section, pos: base.pos };
+    ["icon", "color", "station"].forEach((k) => { if (base[k] != null) out[k] = base[k]; });
+    if (base.hidden != null && list.some((c) => c.id === id)) out.hidden = !!base.hidden;
+    return Object.assign(out, (this.state.catMeta || {})[id] || {});
+  }
+  /* ONE SEAM FOR A SECTION, because there were three and none of them worked.
+     Creating one queued `menu_section_insert`, renaming one queued
+     `menu_section_update`, and the Categories screen queued
+     `menu_category_insert` — every one of them with NO PAYLOAD, against a
+     signature of `queue(kind, label, entity, payload)`, and two of the three
+     naming `menu_section`, a different table from the `menu_category` the
+     bootstrap publishes and `item.category_id` references.
+
+     So the server refused each for want of a name, the toast said "Section
+     created", and the section existed in one browser. The consequence appeared
+     one screen later wearing a different face: a dish saved into that section
+     was refused by `item_category_id_fkey` on every retry until the outbox
+     parked it. That is what was reported from a live store, and it is why this
+     is one function rather than three call sites. */
+  catWrite(id, meta, label) {
+    this.queue("menu_category_insert", label, "menu_categories", {
+      id: id, name: meta.name, icon: meta.icon || null, colour: meta.color || null,
+      station: meta.station || null, hidden: !!meta.hidden,
+      pos: meta.pos == null ? null : meta.pos
+    });
   }
   setCatMeta(id, patch, label) {
     const next = Object.assign({}, this.state.catMeta || {});
     next[id] = Object.assign({}, next[id] || {}, patch);
     this.setState({ catMeta: next });
-    if (label) { this.queue("menu_section_update", label, "menu_categories"); this.toast(label); }
+    if (label) {
+      this.catWrite(id, Object.assign({}, this.catMeta(id), patch), label);
+      this.toast(label);
+    }
   }
   sortedCats(all) {
     const list = (K().MENU_CATEGORIES || []).slice();
@@ -4849,13 +4899,16 @@ class Component extends DCLogic {
     }) : list;
     return all ? out : out.filter((c) => !this.catMeta(c.id).hidden);
   }
+  // The order carries the ORDER. Without it the handler walked an empty array,
+  // answered success, and moved nothing — a control that says it did something.
   moveCat(id, dir) {
     const ids = this.sortedCats(true).map((c) => c.id);
     const i = ids.indexOf(id), j = i + dir;
     if (i < 0 || j < 0 || j >= ids.length) return;
     ids.splice(j, 0, ids.splice(i, 1)[0]);
     this.setState({ catOrder: ids });
-    this.queue("menu_section_reorder", this.catMeta(id).name + " moved to position " + (j + 1), "menu_categories");
+    this.queue("menu_category_reorder", this.catMeta(id).name + " moved to position " + (j + 1),
+      "menu_categories", { order: ids });
   }
   initials(name) { return String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join(""); }
   // A dish with no photograph still needs a shape on the till. The artifact is
@@ -7323,14 +7376,16 @@ class Component extends DCLogic {
           const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
           if (!id) return this.toast("That name has no letters to make a section id from", "warn");
           if ((K0.MENU_CATEGORIES || []).some((x) => x.id === id)) return this.toast("That menu section already exists", "warn");
-          const row = { id: id, name: name, icon: c.icon || "main" };
+          const meta0 = { name: name, color: c.color, icon: c.icon || "main",
+            station: c.station, hidden: !!c.hidden };
+          const row = Object.assign({ id: id, section: null, pos: null }, meta0);
           (K0.MENU_CATEGORIES || []).push(row);
           const L = Object.assign({}, this.state.local || {});
           L.menucats = (L.menucats || []).concat([row]);
           const meta = Object.assign({}, this.state.catMeta || {});
-          meta[id] = { name: name, color: c.color, icon: c.icon, station: c.station, hidden: !!c.hidden };
+          meta[id] = meta0;
           this.setState({ local: L, catMeta: meta, catOrder: this.sortedCats(true).map((x) => x.id).concat([id]), modal: null });
-          this.queue("menu_section_insert", "Menu section created \u00b7 " + name, "menu_categories");
+          this.catWrite(id, meta0, "Menu section created \u00b7 " + name);
           this.toast("Section created \u00b7 " + name);
         }
       };
@@ -8682,12 +8737,17 @@ class Component extends DCLogic {
   // One hue per menu section, resolved from the token layer so both themes get
   // the accessible variant. Unknown sections fall back to neutral rather than
   // borrowing a hue that already means something.
+  /* Three sources, in the order that settles a disagreement between two tills:
+     this terminal's un-synced edit, then the colour the OUTLET published, then
+     the shipped hue underneath. The middle one is what was missing — a colour
+     chosen on the manager's tablet reached the counter never. */
   catHue(id) {
     const ov = (this.state.catMeta || {})[id];
     if (ov && ov.color) return ov.color;
+    const list = (K().MENU_CATEGORIES || []); const i = list.findIndex((c) => c.id === id);
+    if (i >= 0 && list[i].color) return list[i].color;
     const known = ["starters", "mains", "grill", "rice", "sides", "desserts", "drinks"];
     if (known.indexOf(id) >= 0) return "var(--cat-" + id + ")";
-    const list = (K().MENU_CATEGORIES || []); const i = list.findIndex((c) => c.id === id);
     return i < 0 ? "var(--cat-all)" : this.CATCOLORS()[i % this.CATCOLORS().length];
   }
   // Switching sections repaints a grid of photo cards. That is the one place in
@@ -12830,6 +12890,50 @@ class Component extends DCLogic {
       const arr = this.coll(p.coll); if (!arr) return;
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
+    this.reconcileCats();
+  }
+
+  /* ── the sections, after a bootstrap ─────────────────────────────────────
+     Two halves of one rule: a section is the OUTLET's, and what this terminal
+     holds is a pen, not a fork.
+
+     DROP what has landed. `state.catMeta` keeps an edit locally so the rail
+     repaints straight away, including offline. The moment the outlet publishes
+     a section carrying a glyph — which is what a section write puts there, and
+     what no row could have carried before migration 040 — the local copy is
+     dropped and this terminal reads the same colour, glyph, station and
+     visibility as every other one. Dropped on the ID and not on the value, the
+     same rule a measured yield follows: if the outlet's answer differs,
+     somebody edited it elsewhere and theirs is the later one.
+
+     RE-SEND what never arrived. Every section write this build ever made was
+     queued with no payload, so the outlet refused it and the section lived in
+     one browser — and the first dish saved into it was refused for ever by
+     `item_category_id_fkey`. A section held locally that the outlet has no row
+     for has not been delivered, whatever the toast said at the time, so it is
+     queued again. Once per session per section: the outbox owns retrying, and
+     queueing on every five-second poll is how a hot outbox is made. */
+  reconcileCats() {
+    const list = (K() || {}).MENU_CATEGORIES || [];
+    if (!list.length && !((this.state.local || {}).menucats || []).length) return;
+    const held = this.state.catMeta || {};
+    const kept = {};
+    let dropped = 0;
+    Object.keys(held).forEach((id) => {
+      const pub = list.find((c) => c.id === id);
+      if (pub && pub.icon != null) { dropped++; return; }
+      kept[id] = held[id];
+    });
+    if (dropped) this.setState({ catMeta: kept });
+
+    this._catSent = this._catSent || {};
+    ((this.state.local || {}).menucats || []).forEach((row) => {
+      const id = row && row.id;
+      if (!id || this._catSent[id]) return;
+      if (list.some((c) => c.id === id && c.icon != null)) return;
+      this._catSent[id] = true;
+      this.catWrite(id, this.catMeta(id), "Menu section re-sent \u00b7 " + (row.name || id));
+    });
   }
   /* ── master data, one seam ───────────────────────────────────────────────
      Three mutators cover every master record the back office edits — a dish,
@@ -14711,12 +14815,13 @@ class Component extends DCLogic {
           if (v.scope === "menu") {
             const id = v.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             if ((K0.MENU_CATEGORIES || []).some((c) => c.id === id)) return this.toast("That menu section already exists", "warn");
-            const row = { id: id, name: v.name, icon: v.icon || "main" };
+            const meta0 = { name: v.name, icon: v.icon || "main" };
+            const row = Object.assign({ id: id, section: null, pos: null, hidden: false }, meta0);
             (K0.MENU_CATEGORIES || []).push(row);
             const L = Object.assign({}, this.state.local || {});
             L.menucats = (L.menucats || []).concat([row]);
             this.setState({ local: L, modal: null });
-            this.queue("menu_category_insert", "Menu section · " + v.name, "menu_categories");
+            this.catWrite(id, meta0, "Menu section · " + v.name);
             this.toast("Menu section created · " + v.name);
             return;
           }
@@ -16550,13 +16655,23 @@ class Component extends DCLogic {
       kb < 0 ? "Storage is blocked, so this session lives in memory only and will not survive a reload." : "The session survives a reload, a crash and a flat battery.");
     add("Session", s.session ? "ok" : "warn", s.session ? this.me() + " · " + this.rankName() : "nobody signed in",
       s.session ? "Every write from this device is attributable to this person." : "The terminal is locked; nothing can be attributed until someone signs in.");
+    /* A FAULT FROM A BROWSER EXTENSION IS NOT THIS BUILD'S BUG, and telling an
+       operator it is sends them to raise a ticket against the wrong software.
+       Both are shown — suppressing one would be the opposite lie — but only
+       the terminal's own faults make this line a warning, because only those
+       are something anybody here can fix. */
     const faults = this._faults || [];
-    const lastF = faults[faults.length - 1];
-    add("Script faults this session", faults.length ? "warn" : "ok",
-      faults.length ? faults.length + " caught" : "none",
-      faults.length
-        ? "Last at " + lastF.at + " (" + lastF.where + "): " + lastF.msg + " — the terminal recovered, but a fault that repeats on one action is a bug to report, not a glitch to re-tap."
-        : "No uncaught error or abandoned promise since this page loaded.");
+    const mine = faults.filter((f) => f.where !== "extension");
+    const foreign = faults.length - mine.length;
+    const lastF = mine[mine.length - 1] || faults[faults.length - 1];
+    const plus = foreign ? (mine.length ? " \u00b7 " : "") + foreign + " from a browser extension" : "";
+    add("Script faults this session", mine.length ? "warn" : "ok",
+      faults.length ? (mine.length ? mine.length + " caught" : "none of ours") + plus : "none",
+      !faults.length
+        ? "No uncaught error or abandoned promise since this page loaded."
+        : mine.length
+          ? "Last at " + lastF.at + " (" + lastF.where + "): " + lastF.msg + " \u2014 the terminal recovered, but a fault that repeats on one action is a bug to report, not a glitch to re-tap."
+          : "Last at " + lastF.at + ": " + lastF.msg + " \u2014 thrown by an extension installed in this browser, not by this terminal. Nothing here to fix; disable the extension if it is noisy.");
     return out;
   }
   // One posted event becomes several journal lines, which is the point: a ticket

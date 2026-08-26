@@ -1808,6 +1808,105 @@ test('hiding a dish sticks, and 86-ing one does not hide it', opts, async () => 
   assert.strictEqual(m.hidden, false, 'while still being on the menu');
 });
 
+/* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
+   Reported from a live store, and it arrives wearing the wrong face: the till
+   parked "Bajiya updated · Short Eats & Snacks · MVR 120" after the outlet
+   refused it eight times. Nothing is wrong with that dish. The section it is
+   in had never reached the outlet.
+
+   Three screens created or edited a section, and every one of them queued its
+   op with NO PAYLOAD — `queue(kind, label, entity)` against a signature of
+   `(kind, label, entity, payload)` — while two of the three named
+   `menu_section`, which is a different table from the `menu_category` the
+   bootstrap publishes and `item.category_id` references. The server refused
+   each for want of a name, the toast said "Section created", and the section
+   existed in one browser. Then the FK did what a FK does.
+
+   All three halves are asserted here: the empty op is refused BY NAME rather
+   than with a Postgres constraint message, the section round-trips whole, and
+   the dish that could not be saved lands. */
+test('a menu section reaches the outlet, and the dish in it can be saved', opts, async () => {
+  // ── what the shipped build sent. A parked op is read by a person, so the
+  //    refusal has to be a sentence rather than `null value in column "name"`.
+  for (const kind of ['menu_category_insert', 'menu_section_insert', 'menu_section_update']) {
+    const r = await push([{ opId: uuid(), kind: kind, payload: {} }]);
+    const err = String((r.body.results[0] || {}).error || '');
+    assert.match(err, /sent with no name/, kind + ' is refused in English');
+    assert.ok(!/null value in column/.test(err), kind + ' does not leak a constraint message');
+  }
+  for (const kind of ['menu_category_reorder', 'menu_section_reorder']) {
+    const r = await push([{ opId: uuid(), kind: kind, payload: {} }]);
+    assert.match(String((r.body.results[0] || {}).error || ''), /no section order/,
+      kind + ' refuses rather than answering success over an empty walk');
+  }
+
+  // ── the section the till now sends, with everything its editor collects.
+  const res = await push([{ opId: uuid(), kind: 'menu_category_insert', payload: {
+    id: 'short-eats-snacks', name: 'Short Eats & Snacks', icon: 'starter',
+    colour: '#c8553d', station: 'hot', hidden: false, pos: null
+  } }]);
+  assert.ok(!res.body.results[0].error, 'the section lands');
+
+  // A NEW section goes to the END of the rail. `pos` is NOT NULL, and
+  // defaulting it to 0 would put every section a store adds in front of the
+  // ones it has already ordered.
+  const others = await one('SELECT max(pos) AS top FROM menu_category WHERE id <> $1',
+    ['short-eats-snacks']);
+  let cat = await one('SELECT * FROM menu_category WHERE id = $1', ['short-eats-snacks']);
+  assert.ok(cat.pos > others.top,
+    'it lands at the end (' + cat.pos + ' past ' + others.top + '), not in front');
+  assert.strictEqual(cat.icon, 'starter', 'the glyph is the outlet\'s now');
+  assert.strictEqual(cat.station, 'hot', 'and so is the station its dishes fire to');
+  assert.strictEqual(cat.hidden, false);
+
+  // ── THE DISH THAT WAS PARKED. This is the exact save that was refused.
+  const dishOp = await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'bajiya', name: 'Bajiya', cat: 'short-eats-snacks', price: 120,
+    station: 'hot', active: true, offMenu: false, soldOutReason: null, diets: [], recipe: []
+  } }]);
+  assert.ok(!dishOp.body.results[0].error,
+    'the dish lands — it was the missing section that refused it, not the dish');
+  const dish = await one('SELECT category_id, price FROM item WHERE id = $1', ['bajiya']);
+  assert.strictEqual(dish.category_id, 'short-eats-snacks');
+
+  // ── the terminal is told, in the words it reads. `icon: r.colour || 'main'`
+  //    read the colour column as the glyph key, so both were unreadable.
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const pub = (boot.body.kpos.MENU_CATEGORIES || []).find((c) => c.id === 'short-eats-snacks');
+  assert.ok(pub, 'the section is published');
+  assert.strictEqual(pub.icon, 'starter', 'the glyph');
+  assert.strictEqual(pub.color, '#c8553d', 'the colour, separately from the glyph');
+  assert.strictEqual(pub.station, 'hot', 'the station');
+  assert.strictEqual(pub.hidden, false, 'and whether it shows at all');
+
+  // ── SILENCE IS PRESERVED, the same rule item.off_menu follows. A rename must
+  //    not reset the colour, the glyph, the station and the position to nothing.
+  await push([{ opId: uuid(), kind: 'menu_category_update',
+    payload: { id: 'short-eats-snacks', name: 'Short Eats' } }]);
+  cat = await one('SELECT * FROM menu_category WHERE id = $1', ['short-eats-snacks']);
+  assert.strictEqual(cat.name, 'Short Eats', 'the rename lands');
+  assert.strictEqual(cat.icon, 'starter', 'and says nothing about the glyph');
+  assert.strictEqual(cat.colour, '#c8553d', 'or the colour');
+  assert.strictEqual(cat.station, 'hot', 'or the station');
+
+  // Hiding it is a decision, so `false` is obeyed where `null` is silence.
+  await push([{ opId: uuid(), kind: 'menu_category_update',
+    payload: { id: 'short-eats-snacks', name: 'Short Eats', hidden: true } }]);
+  cat = await one('SELECT hidden FROM menu_category WHERE id = $1', ['short-eats-snacks']);
+  assert.strictEqual(cat.hidden, true, 'hidden reaches every terminal, not one browser');
+
+  // ── the order carries the order. Without it the handler walked an empty
+  //    array and answered success, which is a control that says it did
+  //    something. Reversed, so a no-op cannot pass for a move.
+  const ids = (await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query('SELECT id FROM menu_category ORDER BY pos, name'))).rows.map((r) => r.id);
+  const flipped = ids.slice().reverse();
+  await push([{ opId: uuid(), kind: 'menu_category_reorder', payload: { order: flipped } }]);
+  const after = (await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query('SELECT id FROM menu_category ORDER BY pos'))).rows.map((r) => r.id);
+  assert.deepStrictEqual(after, flipped, 'the rail is the outlet\'s order, on every terminal');
+});
+
 /* A BATCH THE KITCHEN MAKES IS AN ITEM, and recipe_line.sub_item_id has
    referenced item(id) since 003 — but nothing ever wrote one, so that foreign
    key had no possible referent and a dish drawing on a batch could not be

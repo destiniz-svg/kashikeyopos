@@ -162,8 +162,20 @@ async function buildBootstrap(ctx) {
     const kpos = {
       CHAIN: chainOf(company.rows[0], setting),
       OUTLETS: outlets.rows.map((o) => outletOf(o, rateByOutlet, zones.rows, tables.rows, ctx.outletId)),
+      /* THE WHOLE SECTION, not a name and a guess. `icon: r.colour || 'main'`
+         read the colour column as the glyph key — a conflation that made both
+         unreadable — while the four properties the till's section editor
+         actually collects lived in one browser's localStorage. Migration 040
+         gave them columns; this publishes them.
+
+         NULL travels as null rather than as the shipped default, for the same
+         reason a measured yield does: the till falls through to its own default
+         where nobody has chosen, and must be able to tell that apart from a
+         choice that happens to match. */
       MENU_CATEGORIES: categories.rows.map((r) => ({
-        id: r.id, name: r.name, icon: r.colour || 'main', section: r.section_id
+        id: r.id, name: r.name, section: r.section_id, pos: r.pos,
+        icon: r.icon || null, color: r.colour || null,
+        station: r.station || null, hidden: !!r.hidden
       })),
       MENU_SECTIONS: sections.rows.map((r) => ({ id: r.id, name: r.name, pos: r.pos })),
       /* Dishes only. A BATCH is an item too — that is what makes

@@ -48,6 +48,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        037 your own PIN is yours to change
                        038 a PIN hash never leaves the database
                        039 a database is not a lobby
+                       040 a section is not one browser's opinion
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -1292,6 +1293,87 @@ painting twenty of these while the guest scrolls has a frame budget the counter
 does not. The dish hero stays a dark field whether or not there is a
 photograph, because the phone's own white status bar and back button sit on top
 of it.
+
+## A fault says whose fault it is
+
+Found on a live till's own Diagnostics screen: two caught faults, both
+**"Failed to connect to MetaMask"** — a wallet extension injected into the page
+— reported under the terminal's own copy, *"a fault that repeats on one action
+is a bug to report, not a glitch to re-tap"*. Everything else on that screen was
+green. So the one line drawing an operator's eye was pointing them at software
+this project does not ship.
+
+An extension throws into `window.onerror` and `unhandledrejection` exactly as
+the terminal's own code does, and the scheme on the frame is the difference:
+`chrome-extension://`, `moz-extension://`, `safari-web-extension://`. `faultFrom()`
+reads it, so the origin is RECORDED rather than guessed at later from the
+wording.
+
+Nothing is hidden — suppressing a fault would be the opposite lie, and an
+extension that breaks a print or a camera is worth seeing. Both are counted and
+both are shown. What changed is that only the terminal's OWN faults make the
+line a warning, because only those are something anybody here can fix, and the
+foreign ones say where they came from instead of asking for a bug report.
+
+## A menu section is the outlet's, not one browser's
+
+Reported from a live store, and it arrived wearing the wrong face: the till
+parked **"Bajiya updated · Short Eats & Snacks · MVR 120"** after the outlet
+refused it eight times. Nothing was wrong with that dish. The SECTION it sits in
+had never reached the outlet, so `item.category_id` pointed at a row that does
+not exist and `item_category_id_fkey` refused the save — every retry, for ever.
+
+Three screens created or edited a section and **every one of them queued its op
+with no payload**: `queue(kind, label, entity)` against a signature of
+`(kind, label, entity, payload)`. Two of the three named `menu_section`, which
+is the grouping ABOVE a category and a different table from the `menu_category`
+the bootstrap publishes. So the server refused each for want of a name, the
+toast said "Section created", and the section existed in one browser. The
+fourth, `menu_section_reorder`, walked an empty array and **answered success** —
+a control that says it did something and did not.
+
+Measured against a real database before any of it was written: the four ops the
+shipped build sends, in the order it sends them, then the dish. Four refusals
+and one false success, ending in the FK.
+
+- **One seam.** `catWrite()` is the only place a section is written, and it
+  carries the row. The kind is `menu_category_insert`, which upserts — creating
+  and renaming are the same write against the same key.
+- **The section carries what its editor collects** (migration 040). `name` was
+  the only one of five that had a column; `icon`, `station` and `hidden` lived
+  in `state.catMeta`, one browser's localStorage, and `colour` had a column that
+  the bootstrap read as the GLYPH (`icon: r.colour || 'main'`) while the colour
+  picker wrote nothing at all. So two tills drew one section in two colours
+  under two glyphs, a section hidden on the manager's tablet was still on the
+  rail at the counter, and a dish created on either inherited a different
+  default station — which decides where the KOT prints.
+- **Silence is preserved**, the same rule `item.off_menu` follows: a rename that
+  says nothing about the colour, the glyph, the station or the position must not
+  reset all four. `hidden: false` is a decision and is obeyed; `null` is silence.
+- **A new section lands at the END of the rail.** `pos` is `NOT NULL`, and
+  defaulting it to 0 would put every section a store adds in front of the ones it
+  has already ordered.
+- **The local copy is a holding pen, not a private fork.** `reconcileCats()`
+  drops `catMeta[id]` the moment the outlet publishes that section — on the ID,
+  not the value, so a colour changed elsewhere is the later answer. Same rule a
+  measured yield and a saved batch already follow.
+- **And a section the outlet never received is re-sent.** Every section write
+  this build ever made was refused, so a store's sections are sitting in
+  `state.local.menucats` with the outlet holding no row for them. A held section
+  the outlet does not have has not been delivered, whatever the toast said, so it
+  is queued again — once per session per section, because the outbox owns
+  retrying and queueing on every five-second poll is how a hot outbox is made.
+  This is what unsticks an install that already has parked dishes.
+- **An empty op is refused BY NAME**, not with `null value in column "name"`. A
+  parked op is read by a person. The `menu_section_*` handlers keep their
+  refusals and their call sites are gone, for a device still holding one in its
+  outbox — exactly like `ticket_status`.
+
+`test/api.test.js` walks the whole road over HTTP: the empty ops refused in
+English, the section landing whole, **the dish that was parked landing**, a
+rename preserving what it did not mention, hiding reaching the row, and the
+reorder actually reordering. `test/wiring.test.js` pins the payload and that no
+client path writes `menu_section` again.
 
 ## Two ways a dish comes off sale, and neither survived a bootstrap
 
@@ -3082,7 +3164,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 456 tests
+npm test                          # 459 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

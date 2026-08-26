@@ -321,6 +321,13 @@ BEGIN
       section_id text REFERENCES %1$I.menu_section(id),
       pos        int NOT NULL DEFAULT 0,
       colour     text,
+      -- The glyph, the default station and whether the section shows at all.
+      -- All three were collected by the till's section editor and kept in one
+      -- browser's localStorage until migration 040; NULL means nobody has
+      -- chosen, which is a different answer from having chosen the default.
+      icon       text,
+      station    text,
+      hidden     boolean NOT NULL DEFAULT false,
       active     boolean NOT NULL DEFAULT true
     );
     CREATE TABLE IF NOT EXISTS %1$I.item (

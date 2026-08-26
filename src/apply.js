@@ -1629,29 +1629,101 @@ H.depreciate = async (c, p, ctx) => {
 };
 
 // ═══ MENU AND MASTERS ══════════════════════════════════════════════════════
+/* `menu_section` is the grouping ABOVE a category, and it is not what the till
+   calls a section — the till's sections are `menu_category` rows. Three screens
+   queued these kinds by mistake, and payload-less at that, which is how a
+   store's sections reached the outlet never. The kinds keep their handlers for
+   a device still holding one in its outbox, exactly like `ticket_status`, and
+   they refuse an empty payload BY NAME rather than passing a Postgres NOT NULL
+   message to somebody reading a parked op. */
 H.menu_section_insert = async (c, p) => {
+  const id = p.id || (p.name ? slug(p.name) : null);
+  if (!id || !p.name) {
+    throw Object.assign(new Error('this menu section was sent with no name, so it was never'
+      + ' delivered — create the section again on the till'), { status: 400 });
+  }
   await c.query('INSERT INTO menu_section (id, name, pos, colour) VALUES ($1,$2,$3,$4)'
     + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name, pos = excluded.pos',
-    [p.id || slug(p.name), p.name, num(p.pos), p.colour || null]);
+    [id, p.name, num(p.pos), p.colour || null]);
   return { ok: true };
 };
 H.menu_section_update = H.menu_section_insert;
 
 H.menu_section_reorder = async (c, p) => {
-  for (const [i, id] of arr(p.order).entries()) {
+  const order = arr(p.order);
+  if (!order.length) {
+    throw Object.assign(new Error('this reorder was sent with no section order, so nothing'
+      + ' moved — drag the sections again on the till'), { status: 400 });
+  }
+  for (const [i, id] of order.entries()) {
     await c.query('UPDATE menu_section SET pos = $2 WHERE id = $1', [id, i]);
   }
   return { ok: true };
 };
 
+/* A MENU SECTION IS THE OUTLET'S. What the till calls a section IS a
+   `menu_category` row — it is what the bootstrap publishes as MENU_CATEGORIES
+   and what `item.category_id` references — and every property the section
+   editor collects now travels with it (migration 040). Before this the op was
+   queued with NO PAYLOAD at all from three different screens, so the insert
+   failed on `name NOT NULL`, the toast said "Section created", and the first
+   dish saved into that section was refused by `item_category_id_fkey` on every
+   retry until the outbox parked it.
+
+   REFUSED BY NAME, not by constraint. An op carrying no name is an op that was
+   never given the section, and a Postgres NOT NULL message on a parked op tells
+   the person reading it nothing they can act on — the same rule the check
+   violations follow.
+
+   SILENCE IS PRESERVED, exactly as `item.off_menu` is. A caller that means to
+   move a section to the top says so; a rename that says nothing about position,
+   glyph or station must not reset all three to nothing. `hidden` is the one
+   that reads a false as a decision, because false IS "show it again". */
 H.menu_category_insert = async (c, p) => {
-  await c.query('INSERT INTO menu_category (id, name, section_id, pos, colour)'
-    + ' VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
-    + ' section_id = excluded.section_id, pos = excluded.pos',
-    [p.id || slug(p.name), p.name, p.section || null, num(p.pos), p.colour || null]);
-  return { ok: true };
+  const id = p.id || (p.name ? slug(p.name) : null);
+  if (!id || !p.name) {
+    throw Object.assign(new Error('this menu section was sent with no name, so it was never'
+      + ' delivered — create the section again on the till'), { status: 400 });
+  }
+  /* A NEW section lands at the END of the rail. `pos` is NOT NULL, and
+     defaulting it to 0 would put every section a store adds in front of the
+     ones it has already ordered — the rail reshuffling itself is not what
+     "add a section" means. A caller that names a position gets it. */
+  await c.query('INSERT INTO menu_category (id, name, section_id, pos, colour, icon,'
+    + ' station, hidden) VALUES ($1,$2,$3,'
+    + ' coalesce($4, (SELECT coalesce(max(pos), -1) + 1 FROM menu_category)),'
+    + ' $5,$6,$7,coalesce($8,false))'
+    + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
+    + ' section_id = coalesce($3, menu_category.section_id),'
+    + ' pos = coalesce($4, menu_category.pos),'
+    + ' colour = coalesce($5, menu_category.colour),'
+    + ' icon = coalesce($6, menu_category.icon),'
+    + ' station = coalesce($7, menu_category.station),'
+    + ' hidden = coalesce($8, menu_category.hidden)',
+    [id, p.name, p.section || null, p.pos == null ? null : num(p.pos), p.colour || null,
+      p.icon || null, p.station || null, p.hidden == null ? null : !!p.hidden]);
+  await log(c, 'menu_category_insert', 'menu_category', id, null, { name: p.name });
+  return { categoryId: id };
 };
+H.menu_category_update = H.menu_category_insert;
 H.category_insert = H.menu_category_insert;
+
+/* The order the sections sit in on the till's rail and in the guest's menu.
+   `pos` is the outlet's, so dragging one on any terminal moves it on all of
+   them. An empty order is a no-op rather than a silent success: the op that
+   carried none was the defect, not a store with no sections. */
+H.menu_category_reorder = async (c, p) => {
+  const order = arr(p.order);
+  if (!order.length) {
+    throw Object.assign(new Error('this reorder was sent with no section order, so nothing'
+      + ' moved — drag the sections again on the till'), { status: 400 });
+  }
+  for (const [i, id] of order.entries()) {
+    await c.query('UPDATE menu_category SET pos = $2 WHERE id = $1', [id, i]);
+  }
+  await log(c, 'menu_category_reorder', 'menu_category', null, null, { sections: order.length });
+  return { ordered: order.length };
+};
 
 H.dish_upsert = async (c, p, ctx) => {
   const id = p.id || slug(p.name);

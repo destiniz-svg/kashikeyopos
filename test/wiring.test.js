@@ -37,7 +37,8 @@ const CONTRACT = [
   'device_paired', 'device_replay', 'fire_course', 'flag_ack', 'fulfil_stage',
   'fx_rates', 'grn_priced', 'grn_query', 'guest_add', 'kds_bump',
   'kds_bump_all', 'kds_recall', 'kds_station', 'line_note', 'loyalty_update',
-  'maintenance_log', 'mdr_set', 'member_upsert', 'menu_category_insert', 'menu_import',
+  'maintenance_log', 'mdr_set', 'member_upsert', 'menu_category_insert',
+  'menu_category_reorder', 'menu_category_update', 'menu_import',
   'menu_section_insert', 'menu_section_reorder', 'menu_section_update',
   'modifier_update', 'move_table', 'open_register', 'opex_insert',
   'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
@@ -103,7 +104,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 117, 'the contract is 117 kinds');
+  assert.strictEqual(CONTRACT.length, 119, 'the contract is 119 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -111,7 +112,11 @@ test('every kind the terminal queues has a handler on the server', () => {
   const orphans = kinds.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(orphans, [],
     'queued with nowhere to land: ' + orphans.join(', '));
-  assert.ok(kinds.length >= 110, 'the terminal queues ' + kinds.length + ' kinds');
+  /* A FLOOR, not a target — it exists so a broken extractor cannot pass by
+     seeing nothing. It came down by two when the three `menu_section_*` writes
+     were replaced by the one `menu_category_*` seam that actually reaches the
+     table the bootstrap reads. */
+  assert.ok(kinds.length >= 108, 'the terminal queues ' + kinds.length + ' kinds');
 });
 
 test('an op that carries a consequence carries its payload', () => {
@@ -147,6 +152,50 @@ test('an op that carries a consequence carries its payload', () => {
   F.insertRow('vendors', { id: 'v2', name: 'New Supplier', termsDays: 30 },
     'Supplier added', 'vendors');
   has(grab('vendor_upsert'), ['name']);
+
+  /* A MENU SECTION. Three screens wrote one and every one of them queued its
+     op with NO PAYLOAD — and two named `menu_section`, a different table from
+     the `menu_category` the bootstrap publishes and `item.category_id`
+     references. So the outlet refused each for want of a name, the toast said
+     "Section created", the section lived in one browser, and the first dish
+     saved into it was refused by the foreign key on every retry until the
+     outbox parked it. That is what a live store reported. */
+  F.setCatMeta('mains', { name: 'Main plates', color: '#c8553d' }, 'Main plates updated');
+  const cat = grab('menu_category_insert');
+  has(cat, ['id', 'name']);
+  assert.strictEqual(cat.payload.colour, '#c8553d',
+    'the colour reaches every terminal, not one browser: ' + JSON.stringify(cat.payload));
+  assert.ok(cat.payload.station, 'and the station its dishes fire to');
+
+  // CREATING one, through the shipped modal's own save handler rather than a
+  // retyped copy of it. This is the screen a store used, and the op it sent
+  // carried nothing at all.
+  const catModal = { kind: 'catb', id: null, c: { name: 'Short Eats & Snacks',
+    color: '#c8553d', icon: 'starter', station: 'hot', hidden: false } };
+  F.state.modal = catModal;
+  F.modalVals(catModal).cbSave();
+  const made = grab('menu_category_insert');
+  has(made, ['id', 'name', 'icon', 'colour', 'station']);
+  assert.strictEqual(made.payload.id, 'short-eats-snacks',
+    'the id the dish will reference: ' + JSON.stringify(made.payload));
+  assert.strictEqual(made.payload.name, 'Short Eats & Snacks');
+
+  // And the dish that follows names that section — the save that was refused
+  // for ever, because the section it names had never reached the outlet.
+  F.state.modal = null;
+  F.insertRow('menu', { id: 'm_bajiya', name: 'Bajiya', cat: 'short-eats-snacks',
+    price: 120, station: 'hot', recipe: [] }, 'Dish created · Bajiya', 'menu_items');
+  const bajiya = grab('dish_upsert');
+  has(bajiya, ['id', 'name', 'price']);
+  assert.strictEqual(bajiya.payload.cat, made.payload.id,
+    'the dish points at the section the outlet was just sent');
+
+  // The rail's order is the outlet's. Without the order the handler walked an
+  // empty array and answered success — a control that says it did something.
+  F.moveCat('mains', 1);
+  const ord = grab('menu_category_reorder');
+  assert.ok(ord && Array.isArray(ord.payload.order) && ord.payload.order.length > 1,
+    'the reorder carries the order: ' + JSON.stringify(ord && ord.payload));
 
   // A customer, taken at the counter. This one queued a kind with no handler
   // and no payload: the toast said the customer was created, the row lived in
@@ -1473,6 +1522,102 @@ test('the contract can see a kind that is chosen, not spelled', () => {
   // And the ternary's CONDITION is not mistaken for a kind.
   ['member', 'reward'].forEach((k) => assert.ok(!kinds.has(k),
     '"' + k + '" is something being compared against, not an op'));
+});
+
+/* A FAULT FROM A BROWSER EXTENSION IS NOT THIS BUILD'S BUG. Found on a live
+   till's own Diagnostics screen: two caught faults, both "Failed to connect to
+   MetaMask" — a wallet extension injected into the page — reported under
+   "a fault that repeats on one action is a bug to report". That sends an
+   operator to raise a ticket against software this project does not ship.
+   Both are still counted and still shown; only ours make the line a warning. */
+test('a fault says whose fault it is', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  assert.strictEqual(F.faultFrom('chrome-extension://abc/inpage.js'), 'extension');
+  assert.strictEqual(F.faultFrom('moz-extension://abc/inpage.js'), 'extension');
+  assert.strictEqual(F.faultFrom('at connect (chrome-extension://x/y.js:1:1)'), 'extension',
+    'a rejection carries its origin in the stack, not a filename');
+  assert.strictEqual(F.faultFrom('https://app.kashikeyopos.com/index.html'), null,
+    'the terminal\'s own frames are ours to answer for');
+  assert.strictEqual(F.faultFrom(undefined), null);
+
+  const line = () => F.diagnose().find((r) => r.name === 'Script faults this session');
+
+  // Ours: a warning, in the words that ask for a bug report.
+  F._faults = [{ at: '04:04', where: 'promise', msg: 'boom' }];
+  let row = line();
+  assert.strictEqual(row.ok, 'warn', 'our own fault is a warning');
+  assert.match(row.why, /bug to report/, 'and is ours to answer for');
+
+  // Theirs alone: counted, named, and not a warning about this build.
+  F._faults = [{ at: '04:04', where: 'extension', msg: 'Failed to connect to MetaMask' }];
+  row = line();
+  assert.match(row.why, /extension installed in this browser/,
+    'it says where the fault came from: ' + row.why);
+  assert.ok(!/bug to report/.test(row.why), 'and does not call it a bug against this build');
+  assert.strictEqual(row.ok, 'ok', 'nor a warning about something nobody here can fix');
+  assert.match(row.val, /browser extension/, 'while still being counted, not hidden');
+
+  // Both: the count is ours, the extension is named beside it.
+  F._faults = [{ at: '04:04', where: 'extension', msg: 'MetaMask' },
+    { at: '04:05', where: 'window', msg: 'boom' }];
+  row = line();
+  assert.strictEqual(row.ok, 'warn');
+  assert.match(row.val, /1 caught .* 1 from a browser extension/,
+    'neither is hidden behind the other: ' + row.val);
+});
+
+/* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
+   The till's "sections" ARE `menu_category` rows — that is what the bootstrap
+   publishes as MENU_CATEGORIES and what `item.category_id` references. Two of
+   the three screens that wrote one named `menu_section`, which is the grouping
+   ABOVE a category and a different table entirely, and all three queued their
+   op with no payload. The consequence surfaced one screen later wearing a
+   different face: `item_category_id_fkey` refusing a dish, for ever.
+
+   Pinned statically as well as behaviourally, because the behavioural half
+   above only sees the paths the harness walks. */
+test('the till writes a section to the table the rest of the app reads', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+
+  // No client path queues the wrong table any more.
+  ['menu_section_insert', 'menu_section_update', 'menu_section_reorder'].forEach((k) => {
+    assert.ok(!new RegExp('queue\\(\\s*"' + k + '"').test(IDX),
+      k + ' writes menu_section, which is not what a till calls a section');
+  });
+  // But the handlers stay, for a device still holding one in its outbox.
+  ['menu_section_insert', 'menu_section_update', 'menu_section_reorder'].forEach((k) => {
+    assert.strictEqual(typeof HANDLERS[k], 'function',
+      k + ' keeps its handler for an outbox that holds one');
+  });
+
+  // One seam, and every section write goes through it.
+  assert.ok(/catWrite\(id, meta, label\) \{/.test(IDX), 'there is one seam for a section');
+  const seam = IDX.slice(IDX.indexOf('catWrite(id, meta, label)'),
+    IDX.indexOf('setCatMeta(id, patch, label)'));
+  ['id:', 'name:', 'icon:', 'colour:', 'station:', 'hidden:'].forEach((k) => {
+    assert.ok(seam.indexOf(k) >= 0, 'the section carries ' + k + ' — it collected it');
+  });
+
+  // And the outlet's answer is published in the words the terminal reads,
+  // with the colour no longer standing in for the glyph.
+  const pub = BOOT.slice(BOOT.indexOf('MENU_CATEGORIES: categories.rows.map'),
+    BOOT.indexOf('MENU_SECTIONS:'));
+  assert.ok(/icon: r\.icon \|\| null/.test(pub), 'the glyph is published as the glyph');
+  assert.ok(/color: r\.colour \|\| null/.test(pub), 'and the colour as the colour');
+  assert.ok(!/icon: r\.colour/.test(pub), 'the two are not one column read twice');
+  assert.ok(/station: r\.station \|\| null/.test(pub) && /hidden: !!r\.hidden/.test(pub),
+    'along with the station and whether the section shows at all');
+
+  // The local copy is a holding pen, not a private fork — the same rule a
+  // measured yield and a saved batch already follow.
+  assert.ok(/reconcileCats\(\) \{/.test(IDX), 'the pen empties itself after a bootstrap');
+  const rec = IDX.slice(IDX.indexOf('reconcileCats() {'),
+    IDX.indexOf('reconcileCats() {') + 1800);
+  assert.ok(/pub\.icon != null/.test(rec),
+    'dropped once the outlet has published that section');
+  assert.ok(/_catSent/.test(rec),
+    'and a section the outlet never received is re-sent once, not on every poll');
 });
 
 /* ═══ HIDING A DISH AND 86-ING ONE ARE DIFFERENT DECISIONS ═══════════════════
