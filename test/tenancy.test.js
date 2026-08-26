@@ -385,3 +385,45 @@ test('the cluster is left clean', opts, async () => {
   const n = await DB.dropBusinessDatabases();
   assert.ok(n >= 2, 'both business databases existed and were swept');
 });
+
+/* A ROUTE IS NOT REASSIGNABLE BY AN ORDINARY PROVISIONING CALL.
+
+   chain.outlet_directory is the routing table for tenancy: it says which
+   database a session token's outlet opens. registerOutlet() upserted with
+   `DO UPDATE SET business_id = excluded.business_id`, so provisioning an
+   outlet with an id already registered to another business RE-POINTED it, and
+   every request for that outlet went to the other customer's database from
+   the next cache refresh on.
+
+   Found by running leak-test — which provisions outlets 1 and 2 into whatever
+   database it is aimed at — against a registry shared with two real
+   businesses. It moved outlet 1 across without a word. The isolation belts
+   held, because the other database has no such staff, so nothing leaked; what
+   failed was the ROUTE, and a boundary that an ordinary call can move is not
+   one. adopt-install.js already refused this and remapped instead; the live
+   path now agrees with it. */
+test('an outlet id cannot be re-pointed at another business', opts, async () => {
+  const BIZ = require('../src/business');
+  const a = await BIZ.createBusiness({ name: 'Route A' });
+  const b = await BIZ.createBusiness({ name: 'Route B' });
+
+  const id = await BIZ.nextOutletId(a.id);
+  assert.ok(id > 0);
+
+  // Re-registering to the SAME business is idempotent: a caller supplying an
+  // id still needs a route home whether or not one already exists.
+  await BIZ.registerOutlet(id, a.id);
+  await BIZ.registerOutlet(id, a.id);
+  const still = await db.control().query(
+    'SELECT business_id FROM chain.outlet_directory WHERE outlet_id = $1', [id]);
+  assert.strictEqual(Number(still.rows[0].business_id), Number(a.id));
+
+  await assert.rejects(() => BIZ.registerOutlet(id, b.id),
+    /already registered to business/,
+    'and another business is refused BY NAME rather than taking the route');
+
+  const after = await db.control().query(
+    'SELECT business_id FROM chain.outlet_directory WHERE outlet_id = $1', [id]);
+  assert.strictEqual(Number(after.rows[0].business_id), Number(a.id),
+    'the route did not move');
+});

@@ -191,19 +191,50 @@ r.use(async function (req, res, next) {
    addresses are the registry's to give and step 2 cannot run without it. What
    is left of this branch is the anonymous claim on an install that has one,
    which is fenced by ONBOARDING_CLAIM_TOKEN. */
-r.use(function (req, res, next) {
-  if (!CONTROL_DB() || req.bizDb || !req.account) return next();
+/* IS THE PROCESS'S OWN DATABASE A BUSINESS? Anonymous onboarding writes
+   through owner(), which is that database — the install claiming itself, fenced
+   by ONBOARDING_CLAIM_TOKEN. That is a real path and the suite runs on it.
+
+   It is only real where that database HAS the business schema. In a registry
+   install pointed at its registry it does not, and the anonymous branch fell
+   through to a bare 500 from `chain.install_state() does not exist` — found in
+   the audit by asking /state with no headers. Probed once and cached, because
+   a database does not become a business between requests, and re-asking on
+   every anonymous call would put a round trip on the front door. */
+let selfIsBusiness = null;
+async function processDbIsBusiness() {
+  if (selfIsBusiness !== null) return selfIsBusiness;
+  try {
+    const q = await owner().query("SELECT to_regclass('chain.company') IS NOT NULL AS yes");
+    selfIsBusiness = !!q.rows[0].yes;
+  } catch (e) {
+    // Unreachable is not "not a business" — do not cache a network blip.
+    return false;
+  }
+  return selfIsBusiness;
+}
+
+r.use(async function (req, res, next) {
+  if (!CONTROL_DB() || req.bizDb) return next();
+  if (!req.account && await processDbIsBusiness()) return next();
   /* An ACCOUNT with no business is the case that shipped broken: /account sent
      a verified account here and the route fell back to the database every
      business shares. Refused, with where to go.
 
-     No account at all is a different thing and still allowed: that is the
-     single-database install claiming itself, which in production is fenced by
-     ONBOARDING_CLAIM_TOKEN and cannot reach another customer's data, because
-     the connection's own database is not any business's. */
-  res.status(409).json({
+     NO ACCOUNT AT ALL used to be let through, as the single-database install
+     claiming itself. There is no such install any more — one without a
+     registry is refused at boot — so what that branch actually did on a
+     registry install was fall through to owner(), which is a database with no
+     chain.company in it, and answer a bare 500. Found in the audit by asking
+     /state with no headers. An anonymous caller here has no business to
+     describe and there is no honest answer but to say so. */
+  res.status(409).json(req.account ? {
     error: 'this account has no business yet — create one first',
     next: 'business'
+  } : {
+    error: 'sign in first — this app serves many businesses, and setting one'
+      + ' up starts from the account that will own it',
+    next: 'account'
   });
 });
 

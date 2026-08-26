@@ -31,6 +31,16 @@ async function run(log) {
   const fail = (name, detail) => results.push({ name, leaked: true, detail });
   const pass = (name) => results.push({ name, leaked: false });
 
+  /* THIS TOOL WRITES. It provisions outlets 1 and 2 — schemas, login roles,
+     directory rows, handles — into whatever database it is aimed at, so it
+     belongs on a scratch install and nowhere else. Aimed at a registry that
+     real businesses share, it used to take outlet 1's route away from
+     whichever business held it, silently; registerOutlet() refuses that now
+     and this will stop with the reason. Saying so before the first write is
+     cheaper than reading it afterwards. */
+  say('[leak-test] this provisions outlets 1 and 2 and seeds them — scratch'
+    + ' installs only, never a database anyone trades in');
+
   // Two outlets, each with something worth stealing.
   const A = await ensureOutlet(1, 'KOCHA', 'Outlet A');
   const B = await ensureOutlet(2, 'KOHUL', 'Outlet B');

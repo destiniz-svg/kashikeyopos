@@ -118,9 +118,38 @@ async function createBusiness(opts) {
    collide with it. */
 async function registerOutlet(outletId, businessId) {
   const id = Number(outletId);
+  /* AN OUTLET NEVER CHANGES HANDS SILENTLY. This upsert used to end
+     `DO UPDATE SET business_id = excluded.business_id`, so provisioning an
+     outlet with an id already registered to somebody else RE-POINTED it — and
+     this table is the routing table for tenancy: every session token naming
+     that outlet would open the other customer's database from the next cache
+     refresh on.
+
+     Found in the audit, and honestly: by running leak-test, which provisions
+     outlets 1 and 2 into whatever database it is aimed at, against a registry
+     shared with two real businesses. It moved outlet 1 from one business to
+     the other without a word, and the only symptom was a lock screen with an
+     empty roster. The isolation belts held — the other database has no such
+     staff — so nothing leaked. What failed was the ROUTE, and a boundary an
+     ordinary provisioning call can move is not a boundary.
+
+     Re-registering the SAME business stays idempotent: a caller that supplies
+     an id needs a route home whether or not one exists. A different business
+     is refused by name, which is the choice adopt-install.js already makes
+     when it finds an id taken — it remaps rather than steals. The two paths
+     now agree. */
+  const held = await control().query(
+    'SELECT business_id FROM chain.outlet_directory WHERE outlet_id = $1', [id]);
+  if (held.rows.length && Number(held.rows[0].business_id) !== Number(businessId)) {
+    throw Object.assign(new Error('outlet ' + id + ' is already registered to'
+      + ' business ' + held.rows[0].business_id + ' — allocate a free id or'
+      + ' remap it (npm run adopt) rather than re-pointing a live route'),
+    { status: 409 });
+  }
   await control().query(
     'INSERT INTO chain.outlet_directory (outlet_id, business_id) VALUES ($1,$2)'
-    + ' ON CONFLICT (outlet_id) DO UPDATE SET business_id = excluded.business_id',
+    + ' ON CONFLICT (outlet_id) DO UPDATE SET business_id = excluded.business_id'
+    + ' WHERE chain.outlet_directory.business_id = excluded.business_id',
     [id, businessId]);
   await control().query(
     "SELECT setval('chain.outlet_id_seq', greatest(nextval('chain.outlet_id_seq'), $1))",

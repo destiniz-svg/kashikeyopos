@@ -150,10 +150,20 @@ test('they onboard the company, the outlet and themselves', opts, async () => {
     assert.strictEqual(asked.body.claimRequired, false,
       'the panel does not put a field on screen that nobody can fill');
     // The stranger's door is unchanged: no account, no business, still fenced.
+    /* And a stranger is still refused. TWO refusals are correct here and which
+       one you get depends on the install: 403 from the claim fence where the
+       process's own database is itself a business (the install claiming
+       itself), 409 where it is not, because there is then no business for an
+       anonymous caller to onboard at all. What must never happen is a 2xx —
+       or the 500 that anonymous callers used to get, which is a refusal
+       nobody can act on. */
     const stranger = await call('POST', '/api/onboarding/company',
       { legalName: 'Squatter Ltd', regNo: 'X-1', address: 'nowhere' }, {});
-    assert.strictEqual(stranger.status, 403, 'and the fence still stands for everyone else');
-    assert.strictEqual(stranger.body.claim, true);
+    assert.ok([403, 409].includes(stranger.status),
+      'the fence still stands for everyone else: ' + stranger.status
+      + ' ' + JSON.stringify(stranger.body));
+    assert.ok(stranger.body.claim === true || stranger.body.next === 'account',
+      'and says which refusal it is: ' + JSON.stringify(stranger.body));
   } finally {
     if (hadToken === undefined) delete process.env.ONBOARDING_CLAIM_TOKEN;
     else process.env.ONBOARDING_CLAIM_TOKEN = hadToken;
