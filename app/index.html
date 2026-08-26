@@ -383,8 +383,7 @@
               <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
                 <button onClick="{{ c.pick }}" style="{{ c.style }}" style-hover="{{ c.hover }}">
                   <span style="{{ c.dot }}"></span>
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.9"><path d="{{ c.icon }}"></path></svg>
-                  {{ c.name }}<span style="font-size:10px;opacity:.55;margin-left:2px;font-family:'JetBrains Mono',monospace">{{ c.count }}</span>
+                  {{ c.name }}<span style="{{ c.cntStyle }}">{{ c.count }}</span>
                 </button>
                 </sc-for>
               </div>
@@ -411,22 +410,38 @@
                 </div>
               </sc-for>
               <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
-                <button onClick="{{ m.add }}" style="{{ m.style }}" style-hover="{{ m.hover }}">
-                  <span style="{{ m.mediaStyle }}">
-                    <span style="{{ m.photoStyle }}">{{ m.initial }}</span>
-                    <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
-                    <span style="{{ m.vegStyle }}" role="img" aria-label="{{ m.vegLabel }}" title="{{ m.vegLabel }}"></span>
-                  </span>
-                  <span style="padding:9px 11px 10px;display:flex;flex-direction:column;gap:2px;flex:1">
-                    <span style="font-size:12.5px;font-weight:600;line-height:1.3">{{ m.name }}</span>
-                    <span style="font-size:10.5px;color:var(--text-dim);line-height:1.35;flex:1;margin-bottom:7px">{{ m.desc }}</span>
-                    <span style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
-                      <span style="font-size:14px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace">{{ m.price }}</span>
-                      <span style="font-size:9.5px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;text-transform:uppercase">{{ m.foot }}</span>
+                <div style="{{ m.style }}" style-hover="{{ m.hover }}">
+                  <button onClick="{{ m.add }}" style="padding:11px 11px 8px;display:flex;gap:11px;align-items:flex-start;background:none;border:0;color:inherit;font:inherit;text-align:left;width:100%;cursor:pointer">
+                    <span style="{{ m.plateStyle }}">
+                      <span style="{{ m.photoStyle }}"></span>
+                      <span style="{{ m.glyphStyle }}"></span>
                     </span>
-                  </span>
-                </button>
+                    <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                      <span style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+                        <span style="{{ m.stationStyle }}">{{ m.station }}</span>
+                        <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
+                        <span style="{{ m.vegStyle }}" role="img" aria-label="{{ m.vegLabel }}" title="{{ m.vegLabel }}"></span>
+                      </span>
+                      <span style="font-size:13.5px;font-weight:700;line-height:1.25;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ m.name }}</span>
+                      <sc-if value="{{ m.hasDesc }}">
+                        <span style="font-size:11.5px;line-height:1.42;color:var(--text-muted);text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ m.desc }}</span>
+                      </sc-if>
+                    </span>
+                  </button>
+                  <div style="padding:0 11px 9px;display:flex;align-items:center;gap:7px">
+                    <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;font-family:'JetBrains Mono',monospace">{{ m.price }}</span>
+                    <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">{{ m.foot }}</span>
+                    <span style="margin-left:auto;display:flex;align-items:center;gap:4px">
+                      <button onClick="{{ m.dec }}" aria-label="One fewer {{ m.name }}" style="width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:16px;font-weight:700;line-height:1;cursor:pointer">−</button>
+                      <span style="font-size:13.5px;font-weight:800;font-family:'JetBrains Mono',monospace;min-width:18px;text-align:center">{{ m.qty }}</span>
+                      <button onClick="{{ m.inc }}" aria-label="One more {{ m.name }}" style="width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:16px;font-weight:700;line-height:1;cursor:pointer">+</button>
+                    </span>
+                  </div>
+                </div>
               </sc-for>
+              <sc-if value="{{ menuMore }}">
+                <button onClick="{{ menuMoreGo }}" style="grid-column:1/-1;padding:13px;border-radius:13px;border:1px dashed var(--line-2);background:var(--bg-1);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ menuMoreText }}</button>
+              </sc-if>
               <sc-if value="{{ menuEmpty }}">
                 <div style="grid-column:1/-1;padding:52px 20px;text-align:center;color:var(--text-faint);font-size:12.5px">{{ menuEmptyText }}</div>
               </sc-if>
@@ -939,23 +954,9 @@
 
         <sc-if value="{{ hasBar }}">
           <div style="{{ subBarStyle }}">
-            <sc-if value="{{ tabPickerOn }}">
-              <div style="position:relative;display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line)">
-                <span style="min-width:0;flex:1;display:flex;flex-direction:column;gap:1px">
-                  <span style="font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)">{{ tabPickerSub }}</span>
-                  <span style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tabPickerLabel }}</span>
-                </span>
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0;color:var(--text-dim)"><path d="M6 9l6 6 6-6"></path></svg>
-                <select value="{{ tabPickerValue }}" onChange="{{ onTabPicker }}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;font-family:inherit">
-                  <sc-for list="{{ tabPickerOpts }}" as="o" hint-placeholder-count="0">
-                    <option value="{{ o.v }}">{{ o.label }}</option>
-                  </sc-for>
-                </select>
-              </div>
-            </sc-if>
             <div class="krail" style="{{ tabRailStyle }}">
               <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
-                <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.count }}</span></button>
+                <button onClick="{{ t.pick }}" style="{{ t.style }}"><span style="{{ t.dotStyle }}"></span>{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.count }}</span></button>
               </sc-for>
             </div>
             <div style="{{ actionRowStyle }}">
@@ -1027,6 +1028,9 @@
                 </sc-for>
               </button>
             </sc-for>
+            <sc-if value="{{ rowsMore }}">
+              <button onClick="{{ rowsMoreGo }}" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
+            </sc-if>
             <sc-if value="{{ rowsEmpty }}">
               <div style="padding:44px;text-align:center;color:var(--text-faint);font-size:12.5px">{{ emptyText }}</div>
             </sc-if>
@@ -1051,6 +1055,9 @@
                 </span>
               </button>
             </sc-for>
+            <sc-if value="{{ rowsMore }}">
+              <button onClick="{{ rowsMoreGo }}" style="width:100%;padding:12px;border-radius:12px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
+            </sc-if>
             <sc-if value="{{ rowsEmpty }}">
               <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px">{{ emptyText }}</div>
             </sc-if>
@@ -1348,7 +1355,11 @@
           <sc-if value="{{ mDishB }}">
             <div style="display:flex;flex-direction:column;gap:15px">
               <div style="display:flex;gap:13px;align-items:flex-start">
-                <span style="{{ dbArtStyle }}">{{ dbArtText }}</span>
+                <span style="{{ dbArtStyle }}">
+                  <span style="{{ dbArtRing }}"></span>
+                  <span style="{{ dbArtPhoto }}"></span>
+                  <span style="{{ dbArtGlyph }}"></span>
+                </span>
                 <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
                   <input aria-label="Dish name" value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
                   <input aria-label="One line a guest reads — what it is, how it eats" value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
@@ -1366,6 +1377,20 @@
                     <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</button>
                   </sc-for>
                 </div>
+              </div>
+
+              <div>
+                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Photograph</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <label style="display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line-2);font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer" style-hover="background:var(--bg-3)">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+                    Upload image
+                    <input type="file" accept="image/*" aria-label="Upload a photograph of this dish" onChange="{{ dbUpload }}" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"/>
+                  </label>
+                  <input value="{{ dbImgUrl }}" onChange="{{ onDbImgUrl }}" placeholder="{{ dbImgPlaceholder }}" aria-label="Image URL" style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-size:12.5px;color:var(--text);outline:none"/>
+                  <button onClick="{{ dbImgRemove }}" style="{{ dbImgRemoveStyle }}">Remove</button>
+                </div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">Held with the dish, downscaled to 720px on this device, and it travels to the till, the QR menu and the printed list on save. Leave it empty and the artifact stands in — no dish is ever a blank tile.</div>
               </div>
 
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
@@ -4498,6 +4523,8 @@ class Component extends DCLogic {
     // Phone: every row becomes a stacked record card. Tablet: side-scrolls.
     const bp = this.effBp();
     const isM = bp === "m";
+    // Forty on a phone, where each row is a stacked record and costs more.
+    const ROWCAP = isM ? 40 : 100;
     // A grid of `1fr` columns has no floor: it keeps dividing whatever width it
     // is given, so on a narrow desktop window an eight-column table crushed
     // "Receiving location" and "Delivery outstanding" down to an ellipsis and
@@ -4561,36 +4588,53 @@ class Component extends DCLogic {
     // And past five tabs on a phone, a strip is the wrong control entirely: it
     // becomes one line naming where you are, which opens the list.
     const tabList = g.tabs || [];
-    const asPicker = bp === "m" && tabList.length > 5;
-    const curTab = tabList.filter((t) => t.on)[0] || tabList[0] || {};
+    /* THE NATIVE PICKER IS GONE. Any strip past five tabs used to collapse on
+       a phone into a card with an invisible <select> over it — which hid the
+       counts and the section hues, showed nothing until it was tapped, and
+       replaced a rail somebody could read with a control they had to open.
+       The track scrolls at every width instead; that is what a track is for. */
     return {
-      tabs: asPicker ? [] : tabList.map((t) => ({
+      tabs: tabList.map((t) => ({
         label: t.label, count: t.count === undefined ? "" : t.count,
         pick: t.pick,
-        style: "flex-shrink:0;padding:" + (bp === "m" ? "9px 15px" : "6px 13px") + ";border-radius:20px;min-height:" + (bp === "m" ? 40 : 30) + "px;font-family:inherit;font-size:"
-          + (bp === "m" ? 12.5 : 11.5) + "px;font-weight:" + (t.on ? 700 : 600) + ";white-space:nowrap;border:1px solid " + (t.on ? "var(--text)" : "var(--line)")
-          + ";background:" + (t.on ? "var(--text)" : "var(--bg-1)") + ";color:" + (t.on ? "var(--bg)" : "var(--text-dim)"),
-        cntStyle: t.count === undefined ? "display:none" : "font-size:10px;opacity:.6;margin-left:6px;font-family:'JetBrains Mono',monospace"
+        /* A RECESSED TRACK CARRYING ONE RAISED CHIP. The selected tab is lifted
+           out of the groove rather than filled black — a black pill in a row of
+           outlined ones reads as a button that does something, not as where you
+           are. */
+        style: "display:inline-flex;align-items:center;gap:7px;flex-shrink:0;scroll-snap-align:start;padding:0 "
+          + (bp === "m" ? 14 : 12) + "px;border-radius:9px;min-height:" + (bp === "m" ? 38 : 30)
+          + "px;font-family:inherit;font-size:" + (bp === "m" ? 12.5 : 12) + "px;white-space:nowrap;"
+          + "transition:background .12s ease-out, color .12s ease-out, box-shadow .12s ease-out;"
+          + (t.on
+            ? "background:var(--bg-1);border:1px solid var(--line);color:var(--text);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.16)"
+            : "background:transparent;border:1px solid transparent;color:var(--text-muted);font-weight:600"),
+        // Menu Master passes each section's hue; every other module passes none.
+        dotStyle: t.hue
+          ? "width:8px;height:8px;border-radius:3px;flex-shrink:0;display:block;background:" + t.hue
+            + ";opacity:" + (t.on ? "1" : ".75")
+          : "display:none",
+        cntStyle: t.count === undefined ? "display:none"
+          : "font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;opacity:" + (t.on ? ".6" : ".45")
       })),
-      // The picker: current section, count of the rest, and a native select
-      // over it — the one control a phone already knows how to present well.
-      tabPickerOn: asPicker,
-      tabPickerLabel: curTab.label || "",
-      tabPickerSub: tabList.length + " sections",
-      tabPickerValue: String(tabList.indexOf(curTab)),
-      tabPickerOpts: tabList.map((t, i) => ({ v: String(i), label: t.label + (t.count === undefined ? "" : " · " + t.count) })),
-      onTabPicker: (e) => { const t = tabList[+e.target.value]; if (t && t.pick) t.pick(); },
       // Actions sit under the strip on a phone rather than fighting it for the
       // same line; the strip owns the row it is on.
       subBarStyle: bp === "m"
         ? "display:flex;flex-direction:column;align-items:stretch;gap:9px;margin-bottom:13px"
         : "display:flex;align-items:center;gap:8px;margin-bottom:14px;min-width:0",
-      tabRailStyle: (asPicker || !tabList.length) ? "display:none"
-        : "display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;overflow-y:hidden;"
-          + (bp === "m" ? "margin:0 -14px;padding:0 14px 2px;" : "flex:1;padding-bottom:2px;"),
+      /* THE TRACK IS WHAT YIELDS. `flex:1 1 auto; min-width:0` on the track and
+         `flex:0 0 auto` on the actions — the other way round let the actions'
+         nowrap buttons overflow leftwards, paint on top of the tabs and swallow
+         their taps. The mask fades the right edge so a cut-off tab reads as
+         "there is more" rather than as a rendering fault. */
+      tabRailStyle: !tabList.length ? "display:none"
+        : "display:flex;align-items:center;gap:3px;overflow-x:auto;overflow-y:hidden;"
+          + "scroll-snap-type:x proximity;background:var(--bg-2);border:1px solid var(--line);"
+          + "border-radius:12px;padding:3px 4px;flex:1 1 auto;min-width:0;"
+          + "mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%);"
+          + "-webkit-mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%)",
       actionRowStyle: bp === "m"
         ? "display:flex;gap:7px;flex-wrap:wrap"
-        : "display:flex;align-items:center;gap:8px;flex-shrink:0",
+        : "display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:max-content",
       actions: (g.actions || []).map((a) => ({
         label: a.label, go: a.go || (() => this.toast("Demo action — not wired", "warn")),
         style: this.btn(a.primary ? "solid-brand" : "ghost", { size: "sm", fs: 11.5 }),
@@ -4651,7 +4695,9 @@ class Component extends DCLogic {
       })),
       hasTable: !!(cols.length) && !isM,
       hasRecords: !!(cols.length) && isM,
-      records: isM ? (g.rows || []).map((r) => {
+      // The phone's stacked-record form pages on the same cap and the same
+      // control, or the table would page and the phone would not.
+      records: isM ? (s.gridAll ? (g.rows || []) : (g.rows || []).slice(0, ROWCAP)).map((r) => {
         const cs = (r.cells || []).map((c, j) => {
           const cc = (typeof c === "object" && c !== null) ? c : { t: c };
           return { label: (cols[j] || {}).label, cc: cc, mono: cc.mono || (cols[j] || {}).mono };
@@ -4676,7 +4722,15 @@ class Component extends DCLogic {
       }) : [],
       tableHeadStyle: headStyle,
       cols: cols.map((c) => ({ label: c.label, style: "text-align:" + (c.a || "left") + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap" })),
-      rows: (g.rows || []).map((r, i) => ({
+      /* A TABLE PAGES AT A HUNDRED ROWS. A three-hundred-dish menu master put
+         twelve thousand nodes on one screen; the cap lifts for the session on
+         a tap and filtering above narrows the set instead. Forty on a phone,
+         where each row is a stacked record and costs more. */
+      rowsMore: !s.gridAll && (g.rows || []).length > ROWCAP,
+      rowsMoreText: "Showing " + Math.min(ROWCAP, (g.rows || []).length) + " of "
+        + (g.rows || []).length + " rows \u00b7 tap to load the rest, or filter above",
+      rowsMoreGo: () => this.setState({ gridAll: true }),
+      rows: (s.gridAll ? (g.rows || []) : (g.rows || []).slice(0, ROWCAP)).map((r, i) => ({
         go: r.go || (() => {}),
         style: "display:grid;grid-template-columns:" + tmpl + ";gap:12px;padding:11px 16px;width:100%;align-items:center;border-bottom:1px solid var(--line-soft);background:" + (r.on ? "var(--warn-dim)" : "transparent") + ";transition:background .1s;" + minW,
         cells: (r.cells || []).map((c, j) => {
@@ -4718,11 +4772,53 @@ class Component extends DCLogic {
   // visibility) is resolved through these readers with a sane derived default,
   // so an un-migrated dish behaves exactly as it did before anyone opened the
   // editor — and the till, the KOT and the QR menu all read one answer.
-  CATCOLORS() { return ["#b8431d", "#1d6b57", "#6f47a8", "#a8721a", "#2b5a9e", "#9c2f63", "#4d6b23", "#7f5330"]; }
+  // The same eight, from the same file the guest's phone reads.
+  CATCOLORS() { return ((K() || {}).SECTION_HUES) || ["#b8431d", "#1d6b57", "#6f47a8", "#a8721a", "#2b5a9e", "#9c2f63", "#4d6b23", "#7f5330"]; }
   STATIONS() { return [["hot", "Hot pass"], ["grill", "Grill"], ["cold", "Cold larder"], ["bar", "Bar"], ["pastry", "Pastry"]]; }
   TAGSET() { return [["veg", "Vegetarian"], ["vegan", "Vegan"], ["gf", "Gluten free"], ["nuts", "Contains nuts"], ["chef", "Chef's pick"], ["new", "New"], ["signature", "Signature"]]; }
   SPICE() { return ["Not spicy", "Mild", "Medium", "Hot"]; }
   stationName(k) { const s = this.STATIONS().find((x) => x[0] === k); return s ? s[1] : "Hot pass"; }
+  /* The pass a dish is fired to, as a colour. It is the same five stations the
+     KDS is split by, so a cashier reading the grid and a cook reading the rail
+     are looking at one vocabulary. Tokens, not literals: both themes need the
+     accessible variant. */
+  stationHue(k) {
+    return ({ hot: "var(--red-bright)", grill: "var(--amber)", cold: "var(--blue)",
+      bar: "var(--violet-bright)", pastry: "var(--go)" })[k] || "var(--red-bright)";
+  }
+  /* How many of this dish are already on the open bill, on the share being
+     served. The stepper corrects what is there; without this it could only
+     ever add, which is what made a mis-tap a void rather than a decrement. */
+  qtyOnTicket(id) {
+    const t = this.ticket();
+    if (!t) return 0;
+    const guests = this.guestsOf(t);
+    const gi = Math.min(this.state.activeSplit, Math.max(0, guests.length - 1));
+    return t.lines.filter((l) => l.id === id && (guests.length < 2 || (l.split || 0) === gi))
+      .reduce((a, l) => a + (l.qty || 0), 0);
+  }
+  /* Down one, and off the bill at zero. A line already FIRED is not touched
+     here: the kitchen has it, and taking it back is the void the ticket panel
+     gates on a manager. */
+  stepLine(m, dir) {
+    if (dir >= 0) return this.addLine(m, 1);
+    const t = this.ticket();
+    if (!t) return;
+    const guests = this.guestsOf(t);
+    const gi = Math.min(this.state.activeSplit, Math.max(0, guests.length - 1));
+    const ex = t.lines.filter((l) => l.id === m.id && !l.fired
+      && (guests.length < 2 || (l.split || 0) === gi)).pop();
+    if (!ex) {
+      return this.toast(this.qtyOnTicket(m.id)
+        ? m.name + " is already with the kitchen — void it from the ticket"
+        : m.name + " is not on this bill", "warn");
+    }
+    const i = t.lines.indexOf(ex);
+    this.mutate(undefined, (tk) => {
+      if (tk.lines[i].qty > 1) tk.lines[i] = Object.assign({}, tk.lines[i], { qty: tk.lines[i].qty - 1 });
+      else tk.lines.splice(i, 1);
+    });
+  }
   defaultStation(cat) {
     if (cat === "grill") return "grill";
     if (cat === "drinks") return "bar";
@@ -5183,53 +5279,92 @@ class Component extends DCLogic {
       icon: this.catIcon(c.icon || c.id),
       count: (c.id === "top" ? topIds : c.id === "all" ? K0.MENU.filter((m) => this.menuVisible(m)) : K0.MENU.filter((m) => m.cat === c.id && this.menuVisible(m))).length,
       pick: () => this.pickCat(c.id),
-      dot: "width:9px;height:9px;border-radius:3px;flex-shrink:0;display:block;background:" + (c.id === "top" ? "var(--warn)" : this.catHue(c.id)) + (on ? ";box-shadow:0 0 0 2px rgba(0,0,0,.16)" : ""),
-      style: "display:inline-flex;align-items:center;gap:7px;flex-shrink:0;padding:" + (isPhone ? "8px 15px 8px 13px" : "7px 13px 7px 11px") + ";border-radius:20px;font-size:" + (isPhone ? 12.5 : 11.5) + "px;font-weight:" + (on ? 700 : 600) + ";white-space:nowrap;min-height:" + (isPhone ? 42 : 36) + "px;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-1)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)"),
-      hover: on ? "background:var(--text)" : "background:var(--bg-2);border-color:var(--line-3);color:var(--text)"
+      /* THE SELECTED TAB IS FILLED WITH ITS OWN SECTION'S HUE, and the dot is
+         dropped there because the whole field is already that colour. An
+         unselected tab leads with the dot instead — which is what makes the
+         hue readable across the whole rail at a glance rather than only on
+         whichever one is current. */
+      dot: on ? "display:none"
+        : "width:8px;height:8px;border-radius:3px;flex-shrink:0;display:block;background:"
+          + (c.id === "top" ? "var(--warn)" : this.catHue(c.id)),
+      /* A BARE NUMERAL. It read "19 dishes" on every tab, so the word said
+         nothing on any of them and cost the rail the width it needed to show
+         the next section. */
+      cntStyle: "font-family:'JetBrains Mono',monospace;font-size:11px;flex-shrink:0;opacity:"
+        + (on ? ".62" : ".48"),
+      style: "display:inline-flex;align-items:center;gap:8px;flex-shrink:0;scroll-snap-align:start;padding:0 14px;border-radius:11px;min-height:"
+        + (isPhone ? 44 : 40) + "px;font-size:13px;white-space:nowrap;font-weight:" + (on ? 700 : 600)
+        + ";transition:background .12s ease-out, color .12s ease-out, border-color .12s ease-out"
+        + ";border:1px solid " + (on ? (c.id === "top" ? "var(--warn)" : "transparent") : "var(--line)")
+        + ";background:" + (on ? (c.id === "top" ? "var(--warn-dim)" : this.catHue(c.id)) : "var(--bg-1)")
+        + ";color:" + (on ? (c.id === "top" ? "var(--warn-bright)" : "var(--cat-ink)") : "var(--text-dim)"),
+      hover: on ? "filter:brightness(1.04)" : "background:var(--bg-2);border-color:var(--line-3);color:var(--text)"
       };
     });
 
     const out86 = this.eightySix();
-    const dishes = K0.MENU
+    /* LONG MENUS PAGE. A three-hundred-dish menu is an ordinary menu, and
+       rendering all of it put nine thousand nodes on the one screen a cashier
+       uses at speed. The first sixty render; the cap lifts for the session on
+       a tap, and searching narrows the set rather than paging through it. */
+    const CAP = 60;
+    const allDishes = K0.MENU
       .filter((m) => this.menuVisible(m))
       .filter((m) => s.cat === "all" || (s.cat === "top" ? topIds.indexOf(String(m.id)) >= 0 : m.cat === s.cat))
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
-      .sort((a, b) => s.cat === "top" ? (soldCount[String(b.id)] || 0) - (soldCount[String(a.id)] || 0) : 0)
+      .sort((a, b) => s.cat === "top" ? (soldCount[String(b.id)] || 0) - (soldCount[String(a.id)] || 0) : 0);
+    const capped = !s.menuAll && allDishes.length > CAP;
+    const dishes = (capped ? allDishes.slice(0, CAP) : allDishes)
       .map((m) => {
         const off = out86.indexOf(m.id) >= 0;
         const cost = this.foodCost(m), price = this.menuPrice(m);
         const showCost = this.can("recipes");
+        const art = this.artifact(m);
+        const photo = this.photoUrl(m.img);
+        const stHue = this.stationHue(m.station || this.catMeta(m.cat).station);
+        // What is already on this bill for this dish, so the stepper corrects
+        // rather than only ever adding.
+        const onBill = this.qtyOnTicket(m.id);
         return {
           name: m.name, desc: m.desc, price: MVRc(price),
-          /* A photo earns the full media area; the absence of one does not. A
-             new outlet's menu has no photographs, and a grid of tall grey
-             voids reads as broken rather than plain — so a photo-less card
-             collapses its media to a short band tinted with the section's own
-             hue, carrying the dish's initials. The band keeps the grid's
-             rhythm and the 86 tag its home. */
-          mediaStyle: m.img
-            ? "position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0"
-            : "position:relative;width:100%;height:30px;overflow:hidden;display:block;border-radius:9px 9px 0 0;background:color-mix(in srgb, " + this.catHue(m.cat) + " 13%, var(--bg-2))",
-          photoStyle: m.img
-            ? "position:absolute;inset:0;background-image:url(" + m.img + ");background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : "")
-            : "position:absolute;inset:0;display:grid;place-items:center;font-size:11.5px;font-weight:800;letter-spacing:.07em;color:" + this.catHue(m.cat) + (off ? ";filter:grayscale(1);opacity:.6" : ""),
-          initial: m.img ? "" : String(m.name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase(),
+          hasDesc: !!String(m.desc || "").trim(),
+          /* THE TILE IS A RECORD, NOT A POSTER. A 74px plate leads, the name
+             and the description sit beside it, and the trade facts get a bar
+             of their own — so a dish is read in one line of sight and the
+             grid holds three times as many of them. What stood here was a
+             media band across the top and the dish's initials in it, which
+             cost every card its height and told a cashier nothing. */
+          plateStyle: "position:relative;width:74px;height:74px;border-radius:12px;flex-shrink:0;overflow:hidden;"
+            + (photo ? "background:var(--bg-2)" : art.plate) + (off ? ";opacity:.5" : ""),
+          // A blob: URL, never the data URL — see photoUrl().
+          photoStyle: photo
+            ? "position:absolute;inset:0;background-image:url(" + photo + ");background-size:cover;background-position:center"
+            : "display:none",
+          glyphStyle: photo ? "display:none" : art.glyph,
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
-          // 3px of the section's hue down the left edge. Twenty cards deep, the
-          // grid sorts itself into bands the hand can aim at pre-verbally.
-          style: "display:flex;flex-direction:column;background:var(--bg-1);border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);border-left:3px solid " + this.catHue(m.cat) + ";border-radius:10px;overflow:hidden;opacity:" + (off ? ".62" : "1"),
-          hover: off ? "" : "background:var(--bg-2);border-color:var(--line-3)",
-          tag: off ? "86'd" : (m.recipe && m.recipe.length ? "" : ""),
-          tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
-          vegStyle: m.veg ? "position:absolute;top:7px;right:7px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--go)" : "display:none",
-          // The green square is the Indian convention and reads instantly to
-          // anybody who knows it — but it is colour and shape and nothing else,
-          // and every other state on this card carries a word ("86'd", the cost
-          // percentage). A cashier asked "is this one vegetarian" across a
-          // counter needs the answer to survive a screen reader, a colour-blind
-          // eye and a grayscale print of the menu.
+          /* A BUTTON CANNOT CONTAIN A BUTTON. The card is a container, the
+             face is the +1 target, and the stepper sits outside it — nesting
+             them makes the markup invalid and the inner taps unreliable. */
+          style: "display:flex;flex-direction:column;border-radius:13px;overflow:hidden;background:var(--bg-1);color:var(--text);"
+            + "border-top:1px solid transparent;border-right:1px solid var(--line);border-bottom:1px solid var(--line);"
+            + "border-left:3px solid " + this.catHue(m.cat) + ";"
+            + "content-visibility:auto;contain-intrinsic-size:auto 132px;"
+            + "transition:transform .13s cubic-bezier(.2,.8,.3,1),box-shadow .13s cubic-bezier(.2,.8,.3,1),background-color .12s ease-out,border-color .12s ease-out;"
+            + "opacity:" + (off ? ".62" : "1"),
+          hover: off ? "" : "transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.26),0 14px 30px rgba(0,0,0,.20)",
+          station: this.stationName(m.station || this.catMeta(m.cat).station),
+          stationStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:5px;background:"
+            + "color-mix(in oklab, " + stHue + " 16%, transparent);color:" + stHue,
+          tag: off ? "86'd" : "",
+          tagStyle: off ? "font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--red);color:#fff" : "display:none",
+          vegStyle: m.veg ? "width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2px var(--bg-1),inset 0 0 0 4px var(--go)" : "display:none",
+          // Colour and shape alone do not survive a screen reader, a
+          // colour-blind eye or a grayscale print of the menu.
           vegLabel: m.veg ? "Vegetarian" : "",
-          foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : "")
+          foot: showCost ? Math.round((cost / price) * 100) + "% cost" : "",
+          qty: String(onBill || 0),
+          dec: () => this.stepLine(m, -1),
+          inc: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m, 1)
         };
       });
 
@@ -5585,9 +5720,13 @@ class Component extends DCLogic {
       menuHeadStyle: isPhone
         ? "position:sticky;top:-13px;z-index:6;display:flex;flex-direction:column;gap:8px;margin:0 -13px 11px;padding:11px 13px 10px;background:var(--bg);border-bottom:1px solid var(--line)"
         : "display:flex;align-items:center;gap:9px;margin-bottom:11px",
+      /* ONE SCROLLING ROW, never a wrapping grid. A menu with twelve sections
+         wrapped to three rows of pastel blocks and pushed the dishes below the
+         fold on the one screen that exists to show dishes. It snaps, so a
+         flick lands on a tab rather than between two. */
       catRailStyle: isPhone
-        ? "display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;margin:0 -13px;padding:0 13px 2px;width:auto"
-        : "display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px;flex:1 1 0;min-width:0",
+        ? "display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;margin:0 -13px;padding:1px 13px 3px;width:auto"
+        : "display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;padding:1px 0 3px;flex:1 1 0;min-width:0",
       // The floor screen was nine stacked bands before the first table: tip,
       // register, calls, 86, parked, header, channels, zones, tables. Each band
       // cost a label and a margin, and on a short laptop window the tables —
@@ -5651,7 +5790,9 @@ class Component extends DCLogic {
       // between two identical keyframes keyed off the section. The result: the
       // dishes lift in each time you change section, which is what tells a
       // cashier the grid under their thumb is now a different set of dishes.
-      dishGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (isPhone ? 148 : 166) + "px,1fr));gap:" + (isPhone ? 9 : 10) + "px;animation:"
+      /* Wider tracks, because the tile is now a record read left to right
+         rather than a poster read top to bottom. */
+      dishGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (isPhone ? 260 : 268) + "px,1fr));gap:" + (isPhone ? 9 : 10) + "px;animation:"
         + ((String(s.cat || "").length + String(s.search || "").length) % 2 ? "krise" : "kriseb") + " .26s cubic-bezier(.2,.7,.3,1)",
       // Search sits at the head of the section rail rather than owning a band of
       // its own. It is narrow until it is being used, then takes the room it
@@ -5662,6 +5803,11 @@ class Component extends DCLogic {
         ? "position:absolute;right:5px;top:50%;margin-top:-11px;width:22px;height:22px;border-radius:50%;font-size:14px;line-height:1;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)"
         : "display:none",
       clearMenuSearch: () => this.setState({ search: "" }),
+      menuMore: !s.catBusy && capped,
+      menuMoreText: "Showing " + dishes.length + " of " + allDishes.length
+        + " dishes \u00b7 tap to load the rest, or search",
+      // The cap lifts for the session; it resets nothing.
+      menuMoreGo: () => this.setState({ menuAll: true }),
       menuEmpty: !s.catBusy && !dishes.length,
       menuEmptyText: s.search ? "Nothing on the menu matches “" + s.search + "”." : "No dishes in this section.",
 
@@ -7014,11 +7160,64 @@ class Component extends DCLogic {
         modalTitle: m.id ? d.name || "Dish" : "New dish",
         modalSub: m.id ? "Editing the chain master \u00b7 outlet price overrides apply on top" : "Chain master price \u00b7 outlet overrides apply on top",
         mDishB: true,
-        dbArtStyle: d.img
-          ? "width:62px;height:62px;border-radius:12px;flex-shrink:0;background-image:url(" + d.img + ");background-size:cover;background-position:center"
-          : "width:62px;height:62px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;font-size:17px;font-weight:800;letter-spacing:.02em;background:color-mix(in oklab, " + meta.color + " 16%, transparent);color:" + meta.color + ";border:1px solid color-mix(in oklab, " + meta.color + " 35%, transparent)",
-        dbArtText: d.img ? "" : (this.initials(d.name) || "?"),
-        dbArtNote: d.img ? "Photograph set \u00b7 the till shows it on the tile" : "No photograph \u2014 the till and the QR menu show this artifact in its place, in the section's colour",
+        /* The preview is the RICH artifact — a single tile can afford the
+           gradient and the ring that a grid of three hundred cannot. It is
+           also the same composition the till and the phone will draw, so what
+           is being previewed is the thing itself and not an impression of it.
+           And the photo goes through photoUrl(): a data URL in a style string
+           truncates at its own semicolon and paints nothing. */
+        dbArt: this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }),
+        dbPhoto: this.photoUrl(d.img),
+        dbArtStyle: "position:relative;width:74px;height:74px;border-radius:13px;flex-shrink:0;overflow:hidden;border:1px solid var(--line);"
+          + (d.img ? "background:var(--bg-2)" : this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }).plate),
+        dbArtPhoto: d.img
+          ? "position:absolute;inset:0;background-image:url(" + this.photoUrl(d.img) + ");background-size:cover;background-position:center"
+          : "display:none",
+        dbArtGlyph: d.img ? "display:none" : this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }).glyph,
+        dbArtRing: d.img ? "display:none" : this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }).ring,
+        dbArtNote: d.img ? "Photograph set \u00b7 the till tile and the QR menu show it"
+          : "No photograph \u2014 the till and the QR menu show this artifact, drawn from the colour of " + meta.name,
+        /* ── the Photograph block ──────────────────────────────────────────
+           A 4 MB camera JPEG in the offline cache costs the terminal its whole
+           storage budget, so the image is downscaled on the device before it is
+           ever held: 720px on its longest side at q0.82, which lands around
+           60–120 KB. */
+        dbUpload: (e) => {
+          const f = e.target.files && e.target.files[0];
+          // Clearing the input is what lets the same file be picked twice —
+          // without it a second attempt after a mistake silently does nothing.
+          const clear = () => { try { e.target.value = ""; } catch (x) {} };
+          if (!f) return clear();
+          if (!/^image\//.test(f.type || "")) { clear(); return this.toast("That file is not an image", "warn"); }
+          const rd = new FileReader();
+          rd.onload = () => {
+            const im = new Image();
+            im.onload = () => {
+              const max = 720;
+              const sc = Math.min(1, max / Math.max(im.width, im.height));
+              const cv = document.createElement("canvas");
+              cv.width = Math.round(im.width * sc); cv.height = Math.round(im.height * sc);
+              cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+              put({ img: cv.toDataURL("image/jpeg", 0.82) });
+              this.toast("Photograph attached \u00b7 save the dish to publish it");
+            };
+            im.onerror = () => this.toast("That image could not be read", "warn");
+            im.src = String(rd.result || "");
+          };
+          rd.onerror = () => this.toast("That image could not be read", "warn");
+          rd.readAsDataURL(f);
+          clear();
+        },
+        // An uploaded image shows the field EMPTY with a placeholder saying so,
+        // rather than a data URL nobody can read — and a stray keystroke in a
+        // field holding 90 KB of base64 would otherwise destroy the upload.
+        dbImgUrl: /^data:/.test(String(d.img || "")) ? "" : (d.img || ""),
+        dbImgPlaceholder: /^data:/.test(String(d.img || "")) ? "Uploaded from this device" : "\u2026or paste an image URL",
+        onDbImgUrl: (e) => put({ img: e.target.value.trim() }),
+        dbImgRemoveStyle: d.img
+          ? "padding:9px 14px;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;white-space:nowrap"
+          : "display:none",
+        dbImgRemove: () => { put({ img: "" }); this.toast("Photograph removed \u00b7 back to the section artifact"); },
         dbName: d.name || "", onDbName: (e) => put({ name: e.target.value }),
         dbDesc: d.desc || "", onDbDesc: (e) => put({ desc: e.target.value.slice(0, 90) }),
         dbDescCount: (d.desc || "").length + " / 90",
@@ -7071,10 +7270,14 @@ class Component extends DCLogic {
           const next = {
             name: name, desc: String(d.desc || "").trim(), cat: d.cat, price: Math.round(price),
             station: d.station, tags: (d.tags || []).slice(), spice: d.spice || 0,
-            addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, veg: (d.tags || []).indexOf("veg") >= 0
+            addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, veg: (d.tags || []).indexOf("veg") >= 0,
+            // The photograph saves with everything else, or the Photograph
+            // block would be a control that does nothing — it travels through
+            // the same outbox and the same item.image column as the name.
+            img: String(d.img || "")
           };
           if (m.id) this.patchRows("menu", [m.id], next, name + " updated \u00b7 " + this.catMeta(d.cat).name + " \u00b7 " + MVRc(price), "menu");
-          else this.insertRow("menu", Object.assign({ id: this.nextId("menu", "m"), img: "", recipe: [] }, next),
+          else this.insertRow("menu", Object.assign({ id: this.nextId("menu", "m"), recipe: [] }, next),
             "Dish created \u00b7 " + name + " at " + MVRc(price), "menu_items");
         }
       };
@@ -8369,24 +8572,113 @@ class Component extends DCLogic {
     done.forEach((x) => this.patchSignal(x.id, { ing: 1 }));
     if (touched) this.setState({ tickets: t });
   }
-  // One stroke glyph per menu section, drawn in the same language as the nav.
-  CAT_ICONS() {
-    return {
-      all: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
-      starter: "M4 13h16M6.5 13a5.5 5.5 0 0 1 11 0M3 17h18",
-      main: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12",
-      grill: "M12 3c3 2.6 4.5 5 4.5 7.5a4.5 4.5 0 0 1-9 0C7.5 9 8.6 7.9 10 7c0 1.8.9 2.7 1.6 2.7.8 0 1.1-1.4 1-2.5-.1-1.6-.6-3-.6-4.2zM5 21h14",
-      rice: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M12 4v3M9 6.5V8M15 6.5V8",
-      side: "M6 12h12a6 6 0 0 1-12 0zM4 20h16M10 8V5M14 8V6",
-      dessert: "M8.5 21h7l1-8h-9zM7 13a5 5 0 0 1 10 0M12 3v2M10.5 5.5h3",
-      drink: "M6 4h12l-1.4 9h-9.2zM12 13v6M8.5 19h7M15.5 8h3",
-      soup: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M9 3v3M12 2v4M15 3v3",
-      salad: "M3 12h18a9 9 0 0 1-18 0zM12 3a4 4 0 0 1 4 4M12 3a4 4 0 0 0-4 4",
-      seafood: "M3 12c4-5 14-5 18 0-4 5-14 5-18 0zM17 12h.01M6 8.5 3 6M6 15.5 3 18",
-      coffee: "M4 8h12v5a5 5 0 0 1-10 0zM16 9h2a2.5 2.5 0 0 1 0 5h-2M4 21h14"
-    };
-  }
+  /* ONE GLYPH SET, and it is in app/kashikeyo-data.js because the guest's
+     phone draws the same plates from it. A second copy here is how the
+     allergen table ended up with two key vocabularies and a diet that blocked
+     one never blocked the other. */
+  CAT_ICONS() { return (K() || {}).SECTION_GLYPHS || {}; }
   catIcon(key) { const I = this.CAT_ICONS(); return I[key] || I.main; }
+
+  /* ═══ THE SECTION ARTIFACT ═══════════════════════════════════════════════
+     No dish is ever a blank tile or a grey box. Where there is no photograph
+     the plate is the SECTION's hue with that section's glyph struck through
+     it, composed from a seed so two dishes in one section never resolve to
+     the same tile and a dish's tile is stable everywhere it appears — the
+     till grid, the editor preview and the guest's phone all draw the same
+     plate for the same dish.
+
+     A NEW OUTLET'S MENU HAS NO PHOTOGRAPHS AT ALL, which is the case this
+     exists for: what stood here was a 30px band carrying the dish's initials,
+     and a grid of those reads as a placeholder rather than as a menu. */
+  artSeed(key) {
+    const k = String(key || "?");
+    let h = 7;
+    for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) % 99991;
+    return h % 4;
+  }
+  /* ONE MASKED SPAN PER TILE, NOT ONE <svg>. Three hundred inline SVGs plus
+     three hundred gradient plates saturate the main thread on a section
+     switch; a mask is a single paint the compositor already knows how to do.
+
+     AND THE MASK URL CARRIES NO SEMICOLON. `data:image/svg+xml;utf8,…` inside
+     an inline style value ends the declaration at the semicolon, so the mask
+     is dropped and the glyph paints as a solid block of hue. `data:...+xml,`
+     with the payload percent-encoded is the form that survives. */
+  artGlyph(icon, hue, rot) {
+    const d = this.catIcon(icon);
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
+      + " stroke='%23000' stroke-width='1.15' stroke-linecap='round'"
+      + " stroke-linejoin='round'><path d='" + d + "'/></svg>";
+    const url = "data:image/svg+xml," + svg.replace(/#/g, "%23").replace(/"/g, "%22")
+      .replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\s+/g, " ");
+    return "position:absolute;left:50%;top:50%;width:46%;height:46%;"
+      + "transform:translate(-50%,-50%) rotate(" + rot + "deg);"
+      + "background:" + this.artMix(hue, 74) + ";"
+      + "mask:url(\"" + url + "\") center/contain no-repeat;"
+      + "-webkit-mask:url(\"" + url + "\") center/contain no-repeat";
+  }
+  artMix(hue, pct) { return "color-mix(in oklab, " + hue + " " + pct + "%, transparent)"; }
+  /* Cached per id|hue|icon|variant, because the till repaints this grid on
+     every section switch and every line added, and the composition cannot
+     change for a given dish. */
+  artifact(dish, opts) {
+    const o = opts || {};
+    const hue = this.catHue(dish.cat);
+    const meta = this.catMeta(dish.cat);
+    const icon = meta.icon || dish.cat;
+    const key = String(dish.id || dish.name) + "|" + hue + "|" + icon + "|" + (o.rich ? "r" : "f");
+    this._art = this._art || {};
+    if (this._art[key]) return this._art[key];
+    const v = this.artSeed(dish.id || dish.name);
+    const rot = [-8, 7, -14, 11][v];
+    const ang = [126, 214, 44, 302][v];
+    const ring = [[-16, -24, 80], [56, -30, 88], [60, 46, 74], [-22, 42, 82]][v];
+    /* FLAT IN A GRID, RICH ON A SINGLE TILE. A 300-dish menu means 300 plates,
+       and a stacked gradient per plate is a rasterisation each. The flat
+       variant resolves to one colour and costs nothing. */
+    const plate = o.rich
+      ? "background:linear-gradient(" + ang + "deg, " + this.artMix(hue, 26) + " 0%, "
+        + this.artMix(hue, 6) + " 78%), var(--bg-2)"
+      : "background:color-mix(in oklab, " + hue + " 15%, var(--bg-2))";
+    const out = {
+      plate: plate,
+      glyph: this.artGlyph(icon, hue, rot),
+      ring: o.rich
+        ? "position:absolute;left:" + ring[0] + "%;top:" + ring[1] + "%;width:" + ring[2]
+          + "%;aspect-ratio:1;border-radius:50%;border:1px solid " + this.artMix(hue, 24)
+        : "display:none"
+    };
+    this._art[key] = out;
+    return out;
+  }
+
+  /* ═══ A PHOTOGRAPH THE STYLE LAYER CAN ACTUALLY SEE ══════════════════════
+     `dish.img` persists as a data URL, and a data URL contains
+     `image/jpeg;base64` — a semicolon, which inside an inline style value
+     ENDS THE DECLARATION. Concatenated into `background-image:url(…)` it
+     truncates to `data:image/jpeg` and paints nothing at all.
+
+     So the data URL is what is stored and a blob: URL is what CSS is given.
+     Cached by the raw data URL for the session; the objectURL is never
+     persisted, because it means nothing to the next page load. */
+  photoUrl(src) {
+    const v = String(src || "");
+    if (!v) return "";
+    if (v.slice(0, 5) !== "data:") return v;
+    this._blob = this._blob || {};
+    if (this._blob[v]) return this._blob[v];
+    try {
+      const comma = v.indexOf(",");
+      const head = v.slice(5, comma);
+      const type = head.split(";")[0] || "image/jpeg";
+      const bin = atob(v.slice(comma + 1));
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([buf], { type: type }));
+      this._blob[v] = url;
+      return url;
+    } catch (e) { return ""; }
+  }
   // One hue per menu section, resolved from the token layer so both themes get
   // the accessible variant. Unknown sections fall back to neutral rather than
   // borrowing a hue that already means something.
@@ -10018,8 +10310,16 @@ class Component extends DCLogic {
     const sortNow = sorts.find((x) => x[0] === sortKey) || sorts[0];
 
     return {
-      tabs: [{ label: "All" }].concat(cats.map((c) => ({ label: this.catMeta(c.id).name })))
-        .map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) })),
+      /* Each tab carries its section's own hue and its own count, so the track
+         reads as the menu's shape rather than as a row of words. "All dishes"
+         leads with the total; the picker that used to hide both is gone. */
+      tabs: [{ label: "All dishes", count: K0.MENU.length }]
+        .concat(cats.map((c) => ({
+          label: this.catMeta(c.id).name, hue: this.catHue(c.id),
+          count: K0.MENU.filter((m) => m.cat === c.id).length
+        })))
+        .map((t, i) => ({ label: t.label, hue: t.hue, count: t.count, on: tab === i,
+          pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) })),
       guideTitle: "Putting a dish on sale", guide: ["Create the dish — section, price, description, station and tags", "Attach its add-ons so the till and the QR menu offer the same list", "Build its recipe in Recipes & Costing so food cost is real", "Hide it to take it off every channel; 86 it to pull it for tonight only"],
       actions: [
         { label: "Sort \u00b7 " + sortNow[1], go: () => { const i = sorts.findIndex((x) => x[0] === sortKey); this.setState({ menuSort: sorts[(i + 1) % sorts.length][0] }); } },

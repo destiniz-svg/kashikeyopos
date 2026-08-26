@@ -64,7 +64,8 @@ app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
 app/kashikeyo-yield.js  what a kilo plates — the estimate BOTH runtimes read
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
-app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels) — no trade
+app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels,
+                       the section glyphs both apps draw) — no trade
 app/kashikeyo-api.js   the durable outbox and the API client
 app/kashikeyo-escpos.js ESC/POS bytes — one composer, browser AND server
 app/kpos-print.js      how the bytes reach the paper: WebUSB · serial · LAN relay
@@ -1179,6 +1180,118 @@ idempotent by construction (a row already present by key is skipped), so
 replaying it on every bootstrap costs a comparison. **The server was never at
 fault** — `dish_upsert` writes the row, and the bootstrap publishes it before
 and after the sale; proved by pushing both against a real outlet.
+
+## No dish is ever a blank tile
+
+A menu starts life unphotographed, and every screen that renders one has to
+survive that. What used to stand in was the dish's INITIALS on a short tinted
+band — which reads as a placeholder rather than as a menu, and gave two dishes
+in one section nothing to tell them apart but a colour.
+
+**The section artifact** is the answer: the section's hue with the section's
+glyph struck through it, composed from a seed so a dish's tile is stable
+everywhere it appears and no two dishes in one section resolve to the same
+one. `artSeed()` hashes the dish id (`h = (h*31 + c) % 99991`, then `% 4`) into
+a rotation, a gradient angle and a ring offset.
+
+Two variants, and the distinction is load-bearing. **Flat** in grids — one
+resolved `color-mix`, no gradient — because a 300-dish menu means 300 plates
+and a stacked gradient per plate is a rasterisation each. **Rich** on a single
+tile (the editor's preview), where the gradient and the decorative ring cost
+nothing.
+
+**One masked span per tile, never an `<svg>` per tile.** Three hundred inline
+SVGs plus three hundred gradient plates saturate the main thread on a section
+switch; a mask is a single paint the compositor already knows. The style is
+cached per `id|hue|icon|variant`, because the till repaints this grid on every
+section switch and every line added.
+
+**A SEMICOLON ENDS AN INLINE DECLARATION, and that is two silent defects.**
+`data:image/svg+xml;utf8,…` truncates at its own semicolon when concatenated
+into a style string, so the mask is dropped and the glyph paints as a SOLID
+BLOCK of hue. `data:image/jpeg;base64,…` does the same in
+`background-image:url(…)` and paints nothing at all. Neither errors anywhere.
+So the mask URL is `data:image/svg+xml,` with the payload percent-encoded, and
+a photograph is rendered from a **blob: URL** minted by `photoUrl()` — the data
+URL is what persists, the blob is what CSS is given, cached per data URL for
+the session. `test/menuvisuals.test.js` asserts no composed URL carries a
+semicolon.
+
+**One glyph set, in `app/kashikeyo-data.js`**, because the guest's phone draws
+the same plates. A second copy is how the allergen table ended up with two key
+vocabularies — "shellfish" in one and "crustacean" in the other — so a diet
+that blocked one never blocked the other. The till reads `SECTION_GLYPHS` and
+`SECTION_HUES` from there; neither app holds a path of its own, and the test
+fails on any that does. The guest portal is told category NAMES and no icon
+key, so `glyphFor()` matches by keyword — "Hedhikaa" gets the starter glyph
+rather than a generic square.
+
+**A dish photograph is downscaled on the device**: 720px on its longest side at
+q0.82, which lands around 60–120 KB. A 4 MB camera JPEG in the offline cache
+costs the terminal its whole storage budget. `item.image`, `dish_upsert` and
+the bootstrap have carried `img` since the schema was written; what was missing
+was every part of the client — the upload, the render and the editor block.
+
+### The till tile is a record, not a poster
+
+A 74px plate leads, the name and description sit beside it, and the trade facts
+get a bar of their own: price, cost percentage, and a stepper. A dish is read
+in one line of sight and the grid holds three times as many of them, where the
+old media band across the top cost every card its height and told a cashier
+nothing.
+
+**A button cannot contain a button.** The card is a container, the face is the
++1 target, and the stepper sits outside it — nesting them makes the markup
+invalid and the inner taps unreliable. The stepper is also what makes a
+mis-tap a correction rather than a void: `qtyOnTicket()` reads what is already
+on the share being served and `stepLine()` takes one off, refusing a line the
+kitchen already has by name.
+
+`content-visibility:auto` with `contain-intrinsic-size: auto 132px`, so the
+tiles below the fold cost nothing until they are scrolled to.
+
+### Both rails scroll; neither wraps
+
+The till's section rail is **one scrolling row**. The selected tab is filled
+with its own section's hue and drops its dot, because its whole field is
+already that colour; an unselected tab leads with the dot instead, which is
+what makes the hue readable across the whole rail rather than only on whichever
+one is current. The count is a **bare numeral** — it read "19 dishes" on every
+tab, so the word said nothing on any of them and cost the rail the width it
+needed to show the next section.
+
+The back-office strip is a **recessed track carrying one raised chip**. A black
+filled pill in a row of outlined ones reads as a button that does something,
+not as where you are.
+
+**The native `<select>` picker is deleted.** Any strip past five tabs used to
+collapse on a phone into a card with an invisible select over it — which hid
+the counts and the section hues, showed nothing until it was tapped, and
+replaced a rail somebody could read with a control they had to open. The track
+scrolls at every width.
+
+**The track is what yields.** `flex:1 1 auto; min-width:0` on the track and
+`flex:0 0 auto; min-width:max-content` on the actions. The other way round let
+the actions' nowrap buttons overflow leftwards, paint on top of the tabs and
+swallow their taps — measured in a browser, and now asserted there.
+
+### Long lists page
+
+The till renders the first 60 of the filtered set and tables 100 rows (40 on a
+phone, where each row is a stacked record and costs more). Both offer the same
+dashed "load the rest", and the cap lifts for the session — it resets nothing.
+Measured on the prototype: the till screen 9,230 → 2,123 DOM nodes, Menu Master
+12,427 → 4,074.
+
+### The guest side is one background layer per plate
+
+Same composition, guest palette, and **no extra element**: the hue is baked
+into the glyph's own `stroke`, so the artifact is a `background-image` plus a
+`background-color` rather than a masked span over a tinted box. A phone
+painting twenty of these while the guest scrolls has a frame budget the counter
+does not. The dish hero stays a dark field whether or not there is a
+photograph, because the phone's own white status bar and back button sit on top
+of it.
 
 ## Two ways a dish comes off sale, and neither survived a bootstrap
 
@@ -2969,7 +3082,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 440 tests
+npm test                          # 456 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

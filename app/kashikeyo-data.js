@@ -480,10 +480,56 @@
      person's shortcut. What the deployment tab says now is written where it is
      rendered, so the two cannot drift apart again. */
 
+  /* ═══ THE SECTION GLYPH SET ══════════════════════════════════════════════
+     One stroke icon per menu section, and it lives HERE rather than in the
+     terminal because the guest's phone draws the same plates. Two copies is
+     how the allergen table ended up with two key vocabularies — "shellfish"
+     in one and "crustacean" in the other — so a diet that blocked one never
+     blocked the other. The same file, loaded by both, or a dish's tile means
+     one thing at the counter and another on the phone.
+
+     24×24, fill:none, stroke-width 1.15, round caps and joins. */
+  var SECTION_GLYPHS = {
+    all: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+    starter: "M4 13h16M6.5 13a5.5 5.5 0 0 1 11 0M3 17h18",
+    main: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12",
+    grill: "M12 3c3 2.6 4.5 5 4.5 7.5a4.5 4.5 0 0 1-9 0C7.5 9 8.6 7.9 10 7c0 1.8.9 2.7 1.6 2.7.8 0 1.1-1.4 1-2.5-.1-1.6-.6-3-.6-4.2zM5 21h14",
+    rice: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M12 4v3M9 6.5V8M15 6.5V8",
+    side: "M6 12h12a6 6 0 0 1-12 0zM4 20h16M10 8V5M14 8V6",
+    dessert: "M8.5 21h7l1-8h-9zM7 13a5 5 0 0 1 10 0M12 3v2M10.5 5.5h3",
+    drink: "M6 4h12l-1.4 9h-9.2zM12 13v6M8.5 19h7M15.5 8h3",
+    soup: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M9 3v3M12 2v4M15 3v3",
+    salad: "M3 12h18a9 9 0 0 1-18 0zM12 3a4 4 0 0 1 4 4M12 3a4 4 0 0 0-4 4",
+    seafood: "M3 12c4-5 14-5 18 0-4 5-14 5-18 0zM17 12h.01M6 8.5 3 6M6 15.5 3 18",
+    coffee: "M4 8h12v5a5 5 0 0 1-10 0zM16 9h2a2.5 2.5 0 0 1 0 5h-2M4 21h14"
+  };
+  /* One hue per section, by section index. The till resolves shipped sections
+     through theme tokens first; a merchant-created section — and every section
+     on the guest's phone, which is told only names — falls back to these. */
+  var SECTION_HUES = ["#b8431d", "#1d6b57", "#6f47a8", "#a8721a", "#2b5a9e",
+    "#9c2f63", "#4d6b23", "#7f5330"];
+  /* THE GUEST PORTAL IS TOLD NAMES, NOT KEYS. It reads the published category
+     list, which carries no `icon`, so the glyph is matched by keyword — first
+     hit wins, and anything unmatched is a main. A section called "Hedhikaa"
+     gets the starter glyph rather than a generic square. */
+  function glyphFor(name) {
+    var t = String(name || "").toLowerCase();
+    var direct = ["seafood", "salad", "soup", "coffee", "dessert", "grill",
+      "rice", "side", "starter", "drink"];
+    for (var i = 0; i < direct.length; i++) if (t.indexOf(direct[i]) >= 0) return direct[i];
+    if (/fish|reef|tuna/.test(t)) return "seafood";
+    if (/noodle|curry|curries/.test(t)) return "rice";
+    if (/juice|shake|cold|water|tea/.test(t)) return "drink";
+    if (/breakfast|snack|starter|hedhikaa/.test(t)) return "starter";
+    if (/sweet|cake|pudding/.test(t)) return "dessert";
+    return "main";
+  }
+
   window.KPOS = {
     ALLERGENS: ALLERGENS, DIETS: DIETS, MEAT_RE: RULES.MEAT_RE,
     CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU,
     MENU_CATEGORIES: MENU_CATEGORIES, MENU_SECTIONS: MENU_SECTIONS,
+    SECTION_GLYPHS: SECTION_GLYPHS, SECTION_HUES: SECTION_HUES, glyphFor: glyphFor,
     BANNERS: BANNERS, PROMOS: PROMOS, MODIFIERS: MODIFIERS,
     TIERS: TIERS, REWARDS: REWARDS,
     MODULES: MODULES, ROLES: ROLES, USERS: USERS, CUSTOMERS: CUSTOMERS,

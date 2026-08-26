@@ -45,6 +45,19 @@ function makeWindow() {
     innerWidth: 1440, innerHeight: 900,
     devicePixelRatio: 1,
     crypto: require('crypto').webcrypto || require('crypto'),
+    /* THREE GLOBALS THE PHOTOGRAPH PATH ACTUALLY USES. A dish's image persists
+       as a data URL and is rendered from a blob: URL, because a data URL
+       carries `image/jpeg;base64` and the semicolon ends any inline style
+       declaration it is concatenated into. Without these the shipped
+       photoUrl() falls into its own catch and returns "" — which reads as "no
+       photograph" and would let that whole path go unexercised here.
+       Node has all three; they are simply not on the stub window. */
+    atob: (b) => Buffer.from(String(b), 'base64').toString('binary'),
+    btoa: (b) => Buffer.from(String(b), 'binary').toString('base64'),
+    Blob: Blob,
+    URL: URL,
+    Image: class Image { set src(v) { this._src = v; } get src() { return this._src; } },
+    FileReader: class FileReader { readAsDataURL() {} },
     Event: class Event { constructor(t) { this.type = t; } },
     CustomEvent: class CustomEvent { constructor(t, o) { this.type = t; this.detail = (o || {}).detail; } },
     console

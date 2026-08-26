@@ -131,7 +131,7 @@ a:hover{color:#d33d26}
 
           <div class="qs" style="margin-top:9px;padding:0 20px 4px;display:flex;gap:8px;overflow-x:auto">
             <sc-for list="{{ cats }}" as="c" hint-placeholder-count="5">
-              <button onClick="{{ c.tap }}" style="{{ c.style }}">{{ c.name }}</button>
+              <button onClick="{{ c.tap }}" style="{{ c.style }}"><span style="{{ c.thumb }}"></span>{{ c.name }}</button>
             </sc-for>
           </div>
 
@@ -805,6 +805,77 @@ class Component extends DCLogic {
   }
   // A stable hue from the name, so Garlic Rice is the same colour on every
   // visit and every device — decoration, but consistent decoration.
+  /* ═══ THE SECTION ARTIFACT, GUEST SIDE ═══════════════════════════════════
+     The same plate the till draws, in the guest palette. ONE BACKGROUND LAYER
+     PER PLATE and no extra element: the hue is baked into the glyph's own
+     stroke, so the artifact is a background-image plus a background-color
+     rather than a masked span over a tinted box. A phone painting twenty of
+     these while the guest scrolls has a frame budget the counter does not.
+
+     The glyph set and the palette come from app/kashikeyo-data.js, which both
+     apps already load — the till composing a dish's tile from one table and
+     the phone from another is how the same dish ends up with two faces. */
+  artHue(catId) {
+    const k = window.KPOS || {};
+    const pal = k.SECTION_HUES || ["#b8431d"];
+    const list = k.MENU_CATEGORIES || [];
+    const i = list.findIndex((c) => c.id === catId);
+    return pal[(i < 0 ? 0 : i) % pal.length];
+  }
+  artName(catId) {
+    const list = (window.KPOS || {}).MENU_CATEGORIES || [];
+    const c = list.find((x) => x.id === catId);
+    return c ? c.name : "";
+  }
+  /* A DATA URL CANNOT GO IN AN INLINE STYLE. It carries `image/jpeg;base64`,
+     and the semicolon ends the declaration — the photo silently paints
+     nothing. The data URL is what the outlet published; a blob: URL is what
+     CSS is given. */
+  photoUrl(src) {
+    const v = String(src || "");
+    if (!v) return "";
+    if (v.slice(0, 5) !== "data:") return v;
+    this._blob = this._blob || {};
+    if (this._blob[v]) return this._blob[v];
+    try {
+      const comma = v.indexOf(",");
+      const type = v.slice(5, comma).split(";")[0] || "image/jpeg";
+      const bin = atob(v.slice(comma + 1));
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([buf], { type: type }));
+      this._blob[v] = url;
+      return url;
+    } catch (e) { return ""; }
+  }
+  /* The glyph as an SVG data URL. `data:image/svg+xml,` with a COMMA — the
+     `;utf8,` form truncates at its own semicolon exactly as a JPEG data URL
+     does, and the plate comes out as a flat block of colour. */
+  artGlyphUrl(catId, ink) {
+    const k = window.KPOS || {};
+    const g = k.SECTION_GLYPHS || {};
+    const key = k.glyphFor ? k.glyphFor(this.artName(catId)) : "main";
+    const d = g[key] || g.main || "";
+    const stroke = ink || this.artHue(catId);
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
+      + " stroke='" + stroke + "' stroke-opacity='0.5' stroke-width='1.1'"
+      + " stroke-linecap='round' stroke-linejoin='round'><path d='" + d + "'/></svg>";
+    return "data:image/svg+xml," + svg.replace(/#/g, "%23").replace(/"/g, "%22")
+      .replace(/</g, "%3C").replace(/>/g, "%3E");
+  }
+  // base/ink/tint let the dish hero be a dark field while every other surface
+  // is a translucent wash on white.
+  artifact(catId, glyphSize, base, ink, tintAlpha) {
+    const hue = this.artHue(catId);
+    const url = this.artGlyphUrl(catId, ink);
+    const tint = hue + (tintAlpha || "");
+    return "background-image:url(\"" + url + "\")"
+      + (base ? ",linear-gradient(0deg," + tint + "," + tint + ")" : "")
+      + ";background-size:" + glyphSize + " auto" + (base ? ",cover" : "")
+      + ";background-position:center" + (base ? ",center" : "")
+      + ";background-repeat:no-repeat" + (base ? ",no-repeat" : "")
+      + ";background-color:" + (base || (hue + "12"));
+  }
   hueOf(name) {
     let h = 0;
     const t = String(name || "");
@@ -1158,8 +1229,12 @@ class Component extends DCLogic {
       const on = s.cat === c.id;
       return {
         name: c.name,
-        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
-          + (on ? "background:#f4553c;color:#fff;box-shadow:0 4px 12px rgba(244,85,60,.28)" : "background:#fff;color:#6a6a70;border:1px solid #ececee"),
+        // The section's own glyph, so the chip row reads as the menu's shape
+        // rather than as a row of words. "Everything" borrows the all glyph.
+        thumb: "width:30px;height:30px;border-radius:50%;flex-shrink:0;display:block;"
+          + this.artifact(c.id === "all" ? "__all" : c.id, "56%"),
+        style: "flex-shrink:0;gap:9px;padding:7px 15px 7px 7px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
+          + (on ? "background:#fff;color:#f4553c;border:1px solid #f4553c" : "background:#fff;color:#6a6a70;border:1px solid #ececee"),
         tap: () => self.setState({ cat: c.id })
       };
     });
@@ -1188,20 +1263,17 @@ class Component extends DCLogic {
         tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
           ? "display:block;margin-top:4px;font-size:11px;color:#6a6a72;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
           : "display:none",
-        /* A photo earns a square; the ABSENCE of one does not. Menus start
-           life unphotographed — every card used to spend half its height on
-           a blank grey block, which makes a plain menu read as a broken one.
-           No photo now collapses the media to a short tinted band carrying
-           the dish's initials, hued stably from its name so the grid keeps
-           rhythm without pretending a photograph is on its way. */
-        imgStyle: m.img
-          ? "display:block;width:100%;aspect-ratio:1/1;border-radius:13px;background:#f1f1f3 center/cover url('" + m.img + "');"
-            + (dead ? "filter:grayscale(1);opacity:.5" : "")
-          : "display:grid;place-items:center;width:100%;height:54px;border-radius:13px;"
-            + "background:hsl(" + this.hueOf(m.name) + " 42% 94%);color:hsl(" + this.hueOf(m.name) + " 34% 46%);"
-            + "font-size:17px;font-weight:800;letter-spacing:.04em;"
-            + (dead ? "filter:grayscale(1);opacity:.5" : ""),
-        initial: m.img ? "" : this.initialsOf(m.name),
+        /* NO DISH IS EVER A BLANK TILE. What stood here was a short band with
+           the dish's initials, hued off its name — which meant a plain menu
+           read as an unfinished one, and two dishes in one section shared
+           nothing but a colour. The plate is the SECTION's artifact now: its
+           hue, its glyph, the same composition the till draws. */
+        imgStyle: (m.img
+          ? "background:#f1f1f3 center/cover url('" + this.photoUrl(m.img) + "');"
+          : this.artifact(m.cat, "36%") + ";")
+          + "display:block;width:100%;height:132px;border-radius:12px;"
+          + (dead ? "filter:grayscale(1);opacity:.5" : ""),
+        initial: "",
         badge: dead ? "Sold out" : "",
         badgeStyle: dead
           ? "position:absolute;left:7px;top:7px;font-size:10px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
@@ -1227,9 +1299,14 @@ class Component extends DCLogic {
       const al = this.allergensOf(d);
       V.dishName = d.name;
       V.dishDesc = d.desc || "";
-      V.dishImgStyle = d.img
-        ? "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;background:#f1f1f3 center/cover url('" + d.img + "')"
-        : "display:none";
+      /* The hero stays a DARK field whether or not there is a photograph: the
+         phone's own white status bar and the back button sit on top of it. */
+      V.dishImgStyle = "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;"
+        + (d.img
+          ? "background:#f1f1f3 center/cover url('" + this.photoUrl(d.img) + "')"
+          // A dark field, not a light one: the phone's own white status bar and
+          // the back button sit on top of this. White ink on it, 6b of tint.
+          : this.artifact(d.cat, "26%", "#241f1c", "#ffffff", "6b"));
       V.dishAllergens = al;
       V.dishAllergenStyle = al.length ? "margin-top:15px;padding:13px 14px;border-radius:15px;background:#fff9f0;border:1px solid #f3e3cc" : "display:none";
       V.allergenFoot = "Worked out from this dish's recipe. Tell your server about any allergy — a shared fryer or grill will not show up in an ingredient list.";
@@ -1288,7 +1365,10 @@ class Component extends DCLogic {
         opt: [l.opt, l.note].filter(Boolean).join(" · "),
         optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:#6a6a72;margin-top:2px;line-height:1.4" : "display:none",
         amt: this.fmt(((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty),
-        imgStyle: "display:block;width:52px;height:52px;border-radius:13px;flex-shrink:0;background:#f1f1f3 center/cover url('" + ((m && m.img) || "") + "')",
+        imgStyle: "display:block;width:52px;height:52px;border-radius:11px;flex-shrink:0;"
+          + ((m && m.img)
+            ? "background:#f1f1f3 center/cover url('" + this.photoUrl(m.img) + "')"
+            : this.artifact((m || {}).cat, "52%")),
         inc: () => { const c = s.cart.slice(); c[i] = Object.assign({}, c[i], { qty: c[i].qty + 1 }); self.setState({ cart: c }); },
         dec: () => {
           const c = s.cart.slice();
