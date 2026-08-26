@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { owner, withOutlet } = require('../db');
+const { owner, ownerForOutlet, withOutlet, CONTROL_DB } = require('../db');
 const { sign, hashPin, pairCode } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { forget } = require('../revoked');
@@ -52,10 +52,37 @@ function callerKey(req, deviceId) {
    returns counts and the outlet list — never a staff name, never a PIN. */
 r.get('/install', async function (req, res, next) {
   try {
-    const st = await owner().query('SELECT * FROM chain.install_state()');
+    /* WHICH STORE IS ASKING? On a per-install deploy there was only one, and
+       this read the process's own database. One app now serves many
+       businesses, and that database is one nobody trades in — so this returned
+       an empty outlet list to every terminal, loadRoster() saw no outlets and
+       returned early, and the lock screen could sign nobody in at all. The
+       till was unusable on a correctly configured install.
+
+       The host cannot answer it either: a store's own subdomain serves the
+       GUEST portal, and the till lives on the app's own hostname for every
+       customer. So the terminal says which store it is — from the outlet it
+       remembers, or from the one its owner's account handed it after signing
+       in at /account.
+
+       Saying so is the point. Answering about a database nobody trades in
+       reads as "this install is empty, go and onboard", and the first action
+       on that screen creates a second company. */
+    const asked = Number(req.query.outlet || req.query.outletId || 0);
+    if (CONTROL_DB() && !asked) {
+      return res.set('cache-control', 'no-store').json({
+        ready: false, outlets: [], merchant: null,
+        hasCompany: false, hasStaff: false,
+        needStore: true,
+        note: 'this app serves many stores — sign in at /account and it will'
+          + ' tell this terminal which one it belongs to'
+      });
+    }
+    const own = asked ? await ownerForOutlet(asked) : owner();
+    const st = await own.query('SELECT * FROM chain.install_state()');
     const s = st.rows[0] || { outlets: 0, staff: 0, company: 0 };
     const outlets = Number(s.outlets) > 0
-      ? await owner().query(
+      ? await own.query(
         // The rate in force today, resolved here rather than defaulted on the
         // client: a lock screen that says "GGST 0%" at an outlet charging 8%
         // is the first thing a manager will not trust.
@@ -71,7 +98,7 @@ r.get('/install', async function (req, res, next) {
     // trusts. The registration number, the TIN and the address are NOT here —
     // those go out only to a signed-in session.
     const co = Number(s.company) > 0
-      ? await owner().query('SELECT legal_name, country, base_currency, brand'
+      ? await own.query('SELECT legal_name, country, base_currency, brand'
         + ' FROM chain.company WHERE id = 1').then((q) => q.rows[0])
       : null;
     res.set('cache-control', 'no-store').json({

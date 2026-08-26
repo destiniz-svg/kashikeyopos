@@ -415,6 +415,23 @@ button.link:hover{text-decoration:underline}
 
   function land(session) {
     keep(session.token);
+    /* TELL THE TERMINAL WHICH STORE IT IS. One app serves many businesses, so
+       the lock screen cannot answer "who works here" without a store — and it
+       cannot work that out for itself: a store's own subdomain serves the
+       GUEST portal, and the till is on the app's hostname for every customer.
+       Nobody is signed in there to ask, either.
+
+       This is the one moment somebody IS signed in and the server knows what
+       they own, so this is where the terminal is told. Only the first outlet,
+       and only as a hint — the till still signs in against that outlet and the
+       server still refuses any other. */
+    try {
+      var first = (session.outlets || [])[0];
+      if (first && first.outlet_id) {
+        localStorage.setItem("kashikeyo.outlet", String(first.outlet_id));
+      }
+    } catch (e) { /* private mode: the lock screen asks them to pick */ }
+
     // The server decides where to go: it knows whether this account owns
     // anything yet, and the browser should not be guessing at it.
     if (session.next !== "onboarding") { location.href = "/"; return; }

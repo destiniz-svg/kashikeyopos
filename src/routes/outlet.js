@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { withOutletRead, withOutlet, owner, control } = require('../db');
+const { withOutletRead, withOutlet, ownerForOutlet, control } = require('../db');
 const { shapeError, storeUrl, memberUrl, joinUrl, baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
@@ -42,19 +42,30 @@ r.patch('/gst', sameOutlet, atLeast('owner'), async function (req, res, next) {
   const b = req.body || {};
   const want = b.registered === true || b.registered === 'yes' || b.registered === 'true';
   try {
+    /* THE BUSINESS THIS REQUEST IS FOR, not the database this process dialled.
+       These four calls used owner(), which is the process's own — and in a
+       registry install that is a database nobody trades in. It would have
+       marked THAT database's company registered and left the real one
+       unregistered, so every outlet kept tax_code NONE and charged nothing
+       while the screen said registered: a debt to MIRA nobody notices until an
+       audit. The owner CONNECTION is still right — registration is a company
+       fact that has to reach every outlet in one transaction, which no outlet
+       role can do — but privilege and address are separate decisions and only
+       the first had been made. */
+    const db = await ownerForOutlet(req.ctx.outletId);
     if (want) {
       const tin = String(b.tin == null ? '' : b.tin).trim();
       if (!tin) {
         return res.status(400).json({ error: 'a TIN is required to register — it is what MIRA issues and what your receipts will carry' });
       }
       const code = b.code === 'TGST' ? 'TGST' : 'GGST';
-      await owner().query('SELECT chain.register_for_gst($1,$2,$3,$4)',
+      await db.query('SELECT chain.register_for_gst($1,$2,$3,$4)',
         [tin, code, b.rate == null ? null : Number(b.rate), b.from || null]);
     } else {
       /* Coming OFF the register. The outlets have to follow in the same
          breath: a company marked unregistered whose outlets still hold a rate
          would keep charging tax it may no longer collect. */
-      const c = await owner().connect();
+      const c = await db.connect();
       try {
         await c.query('BEGIN');
         await c.query("UPDATE chain.outlet SET tax_code = 'NONE' WHERE tax_code <> 'NONE'");
@@ -66,9 +77,9 @@ r.patch('/gst', sameOutlet, atLeast('owner'), async function (req, res, next) {
       finally { c.release(); }
     }
 
-    const now = await owner().query(
+    const now = await db.query(
       'SELECT gst_registered, tin FROM chain.company WHERE id = 1');
-    const mine = await owner().query(
+    const mine = await db.query(
       'SELECT tax_code FROM chain.outlet WHERE id = $1', [req.ctx.outletId]);
     await withOutlet(req.ctx, (c) => c.query('SELECT chain.log($1,$2,$3,$4,$5)',
       ['gst_registration', 'company', '1', null,
@@ -129,7 +140,9 @@ r.get('/handle', sameOutlet, atLeast('admin'), async function (req, res, next) {
   try {
     const want = String(req.query.h || '').trim().toLowerCase();
     const id = req.ctx.outletId;
-    const mine = await owner().query(
+    // This store's own database — see ownerForOutlet(). Read from the process's
+    // database it showed whatever slug happened to be on that outlet id there.
+    const mine = await (await ownerForOutlet(id)).query(
       'SELECT slug FROM chain.outlet WHERE id = $1', [id]);
     // Retired addresses are registry rows now: they have to outlive a business
     // database being restored, and nobody else may claim them meanwhile.
@@ -169,9 +182,15 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
        retired, and the reverse kills every card already printed. The business
        database's slug is a copy and follows. */
     const q = await control().query('SELECT chain.rename_handle($1,$2) AS now', [id, want]);
-    const was = await owner().query(
+    /* THE COPY FOLLOWS IN THE STORE'S OWN DATABASE. Written through owner()
+       this claimed the new name in the registry and then renamed an outlet in
+       the process's database — so the registry said the store had moved and
+       the store's own row still carried the old address, which is the half-
+       done rename this transaction exists to prevent. */
+    const db = await ownerForOutlet(id);
+    const was = await db.query(
       'SELECT slug FROM chain.outlet WHERE id = $1', [id]).then((r) => (r.rows[0] || {}).slug);
-    await owner().query('UPDATE chain.outlet SET slug = $2 WHERE id = $1',
+    await db.query('UPDATE chain.outlet SET slug = $2 WHERE id = $1',
       [id, q.rows[0].now]);
     // The next request should see the new address rather than wait out the
     // directory's refresh window.

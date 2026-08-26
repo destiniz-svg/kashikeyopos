@@ -374,6 +374,86 @@ test('retention reaches every business, not the one this process dialled', opts,
   assert.ok(Number(trail.rows[0].after.op_log) >= 1);
 });
 
+/* THE OWNER CONNECTION IS A PRIVILEGE, NOT AN ADDRESS.
+
+   CLAUDE.md lists six places that legitimately reach for owner(): questions no
+   outlet role can answer, so they need a connection that bypasses both
+   isolation belts. That table justifies the PRIVILEGE. When the tenancy
+   boundary moved, nobody re-asked the other half — WHICH DATABASE — and
+   owner() still means "the one DATABASE_URL points at", which in a registry
+   install is a database nobody trades in.
+
+   Three handlers were reading and writing it:
+
+     · GET /api/auth/install — the lock screen. It returned an empty outlet
+       list to every terminal; loadRoster() sees no outlets and returns early,
+       so the till could sign NOBODY in. Unusable on a correct install, and it
+       reads as "this install is empty, go and onboard", whose first action
+       creates a second company.
+     · PATCH /outlet/:id/gst — it would have marked another database's company
+       registered and left the real one unregistered, so every outlet kept
+       tax_code NONE and charged nothing while the screen said registered.
+       That is a debt to MIRA nobody notices until an audit.
+     · PATCH /outlet/:id/handle — the registry claimed the new name and the
+       store's own row kept the old one: exactly the half-done rename that
+       transaction exists to prevent.
+
+   Proved here across two businesses, because one cannot show the difference. */
+test('privileged reads and writes open the right business', opts, async () => {
+  // The lock screen answers for the store that asked, and says so when none did.
+  const anon = await get('/api/auth/install');
+  assert.strictEqual(anon.body.needStore, true,
+    'with many stores and none named, it says so rather than answering about'
+    + ' a database nobody trades in');
+  assert.deepStrictEqual(anon.body.outlets, []);
+
+  const mine = await get('/api/auth/install?outlet=' + outletId);
+  assert.strictEqual(mine.body.ready, true, JSON.stringify(mine.body));
+  assert.ok(mine.body.merchant && /Seaside/.test(mine.body.merchant.name),
+    'and names THIS business: ' + JSON.stringify(mine.body.merchant));
+  assert.deepStrictEqual(mine.body.outlets.map((o) => o.id), [outletId]);
+
+  // GST registration is a company fact, and it lands in that company's database.
+  /* Read the PROCESS's own database before and after. That is where the old
+     code would have written — not the other business's — so it is the one
+     that proves the address moved. A registry has no chain.company at all,
+     which is itself the answer. */
+  const elsewhere = async () => {
+    try {
+      const q = await db.owner().query(
+        'SELECT gst_registered, tin FROM chain.company WHERE id = 1');
+      return JSON.stringify(q.rows[0] || null);
+    } catch (e) { return 'no company table here at all'; }
+  };
+  const before2 = await elsewhere();
+  const gst = await call('PATCH', '/api/outlet/' + outletId + '/gst',
+    { registered: true, tin: 'T7000009GST501', code: 'GGST', rate: 8 },
+    { authorization: 'Bearer ' + tillToken });
+  assert.strictEqual(gst.status, 200, JSON.stringify(gst.body));
+
+  const here = await db.ownerFor(bizDb).query(
+    'SELECT gst_registered, tin FROM chain.company WHERE id = 1');
+  assert.strictEqual(here.rows[0].gst_registered, true);
+  assert.strictEqual(here.rows[0].tin, 'T7000009GST501');
+
+  assert.strictEqual(await elsewhere(), before2,
+    'and the process\'s OWN database is untouched — that is where this used to'
+    + ' land, and it is the whole point of the boundary');
+
+  // A rename moves both the registry's claim and the store's own copy.
+  const moved = await call('PATCH', '/api/outlet/' + outletId + '/handle',
+    { handle: 'seaside-e2e-moved' }, { authorization: 'Bearer ' + tillToken });
+  assert.strictEqual(moved.status, 200, JSON.stringify(moved.body));
+  const slug = await db.ownerFor(bizDb).query(
+    'SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+  assert.strictEqual(slug.rows[0].slug, 'seaside-e2e-moved',
+    'the store\'s own row followed the registry, in its own database');
+  const claim = await db.control().query(
+    'SELECT name FROM chain.handle WHERE outlet_id = $1', [outletId]);
+  assert.strictEqual(claim.rows[0].name, 'seaside-e2e-moved',
+    'and the registry and the store agree, which they did not before');
+});
+
 test('the cluster is left clean', opts, async () => {
   if (srv) await new Promise((res) => srv.close(res));
   await db.shutdown();

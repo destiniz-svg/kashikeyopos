@@ -177,6 +177,37 @@ outlet:
 | `auth.js` — install state, merchant name | asked by the lock screen before anybody has signed in. |
 | `guest.js` — `handle_points_at()` | resolves a handle TO an outlet; the outlet is the answer, so it cannot be the context. |
 | `outlet.js` — handles and GST registration | handle uniqueness spans every outlet, and registration is a COMPANY fact that must reach all of them in one transaction. Rank 5. |
+
+**The owner connection is a PRIVILEGE, not an ADDRESS — and only the first half
+of that had ever been decided.** The table above says which handlers may bypass
+the belts. `owner()` also picks a DATABASE: the one `DATABASE_URL` points at.
+That was the same thing when a customer was a whole install. It is not now — in
+a registry install the process's own database is one nobody trades in — and
+three handlers went on using it after the boundary moved:
+
+- **the lock screen** (`GET /api/auth/install`) returned an empty outlet list to
+  every terminal. `loadRoster()` sees no outlets and returns early, so the till
+  could sign **nobody** in; worse, an empty answer reads as "this install has
+  not been set up", and the first action on that screen creates a second
+  company;
+- **GST registration** would have marked another database's company registered
+  and left the real one unregistered — every outlet still `NONE`, charging
+  nothing, while the screen said registered. A debt to MIRA nobody notices
+  until an audit;
+- **a handle rename** claimed the new name in the registry and renamed an
+  outlet in the process's database, which is exactly the half-done rename
+  `chain.rename_handle()` runs in one transaction to prevent.
+
+`ownerForOutlet(outletId)` is the address, resolved through the registry, and it
+has its own list in `test/wiring.test.js` for the same reason the other two do.
+
+**The lock screen now asks the terminal which store it is.** The host cannot
+answer — a store's subdomain serves the GUEST portal, and the till is on the
+app's own hostname for every customer — and nobody is signed in to ask. So a
+till carries `kashikeyo.outlet`: stamped after its first sign-in, or by
+`/account` the moment its owner signs in there. With no store named, `/install`
+answers `needStore` and the terminal goes to `/account` to be told, rather than
+being handed some other install's state.
 | `platform.js` | aggregates for the seller, guarded by `PLATFORM_KEY` and audited. |
 
 `test/wiring.test.js` pins that list. A seventh has to justify itself there,

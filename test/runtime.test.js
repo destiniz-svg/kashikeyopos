@@ -54,6 +54,26 @@ const PENDING = `(async () => {
     install: r.install || '', parked: !!r.parked }));
 })()`;
 
+/* A TILL KNOWS WHICH STORE IT IS. One app serves many businesses, so the lock
+   screen cannot be answered without a store — the host cannot say (a store's
+   subdomain serves the GUEST portal; the till is on the app's hostname for
+   every customer) and nobody is signed in to ask. A terminal with no store is
+   therefore sent to /account to be told which one it belongs to, and /account
+   has no KPOS globals, which is what a browser context with empty storage
+   used to walk into here.
+
+   A real till has that value: it is stamped after the first sign-in, or by
+   /account the moment its owner signs in. addInitScript rather than a page
+   evaluate, because it has to be there BEFORE the bridge boots. */
+const KPOS_OUTLET = Number(process.env.KPOS_OUTLET || 1);
+async function tillContext(browser) {
+  const c = await browser.newContext();
+  await c.addInitScript((id) => {
+    try { localStorage.setItem('kashikeyo.outlet', String(id)); } catch (e) {}
+  }, KPOS_OUTLET);
+  return c;
+}
+
 async function signedIn(page) {
   return page.evaluate(() => !!(window.KPOS_API && window.KPOS_API.signedIn
     && window.KPOS_API.signedIn()));
@@ -65,7 +85,7 @@ test('an op queued offline survives the tab being killed', { skip }, async (t) =
   try {
     // One persistent context, so IndexedDB survives the page closing — which
     // is exactly what a crashed tab and a reopened one share.
-    const ctx = await b.newContext();
+    const ctx = await tillContext(b);
     let page = await ctx.newPage();
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1800);
@@ -109,8 +129,8 @@ test('two tills selling the same last portion both reach the books',
       /* Two contexts is two devices: separate IndexedDB, separate storage,
          separate outbox. One browser with two tabs would share the outbox and
          prove nothing. */
-      const a = await b.newContext();
-      const c = await b.newContext();
+      const a = await tillContext(b);
+      const c = await tillContext(b);
       const pa = await a.newPage();
       const pc = await c.newPage();
       for (const p of [pa, pc]) {
@@ -161,7 +181,7 @@ test('two tills selling the same last portion both reach the books',
       /* AND A DEVICE UPGRADING ACROSS THAT CHANGE DOES NOT WALK BACK. It holds
          a number under the old outlet-namespaced key and none under the new
          one; starting again from zero would be the very defect being fixed. */
-      const upgraded = await b.newContext();
+      const upgraded = await tillContext(b);
       const pu = await upgraded.newPage();
       await pu.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
       await pu.evaluate(() => {

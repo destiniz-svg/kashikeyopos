@@ -231,6 +231,26 @@ async function dbFor(outletId) {
   return r.db;
 }
 
+/* THE OWNER CONNECTION FOR ONE OUTLET'S BUSINESS, which is not the same thing
+   as owner(). owner() is this PROCESS's database — the one DATABASE_URL points
+   at — and in a registry install that is a database nobody trades in.
+
+   The six deliberate owner() exceptions in CLAUDE.md justify the PRIVILEGE:
+   these are questions no outlet role can answer, so they need a connection
+   that bypasses both isolation belts. When the tenancy boundary moved, nobody
+   re-asked the other half of the question — WHICH DATABASE — and four handlers
+   went on reading and writing the process's own. The lock screen returned a
+   different install's outlets (in production, none, so a till could sign
+   nobody in); GST registration marked the wrong company registered while the
+   real one kept charging nothing; a handle rename claimed the name in the
+   registry and renamed a store in a database nobody was looking at.
+
+   Privilege and address are separate decisions. This is the address. */
+async function ownerForOutlet(outletId) {
+  const db = await dbFor(outletId);
+  return db ? ownerFor(db) : owner();
+}
+
 function poolFor(outletId, dbName) {
   const id = Number(outletId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('bad outlet id'), { status: 400 });
@@ -456,7 +476,7 @@ function forget(outletId) {
 }
 
 module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
-  owner, ownerFor, control, businessDb, dbPrefix, CONTROL_DB,
+  owner, ownerFor, ownerForOutlet, dbFor, control, businessDb, dbPrefix, CONTROL_DB,
   poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };

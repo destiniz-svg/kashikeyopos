@@ -1219,9 +1219,30 @@ test('only the named routers reach past the isolation belts', () => {
      role can be scoped to ask. */
   const allowed = {
     'onboarding.js': 'steps 1-3 run before an outlet or a session exists',
-    'auth.js': 'the lock screen asks before anybody has signed in',
-    'outlet.js': 'GST registration is a company fact that must reach every outlet',
+    'auth.js': 'the single-database fallback, where there is only one database'
+      + ' to be right about',
     'platform.js': 'aggregates for the seller, key-guarded and audited'
+  };
+
+  /* ownerForOutlet() IS A THIRD PRIVILEGE, and it gets its own list because it
+     answers a question owner() cannot: WHICH DATABASE. owner() is the one this
+     PROCESS dialled, and in a registry install that is a database nobody
+     trades in — so three handlers that legitimately needed the privilege were
+     using it against the wrong customer. The lock screen returned an empty
+     outlet list, so a till could sign nobody in; GST registration would have
+     marked another database's company registered while the real one kept
+     charging nothing; a rename claimed the name in the registry and renamed a
+     store nobody was looking at.
+
+     The old list justified the privilege and never the address. This one is
+     the address, and it is a list for the same reason the other two are: a
+     fourth caller has to say why. */
+  const addressed = {
+    'auth.js': 'the lock screen asks before anybody has signed in, so the'
+      + ' terminal names its own store',
+    'outlet.js': 'GST registration is a company fact that must reach every'
+      + ' outlet of THAT business, and a handle rename must move the store\'s'
+      + ' own copy as well as the registry\'s claim'
   };
 
   /* control() is a DIFFERENT privilege and gets its own list: it opens the
@@ -1241,15 +1262,23 @@ test('only the named routers reach past the isolation belts', () => {
 
 
   const clean = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  /* owner() and control() take no arguments, so empty parens are the whole
+     call. ownerForOutlet() takes the outlet — that IS the point of it — so it
+     is matched with its argument. Matching it on empty parens found nothing
+     and reported the exception as stale, which is the false negative this
+     whole test exists to avoid. */
+  const call = (name) => new RegExp('\\b' + name
+    + (name === 'ownerForOutlet' ? '\\s*\\(' : '\\s*\\(\\)'));
   const importsFrom = (src, name) =>
     new RegExp("require\\('\\.\\./db'\\)").test(src)
-      && new RegExp("\\b" + name + "\\s*\\(\\)").test(clean(src));
+      && call(name).test(clean(src));
 
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
   const uses = (name) => files.filter((f) =>
     importsFrom(fs.readFileSync(path.join(dir, f), 'utf8'), name));
 
-  [['owner', allowed], ['control', registry]].forEach(([name, list]) => {
+  [['owner', allowed], ['control', registry],
+    ['ownerForOutlet', addressed]].forEach(([name, list]) => {
     uses(name).forEach((f) => {
       assert.ok(list[f], 'src/routes/' + f + ' calls ' + name + '() — if that is'
         + ' deliberate, name it and its reason in this test and in CLAUDE.md,'

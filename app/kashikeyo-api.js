@@ -158,7 +158,22 @@
        returned one: every call after that threw "api.install is not a
        function". Boot survived it because boot runs before any bootstrap,
        and a soft reconnect that boots again on a live object did not. */
-    install() { return this._fetch("/api/auth/install", { anon: true }); }
+    /* WHICH STORE THIS TERMINAL BELONGS TO. One app serves many businesses now,
+       so the lock screen cannot be answered without naming a store — the host
+       cannot say (a store's subdomain serves the GUEST portal; the till lives
+       on the app's own hostname for everybody) and there is nobody signed in
+       to ask. So the terminal remembers: the outlet it last signed in at, or
+       the one its owner's account stamped here after signing in at /account. */
+    outletHint() {
+      if (this.outletId) return Number(this.outletId);
+      if (!has) return 0;
+      try { return Number(localStorage.getItem("kashikeyo.outlet")) || 0; }
+      catch (e) { return 0; }
+    }
+    install() {
+      var o = this.outletHint();
+      return this._fetch("/api/auth/install" + (o ? "?outlet=" + o : ""), { anon: true });
+    }
 
     async signIn(opts) {
       var r = await this._fetch("/api/auth/pin", {
