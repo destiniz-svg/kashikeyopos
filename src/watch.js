@@ -141,17 +141,41 @@ function render(state) {
 
 /* ── alerting ────────────────────────────────────────────────────────────── */
 
-/* A DANGLING ${{reference}} IS NOT AN ADDRESS. Railway lets a variable be
-   written as a reference to another service's; where the name inside the
-   braces is wrong the literal survives — non-empty, truthy, and useless. That
-   trap has already cost this build twice (src/email.js, panel/railway.js), and
-   here it buys the worst version of it: a watchdog that reports itself ON,
-   addressed to a string no mail provider will accept, telling nobody. Off and
-   saying so is strictly better. */
-const ALERT_TO = () => {
-  const v = String(process.env.ALERT_EMAIL || '').trim();
-  return email.unresolved(v) ? '' : v;
-};
+/* WHO TO TELL, AND WHERE THAT ADDRESS CAME FROM.
+
+   `ALERT_EMAIL` is the explicit answer and always wins: an install that wants
+   alerts somewhere other than the admin's inbox says so and is not overridden.
+
+   `PLATFORM_ADMIN_EMAIL` is the fallback, and it is not a guess. It is already
+   the address this install was handed as "the person who runs this" — it seeds
+   the platform admin. An install that has named that person and then has no
+   watchdog because a SECOND variable was never set is a fence somebody
+   believes in and does not have, which is the failure this whole file exists
+   to refuse.
+
+   The obvious workaround does not work, and that is why this reads the
+   variable rather than asking anybody to copy it: writing
+   `ALERT_EMAIL=${{PLATFORM_ADMIN_EMAIL}}` looks right and boots as UNSET,
+   because the platform resolves an unknown same-service reference to an EMPTY
+   STRING rather than leaving the literal. Measured on the live install, twice.
+
+   A DANGLING ${{reference}} IS STILL NOT AN ADDRESS. Where the name inside the
+   braces names another service and is wrong, the literal DOES survive —
+   non-empty, truthy, useless. That trap has already cost this build twice
+   (src/email.js, panel/railway.js), and here it buys the worst version of it:
+   a watchdog reporting itself ON, addressed to a string no mail provider will
+   accept, telling nobody. Off and saying so is strictly better. So both
+   sources go through the same guard, and the source is NAMED, because "which
+   variable is this reading" is the first thing an operator asks. */
+function alertSource() {
+  const pick = (name) => {
+    const v = String(process.env[name] || '').trim();
+    return v ? { name: name, to: email.unresolved(v) ? '' : v } : null;
+  };
+  return pick('ALERT_EMAIL') || pick('PLATFORM_ADMIN_EMAIL')
+    || { name: null, to: '' };
+}
+const ALERT_TO = () => alertSource().to;
 const REPEAT_MS = () => Math.max(1, Number(process.env.ALERT_REPEAT_HOURS || 6)) * 3600e3;
 const QUIET_MINS = () => Math.max(5, Number(process.env.DEVICE_QUIET_MINUTES || 60));
 
@@ -170,11 +194,13 @@ function configured() {
    wrong place. A missing address and a refusing transport are different
    problems with different fixes. */
 function why() {
-  if (!ALERT_TO()) {
-    return email.unresolved(process.env.ALERT_EMAIL)
-      ? 'ALERT_EMAIL is an unresolved platform reference — check the service'
+  const src = alertSource();
+  if (!src.to) {
+    return src.name
+      ? src.name + ' is an unresolved platform reference — check the service'
         + ' name inside the braces; there is nobody to tell'
-      : 'ALERT_EMAIL is not set, so there is nobody to tell';
+      : 'neither ALERT_EMAIL nor PLATFORM_ADMIN_EMAIL is set, so there is'
+        + ' nobody to tell';
   }
   const h = email.health();
   // The operator's half. `reason` is what an anonymous caller is told; the
@@ -341,8 +367,9 @@ function bootLine() {
   const off = why();
   return off
     ? '[watch] alerting is OFF — ' + off + '. /metrics still counts.'
-    : '[watch] alerting to ' + ALERT_TO() + ' · readiness, schema drift and'
-      + ' quiet devices · repeats every ' + Math.round(REPEAT_MS() / 3600e3) + 'h';
+    : '[watch] alerting to ' + ALERT_TO() + ' (' + alertSource().name + ')'
+      + ' · readiness, schema drift and quiet devices · repeats every '
+      + Math.round(REPEAT_MS() / 3600e3) + 'h';
 }
 
 module.exports = { meter, render, sweep, bump, observe, configured, why,

@@ -2117,7 +2117,7 @@ after it, a true recovery, and the log-only path.
 | Variable | Effect |
 | --- | --- |
 | `METRICS_KEY` | ≥16 chars. Unset, `/metrics` is a 404. |
-| `ALERT_EMAIL` | Where alerts go. Unset — or a dangling `${{reference}}`, which is the third place that trap has been laid — they are logged and the boot says which of the two it is. |
+| `ALERT_EMAIL` | Where alerts go. Falls back to `PLATFORM_ADMIN_EMAIL` — an install that named the person who runs it has named who to wake, and a second variable nobody set is a fence somebody believes in and does not have. Unset both, or a dangling `${{reference}}` (the third place that trap has been laid), and alerts are logged; the boot line says which variable it read, or which of the two states it is in. **Do not write `ALERT_EMAIL=${{PLATFORM_ADMIN_EMAIL}}`** — a platform resolves an unknown same-service reference to an EMPTY STRING rather than leaving the literal, so the copy silently vanishes and the watchdog boots off. Measured on the live install, twice. |
 | `ALERT_REPEAT_HOURS` | Reminder interval while a condition holds (6). |
 | `DEVICE_QUIET_MINUTES` | How long a writing device may go without delivering (60). |
 | `WATCH_INTERVAL_SECONDS` | Sweep interval (60, floor 15). First sweep is delayed 20 s so a deploy does not alert on pools that have not opened. |

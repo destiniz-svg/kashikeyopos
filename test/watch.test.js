@@ -127,11 +127,12 @@ test('a recovery says what is true, not the alarm with zeroes in it', async () =
 
 test('with no transport it still reaches the log, which is all that is left', async () => {
   reset();
-  const keep = process.env.ALERT_EMAIL;
+  const keep = process.env.ALERT_EMAIL, keepAdmin = process.env.PLATFORM_ADMIN_EMAIL;
   delete process.env.ALERT_EMAIL;
+  delete process.env.PLATFORM_ADMIN_EMAIL;
   try {
     assert.strictEqual(watch.configured(), false);
-    assert.match(watch.why(), /ALERT_EMAIL is not set/);
+    assert.match(watch.why(), /neither ALERT_EMAIL nor PLATFORM_ADMIN_EMAIL is set/);
     const lines = await capture(() => watch.sweep(broken));
     assert.ok(lines.length >= 3,
       'an install with nobody to email still writes the whole alert to the log'
@@ -142,14 +143,18 @@ test('with no transport it still reaches the log, which is all that is left', as
   } finally {
     if (keep === undefined) delete process.env.ALERT_EMAIL;
     else process.env.ALERT_EMAIL = keep;
+    if (keepAdmin === undefined) delete process.env.PLATFORM_ADMIN_EMAIL;
+    else process.env.PLATFORM_ADMIN_EMAIL = keepAdmin;
   }
 });
 
 test('the boot line says whether alerting is on, by name', () => {
-  const keep = process.env.ALERT_EMAIL;
+  const keep = process.env.ALERT_EMAIL, keepAdmin = process.env.PLATFORM_ADMIN_EMAIL;
   try {
     delete process.env.ALERT_EMAIL;
-    assert.match(watch.bootLine(), /alerting is OFF — ALERT_EMAIL is not set/,
+    delete process.env.PLATFORM_ADMIN_EMAIL;
+    assert.match(watch.bootLine(),
+      /alerting is OFF — neither ALERT_EMAIL nor PLATFORM_ADMIN_EMAIL is set/,
       'a watchdog nobody knows is switched off is worse than no watchdog,'
       + ' because somebody believes in it');
     assert.match(watch.bootLine(), /\/metrics still counts/,
@@ -157,6 +162,54 @@ test('the boot line says whether alerting is on, by name', () => {
   } finally {
     if (keep === undefined) delete process.env.ALERT_EMAIL;
     else process.env.ALERT_EMAIL = keep;
+    if (keepAdmin === undefined) delete process.env.PLATFORM_ADMIN_EMAIL;
+    else process.env.PLATFORM_ADMIN_EMAIL = keepAdmin;
+  }
+});
+
+/* AN INSTALL THAT NAMED THE PERSON WHO RUNS IT HAS NAMED WHO TO WAKE.
+   PLATFORM_ADMIN_EMAIL already carries that address — it seeds the platform
+   admin — so an install with a watchdog and no ALERT_EMAIL was one variable
+   away from telling nobody, and the obvious workaround makes it worse:
+   ALERT_EMAIL=${{PLATFORM_ADMIN_EMAIL}} boots as UNSET, because the platform
+   resolves an unknown same-service reference to an empty string rather than
+   leaving the literal. Measured on the live install, twice. */
+test('the platform admin is who to tell when nobody else is named', () => {
+  const keep = process.env.ALERT_EMAIL, keepAdmin = process.env.PLATFORM_ADMIN_EMAIL;
+  const keepKey = process.env.RESEND_API_KEY, keepFrom = process.env.EMAIL_FROM;
+  // A transport, so the boot line gets past "nothing to send with" and reaches
+  // the half this test is about: who it would send TO.
+  process.env.RESEND_API_KEY = 're_not_a_real_key';
+  process.env.EMAIL_FROM = 'KashikeyoPOS <hello@example.mv>';
+  require('../src/email')._reset();
+  try {
+    delete process.env.ALERT_EMAIL;
+    process.env.PLATFORM_ADMIN_EMAIL = 'runs-this@example.mv';
+    assert.doesNotMatch(String(watch.why() || ''), /nobody to tell/,
+      'there IS somebody to tell, and this install already named them');
+    assert.match(watch.bootLine(), /alerting to runs-this@example\.mv \(PLATFORM_ADMIN_EMAIL\)/,
+      'and the boot line names WHICH variable it read, because that is the'
+      + ' first thing an operator asks');
+
+    // Explicit always wins: an install wanting alerts elsewhere says so.
+    process.env.ALERT_EMAIL = 'oncall@example.mv';
+    assert.match(watch.bootLine(), /alerting to oncall@example\.mv \(ALERT_EMAIL\)/);
+
+    // And the dangling-reference guard covers the fallback too.
+    delete process.env.ALERT_EMAIL;
+    process.env.PLATFORM_ADMIN_EMAIL = '${{other.PLATFORM_ADMIN_EMAIL}}';
+    assert.match(watch.why(), /PLATFORM_ADMIN_EMAIL is an unresolved platform reference/,
+      'a literal that survived is named as one, whichever variable held it');
+  } finally {
+    if (keep === undefined) delete process.env.ALERT_EMAIL;
+    else process.env.ALERT_EMAIL = keep;
+    if (keepAdmin === undefined) delete process.env.PLATFORM_ADMIN_EMAIL;
+    else process.env.PLATFORM_ADMIN_EMAIL = keepAdmin;
+    if (keepKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = keepKey;
+    if (keepFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = keepFrom;
+    require('../src/email')._reset();
   }
 });
 
@@ -170,10 +223,10 @@ test('the boot line says whether alerting is on, by name', () => {
 test('an alert address that is a dangling reference is no address at all', () => {
   const keep = process.env.ALERT_EMAIL;
   try {
-    process.env.ALERT_EMAIL = '${{kashikeyopos.PLATFORM_ADMIN_EMAIL}}';
+    process.env.ALERT_EMAIL = '${{elsewhere.SOME_ADDRESS}}';
     assert.strictEqual(watch.configured(), false,
       'a reference that did not resolve is not somebody to tell');
-    assert.match(watch.why(), /unresolved platform reference/,
+    assert.match(watch.why(), /ALERT_EMAIL is an unresolved platform reference/,
       'and it is named as that, not as "not set" — one is a five-second fix'
       + ' inside the braces, the other is looking for a variable that is there');
     assert.match(watch.bootLine(), /alerting is OFF/,
