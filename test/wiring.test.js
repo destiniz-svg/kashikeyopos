@@ -1900,6 +1900,64 @@ test('a code that was not sent is never reported as one that was', () => {
     + ' boxes is the same claim in smaller type');
 });
 
+/* A DISH ADDED ON THE TILL VANISHED WHEN THE FIRST BILL WAS RUNG.
+
+   Reported from the live store, and it was two screens at once — the till grid
+   and the menu master — because both read K().MENU.
+
+   A back-office row created on the till lives in TWO places until the outlet
+   accepts it: unshifted into the live collection, and held in `state.local`.
+   `applyLocal()` is what puts the held copy back after a bootstrap replaces
+   window.KPOS wholesale, and it was wired like this:
+
+     if (!this.state.ready) window.addEventListener("kpos-data-ready", …);
+     else this.applyLocal();
+
+   `ready` starts as `!!window.KPOS`, and kashikeyo-data.js sets that and fires
+   kpos-data-ready before the component ever mounts — so the ELSE branch ran,
+   applyLocal() happened once, and the listener WAS NEVER REGISTERED. Every
+   hydrate after that replaced the menu with the server's copy and nothing put
+   the un-replayed row back.
+
+   The trigger is the first bill because that is the first push: a material
+   push fires kpos-sync-done, the bridge re-bootstraps, and the menu is
+   replaced. Reloading brought it back, which is what made a lost row look
+   like a display glitch.
+
+   Proved in real Chromium against both versions of the shipped page — WIPED
+   before, SURVIVED after. */
+test('an un-synced back-office row survives every bootstrap, not just the first', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const mount = page.slice(page.indexOf('_mountRest() {'),
+    page.indexOf('KPOS_REPAINT = (patch)'));
+  assert.ok(mount.length > 200, 'found _mountRest()');
+
+  assert.ok(!/if \(!this\.state\.ready\) window\.addEventListener\("kpos-data-ready"/.test(mount),
+    'the replay is no longer registered only when the data has not arrived yet'
+    + ' — which was never, because the data script fires before this mounts');
+  assert.match(mount, /window\.addEventListener\("kpos-data-ready", \(\) => \{[\s\S]*this\.applyLocal\(\)/,
+    'every kpos-data-ready replays the holding pen');
+  assert.match(mount, /if \(this\.state\.ready\) this\.applyLocal\(\);/,
+    'and it still runs immediately when the data was already there, so `ready`'
+    + ' means what it meant');
+
+  /* The bridge fires that event on EVERY hydrate for exactly this reason, and
+     a bootstrap replaces the collections wholesale. Both halves have to stay
+     true or the wiring above is decoration. */
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  assert.match(bridge, /dispatchEvent\(new Event\("kpos-data-ready"\)\)/,
+    'the bridge announces every hydrate');
+  assert.match(bridge, /K\[k\] = live\[k\];/,
+    'and a bootstrap does replace the collection, which is what makes the'
+    + ' replay necessary rather than merely tidy');
+
+  // applyLocal itself must stay idempotent, or replaying on every bootstrap
+  // would duplicate rows instead of restoring them.
+  const apply = page.slice(page.indexOf('applyLocal() {'), page.indexOf('/* ── master data, one seam'));
+  assert.match(apply, /if \(!arr\.some\(\(x\) => this\.rowKey\(x\) === this\.rowKey\(row\)\)\) arr\.unshift\(row\)/,
+    'a row the outlet has already accepted is skipped, not added twice');
+});
+
 /* A DATABASE IS NOT A LOBBY. Postgres grants CONNECT on every database to
    PUBLIC, so an outlet role could open a session on any business database in
    the cluster. It could read nothing there — every schema denied, belt one

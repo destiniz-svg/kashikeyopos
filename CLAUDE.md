@@ -1136,6 +1136,41 @@ declaration is derived where the recipe lives — `publishDeclaration()` in
 published onto the item. A dish nobody has written a recipe for **claims
 nothing**: silence beats an unearned "Vegetarian" on a reef fish.
 
+## A row added on the till, and the bootstrap that ate it
+
+Reported from a live store: a menu item added on the till disappeared from the
+till grid AND the menu master the moment the first bill was rung. Two screens
+at once, because both read `K().MENU`.
+
+A back-office row created on the till lives in TWO places until the outlet
+accepts it — `insertRow()` unshifts it into the live collection and holds a
+copy in `state.local`. `applyLocal()` is what puts the held copy back after a
+bootstrap replaces `window.KPOS` wholesale, and it was wired:
+
+```js
+if (!this.state.ready) window.addEventListener("kpos-data-ready", …);
+else this.applyLocal();
+```
+
+`ready` starts as `!!window.KPOS`, and `kashikeyo-data.js` sets that and fires
+`kpos-data-ready` before the component mounts — so the ELSE branch ran,
+`applyLocal()` happened once, and **the listener was never registered**. Every
+hydrate after that replaced the collections and nothing put the un-replayed
+rows back. It is the same defect as the hidden/86 flags, the yields and the
+batches, one level up: this time what was wiped was not a flag but the whole
+row.
+
+The trigger is the first BILL because that is the first push — a material push
+fires `kpos-sync-done`, the bridge re-bootstraps, the menu is replaced.
+Reloading brought it back, which is what made a lost row look like a display
+glitch. It affected every collection in `COLLS`, not just dishes.
+
+The listener is registered unconditionally now, and `applyLocal()` is
+idempotent by construction (a row already present by key is skipped), so
+replaying it on every bootstrap costs a comparison. **The server was never at
+fault** — `dish_upsert` writes the row, and the bootstrap publishes it before
+and after the sale; proved by pushing both against a real outlet.
+
 ## Two ways a dish comes off sale, and neither survived a bootstrap
 
 **Hiding a dish and 86-ing one are different decisions.** Hiding is a standing

@@ -2510,8 +2510,36 @@ class Component extends DCLogic {
   }
 
   _mountRest() {
-    if (!this.state.ready) window.addEventListener("kpos-data-ready", () => { this.applyLocal(); this.setState({ ready: true }); });
-    else this.applyLocal();
+    /* EVERY data-ready, NOT ONLY THE FIRST — and the `else` is why a dish
+       vanished the moment the first bill was rung.
+
+       `ready` starts as `!!window.KPOS` (line ~1979), and kashikeyo-data.js is
+       a plain script that sets window.KPOS and fires kpos-data-ready before
+       this component ever mounts. So `ready` was already true here, the else
+       branch ran applyLocal() once, and the listener WAS NEVER REGISTERED.
+
+       From then on every hydrate() replaced window.KPOS wholesale — that is
+       what a bootstrap is — and nothing put the un-replayed local rows back.
+       A dish created on the till lives in TWO places until the outlet accepts
+       it: unshifted into K().MENU, and held in state.local. The first replaced
+       the second's work, and both the till grid and the menu master read
+       K().MENU, so it disappeared from both at once.
+
+       The trigger is the first bill because that is the first push: a material
+       push fires kpos-sync-done, the bridge re-bootstraps, and the menu is
+       replaced. Reloading brought it back — applyLocal() runs once at mount —
+       which is what made it look like a display glitch rather than a lost row.
+
+       The listener is registered unconditionally now, and applyLocal() still
+       runs immediately when the data was already there, so the `ready`
+       semantics are unchanged. It is idempotent by construction: a row already
+       present by key is skipped, so replaying it after the outlet has accepted
+       it costs a comparison. */
+    window.addEventListener("kpos-data-ready", () => {
+      this.applyLocal();
+      if (!this.state.ready) this.setState({ ready: true });
+    });
+    if (this.state.ready) this.applyLocal();
     /* The bridge replaces window.KPOS wholesale when this outlet's records
        arrive — masters are not React state, so nothing would otherwise tell
        the screen they moved. One explicit hook beats guessing at a signal the
