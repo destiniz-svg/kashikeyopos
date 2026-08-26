@@ -265,10 +265,23 @@ test("the website forwards the till's paths and keeps its own", opts, async () =
     assert.strictEqual(r.headers.get('location'),
       'https://app.example.test' + p, p);
   }
-  // /signup is the website's own now: on the product's site, signing up
-  // means asking for a store, not opening a terminal's account page.
+  /* THE ACCOUNT IS ASKED FOR ONCE. This used to assert the opposite — that
+     /signup stayed on the site — and that is what produced the double entry
+     the customer hit: a business name, a name and an address here, then the
+     same name and address again on the app, because the app is the only place
+     an address can be verified and therefore the only place a business can be
+     created. Both front doors land on that one form now. 302 rather than 308:
+     they land on a form rather than repeating a POST, and this site may want
+     the path back. */
   const signup = await fetch(siteBase + '/signup', { redirect: 'manual' });
-  assert.strictEqual(signup.status, 200, 'the signup stays on the site');
+  assert.strictEqual(signup.status, 302, '/signup goes to the app');
+  assert.strictEqual(signup.headers.get('location'), 'https://app.example.test/account');
+  // Signing in is the returning half of the same door, and says so, or the
+  // form opens headed "Create your account".
+  const login = await fetch(siteBase + '/login', { redirect: 'manual' });
+  assert.strictEqual(login.status, 302, '/login goes to the app');
+  assert.strictEqual(login.headers.get('location'),
+    'https://app.example.test/account?mode=signin');
   // A lookalike prefix is not a till path.
   const look = await fetch(siteBase + '/membership-terms', { redirect: 'manual' });
   assert.notStrictEqual(look.status, 308, 'prefix lookalikes stay on the site');

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Start your free trial — KashikeyoPOS</title>
-<meta name="description" content="Request your store. Every new store starts on a 14-day free trial — no card required." />
+<title>Ask about a store — KashikeyoPOS</title>
+<meta name="description" content="Tell us about your business and we will be in touch." />
 <link rel="icon" href="/logo-mark.png" />
 <style>
 @font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-400.woff2) format('woff2');font-weight:400;font-display:swap}
@@ -72,11 +72,6 @@ button.primary:disabled{opacity:.55;cursor:default}
 .done p{color:var(--mute);font-size:14px;line-height:1.6}
 .done p b{color:var(--dim)}
 .hide{display:none}
-/* The handover, wearing the same weight as the button that got them here. */
-.goOn{display:inline-block;padding:14px 24px;border-radius:999px;font-size:15px;
-  font-weight:700;text-decoration:none;min-height:48px;line-height:20px;
-  background:var(--accent-btn);color:var(--on-accent);
-  box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 8px 24px rgba(244,85,60,.35)}
 
 /* WHERE THE KEYBOARD IS. This page had no focus rule at all, so tabbing
    through the screen tabs and the trial CTA moved focus invisibly — the one
@@ -94,11 +89,11 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
   <div class="logo"><span class="mark">K</span>KashikeyoPOS</div>
 
   <form id="reqForm">
-    <h1>Create your account</h1>
-    <p class="sub">Three things, then a six-digit code to your inbox. Confirming it creates
-      <b>your own database</b>, shared with nobody, and takes you straight into setup —
-      nobody is waiting to approve you. Every store starts on a <b>14-day free trial</b>.
-      No card required.</p>
+    <h1>Ask about a store</h1>
+    <p class="sub">This deploy has no app address configured, so signing up here is a
+      <b>message, not an account</b>. Tell us about your business and somebody will write
+      back with your store's address. If you were expecting to create an account yourself,
+      the link you followed is pointing at the wrong place.</p>
 
     <label for="storeName">Business name</label>
     <input id="storeName" required maxlength="120" placeholder="Seaside Café" />
@@ -110,28 +105,17 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
     <input id="email" type="email" required maxlength="200" autocomplete="email" placeholder="you@business.mv" />
 
     <div class="error" id="err"></div>
-    <button class="primary" type="submit" id="sendBtn">Create my account</button>
-    <div class="fine">You set your own password on your own store — we never send you one
-      and we never have it. By continuing you agree to the
-      <a href="/terms" style="color:var(--mute)">Terms</a>
+    <button class="primary" type="submit" id="sendBtn">Send</button>
+    <div class="fine">We never ask for a password here and we never have one. By continuing you
+      agree to the <a href="/terms" style="color:var(--mute)">Terms</a>
       &amp; <a href="/privacy" style="color:var(--mute)">Privacy Policy</a>.</div>
   </form>
 
   <div class="done" id="done">
     <div class="badge">✓</div>
-    <h1 id="doneTitle">Carry on now</h1>
-    <p id="doneNow">Next you confirm <b id="doneEmail"></b> is yours &mdash; we send a six-digit code
-      to it &mdash; and your store is created straight away. You choose your own password on your
-      own store; we never send you one and we never have it.</p>
-    <p id="doneWait" class="hide">We're setting up your store. You'll get an email at
-      <b id="doneEmail2"></b> with your store's address and a setup code &mdash; usually within a
-      day. You choose your own password on your own store; we never send you one and we never
-      have it.</p>
-    <p style="margin-top:12px">From there you set the whole thing up yourself &mdash; company, outlet,
-      menu, staff &mdash; and your <b>14-day free trial</b> starts the day your store goes live, not
-      today. Nothing switches off when it ends: the till keeps working, and you ask for a plan from
-      inside the app when you're ready.</p>
-    <p style="margin-top:22px"><a id="doneGo" class="goOn hide" href="#">Confirm my email &rarr;</a></p>
+    <h1>Message sent</h1>
+    <p>We have your note against <b id="doneEmail"></b>. Somebody will write back with your
+      store's address; there is nothing to confirm in the meantime.</p>
     <div class="foot" style="margin-top:22px"><a href="/">&larr; Back to kashikeyopos.com</a></div>
   </div>
 
@@ -160,32 +144,14 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
     }).then(function (x) {
-      btn.disabled = false; btn.textContent = "Create my account";
-      if (!x.ok) return fail(x.j.error || "Could not start your account — try again.");
+      btn.disabled = false; btn.textContent = "Send";
+      if (!x.ok) return fail(x.j.error || "Could not send that — try again.");
       $("doneEmail").textContent = body.email;
-      $("doneEmail2").textContent = body.email;
       $("reqForm").classList.add("hide");
       $("footLine").classList.add("hide");
-      /* Two different truths, and the screen tells whichever one is true. With
-         a self-serve handover they carry on now; without one (APP_URL unset on
-         this deploy) a person really is in the loop, and promising "carry on
-         now" with nowhere to go would be the worse lie. */
-      if (x.j.selfServe && x.j.next) {
-        /* Straight on rather than a page to read: they came here to sign up,
-           and the next screen is where their code is sent. The button is left
-           behind it for a browser that blocks the redirect. */
-        var go = $("doneGo");
-        go.href = x.j.next;
-        go.classList.remove("hide");
-        setTimeout(function () { location.href = x.j.next; }, 400);
-      } else {
-        $("doneTitle").textContent = "Request received";
-        $("doneNow").classList.add("hide");
-        $("doneWait").classList.remove("hide");
-      }
       $("done").style.display = "block";
     }).catch(function () {
-      btn.disabled = false; btn.textContent = "Create my account";
+      btn.disabled = false; btn.textContent = "Send";
       fail("Network error — check your connection and try again.");
     });
   });

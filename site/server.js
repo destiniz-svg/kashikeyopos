@@ -114,13 +114,34 @@ app.use((req, res, next) => {
    `www.` is the site under another name and 301s to the bare domain. */
 const APP_URL = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
 const CANONICAL = String(process.env.CANONICAL_HOST || '').trim().toLowerCase();
-const TILL_PATHS = /^\/(pos|kds|admin|onboarding|account|signin|member|card)(\/|$)|^\/(g|m|join)\//;
+/* `/signup` forwards too. It used to be a form here — business name, name,
+   email — and then the app asked for the name and email AGAIN, because the
+   account plane is where a code can be sent and an address verified. Two forms
+   for one signup, the second repeating most of the first.
+
+   So there is one form, and it lives where the account is made. This page's
+   job is to sell the thing and get out of the way. */
+const TILL_PATHS = /^\/(pos|kds|admin|onboarding|account|signin|signup|login|member|card)(\/|$)|^\/(g|m|join)\//;
 app.use((req, res, next) => {
   const host = String(req.hostname || '').toLowerCase();
   if (CANONICAL && host === 'www.' + CANONICAL) {
     return res.redirect(301, 'https://' + CANONICAL + req.originalUrl);
   }
   if (APP_URL && TILL_PATHS.test(req.path)) {
+    /* THE ACCOUNT IS ASKED FOR ONCE, AND THE APP IS WHERE IT IS ASKED. This
+       site can take a name and an address; it cannot verify one, because the
+       code goes to the app's account plane and a business is created only
+       once that code comes back. Asking here as well is the same three fields
+       twice, so both doors land on the one form.
+
+       302 and not 308: they land on the account form rather than repeating a
+       POST, and a permanent redirect would be cached by the browser against a
+       path this site may want back. `mode` is read by that page — signing in
+       is the returning half of the same door. */
+    if (/^\/signup(\/|$)/.test(req.path)) return res.redirect(302, APP_URL + '/account');
+    if (/^\/login(\/|$)/.test(req.path)) {
+      return res.redirect(302, APP_URL + '/account?mode=signin');
+    }
     return res.redirect(308, APP_URL + req.originalUrl);
   }
   next();
@@ -166,24 +187,14 @@ app.post('/api/site/signup',
           'INSERT INTO panel.signup (store_name, contact_name, email, phone, island, note)'
           + ' VALUES ($1,$2,$3,$4,$5,$6)', [store, name, email, phone, island, note]);
       }
-      /* SELF-SERVE: the row above is a lead, not a gate. Nobody waits for a
-         seller to press a button any more — the customer confirms their email
-         on the app and their database is created for them there.
-
-         The handover is a LINK, not a background call: creating a business
-         needs a verified address, and the only place an address can be
-         verified is where the code was sent. Doing it here would mean this
-         form — which anybody on the internet can post — reaching CREATE
-         DATABASE, which is exactly the door that must stay shut.
-
-         Empty when APP_URL is unset, and the page says so rather than
-         offering a button that goes nowhere. */
-      /* The address travels too, so they type it once. It is only a prefill —
-         the app still sends the code to it and still refuses to create
-         anything until that code comes back. */
-      const to = APP_URL + '/account?new=1&store=' + encodeURIComponent(store)
-        + '&email=' + encodeURIComponent(email);
-      res.json({ ok: true, next: APP_URL ? to : '', selfServe: !!APP_URL });
+      /* THIS DOOR IS THE FALLBACK, not the signup. Where APP_URL is set —
+         every real deploy — /signup never reaches this page at all: the
+         routing above sends it to the app, which is the only place an address
+         can be verified and therefore the only place a business can be
+         created. What is left here is a lead on an install with no app to
+         hand to, and the page says so in those words rather than promising an
+         account it cannot make. */
+      res.json({ ok: true });
     } catch (e) { next(e); }
   });
 

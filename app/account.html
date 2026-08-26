@@ -189,6 +189,12 @@ button.link:hover{text-decoration:underline}
       <p class="ok" id="ok" style="display:none"></p>
 
       <form id="form" novalidate>
+        <div class="f" id="bizWrap">
+          <label for="bizName">Business name</label>
+          <input id="bizName" name="bizName" autocapitalize="words" autocomplete="organization"
+                 placeholder="Seaside Café">
+          <span class="hint">The trading name. You can change it in Settings later.</span>
+        </div>
         <div class="f" id="nameWrap">
           <label for="name">Your name</label>
           <input id="name" name="name" autocomplete="name" autocapitalize="words" placeholder="Ahmed Nasheed">
@@ -364,6 +370,7 @@ button.link:hover{text-decoration:underline}
     $("seg").style.display = code ? "none" : "grid";
     $("segSignup").setAttribute("aria-selected", signup ? "true" : "false");
     $("segSignin").setAttribute("aria-selected", !signup && !code ? "true" : "false");
+    $("bizWrap").style.display = signup && !code ? "flex" : "none";
     $("nameWrap").style.display = signup && !code ? "flex" : "none";
     $("emailWrap").style.display = code ? "none" : "flex";
     $("pwWrap").style.display = code ? "none" : "flex";
@@ -380,17 +387,18 @@ button.link:hover{text-decoration:underline}
     if (code) setTimeout(function () { $("d1").focus(); }, 30);
   }
 
-  /* The business name, as they typed it on the website. The signup form hands
-     it over on the query string; a person who came straight here has not said
-     one yet, so they are asked. Never invented — a business trading under a
-     name nobody chose is the thing this avoids. */
+  /* The business name, asked for ONCE — on this form, beside the email the
+     code goes to. It has to outlive the code step, which is a second submit on
+     the same page, and a reload in between: sessionStorage carries it that far
+     and no further. Never invented; a business trading under a name nobody
+     chose is what this avoids. */
+  function rememberStore(v) {
+    try { sessionStorage.setItem("kashikeyo.store", v || ""); } catch (e) {}
+  }
   function storeName() {
-    var m = /[?&]store=([^&]*)/.exec(location.search || "");
-    var from = m ? decodeURIComponent(m[1].replace(/\+/g, " ")).trim() : "";
-    if (from) return from;
-    var typed = window.prompt("What is your business called?\n\n"
-      + "This is the legal or trading name — you can change it in Settings later.");
-    return (typed || "").trim();
+    var typed = ($("bizName") && $("bizName").value || "").trim();
+    if (typed) return typed;
+    try { return (sessionStorage.getItem("kashikeyo.store") || "").trim(); } catch (e) { return ""; }
   }
 
   function land(session) {
@@ -406,9 +414,18 @@ button.link:hover{text-decoration:underline}
        shares — the server refuses it now, and this is the reason it never has
        to. */
     var name = storeName();
-    if (!name) { say("err", "A business name is needed before you can set up."); return; }
+    if (!name) {
+      /* Only reachable by signing in later on a device that never typed one.
+         Ask on the form rather than in a dialog: a browser prompt cannot be
+         styled, cannot be corrected, and is blocked outright by some of them. */
+      mode = "signup"; paint();
+      $("bizWrap").style.display = "flex";
+      $("bizName").focus();
+      say("err", "One more thing — what is your business called?");
+      return;
+    }
     run(api("/business", { name: name })
-      .then(function () { location.href = "/onboarding"; }));
+      .then(function () { rememberStore(""); location.href = "/onboarding"; }));
   }
 
   function submit(e) {
@@ -431,6 +448,12 @@ button.link:hover{text-decoration:underline}
       if (password && password.length < 8) {
         return say("err", "A password needs at least eight characters.");
       }
+      var store = ($("bizName").value || "").trim();
+      if (!store) return say("err", "What is your business called?");
+      /* Held across the code step, which is a second submit on this same page
+         — and across a reload in between, which is the one thing plain
+         variables do not survive. */
+      rememberStore(store);
       run(api("/signup", { email: email, password: password, name: name })
         .then(function (r) {
           pending = email; mode = "code"; paint();
@@ -507,6 +530,13 @@ button.link:hover{text-decoration:underline}
   (function () {
     var e = q.get("email");
     if (e && $("email") && !$("email").value) $("email").value = e;
+    var b = q.get("store");
+    if (b && $("bizName") && !$("bizName").value) $("bizName").value = b;
+    /* The website has two front doors onto this one form. Creating an account
+       is the default, so only the returning half needs saying — and it has to
+       be SAID, or "Sign in" on the website opens a form headed Create your
+       account. Anything else is ignored rather than guessed at. */
+    if (q.get("mode") === "signin") mode = "signin";
   }());
   if (q.get("error")) say("err", q.get("error"));
 
