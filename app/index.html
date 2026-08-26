@@ -2722,6 +2722,26 @@ class Component extends DCLogic {
     if (live.opexPaid) patch.opexPaid = live.opexPaid;
     if (live.payrollPosted) patch.payrollPosted = live.payrollPosted;
     if (live.printJobs) patch.printJobs = live.printJobs;
+    /* THE LOYALTY HOLDING PEN EMPTIES ITSELF, exactly as the yield one does.
+       An edit made here is kept locally so the counter sees it straight away,
+       including offline; the moment the outlet publishes that part of the
+       programme the local copy is dropped, so two tills cannot quote one guest
+       two different redemption rates. Dropped per PART — a store may have
+       published a catalogue and not yet a ladder. */
+    const heldLoy = this.state.loyalty;
+    if (heldLoy) {
+      const K0 = K() || {};
+      const keep = {};
+      Object.keys(heldLoy).forEach((k) => {
+        if (k === "rewards" && (K0.REWARDS || []).length) return;
+        if (k === "tiers" && (K0.TIERS || []).length) return;
+        if (["earnPer", "redeemPts", "redeemValue", "live"].indexOf(k) >= 0 && K0.LOYALTY) return;
+        keep[k] = heldLoy[k];
+      });
+      if (Object.keys(keep).length !== Object.keys(heldLoy).length) {
+        patch.loyalty = Object.keys(keep).length ? keep : null;
+      }
+    }
     if (Object.keys(patch).length) this.setState(patch);
     // Open tickets go through seed(), which is the ONE place that maps the
     // outlet's table labels onto this floor's slots and merges line by line.
@@ -11600,34 +11620,51 @@ class Component extends DCLogic {
   // where those two words are given their definitions, so the till, the QR menu
   // and the member portal read one programme instead of three hard-coded
   // ladders that drift apart the first time someone changes an earn rate.
+  /* THE PROGRAMME THE OUTLET RUNS, not the one this browser remembers.
+     Four demo rewards used to stand here — a complimentary dessert taken 128
+     times, a reef platter taken 19 — with a second tier ladder beside them at
+     0/2000/6000/15000 while every other surface in the build ranked members
+     on the PUBLISHED ladder. Three of the four were `active`, so
+     publishGuest() put them on the phone of every guest at every store: a
+     member holding 400 points was told they could claim a free dessert their
+     restaurant had never heard of, and the redemption counts were literals
+     nothing has ever incremented.
+
+     Three sources in order, the same shape a measured yield and a saved batch
+     follow: this terminal's un-synced edit, then the OUTLET's published
+     programme, then the shipped rates underneath. `state.loyalty` is a holding
+     pen, not a private fork — seed() drops it once the outlet publishes. */
   LOY() {
+    const K0 = K() || {};
+    const pub = K0.LOYALTY || {};
     return Object.assign({
-      earnPer: 10, redeemPts: 100, redeemValue: 25, expiryMonths: 12, live: true,
-      tiers: [
-        { k: "Bronze", at: 0, perk: "Points on every visit" },
-        { k: "Silver", at: 2000, perk: "5% off food \u00b7 birthday dessert" },
-        { k: "Gold", at: 6000, perk: "Priority booking \u00b7 delivery waived" },
-        { k: "Platinum", at: 15000, perk: "Chef's table \u00b7 late checkout" }
-      ],
-      rewards: [
-        { id: "rw1", name: "Complimentary dessert", cost: 400, tier: "Bronze", active: true, taken: 128 },
-        { id: "rw2", name: "MVR 100 off the bill", cost: 900, tier: "Silver", active: true, taken: 74 },
-        { id: "rw3", name: "Reef platter for two", cost: 3200, tier: "Gold", active: true, taken: 19 },
-        { id: "rw4", name: "Chef's tasting menu", cost: 7500, tier: "Platinum", active: false, taken: 3 }
-      ]
+      earnPer: +pub.pointsPer || 10,
+      redeemPts: +pub.redeemPts || 100,
+      redeemValue: +pub.redeemValue || 25,
+      live: pub.live !== false,
+      // Published as `at` and `name`; the shipped table is the estimate under it.
+      tiers: (K0.TIERS || []).slice(),
+      rewards: (K0.REWARDS || []).slice(),
+      // Whether any of that is the OUTLET's word or this file's default. The
+      // screen says which, because a rate nobody set is not a rate.
+      set: !!K0.LOYALTY
     }, this.state.loyalty || {});
   }
-  setLoy(patch, line) {
-    this.setState({ loyalty: Object.assign({}, this.LOY(), patch), modal: null });
-    this.queue("loyalty_update", line + " \u00b7 by " + this.me(), "settings");
+  /* An edit is queued as the programme it is, with the values on it. It used
+     to queue a LABEL and no payload against `loyalty_update`, whose handler
+     moves a member's points — so the earn rate, the ladder and the catalogue
+     were written to one browser's localStorage and reached the outlet never.
+     chain.setting requires rank 4 under RLS, and this asks the same rung
+     rather than letting the op park after the toast said it was saved. */
+  setLoy(patch, line, payload) {
+    if (this.rank() < 4) return this.toast("Changing the programme is an administrator action", "warn");
+    const next = Object.assign({}, this.LOY(), patch);
+    this.setState({ loyalty: next, modal: null });
+    this.queue("loyalty_programme", line + " \u00b7 by " + this.me(), "settings", payload || {
+      rates: { pointsPer: next.earnPer, redeemPts: next.redeemPts,
+        redeemValue: next.redeemValue, live: next.live !== false }
+    });
     this.toast(line);
-  }
-  // Tier is derived from lifetime points every time it is asked for, so raising
-  // a threshold demotes exactly the members it should without editing a soul.
-  tierAt(points) {
-    let name = "Bronze";
-    this.LOY().tiers.slice().sort((a, b) => a.at - b.at).forEach((t) => { if ((points || 0) >= t.at) name = t.k; });
-    return name;
   }
   ptsValue(p) { const L = this.LOY(); return Math.round((p || 0) / (L.redeemPts || 100) * (L.redeemValue || 25)); }
   g_loyalty() {
@@ -11637,23 +11674,30 @@ class Component extends DCLogic {
     const gate = (fn) => () => may ? fn() : this.toast("Changing the programme needs customer edit rights", "warn");
     const chipOf = { Bronze: "mute", Silver: "info", Gold: "warn", Platinum: "purple" };
     const pts = custs.reduce((a, c) => a + (c.points || 0), 0);
-    const tiers = L.tiers.slice().sort((a, b) => a.at - b.at);
+    // The PUBLISHED ladder, which is the one tierFor() ranks every member on.
+    const tiers = this.TIERS().slice().sort((a, b) => (+a.at || 0) - (+b.at || 0));
     const cards = [{
       title: "Earning and redemption", sub: L.live ? "Every settled bill earns" : "Earning is paused",
       chip: L.live ? "Live" : "Paused", chipBg: L.live ? "var(--ok-dim)" : "var(--bad-dim)", chipFg: L.live ? "var(--green)" : "var(--red-bright)", cat: "x",
       big: "1 pt / " + MVRc(L.earnPer), bigSize: 20,
-      rows: [["Redeem " + L.redeemPts + " pts", MVRc(L.redeemValue)], ["Points expire", L.expiryMonths + " months"], ["Outstanding", pts.toLocaleString("en-US") + " pts"], ["Liability", MVRc(this.ptsValue(pts)), "var(--warn-bright)"]],
+      /* "Points expire · 12 months" stood in this row and nothing in the build
+         expires a point: no column, no job, no handler. A programme term the
+         app does not keep is a promise the counter has to break. */
+      rows: [["Redeem " + L.redeemPts + " pts", MVRc(L.redeemValue)],
+        ["Rate", L.set ? "set by this outlet" : "not set \u2014 the shipped default"],
+        ["Outstanding", pts.toLocaleString("en-US") + " pts"],
+        ["Liability", MVRc(this.ptsValue(pts)), "var(--warn-bright)"]],
       toggles: [{ label: "Programme is live", sub: "Pausing stops earning and redemption without touching a single balance", on: !!L.live, go: gate(() => this.setLoy({ live: !L.live }, "Loyalty programme " + (L.live ? "paused" : "live"))) }],
-      foot: "Points post when the till settles, so a sale rung offline earns on replay rather than at the counter. The liability is what the programme owes if every member redeemed today.",
+      foot: "Points post when the till settles, so a sale rung offline earns on replay rather than at the counter. Points do not expire — nothing in this build takes one back. The liability is what the programme owes if every member redeemed today.",
       goLabel: "Edit earn rate", go: gate(() => this.openForm("earnRate"))
     }].concat(tiers.map((t, i) => {
-      const next = tiers[i + 1];
-      const inTier = custs.filter((c) => this.tierAt(c.points) === t.k).length;
+      const next = tiers[i + 1], at = +t.at || 0;
+      const inTier = custs.filter((c) => ((this.tierFor(c.points) || {}).name) === t.name).length;
       return {
-        title: t.k, sub: t.perk,
+        title: t.name, sub: t.perk || "Threshold on lifetime points",
         chip: inTier + (inTier === 1 ? " member" : " members"), chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
-        big: t.at.toLocaleString("en-US"), bigSize: 20,
-        rows: [["Threshold", t.at + " pts"], ["Band", next ? t.at + " \u2013 " + (next.at - 1) : t.at + "+"], ["Spend to reach", MVRc(t.at * (L.earnPer || 10))]],
+        big: at.toLocaleString("en-US"), bigSize: 20,
+        rows: [["Threshold", at + " pts"], ["Band", next ? at + " \u2013 " + ((+next.at || 0) - 1) : at + "+"], ["Spend to reach", MVRc(at * (L.earnPer || 10))]],
         foot: "Tier is computed from lifetime points, so it is never a field anyone has to set.",
         goLabel: "Edit tier", go: gate(() => this.openForm("tier", t))
       };
@@ -11666,13 +11710,17 @@ class Component extends DCLogic {
         { label: "Add reward", primary: 1, go: gate(() => this.openForm("rewardEdit")) },
         { label: "Add tier", go: gate(() => this.openForm("tier")) },
         { label: "Edit earn rate", go: gate(() => this.openForm("earnRate")) },
-        { label: "Export catalogue", go: () => this.downloadCsv("kashikeyo-rewards.csv", [["Reward", "Points", "Worth MVR", "Minimum tier", "State", "Redeemed"]].concat(L.rewards.map((r) => [r.name, r.cost, this.ptsValue(r.cost), r.tier, r.active ? "live" : "paused", r.taken || 0]))) }
+        { label: "Export catalogue", go: () => this.downloadCsv("kashikeyo-rewards.csv", [["Reward", "Points", "Worth MVR", "Minimum tier", "State"]].concat(L.rewards.map((r) => [r.name, r.cost, this.ptsValue(r.cost), r.tier, r.active ? "live" : "paused"]))) }
       ],
       cards: cards,
-      cols: [{ label: "Reward", w: "2.2fr" }, { label: "Points", w: ".8fr", a: "right", mono: 1 }, { label: "Worth", w: ".9fr", a: "right", mono: 1 }, { label: "Minimum tier", w: "1fr" }, { label: "Redeemed", w: ".8fr", a: "right", mono: 1 }, { label: "State", w: ".8fr", a: "right" }],
+      /* "Redeemed" was a column here. Nothing has ever incremented it — a new
+         reward is written with taken: 0 and no code moves it — so it read the
+         four demo literals and zero for everything a real store added. A
+         figure nobody measures is not a column. */
+      cols: [{ label: "Reward", w: "2.4fr" }, { label: "Points", w: ".8fr", a: "right", mono: 1 }, { label: "Worth", w: ".9fr", a: "right", mono: 1 }, { label: "Minimum tier", w: "1.2fr" }, { label: "State", w: ".8fr", a: "right" }],
       rows: L.rewards.map((r) => ({
         go: gate(() => this.openForm("rewardEdit", r)),
-        cells: [r.name, String(r.cost), MVRc(this.ptsValue(r.cost)), { t: r.tier, chip: this.chip(chipOf[r.tier] || "mute") }, String(r.taken || 0), { t: r.active ? "Live" : "Paused", chip: this.chip(r.active ? "ok" : "mute") }]
+        cells: [r.name, String(r.cost), MVRc(this.ptsValue(r.cost)), { t: r.tier, chip: this.chip(chipOf[r.tier] || "mute") }, { t: r.active ? "Live" : "Paused", chip: this.chip(r.active ? "ok" : "mute") }]
       })),
       empty: "No rewards yet. Add one and it appears on the member's phone at their next poll.",
       notes: [
@@ -13450,28 +13498,59 @@ class Component extends DCLogic {
     }
   }
   // ── Books ────────────────────────────────────────────────────────────────
-  ACCPERIODS() { return ["August 2026", "July 2026", "June 2026", "May 2026"]; }
+  /* THE MONTHS ARE THIS OUTLET'S OWN, AND SO IS WHICH OF THEM ARE CLOSED.
+     Both were literals — four month names ending in "August 2026", and three
+     of them declared already filed. A store opened last week therefore had
+     three closed accounting periods it had never traded in, and in September
+     the "live" month was still August. `today()` is the outlet's own local
+     date (see the business-date section), so the ladder is derived from it. */
+  monthLabel(y, m) {
+    return ["January", "February", "March", "April", "May", "June", "July",
+      "August", "September", "October", "November", "December"][m] + " " + y;
+  }
+  ACCPERIODS() {
+    const t = this.today().split("-");
+    let y = +t[0], m = +t[1] - 1;
+    const out = [];
+    for (let i = 0; i < 4; i++) { out.push(this.monthLabel(y, m)); m--; if (m < 0) { m = 11; y--; } }
+    return out;
+  }
   accPeriod() { return this.state.accPer || this.ACCPERIODS()[0]; }
-  closedPeriods() { return this.state.periods || ["July 2026", "June 2026", "May 2026"]; }
+  /* The outlet publishes its periods as rows — {from, to, state} — not as the
+     month labels this screen keys on, so the labels are derived from each
+     row's own start date. Nothing has been closed until the outlet says so. */
+  closedPeriods() {
+    return (this.state.periods || []).filter((p) => (p && p.state) === "closed")
+      .map((p) => { const d = String(p.from || "").split("-"); return d.length > 1 ? this.monthLabel(+d[0], +d[1] - 1) : ""; })
+      .filter(Boolean);
+  }
   // A trial balance is derived, never stored: it is the posted ledger read a
   // second way. It therefore has to be summed from the SAME journal every other
   // screen reads — otherwise the one report whose job is to prove the books
   // balance is the one report that cannot fail, which is worse than not having it.
   //
-  // Opening balances carry the brought-forward position, so the current month
-  // reads as a real business rather than only the sales rung on this device.
+  /* THE BROUGHT-FORWARD POSITION IS A FACT SOMEBODY ENTERS, NEVER ONE THIS
+     FILE INVENTS. Nine accounts were seeded here with literals — 42,000 in the
+     drawer, 186,400 of stock, 640,000 of equipment, 214,600 owed to suppliers
+     — and a retained-earnings figure derived from them so the total balanced.
+     A store that opened this morning therefore had a trial balance reading
+     MVR 1,305,700 on each side, of money that does not exist, and the one
+     report whose job is to prove the books balance balanced BY CONSTRUCTION.
+     The comment that stood here said the quiet part: it was so the month
+     "reads as a real business rather than only the sales rung on this device".
+
+     A business genuinely migrating in does have opening balances, and they are
+     entered — the bank one already has its own form. Until something is
+     entered the answer is nothing, and the trial balance is what was posted. */
   OPENING() {
-    const b = {
-      "1010": [42000, 0], "1020": [this.bankOpening(), 0], "1200": [186400, 0], "1210": [24800, 0],
-      "1500": [640000, 0], "1510": [0, 148000], "2100": [0, 214600], "2500": [0, 18400], "2600": [0, 6200]
-    };
-    // Opening equity is what the business owns less what it owes. Deriving it
-    // keeps the opening position balanced when any of the figures above change —
-    // the bank opening is user-editable, and a hardcoded equity figure silently
-    // put the books out by exactly the amount it was edited by.
+    const b = {};
+    const bank = this.bankOpening();
+    if (bank) b["1020"] = [bank, 0];
     let dr = 0, cr = 0;
     Object.keys(b).forEach((k) => { dr += b[k][0]; cr += b[k][1]; });
-    b["3000"] = [0, Math.round((dr - cr) * 100) / 100];
+    // Equity is derived, never stated, so editing an opening figure cannot put
+    // the opening position out by exactly the amount it was edited by.
+    if (dr !== cr) b["3000"] = dr > cr ? [0, Math.round((dr - cr) * 100) / 100] : [Math.round((cr - dr) * 100) / 100, 0];
     return b;
   }
   trialBalance(per) {
@@ -13513,7 +13592,17 @@ class Component extends DCLogic {
     this.queue("period_reopen", per + " REOPENED \u00b7 by " + this.me(), "periods");
     this.toast(per + " reopened \u2014 every report against it will move again", "warn");
   }
-  bankOpening() { return this.state.bankOpen === null ? 412500 : this.state.bankOpen; }
+  /* WHAT THE BANK HELD WHEN THE BOOKS OPENED — nought until somebody says
+     otherwise. It was 412,500, so an untraded store's reconciliation screen
+     opened on a statement balance, a ledger balance and a difference between
+     them, all fabricated. The outlet publishes this as a ROW ({acct, asOf,
+     amt}) or as null; reading the row itself as a number produced NaN on any
+     store that had set one, which is the other half of the same defect. */
+  bankOpening() {
+    const v = this.state.bankOpen;
+    if (v === null || v === undefined) return 0;
+    return +(typeof v === "object" ? v.amt : v) || 0;
+  }
   // Card money is the one part of a day's takings the restaurant does not hold.
   // It arrives a day late, net of a fee, batched — so "revenue" and "money" are
   // different numbers for 24 hours, and the only way to know the acquirer paid
@@ -13678,19 +13767,22 @@ class Component extends DCLogic {
     };
   }
   dayNum(d) { return Math.floor(new Date(String(d) + "T00:00:00").getTime() / 86400000); }
-  // The old name, kept so nothing that reads it has to know about processors.
-  BANKSEED() {
-    return [
-      { id: "b1", date: "10 Aug", desc: "BML MERCHANT SETTLEMENT 4471", amt: 128400, src: "Card settlement", state: "cleared" },
-      { id: "b2", date: "10 Aug", desc: "CASH DEPOSIT CHAANDHANEE", amt: 64200, src: "Cash banking", state: "cleared" },
-      { id: "b3", date: "10 Aug", desc: "MERCHANT SERVICE FEE", amt: -1926, src: "", state: "open" },
-      { id: "b4", date: "11 Aug", desc: "BML MERCHANT SETTLEMENT 4471", amt: 96750, src: "Card settlement", state: "open" },
-      { id: "b5", date: "11 Aug", desc: "TRF REEF SUPPLIERS PVT LTD", amt: -84300, src: "Supplier payment", state: "cleared" },
-      { id: "b6", date: "11 Aug", desc: "STANDING ORDER RENT", amt: -62000, src: "Operating cost", state: "cleared" },
-      { id: "b7", date: "11 Aug", desc: "UNIDENTIFIED CREDIT 8802", amt: 3400, src: "", state: "open" }
-    ];
+  /* A STATEMENT IS IMPORTED, NEVER SEEDED. Seven lines used to stand here —
+     "BML MERCHANT SETTLEMENT 4471", "TRF REEF SUPPLIERS PVT LTD", a standing
+     order for rent, MVR 128,400 and MVR 96,750 of somebody's takings, three
+     of them unexplained — shown to every store that had not yet imported one.
+     A reconciliation screen whose whole job is to name an unexplained
+     difference must not manufacture three.
+
+     The outlet publishes the imported lines as `descr`, which is what the
+     import writes; this file read `desc`, so a line that round-tripped through
+     the outlet came back with a blank description, the auto-matcher stopped
+     recognising a bank charge by its wording, and the audit line read
+     "undefined booked to 5600". One field name, at the seam. */
+  bankLines() {
+    return (this.state.bank || []).map((l) => l && l.desc === undefined && l.descr !== undefined
+      ? Object.assign({}, l, { desc: l.descr }) : l);
   }
-  bankLines() { return this.state.bank || this.BANKSEED(); }
   // ── What the ledger expects on 1020 ──────────────────────────────────────
   // Reconciliation is not a tick-box exercise: everything that should appear on
   // the bank statement is already known, because this app posted it. A card
@@ -15248,34 +15340,40 @@ class Component extends DCLogic {
         fields: [
           { k: "earnPer", label: "MVR spent per point", v: String(this.LOY().earnPer) },
           { k: "redeemPts", label: "Points per redemption block", v: String(this.LOY().redeemPts) },
-          { k: "redeemValue", label: "That block is worth MVR", v: String(this.LOY().redeemValue) },
-          { k: "expiryMonths", label: "Points expire after (months)", v: String(this.LOY().expiryMonths) }
+          { k: "redeemValue", label: "That block is worth MVR", v: String(this.LOY().redeemValue) }
+          /* There was a fourth field, "Points expire after (months)", and
+             nothing in this build expires a point. A term collected on a form
+             and kept nowhere is a promise the counter has to break. */
         ],
         onSave: (v) => {
           const e = +v.earnPer || 0, p = +v.redeemPts || 0, w = +v.redeemValue || 0;
           if (e <= 0 || p <= 0 || w <= 0) return this.toast("Every rate has to be above zero \u2014 a point worth nothing is not a programme", "warn");
-          this.setLoy({ earnPer: e, redeemPts: p, redeemValue: w, expiryMonths: +v.expiryMonths || 12 },
-            "Earn rate 1 point per " + MVRc(e) + " \u00b7 " + p + " points = " + MVRc(w));
+          this.setLoy({ earnPer: e, redeemPts: p, redeemValue: w },
+            "Earn rate 1 point per " + MVRc(e) + " \u00b7 " + p + " points = " + MVRc(w),
+            { rates: { pointsPer: e, redeemPts: p, redeemValue: w, live: this.LOY().live !== false } });
         }
       },
       tier: {
         title: "Edit tier", sub: "A threshold on lifetime points", save: "Save tier", editSave: "Save tier",
         foot: "Raising a threshold demotes the members below it on their next read. Nobody is edited, because a tier is never stored on the customer.",
+        // The ladder is the PUBLISHED one — the same rows tierFor() ranks every
+        // member on — so an edit here is an edit to what the counter reads.
         fields: [
-          { k: "k", label: "Tier name", v: "", full: 1 },
+          { k: "name", label: "Tier name", v: "", full: 1 },
           { k: "at", label: "Points to reach it", v: "0" },
           { k: "perk", label: "What the member gets", v: "", full: 1 }
         ],
         onEdit: (v, row) => {
-          if (!v.k) return this.toast("A tier needs a name", "warn");
-          const tiers = this.LOY().tiers.map((t) => t.k === row.k ? { k: v.k, at: Math.max(0, +v.at || 0), perk: v.perk } : t);
-          this.setLoy({ tiers: tiers }, v.k + " starts at " + (+v.at || 0) + " points");
+          if (!v.name) return this.toast("A tier needs a name", "warn");
+          const tiers = this.LOY().tiers.map((t) => t.name === row.name
+            ? Object.assign({}, t, { name: v.name, at: Math.max(0, +v.at || 0), perk: v.perk }) : t);
+          this.setLoy({ tiers: tiers }, v.name + " starts at " + (+v.at || 0) + " points", { tiers: tiers });
         },
         onSave: (v) => {
-          if (!v.k) return this.toast("A tier needs a name", "warn");
-          const tiers = this.LOY().tiers.concat([{ k: v.k, at: Math.max(0, +v.at || 0), perk: v.perk }]);
+          if (!v.name) return this.toast("A tier needs a name", "warn");
+          const tiers = this.LOY().tiers.concat([{ key: String(v.name).toLowerCase().replace(/[^a-z0-9]+/g, ""), name: v.name, at: Math.max(0, +v.at || 0), spend: 0, perk: v.perk, mark: "" }]);
           if (tiers.length > 8) return this.toast("Eight tiers is the ceiling \u2014 past that nobody can tell them apart", "warn");
-          this.setLoy({ tiers: tiers }, "Tier " + v.k + " added at " + (+v.at || 0) + " points");
+          this.setLoy({ tiers: tiers }, "Tier " + v.name + " added at " + (+v.at || 0) + " points", { tiers: tiers });
         }
       },
       rewardEdit: {
@@ -15284,7 +15382,7 @@ class Component extends DCLogic {
         fields: [
           { k: "name", label: "Reward", v: "", full: 1 },
           { k: "cost", label: "Points to redeem", v: "500" },
-          { k: "tier", label: "Minimum tier", options: this.LOY().tiers.map((t) => ({ v: t.k, l: t.k })) },
+          { k: "tier", label: "Minimum tier", options: this.LOY().tiers.map((t) => ({ v: t.name, l: t.name })) },
           { k: "active", label: "State", options: [{ v: "1", l: "Live" }, { v: "0", l: "Paused" }] }
         ],
         pre: (row) => ({ active: row.active === false ? "0" : "1" }),
@@ -15293,14 +15391,14 @@ class Component extends DCLogic {
           const rewards = this.LOY().rewards.map((r) => r.id === row.id
             ? Object.assign({}, r, { name: v.name, cost: Math.max(1, +v.cost || 0), tier: v.tier, active: v.active === "1" })
             : r);
-          this.setLoy({ rewards: rewards }, v.name + " \u00b7 " + (+v.cost || 0) + " points \u00b7 " + (v.active === "1" ? "live" : "paused"));
+          this.setLoy({ rewards: rewards }, v.name + " \u00b7 " + (+v.cost || 0) + " points \u00b7 " + (v.active === "1" ? "live" : "paused"), { rewards: rewards });
         },
         onSave: (v) => {
           if (!v.name) return this.toast("A reward needs a name", "warn");
           const list = this.LOY().rewards;
           if (list.length >= 40) return this.toast("Forty rewards is the ceiling for one catalogue", "warn");
-          this.setLoy({ rewards: list.concat([{ id: "rw" + (list.length + 1) + "-" + Date.now(), name: v.name, cost: Math.max(1, +v.cost || 0), tier: v.tier, active: v.active === "1", taken: 0 }]) },
-            "Reward added \u00b7 " + v.name);
+          const rewards = list.concat([{ id: "rw" + (list.length + 1) + "-" + Date.now(), name: v.name, cost: Math.max(1, +v.cost || 0), tier: v.tier, active: v.active === "1" }]);
+          this.setLoy({ rewards: rewards }, "Reward added \u00b7 " + v.name, { rewards: rewards });
         }
       },
       settleCredit: {
@@ -16308,13 +16406,20 @@ class Component extends DCLogic {
         ? "Anything failing above has a consequence on the floor tonight, not at month end. Clear those first."
         : "This is the terminal reporting on itself from live state — outbox, printers, storage and session are read at the moment you asked, not sampled earlier.");
   }
+  /* A PRINTER THIS TERMINAL HAS NOT BEEN TOLD ABOUT HAS NO NAME. The three
+     roles are real — a receipt printer, a kitchen bumper, a bar printer are
+     what a restaurant binds — but their names were "Epson TM-m30 · USB",
+     "Kitchen bumper · LAN" and "Bar printer · LAN", so a store that had bound
+     nothing read three named devices, one of them a model number it does not
+     own, on the screen a manager opens to find out why nothing is printing.
+     Settings already said "Receipt printer | not bound" beside it. */
   PRINTERS() {
     const P = this.prefs();
     const off = this.state.printerDown || {};
     return [
-      { id: "receipt", name: P.receiptPrinter || "Epson TM-m30 · USB", role: "Receipts and bills", down: !!off.receipt },
-      { id: "kitchen", name: P.kotPrinter || "Kitchen bumper · LAN", role: "Hot and cold dockets", down: !!off.kitchen },
-      { id: "bar", name: P.barPrinter || "Bar printer · LAN", role: "Drink dockets", down: !!off.bar }
+      { id: "receipt", name: P.receiptPrinter || "Receipt printer \u00b7 not bound", bound: !!P.receiptPrinter, role: "Receipts and bills", down: !!off.receipt },
+      { id: "kitchen", name: P.kotPrinter || "Kitchen printer \u00b7 not bound", bound: !!P.kotPrinter, role: "Hot and cold dockets", down: !!off.kitchen },
+      { id: "bar", name: P.barPrinter || "Bar printer \u00b7 not bound", bound: !!P.barPrinter, role: "Drink dockets", down: !!off.bar }
     ];
   }
   printer(id) { return this.PRINTERS().find((x) => x.id === id) || this.PRINTERS()[0]; }
@@ -17462,7 +17567,15 @@ class Component extends DCLogic {
 
   g_reports() {
     const s = this.state, per = s.tab.rep || 0;
-    const months = ["August — live", "July · filed", "June · filed", "May · filed"];
+    /* The tab strip was four literals ending in "August \u2014 live", with the
+       three behind it declared "filed". A store opened last week had three
+       filed months, and from September the live one was still August. Both
+       facts come from the outlet now: the ladder from its own business date,
+       and whether a month is filed from the periods it published. */
+    const closedNow = this.closedPeriods();
+    const months = this.ACCPERIODS().map((m, i) => i === 0
+      ? m.split(" ")[0] + " \u2014 live"
+      : m.split(" ")[0] + (closedNow.indexOf(m) >= 0 ? " \u00b7 filed" : " \u00b7 open"));
     const rep = [
       ["Z-report", "End-of-shift cash-up per terminal, declared against expected drawer", "Per shift"],
       ["GST return", "GGST and TGST split by outlet, in the format MIRA expects", "Monthly"],

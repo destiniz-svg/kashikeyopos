@@ -208,3 +208,124 @@ test('the yields table skips ingredients the item master does not have', () => {
     'an ingredient with no row behind it has nothing to say, and saying it'
     + ' anyway is a name placeholder, a zero cost and an uplift of -100%');
 });
+
+/* ═══ THE BOOKS OF A STORE THAT HAS NEVER TRADED ═══════════════════════════
+   The demo-data sweep that found the three shipped batches was run again
+   across every screen and every tab, and the accounting module was carrying
+   the largest stand-in in the build: nine seeded opening balances, a bank
+   opening of 412,500 and a seven-line bank statement naming real-sounding
+   counterparties. A store opened this morning read a trial balance of
+   MVR 1,305,700 on each side, a statement balance it had never imported, and
+   an unexplained difference between the two.
+
+   The comment above OPENING() said the quiet part out loud — the figures were
+   there "so the current month reads as a real business rather than only the
+   sales rung on this device" — which is demo mode shipped to a customer.
+
+   Measured after the server has answered, not before: buildState() sends
+   bank: [], bankOpen: null and periods: [] for an untraded outlet, so this
+   folds exactly that in. A test that only rendered an un-bootstrapped page
+   would prove nothing about what a real customer sees. */
+test('the books of an untraded store are empty, not furnished', () => {
+  const F = H.makeInstance({});
+  F.applyLive({ settled: [], periods: [], bank: [], bankOpen: null, docs: [],
+    refunds: [], acqRuns: [], counts: [], res: [], costMoves: [] });
+
+  assert.strictEqual(F.bankOpening(), 0,
+    'what the bank held when the books opened is nought until somebody says'
+    + ' otherwise — it was 412500');
+  assert.strictEqual(Object.keys(F.OPENING()).length, 0,
+    'nothing is brought forward on a store with no brought-forward position: '
+    + JSON.stringify(F.OPENING()));
+  assert.strictEqual(F.bankLines().length, 0,
+    'a statement is imported, never seeded: '
+    + JSON.stringify(F.bankLines().map((l) => l.desc)));
+
+  const tb = F.trialBalance(F.accPeriod());
+  assert.strictEqual(tb.length, 0,
+    'and the trial balance is what was posted, which is nothing: '
+    + JSON.stringify(tb).slice(0, 240));
+
+  /* A published opening balance is a ROW, not a number. Reading the row itself
+     as a number produced NaN on every store that had set one, which is the
+     other half of the same defect. */
+  F.state.bankOpen = { acct: '1020', asOf: '2026-08-01', amt: 250000 };
+  assert.strictEqual(F.bankOpening(), 250000,
+    "the outlet's own opening balance is read off the row it publishes");
+  assert.strictEqual(JSON.stringify(Object.keys(F.OPENING()).sort()), JSON.stringify(['1020', '3000']),
+    'and equity is derived from it so the opening position still balances');
+});
+
+/* THE MONTHS ARE THE OUTLET'S, AND SO IS WHICH OF THEM ARE FILED.
+   Four month names ending in "August 2026" were literals, three of them
+   declared closed — so a store opened last week had three filed accounting
+   periods it never traded in, and from September the "live" month was still
+   August. */
+test('the accounting periods are derived, not written down', () => {
+  const F = H.makeInstance({});
+  const vm = require('vm');
+  const at = (iso) => { F.state.now = vm.runInContext('new Date("' + iso + 'T06:00:00Z")', F.__win); return F.ACCPERIODS(); };
+
+  // JSON rather than deepStrictEqual: cross-realm arrays again, per the note
+  // on the costing test above.
+  assert.strictEqual(JSON.stringify(at('2027-01-15')),
+    JSON.stringify(['January 2027', 'December 2026', 'November 2026', 'October 2026']),
+    'the ladder walks back from the outlet\'s own date, across a year boundary');
+  assert.strictEqual(at('2026-09-01')[0], 'September 2026',
+    'and the live month is this month, not the one somebody typed');
+
+  F.state.periods = [];
+  assert.strictEqual(F.closedPeriods().length, 0,
+    'nothing is filed until the outlet says so');
+  F.state.periods = [{ from: '2026-07-01', to: '2026-07-31', state: 'closed' },
+    { from: '2026-06-01', to: '2026-06-30', state: 'open' }];
+  assert.strictEqual(JSON.stringify(F.closedPeriods()), JSON.stringify(['July 2026']),
+    'and a filed month is one the outlet published as closed');
+});
+
+/* ONE PROGRAMME, AND IT IS THE OUTLET'S. LOY() carried four demo rewards with
+   invented redemption counts — three of them `active`, so publishGuest() put
+   them on the phone of every guest at every store — and a SECOND tier ladder
+   at 0/2000/6000/15000 beside the published one every other surface ranks
+   members on. Three ladders was the exact defect migration 019 dropped the
+   tier column to end. */
+test('the loyalty programme on an empty store is empty, and there is one ladder', () => {
+  const F = H.makeInstance({});
+  const L = F.LOY();
+
+  assert.strictEqual(L.rewards.length, 0,
+    'a store that has published no rewards has none, and its guests are'
+    + ' offered none: ' + JSON.stringify(L.rewards.map((r) => r.name)));
+  assert.strictEqual(L.set, false,
+    'and the screen knows the rate is the shipped default rather than the'
+    + " outlet's own");
+  assert.strictEqual(L.expiryMonths, undefined,
+    'nothing in this build expires a point, so nothing offers a term for it');
+
+  // The screen's own ladder IS the published one — same array, not a copy.
+  assert.strictEqual(JSON.stringify(L.tiers.map((t) => [t.name, t.at])),
+    JSON.stringify(F.TIERS().map((t) => [t.name, t.at])),
+    'the loyalty screen ranks members on the ladder tierFor() uses');
+
+  const shipped = (F.__win.KPOS || {}).TIERS || [];
+  const server = require('../src/bootstrap.js');
+  assert.ok(shipped.length, 'the shipped ladder is published');
+  // The server's fallback and the browser's must agree, or a guest reads one
+  // tier on their phone and another at the counter.
+  const F2 = H.makeInstance({ kpos: { TIERS: shipped } });
+  assert.strictEqual(JSON.stringify(F2.TIERS().map((t) => t.at)), JSON.stringify([0, 500, 1500, 3000]),
+    'and it is the one documented ladder');
+  assert.ok(server, 'src/bootstrap.js loads');
+});
+
+/* A PRINTER THIS TERMINAL HAS NOT BEEN TOLD ABOUT HAS NO NAME — it was
+   "Epson TM-m30 · USB", a model number the store does not own, on the screen
+   a manager opens to find out why nothing is printing. */
+test('an unbound printer is named as unbound, not as a model', () => {
+  const F = H.makeInstance({});
+  F.PRINTERS().forEach((p) => {
+    assert.strictEqual(p.bound, false, p.id + ' is not bound on an empty install');
+    assert.match(p.name, /not bound/,
+      'and says so rather than naming a device nobody has connected: ' + p.name);
+  });
+});

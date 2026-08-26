@@ -1088,6 +1088,12 @@ phone and Bronze at the counter.
 | Gold | 1,500 | MVR 15,000 |
 | Platinum | 3,000 | MVR 30,000 |
 
+That is the ladder the app SHIPS with, and an outlet that publishes its own
+displaces it. Three copies of it had drifted apart — see "The books of a store
+that has never traded" — and there is one now: `app/kashikeyo-data.js`,
+`src/bootstrap.js` `DEFAULT_TIERS`, and the loyalty screen all read the same
+four rungs.
+
 **There is no `tier` column.** `chain.member.tier` was dropped in migration 019,
 along with the two functions that carried it out to a phone — `member_code_take()`
 and `member_card()`, each rebuilt without it, and re-granted to every outlet role
@@ -1204,6 +1210,121 @@ by being out of prawns.
 The guest snapshot filtered on `active` alone, which let a hidden dish onto a
 phone — and, once batches existed, a litre of fish stock with it. It is
 `active AND NOT off_menu AND NOT is_batch` now.
+
+## The books of a store that has never traded
+
+The three demo batches were found by opening a screen. Finding them was the
+argument for sweeping the whole terminal the same way: every generator and
+every tab rendered on an EMPTY dataset, with the server's own answer for an
+untraded outlet folded in (`bank: []`, `bankOpen: null`, `periods: []`), so
+what is measured is what a real customer sees after their first sync rather
+than what an un-bootstrapped page shows.
+
+Four screens were furnished, and the accounting module carried the largest
+stand-in in the build.
+
+**A trial balance that could not fail.** `OPENING()` seeded nine accounts with
+literals — MVR 42,000 in the drawer, 186,400 of stock, 640,000 of equipment,
+214,600 owed to suppliers — and derived retained earnings from them so the
+total balanced. A store opened this morning read **dr 1,305,700 = cr
+1,305,700** of money that does not exist, and the one report whose job is to
+prove the books balance balanced BY CONSTRUCTION, which the comment above
+`trialBalance()` says outright is worse than not having it. The comment above
+`OPENING()` said the quiet part: the figures were there so the month "reads as
+a real business rather than only the sales rung on this device". That is demo
+mode shipped to a customer. A business genuinely migrating in does have
+opening balances — and they are ENTERED; the bank one already has its form.
+
+**A reconciliation screen that manufactured the thing it exists to find.**
+`bankOpening()` returned 412,500 unset, and `BANKSEED()` supplied seven
+statement lines with real-sounding counterparties — "BML MERCHANT SETTLEMENT
+4471", "TRF REEF SUPPLIERS PVT LTD", a standing order for rent. So a brand-new
+store opened on a statement balance of MVR 557,024, a ledger balance of
+458,800, and **MVR 98,224 unexplained**, three of the lines flagged for a
+manager to answer for. Both are nought now, and the seed is gone.
+
+Two more defects were sitting under that seed, invisible while it stood. The
+outlet publishes an opening balance as a ROW — `{acct, asOf, amt}` — and this
+file read the row itself as a number, so a store that HAD set one got `NaN`.
+And an imported line is published as `descr` while every reader here said
+`desc`, so a line that round-tripped through the outlet came back with a blank
+description, the auto-matcher stopped recognising a bank charge by its
+wording, and the audit line read "undefined booked to 5600".
+
+**Three months filed that nobody had closed.** `ACCPERIODS()` was four literal
+month names ending in "August 2026" and `closedPeriods()` declared three of
+them closed, so a store opened last week had three filed accounting periods,
+and from September the live month would still have been August. The ladder is
+derived from the outlet's own business date now (`today()`), and a month is
+filed only where the outlet published a period row saying so. The reports tab
+strip was the same four literals and follows the same two facts.
+
+**Three printers nobody owned.** `PRINTERS()` named "Epson TM-m30 · USB", a
+model number the store does not have, on the screen a manager opens to find
+out why nothing is printing — while Settings said "Receipt printer | not
+bound" one tab away. The role is real; the name is now the truth.
+
+**A reward catalogue that reached the guest's phone.** `LOY()` shipped four
+rewards — a complimentary dessert "taken 128" times, a reef platter taken 19 —
+and three of them were `active`, so `publishGuest()` put them on the phone of
+every member at every store. A guest holding 400 points was told they could
+claim a free dessert their restaurant had never heard of. The redemption
+counts were literals: nothing has ever incremented `taken`, so the column read
+those four figures and zero for every reward a real store added. A figure
+nobody measures is not a column, and it is gone with them.
+
+**And a second tier ladder, which is the defect migration 019 exists to have
+ended.** `LOY().tiers` ranked at 0/2000/6000/15000 while `tierFor()` — the
+customers table, the guest sheet, the pay screen and the published roster —
+ranked on `K().TIERS`. The server's own fallback was a THIRD at 0/3000/7000/
+15000, and `app/kashikeyo-data.js` a fourth at 0/500/1500/3000. So the loyalty
+screen counted a member at 600 points into Bronze while every other surface
+called them Silver. One ladder now — 0/500/1500/3000, `spend` riding with each
+rung because the member card quotes it — and `src/bootstrap.js` `DEFAULT_TIERS`
+is that same ladder rather than an opinion of its own.
+
+**"Points expire · 12 months" was a term the app does not keep.** No column,
+no job, no handler; nothing in this build takes a point back. It was on the
+programme card and collected on a form. The card says points do not expire.
+
+### The programme is the outlet's, and now it can be
+
+Taking the demo programme out exposed what it had been covering: the bootstrap
+has ALWAYS published `TIERS` and `REWARDS` from `chain.setting`, and **nothing
+has ever written either**, so every store on every install read the shipped
+ladder and an empty catalogue for ever. The till filled the gap with a
+programme of its own and its editors wrote `state.loyalty` — one browser's
+localStorage — while queueing `loyalty_update`, whose handler moves a MEMBER's
+points and has no idea what a tier is. "Reward added" was a toast over a write
+that reached the outlet never.
+
+Worse, the rates: `applySale()` reads `chain.setting` key `loyalty`
+(`pointsPer`, `redeemPts`, `redeemValue`) and the bootstrap did not publish it,
+so the till quoted the guest a redemption rate off its own defaults and the
+outlet awarded at another the moment either moved. They agreed only by the
+coincidence of sharing a default.
+
+`H.loyalty_programme` is the write — rates, ladder and catalogue, each
+optional, into `chain.setting`, which is where they belong because the ladder
+and the points are chain-wide for the same reason `chain.member` holds the
+balance. Its RLS policy requires **rank 4**, so the till asks the same rung
+rather than letting a manager's op park after the toast said it was saved. A
+rate at or below zero is refused **by name**: a point worth nothing prices the
+whole catalogue at nothing.
+
+`LOYALTY` is published beside `TIERS` and `REWARDS`, and `null` is a real
+answer — nobody has set one — which is why the programme card says "Rate | not
+set — the shipped default" rather than printing a figure it invented.
+
+`LOY()` reads three sources in order, the same shape a measured yield and a
+saved batch already follow: this terminal's un-synced edit, then the OUTLET's
+published programme, then the shipped rates underneath. `state.loyalty` is a
+**holding pen, not a private fork** — `applyLive()` drops each part of it the
+moment the outlet publishes that part, so two tills cannot quote one guest two
+different redemption rates.
+
+`test/audit.test.js` pins all of it, and every one of the four new tests fails
+against the version that shipped.
 
 ## A batch the kitchen makes is an item
 
@@ -2740,6 +2861,13 @@ every screen generator, every modal kind, every form spec, every handler any of
 them expose — on an empty database, on a seeded one, and at every rank. The
 handler sweep is the one nobody does, and it is where most defects were found;
 several were not reachable by clicking.
+
+Run the suite **without `CONTROL_DB` in the environment**: each suite calls
+`freshControl()` and drops the registry it is about to use, and an inherited
+name pointed at a long-lived scratch registry makes five tests fail on rows a
+previous run left behind — a handle already claimed, a business database name
+already taken, an install count of 54 where the panel expects one. Those are
+the environment, not the build, and they look exactly like a regression.
 
 `test/api.test.js` runs against a **real Postgres, created fresh and migrated
 from nothing**, because that is the path a deploy takes. Run the suite against a

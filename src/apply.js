@@ -2263,6 +2263,60 @@ H.loyalty_update = async (c, p, ctx) => {
   return { ok: true };
 };
 H.earn_rate = async (c, p, ctx) => setSetting(c, ctx, 'loyalty_earn', p);
+
+/* ═══ THE PROGRAMME IS THE OUTLET'S, NOT ONE BROWSER'S ═══════════════════
+   The bootstrap has always published `TIERS` and `REWARDS` from chain.setting
+   and NOTHING has ever written either, so every store on every install read
+   the shipped ladder and an empty catalogue for ever. The till filled the gap
+   with a hard-coded programme of its own — four demo rewards carrying invented
+   redemption counts, and a second tier ladder disagreeing with the published
+   one — and its editors wrote a local object no other terminal could see.
+
+   Same three-source shape a measured yield and a saved batch already follow:
+   the outlet's answer is the answer, this terminal's un-synced edit is a
+   holding pen, and the shipped figures are the estimate underneath. This is
+   the write that empties the pen.
+
+   chain.setting, not the outlet's own — the ladder, the catalogue and what a
+   point is worth are chain-wide, which is the same reason chain.member holds
+   the points. Its RLS policy requires rank 4: a programme any manager can
+   re-price is not a programme, and the till gates the same rung. */
+H.loyalty_programme = async (c, p, ctx) => {
+  const wrote = [];
+  const put = async (key, value) => {
+    await c.query('INSERT INTO chain.setting (key, value) VALUES ($1, $2)'
+      + ' ON CONFLICT (key) DO UPDATE SET value = excluded.value', [key, JSON.stringify(value)]);
+    wrote.push(key);
+  };
+  if (p.rates) {
+    // Every rate above zero, or a point is worth nothing and the catalogue
+    // prices itself at nothing with it.
+    const e = Number(p.rates.pointsPer), q = Number(p.rates.redeemPts), w = Number(p.rates.redeemValue);
+    if (!(e > 0 && q > 0 && w > 0)) return { skipped: 'a rate at or below zero is not a programme' };
+    await put('loyalty', { pointsPer: e, redeemPts: q, redeemValue: w, live: p.rates.live !== false });
+  }
+  if (Array.isArray(p.tiers)) {
+    const tiers = p.tiers.slice(0, 8)
+      .map((t) => ({ key: String(t.key || t.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') || null,
+        name: String(t.name || '').slice(0, 40), at: Math.max(0, Math.trunc(Number(t.at) || 0)),
+        spend: Math.max(0, Number(t.spend) || 0), perk: String(t.perk || '').slice(0, 120),
+        mark: String(t.mark || '').slice(0, 4), from: t.from || null, to: t.to || null }))
+      .filter((t) => t.key && t.name)
+      .sort((a, b) => a.at - b.at);
+    if (!tiers.length) return { skipped: 'a ladder with no rungs is not a ladder' };
+    await put('tiers', tiers);
+  }
+  if (Array.isArray(p.rewards)) {
+    await put('rewards', p.rewards.slice(0, 40).map((r) => ({
+      id: String(r.id || '').slice(0, 40) || null, name: String(r.name || '').slice(0, 80),
+      cost: Math.max(1, Math.trunc(Number(r.cost) || 0)), tier: String(r.tier || '').slice(0, 40),
+      active: r.active !== false
+    })).filter((r) => r.id && r.name));
+  }
+  if (!wrote.length) return { skipped: 'nothing to change' };
+  await log(c, 'loyalty_programme', 'setting', wrote.join(','), null, { wrote: wrote });
+  return { ok: true, wrote: wrote };
+};
 H.settle_credit = async (c, p, ctx) => {
   const amt = r2(p.amt);
   if (!(amt > 0)) return { skipped: 'a settlement needs an amount' };

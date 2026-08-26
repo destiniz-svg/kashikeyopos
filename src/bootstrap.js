@@ -207,6 +207,13 @@ async function buildBootstrap(ctx) {
       })),
       TIERS: setting.tiers || DEFAULT_TIERS,
       REWARDS: setting.rewards || [],
+      /* What a point earns and what it is worth to spend. The SALE path has
+         always read this (chain.setting `loyalty`) and it was never published,
+         so the till quoted the guest a rate off its own defaults and the
+         outlet awarded at another the moment either moved. null is a real
+         answer — nobody has set one — and the till says so rather than
+         printing a rate it invented. */
+      LOYALTY: setting.loyalty || null,
       // The module catalogue and the permission matrix are STRUCTURE: they ship
       // with the app and the server has no opinion on them. Sending a second
       // copy from here is how the two lists drift, and a module missing from
@@ -1059,11 +1066,18 @@ function rolesOf(setting) {
   ];
 }
 
+/* ONE LADDER, and this is the copy the app ships with until an outlet
+   publishes its own. It had drifted to 0/3000/7000/15000 while
+   app/kashikeyo-data.js — the copy a browser loads before any bootstrap —
+   said 0/500/1500/3000, and the till carried a THIRD at 0/2000/6000/15000.
+   Three ladders is exactly the defect migration 019 dropped the tier column
+   to end: a guest could read one tier on their phone and another at the
+   counter. `spend` rides with each rung because the member card quotes it. */
 const DEFAULT_TIERS = [
-  { key: 'bronze', name: 'Bronze', at: 0, mark: 'III', from: '#8a6a4f', to: '#5d4632' },
-  { key: 'silver', name: 'Silver', at: 3000, mark: 'II', from: '#7c8290', to: '#4c515c' },
-  { key: 'gold', name: 'Gold', at: 7000, mark: 'I', from: '#b8862f', to: '#7d5a17' },
-  { key: 'platinum', name: 'Platinum', at: 15000, mark: '★', from: '#3c3f46', to: '#16171b' }
+  { key: 'bronze', name: 'Bronze', at: 0, spend: 0, mark: 'III', from: '#8a6a4f', to: '#5d4632' },
+  { key: 'silver', name: 'Silver', at: 500, spend: 5000, mark: 'II', from: '#7c8290', to: '#4c515c' },
+  { key: 'gold', name: 'Gold', at: 1500, spend: 15000, mark: 'I', from: '#b8862f', to: '#7d5a17' },
+  { key: 'platinum', name: 'Platinum', at: 3000, spend: 30000, mark: '★', from: '#3c3f46', to: '#16171b' }
 ];
 
 // The allergen and diet rules are ONE table, shared with every browser that
