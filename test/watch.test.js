@@ -54,6 +54,7 @@ const broken = {
 
 function reset() {
   Object.keys(watch._firing).forEach((k) => delete watch._firing[k]);
+  watch._resetSeen();
 }
 
 test('a healthy sweep says nothing at all', async () => {
@@ -181,4 +182,37 @@ test('the text format is Prometheus, and carries no per-outlet cardinality', () 
   assert.ok(!/outlet="/.test(out) && !/handle="/.test(out),
     'no label carries an outlet id or a store handle');
   assert.ok(out.endsWith('\n'), 'the exposition format ends with a newline');
+});
+
+/* A REGISTRY THAT HAS LOST ITS BUSINESSES READS AS PERFECTLY HEALTHY.
+
+   Found during the restore drill: with the registry dropped and not yet
+   restored, /readyz answered 200 and the sweep said nothing. No businesses
+   means no outlets, no outlets means none unreachable, and "nothing to check"
+   is indistinguishable from "everything is fine".
+
+   "No outlets is not a failure" is deliberate — that is a fresh install on its
+   way to onboarding, and a probe that never goes green there is an install
+   nobody can set up. What it cannot see is whether this install USED to have
+   customers. The process remembers. */
+test('outlets that vanish are a catastrophe, not a fresh install', async () => {
+  reset();
+  const some = Object.assign({}, clear,
+    { readiness: async () => ({ outlets: 4, unreachable: [] }) });
+  const none = Object.assign({}, clear,
+    { readiness: async () => ({ outlets: 0, unreachable: [] }) });
+
+  // A genuinely fresh install: none, and never any. Silence is right.
+  assert.deepStrictEqual(await capture(() => watch.sweep(none)), [],
+    'an install that has never had an outlet is onboarding, not broken');
+
+  await capture(() => watch.sweep(some));           // now it has customers
+  const lost = await capture(() => watch.sweep(none));
+  assert.match(lost.join('\n'), /\[alert\] new · vanished/,
+    'from some to none is a registry that has lost its businesses');
+  assert.match(lost.join('\n'), /has served 4 outlet\(s\) and now finds none/);
+  assert.match(lost.join('\n'), /CONTROL_DB/, 'and names where to look first');
+
+  const back = await capture(() => watch.sweep(some));
+  assert.match(back.join('\n'), /RECOVERED — the outlets are back/);
 });

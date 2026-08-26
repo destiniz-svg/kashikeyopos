@@ -149,6 +149,8 @@ const QUIET_MINS = () => Math.max(5, Number(process.env.DEVICE_QUIET_MINUTES || 
    so. Nothing is persisted — a restart re-evaluates from scratch, which is the
    right failure for a watchdog. */
 const firing = Object.create(null);
+/* The most outlets this process has ever seen — see the 'vanished' check. */
+let seenOutlets = 0;
 
 function configured() {
   return !!ALERT_TO() && email.health().ok;
@@ -229,6 +231,34 @@ async function sweep(probes) {
   try {
     const r = await probes.readiness();
     state.outlets = r.outlets;
+    /* A REGISTRY THAT HAS LOST ITS BUSINESSES READS AS PERFECTLY HEALTHY, and
+       that is how this was found: during the restore drill the registry was
+       dropped and recreated empty, and for the seconds before the restore
+       landed, /readyz answered 200 and this sweep said nothing at all. No
+       businesses means no outlets, no outlets means none unreachable, and
+       "nothing to check" is indistinguishable from "everything is fine".
+
+       "No outlets is not a failure" is deliberate and correct — that is a
+       fresh install on its way to onboarding, and a probe that never goes
+       green there is an install nobody can ever set up. What it cannot tell
+       you is whether this install USED to have customers. So the process
+       remembers: the most it has ever seen. Going from some to none is not a
+       fresh install, it is a catastrophe, and it is the one shape of total
+       loss that every other probe here reports as healthy.
+
+       In memory and reset by a restart, like the rest of this file. A restart
+       that comes up empty genuinely cannot tell the difference — but a
+       restart is also when somebody is already looking. */
+    if (state.outlets > seenOutlets) seenOutlets = state.outlets;
+    await say('vanished', seenOutlets > 0 && state.outlets === 0,
+      'every outlet has disappeared',
+      'This process has served ' + seenOutlets + ' outlet(s) and now finds'
+      + ' none. That is not a fresh install — it is a registry that has lost'
+      + ' its businesses, or a connection pointed somewhere new. Every other'
+      + ' probe here reads it as healthy, because no outlets means none'
+      + ' unreachable.\n\nCheck CONTROL_DB and whether chain.business still'
+      + ' has its rows before anything writes.',
+      'the outlets are back');
     state.unreachable = r.unreachable.length;
     state.ready = !r.unreachable.length;
     await say('readyz', !state.ready,
@@ -299,4 +329,4 @@ function bootLine() {
 }
 
 module.exports = { meter, render, sweep, bump, observe, configured, why,
-  bootLine, _firing: firing };
+  bootLine, _firing: firing, _resetSeen: () => { seenOutlets = 0; } };

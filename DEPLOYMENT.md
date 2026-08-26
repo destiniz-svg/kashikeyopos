@@ -328,15 +328,67 @@ the browser's own IndexedDB holds an outlet's un-replayed operations, which is
 why a till keeps selling through an outage but is not a backup.
 
 Take Postgres backups at the platform level and **restore-test them**, because
-a backup nobody has restored is a hypothesis. A restore is:
+a backup nobody has restored is a hypothesis.
+
+### A business is TWO databases, and restoring one is not a restore
+
+The old drill restored a single install's database. Under database-per-business
+a customer is **their business database plus their row in the registry**, and
+the registry is what makes that database routable at all: `chain.business` says
+it exists, `chain.outlet_directory` says which outlets live in it, and
+`chain.handle` says what a guest scanning a table card resolves to. **Restore a
+business without its registry row and you have a database nobody can reach.**
 
 ```
-1. restore the dump into a fresh database
-2. point DATABASE_URL at it and boot with the SAME OUTLET_ROLE_SECRET
-   (the roles are cluster-wide; a restore into a new cluster needs
-    `npm run provision:outlet -- --all` to recreate them)
-3. /readyz, then sign in and read a receipt you know the number of
+1. restore BOTH: the business database, and CONTROL_DB
+2. boot with the SAME OUTLET_ROLE_SECRET — the roles are cluster-wide and a
+   pg_dump of one database does not carry them
+3. npm run provision:outlet -- --all      (walks every business now)
+4. /readyz, then sign in and ring a bill you can find in the books
 ```
+
+### The drill, run and measured
+
+Run end to end on a live copy: one business database (8.0 MB, 19,157 bills)
+and its registry (31 KB), dumped with `pg_dump -Fc`, **both dropped**, both
+restored, outlet 3's schema grant revoked to reproduce the fresh-cluster case.
+
+| Step | Result |
+| --- | --- |
+| Every figure back | bills, gross, journal debits, credits, lines, install uuid, licence — **identical to the laari** |
+| Registry back | business row, three directory entries, three handles |
+| `/readyz` | **503**, naming outlet 3 and printing the remedy |
+| The watchdog | alerted **unprompted** within one sweep |
+| `provision:outlet -- --all` | four outlets across two businesses, reachable again |
+| `/readyz` after | **200**, no restart |
+| The watchdog after | announced the recovery, and how long it held |
+| The till | signed in, 2.2 MB bootstrap, rang `RGH-R-019158` |
+| The books after | 19,158 bills, debits = credits, 0 unbalanced, 0 repaired, 0 duplicate ops |
+
+**Two things the drill found, and both are fixed.**
+`npm run provision:outlet -- --all` — the remedy `/readyz` prints in its own
+503 — read `chain.outlet` through the process's own database and answered
+`relation "chain.outlet" does not exist`. **The recovery instruction did not
+work**, which is the worst place in the build for a control that says something
+it cannot do. It walks every live business now, reports a business it cannot
+open rather than stopping, and exits non-zero if any outlet is still broken —
+because a recovery that half worked must not look like one that finished.
+And an **emptied registry read as perfectly healthy**: no businesses means no
+outlets, no outlets means none unreachable. `src/watch.js` remembers the most
+outlets this process has ever seen and alerts when they vanish; a genuinely
+fresh install, which has never had any, still says nothing.
+
+### RPO and RTO, as measured
+
+| | Value | Where it comes from |
+| --- | --- | --- |
+| **RPO** | the platform's backup interval | Nothing in the app shortens it. A till's own IndexedDB outbox covers only what it has not yet delivered, and that is durability, not backup. |
+| **RTO** | **≈ 4 minutes** for one business | Restore 8 MB + 31 KB, run `provision:outlet -- --all`, probe. Dominated by the dump size, so it scales with the business rather than with the fleet. |
+| **RTO, whole fleet** | one restore per business, in parallel | The registry is 31 KB and restores in seconds; the businesses are independent. |
+| **Maximum data loss** | one backup interval, minus whatever the tills still hold and can replay | A till that was offline through the incident still has its ops and will push them. |
+
+**Set the platform's backup schedule to the RPO you can live with** — that is
+the number this app cannot improve, and it is the one worth arguing about.
 
 **Step 3 is not optional.** Drilled: a `pg_dump` of one database carries no
 roles, so restoring into a fresh cluster leaves `pg_restore` reporting a
@@ -358,7 +410,8 @@ green the moment `provision:outlet -- --all` is run, with no restart.
 
 `npm run provision:outlet -- --all` closes it: the role password is derived
 from `OUTLET_ROLE_SECRET`, so the same secret rebuilds the same credential and
-re-applies the grants. Verified on a restored copy of a real store — sign-in,
+re-applies the grants. It walks **every live business** in the registry;
+`-- --business <id>` does one, `-- --id <n>` one outlet. Verified on a restored copy of a real store — sign-in,
 bootstrap, `chain.licence`, 12 forced-RLS tables, 20 policies, no grant on the
 account plane, `npm run leak-test` 13/13.
 
