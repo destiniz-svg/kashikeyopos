@@ -502,6 +502,12 @@ button.link:hover{text-decoration:underline}
     history.replaceState(null, "", location.pathname);
   }
   var q = new URLSearchParams(location.search);
+  /* Typed once, on the website. A prefill and nothing more: the code still
+     goes to this address and nothing is created until it comes back. */
+  (function () {
+    var e = q.get("email");
+    if (e && $("email") && !$("email").value) $("email").value = e;
+  }());
   if (q.get("error")) say("err", q.get("error"));
 
   // Only offer what is actually configured: a button that cannot work is worse

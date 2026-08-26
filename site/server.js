@@ -149,7 +149,12 @@ app.post('/api/site/signup',
       if (!store) return res.status(400).json({ error: 'What is your store called?' });
       if (!name) return res.status(400).json({ error: 'Your name is required.' });
       if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-      if (!phone) return res.status(400).json({ error: 'A contact number is required.' });
+      /* Phone, island and a note were required when a person read every
+         request and rang the customer back. Nobody does now — confirming an
+         email address is what creates the store — so asking for a number to
+         file a row nobody will call is friction charged for nothing. Still
+         accepted, because the form may carry them again one day and a lead
+         with a number is worth more than one without. */
       /* One open request per address: pressing the button twice, or asking
          again a day later, must not stack five rows in front of the seller.
          The answer is byte-identical either way — this door keeps the same
@@ -173,9 +178,12 @@ app.post('/api/site/signup',
 
          Empty when APP_URL is unset, and the page says so rather than
          offering a button that goes nowhere. */
-      res.json({ ok: true,
-        next: APP_URL ? APP_URL + '/account?new=1&store=' + encodeURIComponent(store) : '',
-        selfServe: !!APP_URL });
+      /* The address travels too, so they type it once. It is only a prefill —
+         the app still sends the code to it and still refuses to create
+         anything until that code comes back. */
+      const to = APP_URL + '/account?new=1&store=' + encodeURIComponent(store)
+        + '&email=' + encodeURIComponent(email);
+      res.json({ ok: true, next: APP_URL ? to : '', selfServe: !!APP_URL });
     } catch (e) { next(e); }
   });
 

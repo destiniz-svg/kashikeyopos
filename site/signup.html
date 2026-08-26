@@ -94,33 +94,26 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
   <div class="logo"><span class="mark">K</span>KashikeyoPOS</div>
 
   <form id="reqForm">
-    <h1>Start your free trial</h1>
-    <p class="sub">Tell us about your store. We provision <b>your own private install</b> — your own
-      database, shared with nobody — and email your address and sign-in, usually within a day.
-      Every new store starts on a <b>14-day free trial</b>. No card required.</p>
+    <h1>Create your account</h1>
+    <p class="sub">Three things, then a six-digit code to your inbox. Confirming it creates
+      <b>your own database</b>, shared with nobody, and takes you straight into setup —
+      nobody is waiting to approve you. Every store starts on a <b>14-day free trial</b>.
+      No card required.</p>
 
-    <label for="storeName">Store name</label>
+    <label for="storeName">Business name</label>
     <input id="storeName" required maxlength="120" placeholder="Seaside Café" />
 
-    <div class="row">
-      <div><label for="contactName">Your name</label>
-        <input id="contactName" required maxlength="120" autocomplete="name" placeholder="Hassan Moosa" /></div>
-      <div><label for="phone">Phone</label>
-        <input id="phone" required maxlength="40" autocomplete="tel" inputmode="tel" placeholder="+960 7XX XXXX" /></div>
-    </div>
+    <label for="contactName">Your name</label>
+    <input id="contactName" required maxlength="120" autocomplete="name" placeholder="Hassan Moosa" />
 
     <label for="email">Email</label>
     <input id="email" type="email" required maxlength="200" autocomplete="email" placeholder="you@business.mv" />
 
-    <label for="island">Island / city <span style="text-transform:none;letter-spacing:0;color:var(--faint)">(optional)</span></label>
-    <input id="island" maxlength="120" placeholder="Malé · Hulhumalé · Addu…" />
-
-    <label for="note">Anything we should know? <span style="text-transform:none;letter-spacing:0;color:var(--faint)">(optional)</span></label>
-    <textarea id="note" maxlength="1000" placeholder="Café with 12 tables, two outlets, we already use QR menus…"></textarea>
-
     <div class="error" id="err"></div>
-    <button class="primary" type="submit" id="sendBtn">Request my store</button>
-    <div class="fine">By requesting a store you agree to the <a href="/terms" style="color:var(--mute)">Terms</a>
+    <button class="primary" type="submit" id="sendBtn">Create my account</button>
+    <div class="fine">You set your own password on your own store — we never send you one
+      and we never have it. By continuing you agree to the
+      <a href="/terms" style="color:var(--mute)">Terms</a>
       &amp; <a href="/privacy" style="color:var(--mute)">Privacy Policy</a>.</div>
   </form>
 
@@ -156,23 +149,19 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
     var body = {
       storeName: $("storeName").value.trim(),
       contactName: $("contactName").value.trim(),
-      email: $("email").value.trim().toLowerCase(),
-      phone: $("phone").value.trim(),
-      island: $("island").value.trim(),
-      note: $("note").value.trim()
+      email: $("email").value.trim().toLowerCase()
     };
-    if (!body.storeName) return fail("What is your store called?");
+    if (!body.storeName) return fail("What is your business called?");
     if (!body.contactName) return fail("Your name is required.");
     if (!/^\S+@\S+\.\S+$/.test(body.email)) return fail("Enter a valid email address.");
-    if (!body.phone) return fail("A contact number is required.");
     var btn = $("sendBtn"); btn.disabled = true; btn.textContent = "Sending…";
     fetch("/api/site/signup", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
     }).then(function (x) {
-      btn.disabled = false; btn.textContent = "Request my store";
-      if (!x.ok) return fail(x.j.error || "Could not send your request — try again.");
+      btn.disabled = false; btn.textContent = "Create my account";
+      if (!x.ok) return fail(x.j.error || "Could not start your account — try again.");
       $("doneEmail").textContent = body.email;
       $("doneEmail2").textContent = body.email;
       $("reqForm").classList.add("hide");
@@ -182,9 +171,13 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
          this deploy) a person really is in the loop, and promising "carry on
          now" with nowhere to go would be the worse lie. */
       if (x.j.selfServe && x.j.next) {
+        /* Straight on rather than a page to read: they came here to sign up,
+           and the next screen is where their code is sent. The button is left
+           behind it for a browser that blocks the redirect. */
         var go = $("doneGo");
         go.href = x.j.next;
         go.classList.remove("hide");
+        setTimeout(function () { location.href = x.j.next; }, 400);
       } else {
         $("doneTitle").textContent = "Request received";
         $("doneNow").classList.add("hide");
@@ -192,7 +185,7 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:1
       }
       $("done").style.display = "block";
     }).catch(function () {
-      btn.disabled = false; btn.textContent = "Request my store";
+      btn.disabled = false; btn.textContent = "Create my account";
       fail("Network error — check your connection and try again.");
     });
   });
