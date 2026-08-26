@@ -21,14 +21,21 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 
-const PW = '/opt/pw-browsers/chromium';
+/* Where Chromium and Playwright are. The development container has them at
+   these paths; CI installs them somewhere of its own and says where. Neither
+   goes into package.json — this repository ships two runtime dependencies and
+   no dev ones, and that is a property worth keeping. */
+const PW = process.env.KPOS_PW_CHROMIUM || '/opt/pw-browsers/chromium';
+const PW_MODULE = process.env.KPOS_PW_MODULE
+  || '/opt/node22/lib/node_modules/playwright/index.js';
 const BASE = process.env.KPOS_URL || 'http://127.0.0.1:4090';
 
 let chromium = null;
-try { chromium = require('/opt/node22/lib/node_modules/playwright/index.js').chromium; }
+try { chromium = require(PW_MODULE).chromium; }
 catch (e) { chromium = null; }
 
-const skip = (!chromium || !fs.existsSync(PW)) ? 'no browser available' : false;
+const { browserSkip, needServer } = require('./browser');
+const skip = browserSkip(!!chromium, PW, fs);
 
 const reachable = async () => {
   try {
@@ -80,7 +87,7 @@ async function signedIn(page) {
 }
 
 test('an op queued offline survives the tab being killed', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server on ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     // One persistent context, so IndexedDB survives the page closing — which
@@ -123,7 +130,7 @@ test('an op queued offline survives the tab being killed', { skip }, async (t) =
 
 test('two tills selling the same last portion both reach the books',
   { skip }, async (t) => {
-    if (!(await reachable())) return t.skip('no server on ' + BASE);
+    if (!needServer(t, await reachable(), BASE)) return;
     const b = await chromium.launch({ executablePath: PW });
     try {
       /* Two contexts is two devices: separate IndexedDB, separate storage,

@@ -14,12 +14,18 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 
-const PW = '/opt/pw-browsers/chromium';
+/* Where Chromium and Playwright are. The development container has them at
+   these paths; CI installs them somewhere of its own and says where. Neither
+   goes into package.json — this repository ships two runtime dependencies and
+   no dev ones, and that is a property worth keeping. */
+const PW = process.env.KPOS_PW_CHROMIUM || '/opt/pw-browsers/chromium';
+const PW_MODULE = process.env.KPOS_PW_MODULE
+  || '/opt/node22/lib/node_modules/playwright/index.js';
 const BASE = process.env.KPOS_URL || 'http://127.0.0.1:4090';
 const PIN = process.env.KPOS_PIN || '';
 
 let chromium = null;
-try { chromium = require('/opt/node22/lib/node_modules/playwright/index.js').chromium; }
+try { chromium = require(PW_MODULE).chromium; }
 catch (e) { chromium = null; }
 
 const reachable = async () => {
@@ -35,10 +41,11 @@ const WIDTHS = [
   [1440, 900, 'desktop']
 ];
 
-const skip = (!chromium || !fs.existsSync(PW)) ? 'no browser available' : false;
+const { browserSkip, needServer } = require('./browser');
+const skip = browserSkip(!!chromium, PW, fs);
 
 test('the shell holds its shape at 390, 924 and 1440', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     for (const [w, h, name] of WIDTHS) {
@@ -145,7 +152,7 @@ test('the shell holds its shape at 390, 924 and 1440', { skip }, async (t) => {
 });
 
 test('the identity control is the last thing in the bar, at every width', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     for (const [w, h, name] of WIDTHS) {
@@ -202,7 +209,7 @@ test('the identity control is the last thing in the bar, at every width', { skip
 });
 
 test('the onboarding panel works on a phone', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     const p = await b.newPage({ viewport: { width: 390, height: 780 } });
@@ -303,7 +310,7 @@ test('a phone tap target is never under 40px in the panel', () => {
    whole justification is touch shipping 34 × 36 targets.
    ═══════════════════════════════════════════════════════════════════════ */
 test('opening the menu panel does not move or resize the content', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     for (const [w, h, name] of [[924, 900, 'tablet'], [1440, 900, 'desktop']]) {
@@ -371,7 +378,7 @@ test('opening the menu panel does not move or resize the content', { skip }, asy
 });
 
 test('every rail target is at least 44px on its short axis', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
@@ -417,7 +424,7 @@ async function storeHandle() {
 
 test('a phone gets a phone, and a desktop gets the framed one', { skip }, async (t) => {
   const handle = await storeHandle();
-  if (!handle) return t.skip('no server at ' + BASE);
+  if (!needServer(t, !!handle, BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     for (const [name, path, qs] of PORTALS) {
@@ -494,7 +501,7 @@ test('a phone gets a phone, and a desktop gets the framed one', { skip }, async 
 test('no tap target in either phone app is under 44px on its short axis',
   { skip }, async (t) => {
     const handle = await storeHandle();
-    if (!handle) return t.skip('no server at ' + BASE);
+    if (!needServer(t, !!handle, BASE)) return;
     const b = await chromium.launch({ executablePath: PW });
     try {
       for (const [name, path, qs] of PORTALS) {

@@ -39,12 +39,29 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: kash
+      # ── THE BROWSER SUITES ARE NOT OPTIONAL HERE ──────────────────────────
+      # Fifteen tests need a real browser and a running server, and every one
+      # skipped cleanly when either was missing. That is right on a laptop and
+      # was wrong here: they had NEVER run in CI, because this job starts
+      # Postgres and nothing else. The first time they were allowed to run they
+      # found two defects on the spot — the sync clock was not persisted before
+      # sign-in, and the till could sign nobody in on a correct install.
+      #
+      # With this set, a missing browser or a missing server FAILS the build
+      # instead of quietly passing it. See test/browser.js.
+      KPOS_REQUIRE_BROWSER: "1"
+      # The three services the browser suites drive, on the ports they expect.
+      KPOS_URL: http://127.0.0.1:4090
+      PANEL_URL: http://127.0.0.1:4101
+      SITE_URL: http://127.0.0.1:4102
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/pw-browsers
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       # Install EXACTLY what the runtime image installs. The Dockerfile copies
       # package-lock.json and runs `npm ci --omit=dev`, so `npm install` here
       # tested a dependency tree that could differ from the one that ships on
@@ -52,9 +69,91 @@ jobs:
       # to prevent. `npm ci` also fails loudly if package.json and the lockfile
       # drift, instead of quietly resolving something else.
       - run: npm ci --omit=dev
+
       # Fail the build on a known-exploitable dependency rather than finding out
       # from an advisory email. Scoped to production deps (the only ones the
       # image ships) and to high/critical, so a dev-only moderate cannot block a
       # release the runtime is not exposed to.
       - run: npm audit --omit=dev --audit-level=high
-      - run: npm test
+
+      # Chromium, and NOT as a project dependency. This repository ships two
+      # runtime dependencies and no dev ones, and that is a property worth
+      # keeping: Playwright is installed into the runner, used by the suite
+      # through an absolute path, and never enters package.json.
+      - name: Install Chromium for the browser suites
+        run: |
+          npm install --no-save --prefix /tmp/pw playwright@1
+          /tmp/pw/node_modules/.bin/playwright install --with-deps chromium
+          # Where the suites look for the binary and the library.
+          echo "KPOS_PW_MODULE=/tmp/pw/node_modules/playwright/index.js" >> "$GITHUB_ENV"
+          echo "KPOS_PW_CHROMIUM=$(node -e "
+            const {chromium}=require('/tmp/pw/node_modules/playwright');
+            process.stdout.write(chromium.executablePath());
+          ")" >> "$GITHUB_ENV"
+
+      # ── the three services, on a database of their own ────────────────────
+      # A registry install, because that is the only kind there is: the app
+      # refuses to boot without CONTROL_DB, and the browser suites drive the
+      # real terminal against a real server.
+      - name: Start the app, Mission Control and the website
+        env:
+          CONTROL_DB: kashikeyo_ci_control
+          BUSINESS_DB_PREFIX: kashikeyo_ci_biz_
+          OUTLET_ROLE_SECRET: ci-outlet-role-secret-at-least-32-characters
+          SESSION_SECRET: ci-session-secret-at-least-32-characters!!
+          PORTAL_SECRET: ci-portal-secret-at-least-32-characters!!!
+          PANEL_SECRET: ci-panel-secret-at-least-32-characters!!!!
+          PANEL_SETUP_TOKEN: ci-panel-setup-token-at-least-16
+          ALLOWED_ORIGINS: "*"
+          RATE_LIMIT_SCALE: "1000"
+          PUBLIC_URL: http://127.0.0.1:4090
+          APP_URL: http://127.0.0.1:4090
+          CANONICAL_HOST: 127.0.0.1
+          NODE_ENV: development
+        run: |
+          set -e
+          psql -h localhost -U postgres -d postgres \
+            -c "CREATE DATABASE kashikeyo_ci_control" || true
+          PGDATABASE=kashikeyo_ci_control PORT=4090 nohup node server.js > /tmp/app.log 2>&1 &
+          PGDATABASE=kashikeyo_ci_control PORT=4101 nohup node panel/server.js > /tmp/panel.log 2>&1 &
+          PGDATABASE=kashikeyo_ci_control PORT=4102 nohup node site/server.js > /tmp/site.log 2>&1 &
+          # Wait for each, and FAIL if one never comes up — a service that
+          # silently did not start would put the skips straight back.
+          for port in 4090 4101 4102; do
+            for i in $(seq 1 60); do
+              if curl -fsS -o /dev/null "http://127.0.0.1:$port/"; then
+                echo "  :$port up"; break
+              fi
+              if [ "$i" = "60" ]; then
+                echo "  :$port NEVER CAME UP"; tail -40 /tmp/app.log /tmp/panel.log /tmp/site.log; exit 1
+              fi
+              sleep 1
+            done
+          done
+
+      # ONE RUN, and the skip check reads its output. Running the suite twice
+      # to check its summary would double a five-minute job and, worse, could
+      # pass on the second run what failed on the first.
+      - name: Tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/out.txt
+
+      # KPOS_REQUIRE_BROWSER already turns a missing browser or server into a
+      # failure. This catches the other way a test can opt out — its own
+      # t.skip() for some new reason — because a skip nobody sees is the same
+      # as not having the test, and that is exactly how fifteen of them went
+      # unrun in CI for months.
+      - name: No test may skip in CI
+        run: |
+          n=$(grep -c '# SKIP' /tmp/out.txt || true)
+          if [ "$n" != "0" ]; then
+            echo "$n test(s) skipped:"
+            grep '# SKIP' /tmp/out.txt
+            exit 1
+          fi
+          echo "nothing skipped"
+
+      - name: Service logs on failure
+        if: failure()
+        run: tail -60 /tmp/app.log /tmp/panel.log /tmp/site.log || true

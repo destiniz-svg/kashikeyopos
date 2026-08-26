@@ -25,11 +25,17 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 
-const PW = '/opt/pw-browsers/chromium';
+/* Where Chromium and Playwright are. The development container has them at
+   these paths; CI installs them somewhere of its own and says where. Neither
+   goes into package.json — this repository ships two runtime dependencies and
+   no dev ones, and that is a property worth keeping. */
+const PW = process.env.KPOS_PW_CHROMIUM || '/opt/pw-browsers/chromium';
+const PW_MODULE = process.env.KPOS_PW_MODULE
+  || '/opt/node22/lib/node_modules/playwright/index.js';
 const BASE = process.env.KPOS_URL || 'http://127.0.0.1:4090';
 
 let chromium = null;
-try { chromium = require('/opt/node22/lib/node_modules/playwright/index.js').chromium; }
+try { chromium = require(PW_MODULE).chromium; }
 catch (e) { chromium = null; }
 
 const reachable = async () => {
@@ -39,7 +45,8 @@ const reachable = async () => {
   } catch (e) { return false; }
 };
 
-const skip = (!chromium || !fs.existsSync(PW)) ? 'no browser available' : false;
+const { browserSkip, needServer } = require('./browser');
+const skip = browserSkip(!!chromium, PW, fs);
 
 /* The contrast walk, run inside the page. Returns the failures, not a verdict:
    a test that only says "12 problems" cannot be acted on. */
@@ -132,7 +139,7 @@ async function open(page, path) {
 
 test('every visible run of text clears WCAG AA against what is behind it',
   { skip }, async (t) => {
-    if (!(await reachable())) return t.skip('no server on ' + BASE);
+    if (!needServer(t, await reachable(), BASE)) return;
     const b = await chromium.launch({ executablePath: PW });
     try {
       const page = await b.newPage({ viewport: { width: 1280, height: 900 } });
@@ -149,7 +156,7 @@ test('every visible run of text clears WCAG AA against what is behind it',
 
 test('the keyboard reaches the controls, shows where it is, and is never trapped',
   { skip }, async (t) => {
-    if (!(await reachable())) return t.skip('no server on ' + BASE);
+    if (!needServer(t, await reachable(), BASE)) return;
     const b = await chromium.launch({ executablePath: PW });
     try {
       const page = await b.newPage({ viewport: { width: 1280, height: 900 } });
@@ -198,7 +205,7 @@ test('the keyboard reaches the controls, shows where it is, and is never trapped
   });
 
 test('the guest portal and member card meet the same bar', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server on ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     // A guest holds a phone, so it is measured at a phone's width.
@@ -276,7 +283,7 @@ const NAMED = `(() => {
 })()`;
 
 test('every control a person can reach announces what it is', { skip }, async (t) => {
-  if (!(await reachable())) return t.skip('no server on ' + BASE);
+  if (!needServer(t, await reachable(), BASE)) return;
   const b = await chromium.launch({ executablePath: PW });
   try {
     const page = await b.newPage({ viewport: { width: 1280, height: 900 } });
@@ -369,7 +376,7 @@ OTHERS.forEach(([what, base]) => {
       const r = await fetch(base + '/', { signal: AbortSignal.timeout(1500) });
       up = r.ok;
     } catch (e) { up = false; }
-    if (!up) return t.skip('not running on ' + base);
+    if (!needServer(t, up, base)) return;
 
     const b = await chromium.launch({ executablePath: PW });
     try {
