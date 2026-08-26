@@ -319,7 +319,64 @@ test('a verified account creates its own business, and an unverified one cannot'
       delete process.env.MAX_BUSINESSES_PER_ACCOUNT;
     } finally {
       delete process.env.ACCOUNT_CODE_ECHO;
-      srv.close();
+      if (srv.closeAllConnections) srv.closeAllConnections();
+      await new Promise((res) => srv.close(res));
+    }
+  });
+
+test('onboarding refuses an account with no business, rather than using the shared one',
+  opts, async () => {
+    /* THE ONE THAT SHIPPED. /account sent a verified account straight to
+       /onboarding, nothing had created a business, and the route fell back to
+       the connection's own database — so the first customer to sign up would
+       have written their company, outlets and staff into the database every
+       business shares. The tenancy boundary failing open at the front door,
+       on the very first screen a customer sees.
+
+       Falling back is right where there is no registry and wrong the moment
+       there is one, so it fails closed and says what to do. */
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/onboarding', require('../src/routes/onboarding.js'));
+    app.use((e, rq, rs, nx) => rs.status(e.status || 500).json({ error: e.message })); // eslint-disable-line
+    const srv = app.listen(0);
+    const base = 'http://127.0.0.1:' + srv.address().port;
+    try {
+      const acct = await db.control().query(
+        "INSERT INTO chain.account (email, verified_at) VALUES ($1, now()) RETURNING id",
+        ['nobiz-' + Date.now() + '@example.mv']);
+      const token = require('../src/secrets').signAccount(
+        { a: acct.rows[0].id, exp: Date.now() + 60000 });
+
+      const r = await fetch(base + '/api/onboarding/company', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-account-token': token },
+        body: JSON.stringify({ legalName: 'Nowhere Ltd', regNo: 'C-1/2026',
+          address: 'Somewhere', gstRegistered: 'no' })
+      }).then(async (x) => ({ status: x.status, body: await x.json() }));
+
+      assert.strictEqual(r.status, 409, JSON.stringify(r.body));
+      assert.match(r.body.error, /no business yet/);
+
+      /* And nothing reached the database it would have fallen back to. In
+         this suite that database was never even migrated, so the absence of
+         the table is a stronger answer than an empty one — either way, no
+         company was written where every business would have shared it.
+         Checked in two steps, because Postgres resolves the relation when it
+         plans the query, guard or no guard. */
+      const has = await db.owner().query(
+        "SELECT to_regclass('chain.company') IS NOT NULL AS ok");
+      if (has.rows[0].ok) {
+        const stray = await db.owner().query(
+          "SELECT count(*)::int AS n FROM chain.company WHERE legal_name = 'Nowhere Ltd'");
+        assert.strictEqual(stray.rows[0].n, 0, 'the shared database is untouched');
+      }
+    } finally {
+      // Node's fetch keeps the socket alive, so close() alone never resolves
+      // and the runner waits out its whole timeout.
+      if (srv.closeAllConnections) srv.closeAllConnections();
+      await new Promise((res) => srv.close(res));
     }
   });
 

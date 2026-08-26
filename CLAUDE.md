@@ -2564,6 +2564,23 @@ money landed in that customer's database and nobody else's. Four separate
 routing defects were invisible to every unit test and fell out of it in
 sequence.
 
+**Onboarding refuses an account that owns no business.** `/account` sent a
+verified account straight to `/onboarding` and nothing had created a business,
+so the route fell back to the connection's own database — the one every
+business shares. The first customer to sign up would have written their
+company, outlets and staff into it: the tenancy boundary failing open on the
+first screen a customer sees. It shipped that way for one deploy.
+
+Two halves, and they must agree: `/account` creates the business before it
+redirects, and onboarding refuses an ACCOUNT with no business rather than
+falling back. The refusal is MIDDLEWARE, not a throw inside a handler — these
+handlers are async and express 4 does not catch a rejected promise, so a throw
+deeper in left the request hanging with no response at all, which is what the
+first version of this fix did. Anonymous onboarding still uses the connection's
+own database: that is a single-database install claiming itself, fenced by
+`ONBOARDING_CLAIM_TOKEN`, and it can reach no customer's data because that
+database is not any business's.
+
 **Signing up creates the database, and no seller is in the loop.** The website
 takes the lead row it always took, then hands the customer to the app: creating
 a business needs a VERIFIED address, and the only place an address can be

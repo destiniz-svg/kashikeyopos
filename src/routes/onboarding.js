@@ -24,10 +24,32 @@ const express = require('express');
 const crypto = require('crypto');
 const { owner, withOutlet, control, ownerFor, CONTROL_DB } = require('../db');
 
-/* The database this request is onboarding. `owner()` — the connection's own —
-   is the single-database case: a local run, the test suite, and every install
-   until its registry exists. */
-const biz = (req) => ((req && req.bizDb) ? ownerFor(req.bizDb) : owner());
+/* The database this request is onboarding.
+
+   FAILS CLOSED WHERE A REGISTRY EXISTS. `owner()` — the connection's own — is
+   the single-database case, and the right answer for a local run, the test
+   suite and every install until its registry exists. It is the WRONG answer
+   the moment CONTROL_DB is set: falling back there writes one customer's
+   company, outlets and staff into the database every business shares, which is
+   the tenancy boundary failing open at the front door.
+
+   It shipped that way for one deploy, because /account sent a verified account
+   to /onboarding without creating a business first and nothing here refused.
+   A missing business is now a refusal that says what to do. */
+function biz(req) {
+  if (req && req.bizDb) return ownerFor(req.bizDb);
+  /* An ACCOUNT with no business never reaches a handler — the middleware below
+     refuses it first — so this is a backstop, and it throws rather than
+     quietly returning the shared database, because that failure is silent by
+     nature. It must agree with that middleware exactly: anonymous onboarding
+     is the single-database install claiming itself, and gets the connection's
+     own database whether or not a registry exists. */
+  if (CONTROL_DB() && req && req.account) {
+    throw Object.assign(new Error('this account has no business yet — create'
+      + ' one first (POST /api/account/business)'), { status: 409 });
+  }
+  return owner();
+}
 
 /* Which business this outlet belongs to. The registry is the map; a business
    database does not know its own registry id, and inventing one here would be
@@ -131,6 +153,29 @@ r.use(async function (req, res, next) {
     console.error('[onboarding] could not resolve the account: ' + e.message);
     next(e);
   }
+});
+
+/* NO BUSINESS, NO ONBOARDING. Refused here rather than inside a handler for a
+   plain reason: these handlers are async, and express 4 does not catch a
+   rejected promise — a throw deeper in would leave the request hanging with no
+   response at all, which is what the first version of this did.
+
+   Only where a registry exists. Without one this is a single-database install
+   and onboarding is exactly what it always was. */
+r.use(function (req, res, next) {
+  if (!CONTROL_DB() || req.bizDb || !req.account) return next();
+  /* An ACCOUNT with no business is the case that shipped broken: /account sent
+     a verified account here and the route fell back to the database every
+     business shares. Refused, with where to go.
+
+     No account at all is a different thing and still allowed: that is the
+     single-database install claiming itself, which in production is fenced by
+     ONBOARDING_CLAIM_TOKEN and cannot reach another customer's data, because
+     the connection's own database is not any business's. */
+  res.status(409).json({
+    error: 'this account has no business yet — create one first',
+    next: 'business'
+  });
 });
 
 const STEPS = [

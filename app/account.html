@@ -380,11 +380,35 @@ button.link:hover{text-decoration:underline}
     if (code) setTimeout(function () { $("d1").focus(); }, 30);
   }
 
+  /* The business name, as they typed it on the website. The signup form hands
+     it over on the query string; a person who came straight here has not said
+     one yet, so they are asked. Never invented — a business trading under a
+     name nobody chose is the thing this avoids. */
+  function storeName() {
+    var m = /[?&]store=([^&]*)/.exec(location.search || "");
+    var from = m ? decodeURIComponent(m[1].replace(/\+/g, " ")).trim() : "";
+    if (from) return from;
+    var typed = window.prompt("What is your business called?\n\n"
+      + "This is the legal or trading name — you can change it in Settings later.");
+    return (typed || "").trim();
+  }
+
   function land(session) {
     keep(session.token);
     // The server decides where to go: it knows whether this account owns
     // anything yet, and the browser should not be guessing at it.
-    location.href = session.next === "onboarding" ? "/onboarding" : "/";
+    if (session.next !== "onboarding") { location.href = "/"; return; }
+
+    /* ONBOARDING NEEDS A BUSINESS TO ONBOARD INTO. A verified account owns
+       nothing until one is created, and every step of the panel writes into
+       that business's own database. Going straight to /onboarding without one
+       is how a customer's company ends up in the database every business
+       shares — the server refuses it now, and this is the reason it never has
+       to. */
+    var name = storeName();
+    if (!name) { say("err", "A business name is needed before you can set up."); return; }
+    run(api("/business", { name: name })
+      .then(function () { location.href = "/onboarding"; }));
   }
 
   function submit(e) {
