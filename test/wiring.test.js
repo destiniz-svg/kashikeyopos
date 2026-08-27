@@ -4228,3 +4228,46 @@ test('a bill settled earlier can still be sent', () => {
   assert.match(SRC, /this\.state\.modal\.kind === "settled"\s*\n?\s*\|\| this\.state\.modal\.kind === "receipt"/,
     'both receipts are restored after a send');
 });
+
+/* ═══ A 401 SAYS WHICH OF THE TWO IT IS, AND THE TILL LOCKS ════════════════
+   Reported: "while sharing a completed receipt, it says session expired."
+   Three things were wrong on that path and none of them was the share.
+
+   The server writes a sentence for each case — a signed-out session is fixed
+   by keying a PIN, a deregistered device is not fixed by anything the person
+   holding it can do — and `_fetch` threw both away for the words "session
+   expired". So the one report anybody could make carried the symptom and not
+   the fact.
+
+   And `kpos-session-expired` was dispatched into an empty room: no listener,
+   anywhere in the build. The token was dropped in silence, the poll stopped,
+   the outbox stopped delivering, and a side errand took the whole till down
+   without saying so. Same defect as the poll that fired `kpos-tick` and was
+   discarded. */
+test('a refused session says what the server said, and the terminal locks', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+
+  // The body is read BEFORE the status is judged, or there is no sentence to
+  // carry — that ordering is the whole fix.
+  assert.match(API, /var text = await res\.text\(\)[\s\S]{0,220}if \(res\.status === 401 && !o\.anon\)/,
+    'the body is read before a 401 is decided');
+  assert.match(API, /var why = \(data && data\.error\)/, "and the server's own words are kept");
+  assert.ok(!/throw new Error\("session expired"\)/.test(API),
+    'the invented sentence is gone');
+  // The event carries enough for the next report to name the fact.
+  assert.match(API, /detail: \{ why: why, path: path, revoked: \(data && data\.revoked\) \|\| null \}/,
+    'the event says why, where, and which');
+
+  /* AND SOMETHING LISTENS. This is the half that was missing entirely — the
+     token was dropped and nothing on any screen said so. */
+  assert.match(SRC, /window\.addEventListener\("kpos-session-expired"/,
+    'the terminal listens for it');
+  assert.match(SRC, /this\.setState\(\{ session: null, modal: null \}\)/,
+    'and locks rather than carrying on signed out');
+  /* UNDELIVERED WORK IS NAMED, not lost: the outbox is durable and survives
+     this, and whoever is standing there needs telling that it resumes when
+     somebody signs in — the same rule signing out by hand already follows. */
+  assert.match(SRC, /still held here and will go when somebody signs in/,
+    'and says what happens to work not yet delivered');
+  assert.match(SRC, /this\.fault\("session",/, 'and it lands on Diagnostics');
+});

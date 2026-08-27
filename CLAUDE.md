@@ -1374,6 +1374,47 @@ does not. The dish hero stays a dark field whether or not there is a
 photograph, because the phone's own white status bar and back button sit on top
 of it.
 
+## A refusal that names itself, or a till that dies quietly
+
+Reported: *"while sharing a completed receipt, it says session expired."*
+Three things were wrong on that path and not one of them was the share.
+
+**The server writes a sentence for each case and the client threw both away.**
+`session()` answers a revoked session with *"This session was signed out — key
+your PIN to sign back in"* and a deregistered device with *"This terminal has
+been deregistered — ask a manager to enrol it again"* — worded apart on purpose,
+because one is fixed by keying four digits and the other is not fixed by
+anything the person holding it can do. `_fetch()` replaced both with the words
+"session expired". So the only report anybody could make carried the symptom
+and destroyed the fact, which is why this one could not be diagnosed from it.
+The body is read BEFORE the status is judged now — that ordering is the fix —
+and the server's own words are what reach the screen.
+
+**And `kpos-session-expired` was dispatched into an empty room.** No listener,
+anywhere in the build: the same defect as the poll that fired `kpos-tick` and
+was discarded. So a 401 dropped the token in SILENCE — the poll stopped, the
+outbox stopped delivering, and the only thing on any screen was a toast on
+whatever the operator happened to be doing. A side errand took the whole till
+down without saying so. The terminal locks on it now, with the reason, and
+names what it is holding: undelivered work is durable in the outbox and
+survives this, and whoever is standing there needs telling it resumes when
+somebody signs in — the same rule signing out by hand already follows.
+
+**Measured**: a session revoked out from under a live till, which the poll
+notices within its own thirty-second window. Before: "session expired", token
+gone, no lock screen. After: *"This session was signed out — key your PIN to
+sign back in"*, the keypad, and a `session` fault on Diagnostics naming the
+call that hit it.
+
+**What this does NOT explain**, and is stated as open: what made that share
+return 401 in the first place. `atLeast()` answers 403 and never 401, the rate
+limiter answers 429, `stillGood()` fails open on an unreachable database and
+treats an absent session row as honest — so the only 401 left is a token that
+failed `verify()`. The production logs show `/sync/pull` returning 200 on the
+same token every five seconds either side of it, which is the one story that
+does not fit. The path is instrumented rather than guessed at: the next
+occurrence names itself.
+
 ## A fault says whose fault it is
 
 Found on a live till's own Diagnostics screen: two caught faults, both
@@ -4056,7 +4097,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 497 tests
+npm test                          # 498 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

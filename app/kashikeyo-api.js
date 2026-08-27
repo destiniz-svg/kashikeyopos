@@ -729,14 +729,33 @@
         headers: headers,
         body: o.body ? JSON.stringify(o.body) : undefined
       });
-      if (res.status === 401 && !o.anon) {
-        this.signOut();
-        try { root.dispatchEvent(new Event("kpos-session-expired")); } catch (e) {}
-        throw new Error("session expired");
-      }
+      /* READ THE BODY BEFORE DECIDING. A 401 from this API always carries a
+         sentence somebody wrote — "This session was signed out — key your PIN
+         to sign back in", "This terminal has been deregistered — ask a manager
+         to enrol it again" — and this threw all of it away for the word
+         "session expired". Reported as exactly that: a share that answered
+         "session expired" and nothing anybody could act on. The server names
+         which of the two it is precisely because they land a person in
+         different places, and the client was the thing losing it. */
       var text = await res.text();
       var data = null;
       try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+      if (res.status === 401 && !o.anon) {
+        var why = (data && data.error)
+          || "This session is no longer valid — key your PIN to sign back in";
+        this.signOut();
+        /* AND THE EVENT HAD NO LISTENER, anywhere in the build — the same
+           defect as the poll that was dispatched and discarded. So the token
+           was dropped in silence: the till stopped polling, the outbox stopped
+           delivering, and the only thing on screen was a toast. It carries the
+           reason and the path now, and the terminal locks on it. */
+        try {
+          root.dispatchEvent(new CustomEvent("kpos-session-expired", {
+            detail: { why: why, path: path, revoked: (data && data.revoked) || null }
+          }));
+        } catch (e) { /* an environment with no CustomEvent still throws below */ }
+        throw new Error(why);
+      }
       if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
       return data;
     }

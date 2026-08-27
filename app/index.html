@@ -2598,6 +2598,34 @@ class Component extends DCLogic {
        the OLD install: tables, held bills, the settled cache.
        Shed it (the durable outbox is handled separately — its foreign ops
        PARK rather than vanish, because money is never silently deleted). */
+    /* THE TOKEN IS GONE, SO SAY SO AND LOCK. This event was dispatched by the
+       API client and listened for by NOBODY — the same defect as the poll that
+       fired `kpos-tick` into an empty room. So a 401 dropped the token in
+       silence: the poll stopped, the outbox stopped delivering, and the only
+       thing anybody saw was a toast on whatever they happened to be doing.
+       Reported as "while sharing a completed receipt, it says session
+       expired", which is a side errand taking the whole till down with it.
+
+       The reason is the SERVER'S, not a word invented here — a signed-out
+       session is fixed by keying a PIN and a deregistered device is not fixed
+       by anything the person holding it can do, and only the server knows
+       which. Undelivered work is durable in the outbox and survives this; it
+       resumes the moment somebody signs back in, which is what the notice
+       says rather than leaving them to wonder. */
+    window.addEventListener("kpos-session-expired", (e) => {
+      const d = e.detail || {};
+      const held = (this.state.outbox || []).filter((x) => x.state !== "done").length;
+      this.setState({ session: null, modal: null });
+      this.persist();
+      this.toast((d.why || "This session is no longer valid — key your PIN to sign back in")
+        + (held ? " \u00b7 " + held + " unsent " + (held === 1 ? "item is" : "items are")
+          + " still held here and will go when somebody signs in" : ""), "warn");
+      // Named on Diagnostics with the call that hit it, so the next report
+      // carries the fact rather than the symptom.
+      this.fault("session", (d.revoked ? d.revoked + " revoked" : "refused")
+        + " on " + (d.path || "a request") + " — " + (d.why || ""));
+    });
+
     window.addEventListener("kpos-install-changed", (e) => {
       this.setState({ tickets: {}, held: [], settled: [],
         activeTable: null });
