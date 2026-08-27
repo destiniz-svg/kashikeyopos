@@ -1451,6 +1451,62 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## A setting is the outlet's, unless it is named as this terminal's
+
+The owner sits at home and changes a policy — how long until a till locks,
+whether a void needs a PIN, whether costs show on the grid, what the acquirer
+charges, what a dollar is worth today. Every terminal in the shop has to be
+reading it by the next bootstrap. None of it travelled.
+
+The outlet's `setting` table has been there since the schema was written and
+`src/apply.js` wrote to it. **`src/bootstrap.js` read it into a local called
+`oset` and used it NOWHERE**, so no terminal ever read a word of it back, and
+the settings screen's one write went into `state.prefs` — one browser's
+localStorage — beside a `setting_change` queued with **no payload**, so the
+outlet was told a setting had changed and never which one.
+`String(undefined)` would have filed it under the literal key `"undefined"`.
+
+`PREFS` is published now, and `prefs()` reads three sources in the order that
+settles a disagreement between two tills: the shipped default, then the
+**OUTLET's** answer, then this device's own un-synced edit. Same shape a
+measured yield, a saved batch and a published loyalty programme already follow.
+
+**`DEVICE_PREFS` is the closed list of what does NOT travel** — the sidebar
+pin, the KDS station, the print transport, the printer host and name, the paper
+width, the copy count, auto-print, the theme, the shell, the device label.
+Pushing "keep the menu pinned" would pin the sidebar on every till in the shop
+because one person likes it that way, and pushing a paper width would re-point
+somebody else's printer. It **fails closed on purpose**: a key not on the list
+travels, because a policy that silently stayed on one browser is the defect this
+exists to end. Pinning the sidebar now queues nothing at all rather than
+queueing a `setting_change` about somebody else's screen.
+
+**The local copy is a holding pen, not a private fork.** `reconcilePrefs()`
+runs on every bootstrap beside `reconcileCats()` and drops a held key the moment
+the outlet publishes it — **on the key, never on the value**. If the outlet's
+answer differs, somebody edited it elsewhere and theirs is the later decision;
+keeping the local copy BECAUSE it differs is exactly how a pen becomes a fork.
+A device preference is never dropped, because it is never published.
+
+**Four rate screens were writing keys nothing reads.** `mdr_set` wrote
+`acquirer_rates_outlet`, `channel_rates` wrote `channel_rates`, `fx_rates` wrote
+`fx_rates` — while the till read `prefs().processors`, `prefs().packCost`,
+`prefs().aggCommission` and `prefs().fx`, none of which had ever left the
+browser they were typed in. So a merchant rate edited in the back office was an
+entry in an audit trail: every other terminal went on costing, converting and
+reconciling at whatever it happened to hold. They write the keys the till reads
+now. `mdr_set` also **merges** one contract into the map rather than writing it
+over the whole setting, which is what made editing a second processor erase the
+first. And `qr_banner_slot` was aliased to `banner_upsert` — a display toggle
+sent to a handler that creates a banner out of a payload carrying none.
+
+Measured in two real browsers against one outlet: the owner changes `autoLock`
+and `showCost` on one, and the other — untouched — is reading the outlet's
+answer **6.0 s** later; a dish repriced on the same browser reaches the other in
+**2.0 s**. Before the change the second browser's `PREFS` was `{}`, on every
+install, for ever. `test/api.test.js` walks it over HTTP, `test/wiring.test.js`
+pins both the wiring and the behaviour on the shipped logic class.
+
 ## A menu section is the outlet's, not one browser's
 
 Reported from a live store, and it arrived wearing the wrong face: the till
@@ -3347,7 +3403,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 464 tests
+npm test                          # 468 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

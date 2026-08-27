@@ -436,7 +436,10 @@ test('every queued op carries a client-generated opId', () => {
 
   // Drive the whole sweep, which fires every handler the UI exposes.
   H.sweep(F);
-  assert.ok(queued.length > 20, 'the sweep queued ' + queued.length + ' ops');
+  // A floor, not a census: it exists so that a sweep which silently stopped
+  // reaching the handlers cannot pass. It went from 21 to 20 when pinning the
+  // sidebar stopped queueing anything — a device preference is not the shop's.
+  assert.ok(queued.length >= 20, 'the sweep queued ' + queued.length + ' ops');
   const bad = queued.filter((q) => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(q.opId || ''));
   assert.deepStrictEqual(bad.map((q) => q.kind), [],
     'these ops queued without a v4 opId, so a replay would double-book them');
@@ -1582,17 +1585,109 @@ function queueCalls(src) {
    would be actively harmful — `consume_recipe` would deduct the stock the sale
    has already deducted. */
 const BARE_BY_DESIGN = [
-  'ai_menu_draft', 'bank_recon', 'channel_rates', 'credit_reverse', 'fx_rates',
-  'mdr_set', 'menu_import', 'printer_state', 'promo_clamped', 'qr_pay_intent',
-  'recipe_recost', 'recost_items', 'seat_walkin', 'setting_change',
+  'ai_menu_draft', 'bank_recon', 'credit_reverse', 'menu_import',
+  'printer_state', 'promo_clamped', 'qr_pay_intent',
+  'recipe_recost', 'recost_items', 'seat_walkin',
   'split_payment', 'terminal_update',
   // ── mismatched, and knowingly left: see the note above
   'category_insert',   // a STOCK category, sent to the MENU category handler
   'consume_recipe',    // an announcement; the sale already moved the stock
   'kds_station',       // a device preference, sent to a handler that moves a docket
-  'modifier_update',   // the screen edits the whole list; the handler takes one
-  'qr_banner_slot'     // a display toggle, sent to a handler that upserts a banner
+  'modifier_update'    // the screen edits the whole list; the handler takes one
 ];
+
+/* ═══ A SETTING IS THE OUTLET'S, SO IT REACHES EVERY TERMINAL ═══════════════
+   The outlet has had a `setting` table since the schema was written, the
+   handler wrote to it, and `src/bootstrap.js` read it into a local called
+   `oset` that was USED BY NOTHING. So an owner changing a policy from home
+   changed it on their own screen and no till ever heard: `autoLock`,
+   `voidPin`, `showCost`, the merchant rate, the exchange rates, the packaging
+   cost and the QR banner slot all lived in one browser's localStorage.
+
+   Three properties, and each is a way the old shape was wrong:
+     · the settings screen's ONE write sends the key and the value;
+     · a DEVICE preference is named and does NOT travel — pushing "keep the
+       menu pinned" would pin somebody else's sidebar, and a paper width would
+       re-point somebody else's printer;
+     · the local copy is a HOLDING PEN: dropped the moment the outlet publishes
+       that key, on the key and never on the value, the same rule a measured
+       yield and a saved menu section already follow. */
+test('a setting is the outlet\'s, unless it is named as this terminal\'s', () => {
+  // ── the bootstrap publishes it at all. This is the whole defect: the read
+  //    existed and the publish did not.
+  const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const boot = src('src/bootstrap.js');
+  assert.match(boot, /PREFS:\s*oset/,
+    "the outlet's own settings are read and published, not read and dropped");
+
+  // ── the one write carries the key and the value, and is gated on the key
+  //    being the outlet's business rather than this screen's.
+  const set = SRC.slice(SRC.indexOf('const set = (k, v) =>'));
+  const body = set.slice(0, set.indexOf('const tog ='));
+  assert.match(body, /if \(!this\.isDevicePref\(k\)\)/,
+    'a device preference is not pushed to the outlet');
+  assert.match(body, /queue\("setting_change"[\s\S]*?\{ key: k, value: v \}/,
+    'and a policy is sent with the key and the value its handler reads');
+
+  // ── the three sources, in the order that settles a disagreement.
+  const prefs = SRC.slice(SRC.indexOf('  prefs() {'));
+  assert.match(prefs.slice(0, 400),
+    /PREF_DEFAULTS[\s\S]*?\(K\(\) \|\| \{\}\)\.PREFS[\s\S]*?this\.state\.prefs/,
+    'shipped default, then the OUTLET, then this device — in that order');
+
+  // ── and the pen empties. Without this the first terminal to change a
+  //    setting keeps its own answer for ever and never sees anybody else's.
+  assert.match(SRC, /reconcilePrefs\(\) \{/, 'there is a reconciliation');
+  assert.match(SRC, /this\.reconcileCats\(\);\s*\n\s*this\.reconcilePrefs\(\);/,
+    'and it runs on every bootstrap, beside the sections it mirrors');
+  const rec = SRC.slice(SRC.indexOf('  reconcilePrefs() {'));
+  assert.match(rec.slice(0, 700), /!this\.isDevicePref\(k\)[\s\S]*?hasOwnProperty\.call\(pub, k\)/,
+    'dropped when the outlet publishes the KEY, and a device preference never');
+
+  // ── the four rate screens send what their handlers read. Each wrote a key
+  //    no terminal ever read: `acquirer_rates_outlet`, `channel_rates`,
+  //    `fx_rates`, and a banner upsert for a display toggle.
+  const apply = src('src/apply.js');
+  [['mdr_set', 'processors'], ['channel_rates', 'packCost'],
+    ['fx_rates', "'fx'"], ['qr_banner_slot', 'qrBanners']].forEach(([kind, key]) => {
+    const h = apply.slice(apply.indexOf('H.' + kind + ' ='));
+    assert.ok(h.slice(0, 900).indexOf(key) > 0,
+      kind + ' writes the key the till reads back, not one nobody reads: ' + key);
+  });
+});
+
+/* And behaviourally, on the shipped logic class: the outlet's answer displaces
+   the shipped default, the local pen shows an edit at once and empties the
+   moment the outlet publishes that key, and a DEVICE preference is never
+   dropped because it is never published. */
+test('the outlet\'s settings displace the defaults, and the pen empties', () => {
+  const kpos = FX.kpos();
+  const F = H.makeInstance({ kpos: kpos, raw: FX.raw(), real: FX.real() });
+
+  // ── nobody has decided anything: the shipped default.
+  assert.strictEqual(F.prefs().autoLock, F.PREF_DEFAULTS.autoLock);
+
+  // ── the outlet has. A terminal that has never touched this setting reads
+  //    the shop's answer, which is the whole of what was missing.
+  F.__win.KPOS.PREFS = { autoLock: 12, voidPin: false };
+  assert.strictEqual(F.prefs().autoLock, 12, "the outlet's answer wins over the default");
+  assert.strictEqual(F.prefs().voidPin, false);
+
+  // ── this terminal edits it: shown at once, including offline.
+  F.state.prefs = { autoLock: 30, navPinned: true };
+  assert.strictEqual(F.prefs().autoLock, 30, 'an un-synced edit shows immediately');
+
+  // ── and the pen empties once the outlet has it. Dropped on the KEY and
+  //    never on the value: a disagreement means somebody edited it elsewhere
+  //    and theirs is the later decision. Keeping it BECAUSE it differs is
+  //    exactly how a holding pen becomes a private fork.
+  F.__win.KPOS.PREFS = { autoLock: 45, voidPin: false };
+  F.reconcilePrefs();
+  assert.strictEqual(F.prefs().autoLock, 45, 'the outlet is read once it has answered');
+  assert.strictEqual(F.state.prefs.autoLock, undefined, 'and the local copy is gone');
+  assert.strictEqual(F.state.prefs.navPinned, true,
+    'while a device preference stays — it is never published, so it never lands');
+});
 
 test('an op reaches the outlet with its payload, or is named as carrying none', () => {
   const { AUDIT_ONLY } = require('../src/apply');

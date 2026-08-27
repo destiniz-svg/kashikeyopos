@@ -1508,9 +1508,50 @@ H.acq_reopen = async (c, p) => {
   return q.rows.length ? { ok: true } : { skipped: 'no such batch' };
 };
 
-H.mdr_set = async (c, p, ctx) => setSetting(c, ctx, 'acquirer_rates_outlet', p.rates || p);
-H.channel_rates = async (c, p, ctx) => setSetting(c, ctx, 'channel_rates', p.rates || p);
-H.fx_rates = async (c, p, ctx) => setSetting(c, ctx, 'fx_rates', p.rates || p);
+/* ═══ A RATE THE OWNER SETS IS THE OUTLET'S ════════════════════════════════
+   All three wrote a key NO TERMINAL EVER READ — `acquirer_rates_outlet`,
+   `channel_rates`, `fx_rates` — while the till read `prefs().processors`,
+   `prefs().packCost` and `prefs().fx`, which lived in one browser's
+   localStorage and travelled nowhere. So a rate edited in the back office was
+   an entry in an audit trail and a figure on one screen: every other terminal
+   went on costing, converting and reconciling at whatever it happened to hold.
+
+   They write the keys the till reads now, and the bootstrap publishes the
+   outlet's `setting` table as `PREFS`, so one edit reaches every terminal
+   inside a bootstrap. */
+H.mdr_set = async (c, p, ctx) => {
+  // A whole map, or ONE contract merged into it. The old handler took the
+  // single processor it was told about and wrote it OVER the setting, so
+  // editing a second contract erased the first.
+  if (p.processors) return setSetting(c, ctx, 'processors', p.processors);
+  if (p.processor) {
+    const cur = await one(c, "SELECT value FROM setting WHERE key = 'processors'");
+    const all = Object.assign({}, (cur && cur.value) || {});
+    all[String(p.processor)] = {
+      rate: num(p.rate), cycle: Math.round(num(p.cycle)), suspended: !!p.suspended
+    };
+    return setSetting(c, ctx, 'processors', all);
+  }
+  if (p.mdr === undefined || p.mdr === null) {
+    throw new Error('a merchant rate names the processor it is for, or carries a rate');
+  }
+  return setSetting(c, ctx, 'mdr', num(p.mdr));
+};
+H.channel_rates = async (c, p, ctx) => {
+  if (p.packCost !== undefined) await setSetting(c, ctx, 'packCost', num(p.packCost));
+  if (p.aggCommission !== undefined) {
+    await setSetting(c, ctx, 'aggCommission', num(p.aggCommission));
+  }
+  if (p.packCost === undefined && p.aggCommission === undefined) {
+    throw new Error('a channel rate carries a packaging cost or a commission');
+  }
+  return { ok: true };
+};
+H.fx_rates = async (c, p, ctx) => {
+  const r = p.rates || p.fx;
+  if (!r || typeof r !== 'object') throw new Error('a rate change carries the rates');
+  return setSetting(c, ctx, 'fx', r);
+};
 
 H.tax_version = async (c, p, ctx) => {
   await c.query('INSERT INTO chain.tax_version (outlet_id, code, rate, effective_from,'
@@ -2029,7 +2070,14 @@ H.banner_upsert = async (c, p) => {
       p.code || null, p.from || null, p.to || null, p.active]);
   return { ok: true };
 };
-H.qr_banner_slot = H.banner_upsert;
+/* A DISPLAY TOGGLE IS NOT A BANNER. This was aliased to `banner_upsert`, so
+   turning the slot on tried to create a banner out of a payload that carried
+   none — and the decision itself, which every terminal has to agree on or one
+   till shows the guest a banner strip another has turned off, reached nobody. */
+H.qr_banner_slot = async (c, p, ctx) => {
+  if (p.on === undefined) throw new Error('the banner slot is turned on or off, not toggled blind');
+  return setSetting(c, ctx, 'qrBanners', !!p.on);
+};
 
 H.vendor_upsert = async (c, p) => {
   const q = await one(c, 'INSERT INTO chain.supplier (name, trn, contact, phone, email,'
@@ -2462,7 +2510,16 @@ H.pair_kds = async (c, p, ctx) => {
 };
 
 // ═══ CONFIGURATION ═════════════════════════════════════════════════════════
-H.setting_change = async (c, p, ctx) => setSetting(c, ctx, p.key, p.value);
+/* ONE KEY, ONE VALUE. Queued with no payload at all until now, so the outlet
+   was told a setting had changed and never which one — `String(undefined)`
+   would have filed it under the literal key "undefined". A parked op is read
+   by a person, so it refuses in English. */
+H.setting_change = async (c, p, ctx) => {
+  const key = p.key === undefined || p.key === null ? '' : String(p.key).trim();
+  if (!key) throw new Error('a setting change was sent with no key');
+  if (p.value === undefined) throw new Error('a setting change carries its value');
+  return setSetting(c, ctx, key, p.value);
+};
 H.terminal_update = async (c, p, ctx) => setSetting(c, ctx, 'terminal', p);
 H.brand_update = async (c, p, ctx) => {
   await c.query("UPDATE chain.company SET brand = coalesce(brand,'{}'::jsonb) || $1::jsonb,"

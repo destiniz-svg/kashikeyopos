@@ -2067,12 +2067,14 @@ class Component extends DCLogic {
     // Operating preferences. Every one of these changes real behaviour — a
     // settings screen full of switches that do nothing is worse than no
     // settings screen, because it teaches staff the controls are decorative.
-    prefs: Object.assign({
-      autoLock: 5, voidPin: true, cashRound: true, kotPrint: true,
-      kdsSound: true, showCost: true, blindClose: true,
-      paper: 80, copies: 1, autoPrint: false, lang: "en",
-      pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false, qrBanners: false
-    }, this._saved.prefs || {}),
+    /* ONLY WHAT THIS DEVICE HAS ACTUALLY SET. The shipped defaults used to be
+       folded in here, which made `state.prefs` carry every key whether anybody
+       had chosen it or not — and once the outlet started publishing its own
+       settings that would have shadowed all of them, for ever, with the
+       terminal preferring a default it was never asked about over a policy the
+       owner set. The defaults live in PREF_DEFAULTS and sit UNDERNEATH the
+       outlet's answer, where a default belongs. */
+    prefs: Object.assign({}, this._saved.prefs || {}),
     lastTouch: Date.now(),
     session: this._saved.session || null,
     register: this._saved.register || null,
@@ -3828,8 +3830,9 @@ class Component extends DCLogic {
           + (pinned ? "var(--bg-3)" : "var(--bg-2)") + ";border:1px solid var(--line);color:var(--text-dim)",
       navPin: () => {
         const want = !pinned;
-        this.setState({ prefs: Object.assign({}, this.prefs(), { navPinned: want }), drawer: false });
-        this.queue("setting_change", "Menu " + (want ? "pinned open" : "collapsed to the rail") + " · " + this.deviceCode(), "devices");
+        // A device preference, so it is not sent: one person liking the
+        // sidebar open is not a decision about the shop.
+        this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { navPinned: want }), drawer: false });
       },
       // On the tablet rail this avatar is the ONLY identity affordance in the
       // sidebar, so it has to be a button. Left inert it reads as tappable and
@@ -8283,7 +8286,11 @@ class Component extends DCLogic {
     // Never strand the operator on a screen the change has just retired.
     if (this.hiddenBy(a, this.state.view)) patch.view = this.siteHome();
     this.setState(patch);
-    this.queue("setting_change", "Business activity \u2192 " + a + " \u00b7 by " + this.me(), "settings");
+    // What the business DOES is the business's, not this browser's: it decides
+    // which modules the sidebar carries, and half a shop reading Restaurant
+    // while the other half reads Retail is two apps at one counter.
+    this.queue("setting_change", "Business activity \u2192 " + a + " \u00b7 by " + this.me(), "settings",
+      { key: "activity", value: a });
     this.toast("Business activity set to " + this.ACTIVITIES().reduce((r, x) => x[0] === a ? x[1] : r, a) + " \u2014 the sidebar follows");
   }
   // Single derivation of "what is waiting at this location", read by the site
@@ -8421,7 +8428,46 @@ class Component extends DCLogic {
   staffAll() { return (K().STAFF || []); }
   staffFor(id) { return this.staffAll().find((x) => x.id === id) || {}; }
   rules() { return (K().PAYROLL_RULES || {}); }
-  prefs() { return this.state.prefs || {}; }
+  /* ── a setting is the OUTLET's, unless it is this terminal's ──────────────
+     Three sources, in the order that settles a disagreement between two tills:
+     this device's own un-synced edit, then what the OUTLET published, then the
+     shipped default. The middle one is what was missing entirely — the outlet
+     has had a `setting` table since the schema was written, the handler wrote
+     to it, and the bootstrap read it into a local variable it never used. So an
+     owner changing a policy from home changed it on their own screen and the
+     till never heard.
+
+     DEVICE_PREFS is the closed list of what does NOT travel: a preference
+     about this screen, this printer, this cabinet. Pushing "keep the menu
+     pinned" to the outlet would pin the sidebar on every till in the shop
+     because one person likes it that way, and pushing a station or a paper
+     width would re-point somebody else's printer. Anything not on the list is
+     a policy about the business — how long until the terminal locks, whether a
+     void needs a PIN, whether costs show on the grid — and belongs to the
+     outlet. It FAILS CLOSED on purpose: a new key travels unless somebody
+     decides it is personal, because a policy that silently stayed on one
+     browser is the defect this exists to end. */
+  /* What the app does before anybody has decided otherwise. Under the outlet's
+     published settings, which are in turn under this device's own edit. */
+  PREF_DEFAULTS = {
+    autoLock: 5, voidPin: true, cashRound: true, kotPrint: true,
+    kdsSound: true, showCost: true, blindClose: true,
+    paper: 80, copies: 1, autoPrint: false, lang: "en",
+    pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false, qrBanners: false
+  };
+  DEVICE_PREFS = {
+    navPinned: 1, kdsStation: 1, printConn: 1, printerHost: 1, printerName: 1,
+    paper: 1, copies: 1, autoPrint: 1, theme: 1, shell: 1, deviceLabel: 1,
+    receiptPrinter: 1, kotPrinter: 1, device: 1
+  };
+  isDevicePref(k) { return !!this.DEVICE_PREFS[String(k)]; }
+  prefs() {
+    // Shipped default, then the OUTLET's answer, then this device's own edit —
+    // which shows the moment it is made and stops being an override once it has
+    // landed, the same holding-pen rule a measured yield already follows.
+    return Object.assign({}, this.PREF_DEFAULTS,
+      (K() || {}).PREFS || {}, this.state.prefs || {});
+  }
   // Written by KashikeyoGuest. Unacknowledged rows for THIS outlet only — a
   // server at one outlet must never see a raised hand at another.
   // A table slot from whatever the guest side called the table. The floor plan
@@ -11991,11 +12037,12 @@ class Component extends DCLogic {
   }
   toggleBanners() {
     const on = !this.bannersOn();
-    this.setState({ prefs: Object.assign({}, this.prefs(), { qrBanners: on }) }, () => {
+    this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { qrBanners: on }) }, () => {
       const n = this.publishPromos();
       this.toast(on ? "Banner slot on · " + n + " banner" + (n === 1 ? "" : "s") + " live on the QR menu" : "Banner slot off — the QR menu opens straight on the food");
     });
-    this.queue("qr_banner_slot", "QR banner slot " + (on ? "enabled" : "disabled") + " · by " + this.me(), "settings");
+    this.queue("qr_banner_slot", "QR banner slot " + (on ? "enabled" : "disabled") + " · by " + this.me(), "settings",
+      { on: on });
   }
   // ── Loyalty programme ────────────────────────────────────────────────────
   // The customer row already carries a tier name and a points balance. This is
@@ -12913,6 +12960,34 @@ class Component extends DCLogic {
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
     this.reconcileCats();
+    this.reconcilePrefs();
+  }
+
+  /* ── the settings, after a bootstrap ─────────────────────────────────────
+     The same rule the sections follow, and for the same reason. `state.prefs`
+     is this terminal's un-synced edit so the screen answers immediately and
+     offline; the moment the outlet publishes that KEY, the local copy is
+     dropped and every terminal reads one answer.
+
+     Dropped on the KEY, never on the value: if the outlet's answer differs
+     from what this browser holds, somebody changed it elsewhere and theirs is
+     the later decision. Keeping the local copy because it disagrees is exactly
+     how a holding pen becomes a private fork.
+
+     A DEVICE preference is never dropped, because it is never published — it
+     is a fact about this screen, this printer, this cabinet. */
+  reconcilePrefs() {
+    const pub = (K() || {}).PREFS || {};
+    const held = this.state.prefs || {};
+    const kept = {};
+    let dropped = 0;
+    Object.keys(held).forEach((k) => {
+      if (!this.isDevicePref(k) && Object.prototype.hasOwnProperty.call(pub, k)) {
+        dropped++; return;
+      }
+      kept[k] = held[k];
+    });
+    if (dropped) this.setState({ prefs: kept });
   }
 
   /* ── the sections, after a bootstrap ─────────────────────────────────────
@@ -14519,7 +14594,7 @@ class Component extends DCLogic {
     want.suspended = String(v.suspended || "") === "yes";
     const all = Object.assign({}, this.prefs().processors || {});
     all[id] = want;
-    this.setState({ prefs: Object.assign({}, this.prefs(), { processors: all }), modal: null });
+    this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { processors: all }), modal: null });
     this.queue("mdr_set", pr.name + " \u00b7 "
       + (pr.batches ? want.rate + "% \u00b7 T+" + want.cycle + " \u00b7 " : "")
       + (want.suspended ? "suspended" : "live") + " \u00b7 by " + this.me(), "settings",
@@ -15360,8 +15435,9 @@ class Component extends DCLogic {
           if (!this.canApprove()) return this.toast("Changing the merchant rate needs manager rights", "warn");
           const r = +v.mdr || 0;
           if (r <= 0 || r > 10) return this.toast("A merchant rate is a small percentage — check the figure", "warn");
-          this.setState({ prefs: Object.assign({}, this.prefs(), { mdr: r }), modal: null });
-          this.queue("mdr_set", "Merchant rate set to " + r + "% by " + this.me(), "settings");
+          this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { mdr: r }), modal: null });
+          this.queue("mdr_set", "Merchant rate set to " + r + "% by " + this.me(), "settings",
+            { mdr: r });
           this.toast("Every unmatched batch re-checked at " + r + "%");
         }
       },
@@ -15410,8 +15486,9 @@ class Component extends DCLogic {
             next[c.code] = r;
             if (Math.abs(r - c.rate) > 0.0001) moved.push(c.code + " " + c.rate + " → " + r);
           });
-          this.setState({ prefs: Object.assign({}, this.prefs(), { fx: next }), modal: null });
-          this.queue("fx_rates", moved.length ? "Rates set · " + moved.join(" · ") + " · " + v.src : "Rates confirmed unchanged · " + v.src, "settings");
+          this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { fx: next }), modal: null });
+          this.queue("fx_rates", moved.length ? "Rates set · " + moved.join(" · ") + " · " + v.src : "Rates confirmed unchanged · " + v.src, "settings",
+            { rates: next, source: v.src || null });
           this.toast(moved.length ? moved.length + " rate" + (moved.length > 1 ? "s" : "") + " updated — applies to new tenders" : "Rates confirmed unchanged");
         }
       },
@@ -16453,8 +16530,9 @@ class Component extends DCLogic {
           const pkc = +v.packCost, com = +v.aggCommission;
           if (isNaN(pkc) || pkc < 0) return this.toast("Packaging cost must be zero or more", "warn");
           if (isNaN(com) || com < 0 || com > 60) return this.toast("A commission rate is a percentage — check the figure", "warn");
-          this.setState({ prefs: Object.assign({}, this.prefs(), { packCost: pkc, aggCommission: com }), modal: null });
-          this.queue("channel_rates", "Packaging " + MVRc(pkc) + " per item · aggregator " + com + "% · by " + this.me(), "settings");
+          this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { packCost: pkc, aggCommission: com }), modal: null });
+          this.queue("channel_rates", "Packaging " + MVRc(pkc) + " per item · aggregator " + com + "% · by " + this.me(), "settings",
+            { packCost: pkc, aggCommission: com });
           this.toast("Every takeaway and delivery recosted");
         }
       },
@@ -18184,10 +18262,24 @@ class Component extends DCLogic {
     const mayEdit = this.can("settings", "e");
     const set = (k, v) => {
       if (!mayEdit) return this.toast("You can see these settings but not change them — ask an administrator", "warn");
-      const next = Object.assign({}, P); next[k] = v;
-      this.setState({ prefs: next });
-      this.queue("setting_change", k + " → " + v + " · by " + this.me(), "settings");
-      this.toast(k + " set to " + (v === true ? "on" : v === false ? "off" : v));
+      /* The local copy shows the change at once, including offline, and is a
+         HOLDING PEN — `reconcilePrefs()` drops it the moment the outlet
+         publishes that key, so two tills cannot hold two answers.
+
+         A DEVICE preference stops here on purpose. Pushing "keep the menu
+         pinned" or a paper width to the outlet would repaint somebody else's
+         sidebar and re-point somebody else's printer. Everything else is a
+         policy about the business and travels, which is what the outlet's own
+         `setting` table has been able to hold since the schema was written and
+         nothing ever wrote a word of from this screen. */
+      const held = Object.assign({}, this.state.prefs || {}); held[k] = v;
+      this.setState({ prefs: held });
+      if (!this.isDevicePref(k)) {
+        this.queue("setting_change", k + " → " + v + " · by " + this.me(), "settings",
+          { key: k, value: v });
+      }
+      this.toast(k + " set to " + (v === true ? "on" : v === false ? "off" : v)
+        + (this.isDevicePref(k) ? " · this terminal only" : " · every terminal here"));
     };
     const tog = (k) => set(k, !P[k]);
     const gate = (fn) => () => mayEdit ? fn() : this.toast("You can see these settings but not change them — ask an administrator", "warn");

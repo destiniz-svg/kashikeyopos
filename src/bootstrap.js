@@ -320,6 +320,16 @@ async function buildBootstrap(ctx) {
       /* What this install is actually running. The Terminal card printed
          "4.2.1" as a literal on a build numbered otherwise, which is exactly
          the figure somebody rings support quoting. */
+      /* THE OUTLET'S OWN SETTINGS. Read from `setting` since the schema was
+         written, assigned to a local called `oset`, and then USED BY NOTHING —
+         so the table existed, the handler wrote to it, and no terminal ever
+         read a word of it back. An owner changing a policy from home changed
+         it on their own screen; the till never heard.
+
+         Published as the outlet's answer, under the shipped defaults and
+         beneath this device's own un-synced edit, exactly as a measured yield
+         and a published loyalty programme already layer. */
+      PREFS: oset,
       APPVER: APP_VERSION,
       /* Live sign-ins at this outlet, this device included. `others` is what
          "sign out everywhere" would actually end. */

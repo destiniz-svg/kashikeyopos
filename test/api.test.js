@@ -1889,6 +1889,79 @@ test('the five-second poll carries the floor, today\'s takings and the drawer', 
     'while the floor is still whole, because that is what the poll is for');
 });
 
+/* ═══ A SETTING IS THE OUTLET'S, SO IT REACHES EVERY TERMINAL ═══════════════
+   An owner sitting at home changes a policy — how long until a till locks,
+   whether a void needs a PIN, what the acquirer charges, what a dollar is
+   worth today — and every terminal in the shop has to be reading it by the
+   next bootstrap. None of it travelled.
+
+   The outlet's `setting` table has been there since the schema was written and
+   the handler wrote to it; `src/bootstrap.js` read it into a local called
+   `oset` and USED IT NOWHERE, so no terminal ever read a word of it back. The
+   settings screen wrote one browser's localStorage and queued
+   `setting_change` with no payload, so the outlet was told a key had changed
+   and never which one. And the three rate screens wrote keys nothing reads —
+   `acquirer_rates_outlet`, `channel_rates`, `fx_rates` — beside a till reading
+   `prefs().processors`, `prefs().packCost` and `prefs().fx`.
+
+   This walks the road over HTTP: the empty op refused by name, each policy
+   landing on the key the till reads, and the bootstrap publishing all of it. */
+test('a setting an owner changes reaches the outlet, and every terminal', opts, async () => {
+  // ── an op that names no key is refused, not recorded as a change to
+  //    nothing. A parked op is read by a person.
+  const bare = await push([{ opId: uuid(), kind: 'setting_change', payload: {} }]);
+  assert.ok(bare.body.results[0].error, 'a setting change with no key is refused');
+
+  // ── the policies the settings screen sends, one key and one value each.
+  await push([
+    { opId: uuid(), kind: 'setting_change', payload: { key: 'autoLock', value: 12 } },
+    { opId: uuid(), kind: 'setting_change', payload: { key: 'voidPin', value: false } },
+    { opId: uuid(), kind: 'setting_change', payload: { key: 'showCost', value: false } },
+    { opId: uuid(), kind: 'setting_change', payload: { key: 'activity', value: 'cafe' } }
+  ]);
+
+  // ── the rate screens, each on the key the till reads back.
+  await push([
+    { opId: uuid(), kind: 'mdr_set',
+      payload: { processor: 'term', rate: 1.75, cycle: 2, suspended: false } },
+    { opId: uuid(), kind: 'channel_rates', payload: { packCost: 3.5, aggCommission: 22 } },
+    { opId: uuid(), kind: 'fx_rates', payload: { rates: { USD: 15.42, src: 'MMA' } } },
+    { opId: uuid(), kind: 'qr_banner_slot', payload: { on: true } }
+  ]);
+
+  // A SECOND CONTRACT MUST NOT ERASE THE FIRST. The old handler wrote the one
+  // processor it was told about over the whole setting.
+  await push([{ opId: uuid(), kind: 'mdr_set',
+    payload: { processor: 'gw', rate: 2.4, cycle: 2, suspended: true } }]);
+
+  // ── what a terminal that has never seen any of this is told when it comes
+  //    up. This is the half that did not exist.
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const P = boot.body.kpos.PREFS || {};
+  assert.strictEqual(P.autoLock, 12, 'the lock timeout is the outlet\'s');
+  assert.strictEqual(P.voidPin, false, 'so is whether a void needs a PIN');
+  assert.strictEqual(P.showCost, false, 'and whether costs show on the grid');
+  assert.strictEqual(P.activity, 'cafe', 'and what the business does');
+  assert.strictEqual(P.packCost, 3.5, 'the packaging cost');
+  assert.strictEqual(P.aggCommission, 22, 'the aggregator commission');
+  assert.strictEqual((P.fx || {}).USD, 15.42, 'and today\'s rate');
+  assert.strictEqual(P.qrBanners, true, 'the banner slot is one decision, not one per till');
+  assert.strictEqual((P.processors || {}).term.rate, 1.75, 'the card contract');
+  assert.strictEqual((P.processors || {}).gw.rate, 2.4,
+    'and the gateway beside it — a second contract merges rather than replacing');
+  assert.strictEqual((P.processors || {}).gw.suspended, true);
+
+  // ── AND A DEVICE PREFERENCE IS NOT AMONG THEM. Nothing stops a client from
+  //    sending one; what the till must not do is push it, which is asserted
+  //    statically in the wiring suite. Here: the outlet's answer is what a
+  //    terminal reads, so a key the outlet holds wins over the shipped
+  //    default and the local pen empties on top of it.
+  const rows = await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query("SELECT key FROM setting WHERE key IN ('navPinned','paper','kdsStation')"));
+  assert.strictEqual(rows.rows.length, 0,
+    'the shop holds no opinion about one screen\'s sidebar, printer or station');
+});
+
 /* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
    Reported from a live store, and it arrives wearing the wrong face: the till
    parked "Bajiya updated · Short Eats & Snacks · MVR 120" after the outlet
