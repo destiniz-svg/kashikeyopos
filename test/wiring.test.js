@@ -4380,3 +4380,56 @@ test('a logo is scaled on the device, and a PNG stays a PNG', () => {
   assert.match(mig, /ALTER TABLE chain\.outlet ADD COLUMN IF NOT EXISTS brand jsonb/,
     'which migration 044 gave it');
 });
+
+/* ═══ PAYMENT EVIDENCE IS NEVER MINTED ══════════════════════════════════════
+   The card/wallet settle path used to hold the operator on a 780 ms spinner
+   ("Waiting for the terminal…") and then stamp a SIX-DIGIT CODE FROM
+   Math.random into the payment's `ref` — the field the settlement screen
+   matches against the acquirer's file, and the field the "Unreferenced card
+   sales" exception lane exists to police. No terminal integration exists, so
+   the wait was theatre and the code was fabricated evidence that silenced the
+   one control built to catch an uncorroborated card sale. Found by the
+   Math.random sweep in the re-audit; this pin keeps it out. */
+test('the till never fabricates an approval code', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const code = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/approvalCode/.test(code), 'no approval-code minter exists');
+  assert.ok(!/Waiting for the terminal/.test(code),
+    'and no copy claims a terminal round-trip this build does not make');
+  assert.ok(!/Captured from the terminal/.test(code),
+    'the reference field never claims to be captured');
+  // The honest lane: a blank reference is flagged, never filled in.
+  assert.match(app, /Leave blank and the sale is flagged unreferenced/,
+    'the field says what a blank one costs');
+  /* And Math.random never touches a payment. The only remaining uses in the
+     till are the CSPRNG-absent uuid fallback (unreachable in any browser that
+     can run this app) — a payment reference is not allowed to join them. */
+  const payZone = app.slice(app.indexOf('confirmPay:'), app.indexOf('confirmPay:') + 4000)
+    .replace(/\/\*[\s\S]*?\*\//g, '');   // the comment explaining the defect may name it
+  assert.ok(!/Math\.random/.test(payZone), 'nothing random inside the settle path');
+});
+
+/* ═══ THE ROLE LOCK SPANS THE COMMIT ════════════════════════════════════════
+   provisionOutlet's cluster mutex used to wrap only the provision_outlet
+   STATEMENT — and an advisory lock on the maintenance connection frees when
+   the statement resolves, while the provision's own transaction goes on
+   holding the uncommitted ALTER ROLE tuple through the registry round-trips.
+   The next provisioner took the freed lock and died on the still-open
+   transaction: "tuple concurrently updated", inside the lock, unretryable.
+   Reproduced deterministically (two suites provisioning in parallel → one
+   105-failure cascade) and caught with DDL logging. The lock has to wrap the
+   whole transaction, and this pin keeps it there. */
+test('the provision lock wraps the transaction, not the statement', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'provision.js'), 'utf8');
+  assert.match(src, /return withRoleLock\(\(\) => provisionLocked\(opts, client\)\)/,
+    'the whole provision runs inside the lock');
+  const locked = src.slice(src.indexOf('async function provisionLocked'));
+  assert.match(locked, /BEGIN/, 'the transaction begins inside it');
+  assert.match(locked, /COMMIT/, 'and commits inside it');
+  assert.ok(!/withRoleLock/.test(locked.slice(0, locked.indexOf('COMMIT'))),
+    'and nothing nests the lock inside itself');
+  // The migration runner's cluster-wide role work holds the same mutex.
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'scripts', 'migrate.js'), 'utf8');
+  assert.match(mig, /return withRoleLock\(\(\) => ensureReportRoleUnlocked\(db, say, opts\)\);/,
+    'the report-role writer holds it too');
+});

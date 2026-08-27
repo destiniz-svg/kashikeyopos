@@ -37,6 +37,24 @@ async function allocateOutletId(opts) {
 async function provisionOutlet(opts) {
   const pool = target(opts);
   const client = await pool.connect();
+  /* THE LOCK SPANS THE COMMIT, not the statement. It used to wrap only the
+     `chain.provision_outlet()` call — and an advisory xact lock on the
+     maintenance connection releases the moment that statement RESOLVES, while
+     this transaction goes on holding the uncommitted ALTER ROLE tuple through
+     the registry round-trips that follow. The next provisioner took the freed
+     lock, ran its own ALTER against the same cluster-wide pg_authid row, met
+     the still-open transaction and died with "tuple concurrently updated" —
+     INSIDE the lock, where it cannot retry. Caught in the act with DDL
+     logging: two `ALTER ROLE outlet_1_app PASSWORD …` from two business
+     databases, the loser's CONTEXT naming the provision function. A mutex
+     that outlives its critical section's visibility is no mutex, so the whole
+     transaction now sits inside it; provisioning is rare and short, and
+     serialising it cluster-wide is the design's stated intent. */
+  return withRoleLock(() => provisionLocked(opts, client))
+    .finally(() => client.release());
+}
+
+async function provisionLocked(opts, client) {
   try {
     await client.query('BEGIN');
     const id = opts.id || await allocateOutletId(opts);
@@ -54,15 +72,11 @@ async function provisionOutlet(opts) {
     const wantedTax = opts.taxCode || null;
     const taxCode = registered ? (wantedTax || 'GGST') : 'NONE';
 
-    /* SERIALISED CLUSTER-WIDE. provision_outlet() creates and alters a LOGIN
-       ROLE, which lives in pg_authid and is shared by every database on the
-       cluster — so two of these running at once in two business databases
-       collide on the same catalog row and Postgres answers the loser "tuple
-       concurrently updated". The lock is taken in the registry, which is the
-       one database every caller can reach and agree on. See withRoleLock(). */
-    const schema = await withRoleLock(() =>
-      client.query('SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
-        [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s));
+    // Role DDL on the cluster-shared catalogs — the caller already holds the
+    // role lock around this whole transaction (see provisionOutlet above).
+    const schema = await client.query(
+      'SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
+      [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s);
 
     const businessId = await registry.businessForDb(
       (await client.query('SELECT current_database() AS d')).rows[0].d);
@@ -120,9 +134,8 @@ async function provisionOutlet(opts) {
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
-  } finally {
-    client.release();
   }
+  // The client is released by provisionOutlet's finally, after the lock goes.
 }
 
 async function currentStatutory(client, code) {

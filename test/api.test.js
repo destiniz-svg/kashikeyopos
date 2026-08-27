@@ -4979,8 +4979,17 @@ test('a killed idle connection is a log line, not an outage', opts, async () => 
   // guard in src/db.js this test does not fail, it exits.
   const o = db.owner();
   await o.query('SELECT 1');
+  /* SCOPED TO THIS SUITE'S OWN DATABASE. This used to kill every
+     'kashikeyo-%' backend on the CLUSTER — and the suite runs thirty files in
+     parallel against one harness Postgres, so it shot other suites' live
+     connections mid-query. The victim died with 57P01 "terminating connection
+     due to administrator command" or "Connection terminated unexpectedly" in
+     whichever test happened to be running: an intermittent that moved between
+     files and looked like the app. Killing the current database's idle
+     connections is the whole proof the guard needs. */
   await o.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
-    + " WHERE application_name LIKE 'kashikeyo-%' AND pid <> pg_backend_pid()");
+    + " WHERE application_name LIKE 'kashikeyo-%' AND datname = current_database()"
+    + " AND pid <> pg_backend_pid()");
   await new Promise((r) => setTimeout(r, 200));
   const q = await o.query('SELECT 1 AS ok');
   assert.strictEqual(q.rows[0].ok, 1, 'the next query gets a fresh connection');

@@ -38,12 +38,22 @@
   var DB_NAME = "kashikeyo", STORE = "outbox", DB_VERSION = 1;
   var has = typeof localStorage !== "undefined";
 
+  var saidNoCsprng = false;
   function uuid() {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-      var r = (typeof crypto !== "undefined" && crypto.getRandomValues)
-        ? crypto.getRandomValues(new Uint8Array(1))[0] % 16
-        : Math.floor(Math.random() * 16);
+      var r;
+      if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+        r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+      } else {
+        /* Falling through to Math.random is SAID, never silent — the same
+           rule newId() already keeps. An opId is an idempotency key, and a
+           collision is two sales sharing one; no browser that can hold this
+           outbox lacks getRandomValues, so if this line ever prints, that
+           fact is the finding. */
+        if (!saidNoCsprng) { saidNoCsprng = true; try { console.error("[kpos] no CSPRNG — op ids are degraded on this browser"); } catch (e) {} }
+        r = Math.floor(Math.random() * 16);
+      }
       return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
     });
   }

@@ -25,7 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { owner, ownerFor, control, CONTROL_DB } = require('../db');
+const { owner, ownerFor, control, CONTROL_DB, withRoleLock } = require('../db');
 
 /* Two sets, and which database each belongs in is the whole tenancy model.
    BUSINESS is everything a till reads and writes — company, staff, members,
@@ -214,6 +214,21 @@ async function ensureReportRoleExists(db, say) {
 }
 
 async function ensureReportRole(db, say, opts) {
+  /* UNDER THE SAME LOCK THE PROVISIONER HOLDS. The forgiveness below
+     (peerDidIt) protects THIS runner when a peer wins a race — it does
+     nothing for the OTHER party. provisionOutlet() runs its role DDL inside
+     withRoleLock() and inside its own transaction, so when this runner's
+     unlocked GRANTs collided with it on the shared catalogs (pg_database's
+     ACL, the role tuples), the LOCKED side was the one Postgres answered
+     "tuple concurrently updated" — and a caller mid-transaction cannot retry.
+     Measured: api + backup suites in parallel, provisionOutlet 500s inside
+     the lock, 105 downstream failures. One mutex for every cluster-wide role
+     writer is the fix; the forgiveness stays for old containers during a
+     rolling deploy, which hold no lock at all. */
+  return withRoleLock(() => ensureReportRoleUnlocked(db, say, opts));
+}
+
+async function ensureReportRoleUnlocked(db, say, opts) {
   const pw = process.env.REPORT_ROLE_PASSWORD
     || require('../secrets').outletPassword('report');
   /* A ROLE IS CLUSTER-WIDE AND THE ADVISORY LOCK IS NOT. pg_advisory_lock is

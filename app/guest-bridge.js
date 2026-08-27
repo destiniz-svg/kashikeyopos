@@ -217,12 +217,18 @@
   }
 
   /* ── intent, never money ──────────────────────────────────────────────── */
+  var saidNoCsprng = false;
   function uuid() {
     if (root.crypto && root.crypto.randomUUID) return root.crypto.randomUUID();
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-      var r = (root.crypto && root.crypto.getRandomValues)
-        ? root.crypto.getRandomValues(new Uint8Array(1))[0] % 16
-        : Math.floor(Math.random() * 16);
+      var r;
+      if (root.crypto && root.crypto.getRandomValues) {
+        r = root.crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+      } else {
+        // Said, never silent — same rule as the till's newId().
+        if (!saidNoCsprng) { saidNoCsprng = true; try { console.error("[kpos-guest] no CSPRNG — ids are degraded on this browser"); } catch (e) {} }
+        r = Math.floor(Math.random() * 16);
+      }
       return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
     });
   }

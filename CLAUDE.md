@@ -23,7 +23,7 @@ src/db.js              pools, per-request transaction context, checked commit
 src/secrets.js         the three secrets, token signing, scrypt PINs
 src/provision.js       creating an outlet's schema + login role
 src/bootstrap.js       everything the terminal needs to come up, in one payload
-src/apply.js           the 115 op kinds and what each one consequences
+src/apply.js           the op kinds and what each one consequences
 src/auth.js            rank gates
 src/limit.js           the doorman: token buckets on the open doors
 src/revoked.js         a revoked session or device is refused, not just recorded
@@ -702,9 +702,11 @@ push` applies each op inside its own savepoint; `op_log.op_id` is the primary
 key and the insert is `ON CONFLICT DO NOTHING RETURNING`, so a replay is a
 no-op and a duplicate inside one batch cannot abort the batch.
 
-115 op kinds, all handled. 28 are deliberately audit-only and are **named** in
+118 op kinds are handled and 35 more are deliberately audit-only, **named** in
 `AUDIT_ONLY`, so "not modelled yet" and "audit-only by design" stay
-distinguishable. `test/wiring.test.js` asserts both halves meet.
+distinguishable. The counts drift upward as features land — the wiring test,
+not this sentence, is what holds the two halves together, and it asserts they
+meet on every run.
 
 The network pill is a real switch (`KPOS_BRIDGE.setOffline`), not a simulation:
 offline means nothing is POSTed and every write holds durably until it is
@@ -1064,10 +1066,15 @@ fail at the counter. Editing a rate re-checks every unmatched batch — `fee` an
 `expected` are derived from the contract each time it is asked — and leaves
 matched ones exactly as filed.
 
-The till captures the evidence that processor issues, named the way it names it.
-Card and wallet **fill their own approval code in**: the device approved the
-payment and knows the code, so a cashier retyping it is one figure entered twice.
-The reference lands on the settled row, which is what makes the settlement
+The till captures the evidence that processor issues, named the way it names it,
+**typed by the operator off the slip the device printed** — this build has no
+acquirer integration, so there is nothing that could fill it in. It USED to
+pretend otherwise: a 780 ms "Waiting for the terminal…" spinner followed by a
+six-digit code minted from Math.random and stamped into `ref` — fabricated
+payment evidence that could never match any statement and silenced the
+"Unreferenced card sales" exception lane on every card sale for ever. A blank
+reference is the honest state: the sale settles, and the close chases it. The
+reference lands on the settled row, which is what makes the settlement
 screen's unreferenced count real rather than an artefact of never having asked.
 
 ## One place where money is taken
