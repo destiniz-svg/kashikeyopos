@@ -51,3 +51,80 @@ test('two boots migrating one cold database do not collide', opts, async () => {
 
   await db.shutdown();
 });
+
+/* ═══ A ROLE IS CLUSTER-WIDE, AND AN ADVISORY LOCK IS NOT ═══════════════════
+   `chain.provision_outlet()` creates and alters a LOGIN ROLE. A role lives in
+   pg_authid, which every database on the cluster shares — so two callers
+   provisioning from two different business databases touch the same catalog
+   rows, and Postgres answers the loser
+
+     tuple concurrently updated
+
+   Measured on this suite before the fix: two runs in five, always in
+   `reprovision()` — which is the RESTORE path, so it fired in the one piece of
+   code somebody runs after losing a database.
+
+   `pg_advisory_xact_lock` alone does not close it: the lock is scoped to the
+   database the session is connected to, so two callers take the same key in
+   two different databases and do not conflict at all. THE SCOPE IS THE FIX,
+   and this asserts it — the lock is taken in the maintenance database, which
+   every caller on the cluster can reach and none of them owns.
+
+   Not the registry, which was the first answer and is wrong for the same
+   reason: `dbPrefix()` exists because a cluster may host more than one estate,
+   and two estates have two registries.
+
+   Deliberately does not create databases of its own. An earlier version did,
+   and creating and dropping databases beside five suites that are mid-run
+   disturbed them — trading one intermittent failure for another is not a fix,
+   and the thing under test is the lock's SCOPE and its EXCLUSION, both of
+   which are answerable without touching the cluster. */
+test('the role lock is cluster-wide, and it excludes', opts, async () => {
+  const db = require('../src/db');
+
+  // ── the scope. Taken where every caller can agree, whatever database each
+  //    of them happens to be connected to.
+  const maint = process.env.PG_MAINT_DB || 'postgres';
+  const where = await db.withRoleLock(async () => {
+    const c = await db.owner().connect();
+    try {
+      const r = await c.query("SELECT count(*)::int AS n FROM pg_stat_activity"
+        + " WHERE application_name = 'kashikeyo-role-lock' AND datname = $1", [maint]);
+      return r.rows[0].n;
+    } finally { c.release(); }
+  });
+  assert.ok(where >= 1, 'the lock is held in ' + maint + ', not in this database');
+
+  // ── the exclusion. Two holders, started together; the second cannot be
+  //    inside while the first is, or it is not a mutex.
+  const log = [];
+  const hold = (tag) => db.withRoleLock(async () => {
+    log.push('in:' + tag);
+    await new Promise((r) => setTimeout(r, 120));
+    log.push('out:' + tag);
+  });
+  await Promise.all([hold('a'), hold('b')]);
+  assert.strictEqual(log.length, 4);
+  assert.strictEqual(log[1], 'out:' + log[0].slice(3),
+    'the first holder left before the second entered: ' + log.join(' '));
+
+  // ── and a peer that got there first is not an error. A rolling deploy runs
+  //    an older container that holds no lock at all, so the DDL is retried
+  //    rather than refused; both statements are idempotent by construction.
+  let tries = 0;
+  const out = await db.withRoleLock(async () => {
+    if (++tries < 3) {
+      throw Object.assign(new Error('tuple concurrently updated'), { code: 'XX000' });
+    }
+    return 'done';
+  });
+  assert.strictEqual(out, 'done');
+  assert.strictEqual(tries, 3, 'a peer collision is retried, not thrown back');
+
+  // But a real fault still is one.
+  await assert.rejects(() => db.withRoleLock(async () => {
+    throw Object.assign(new Error('relation "nope" does not exist'), { code: '42P01' });
+  }), /does not exist/, 'and anything else is reported, not swallowed');
+
+  await db.shutdown();
+});

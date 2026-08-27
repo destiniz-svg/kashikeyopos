@@ -36,7 +36,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-const { control, ownerFor, owner, businessDb } = require('./db');
+const { control, ownerFor, owner, businessDb, withRoleLock } = require('./db');
 
 /* ── where a copy goes ──────────────────────────────────────────────────────
    `file` writes to a directory this process can reach. `s3` PUTs to any
@@ -530,8 +530,13 @@ async function reprovision(dbName, log) {
     return { outlets: 0 };
   }
   for (const o of rows) {
-    await pool.query('SELECT chain.provision_outlet($1,$2,$3,$4)',
-      [o.id, o.code, o.name, outletPassword(o.id)]);
+    /* One at a time, cluster-wide. A restore re-applies every outlet's login
+       role, and a role is a cluster object: without this the restore raced the
+       fleet migration, another restore, or a customer creating a store, and
+       failed on "tuple concurrently updated" — in the one code path somebody
+       runs when they have already lost a database. See withRoleLock(). */
+    await withRoleLock(() => pool.query('SELECT chain.provision_outlet($1,$2,$3,$4)',
+      [o.id, o.code, o.name, outletPassword(o.id)]));
     say('[restore] ' + dbName + ' · outlet_' + o.id + ' (' + o.code
       + ') — role and grants re-applied');
   }

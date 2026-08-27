@@ -1408,10 +1408,21 @@ exactly the case nobody tests by hand.
 This build already answers this twice — `opId` is a v4 uuid from the platform
 CSPRNG, and `ticket_line.client_id` is a uuid because a line created offline has
 to be nameable before any server has seen it. A menu row is the same problem, so
-`newId()` gives it the same answer: a readable prefix, a time component and four
+`newId()` gives it the same answer: a readable prefix, a time component and five
 CSPRNG bytes, minted locally and never from a count of what this device happens
 to hold. A browser with no CSPRNG registers a **fault** rather than falling back
 quietly, because a collision here costs a row.
+
+**And the first version of that was itself too weak**, which is worth keeping
+here because it is the same defect one layer down. Each byte was encoded as
+`(b + 256).toString(36).slice(1)` — meant as zero-padding, except that
+expression is ALWAYS two base36 digits for a byte and the slice threw the first
+one away, collapsing 256 values onto 36. Four bytes became 1.68 million
+combinations rather than 2^32, and two devices minting inside the same
+millisecond collided about once in a thousand. The test draws twenty thousand
+ids from two instances as fast as the loop runs — so nearly all of them share a
+millisecond and the random half is what has to carry them — and it caught this
+at 999 of 1000 before it shipped.
 
 **The whole class went the same way, not just the dish that was reported.**
 Fourteen call sites now mint; two still count, and they are the two whose id
@@ -2797,6 +2808,53 @@ verified**: there is no bucket in CI to fail against, so the first real upload
 is the first proof that a bucket's credentials, endpoint and permissions are
 right. DEPLOYMENT.md says so rather than letting a green suite imply otherwise.
 
+## A role is cluster-wide, and an advisory lock is not
+
+`chain.provision_outlet()` creates and alters a LOGIN ROLE. A role lives in
+`pg_authid`, which every database on the cluster shares — so two callers
+provisioning from two different business databases touch the same catalog rows
+and Postgres answers the loser **`tuple concurrently updated`**. Measured on
+this suite: **two runs in five**, always inside `reprovision()`, which is the
+RESTORE path — so it fired in the one piece of code somebody runs after losing
+a database, which is the worst place for an intermittent failure to live.
+
+`src/scripts/migrate.js` had already met this for `kashikeyo_report` and removed
+the race by doing that role ONCE before any worker starts. `provision_outlet`
+cannot be done once: it is called per outlet, from the fleet migration, from a
+restore, from `provision:outlet --all`, and from a customer creating a second
+store — concurrently, by construction. So the race is SERIALISED instead.
+
+**The scope is the fix.** `pg_advisory_xact_lock` is scoped to the database the
+session is connected to, so two callers take the same key in two different
+databases and do not conflict at all. `withRoleLock()` in `src/db.js` takes it
+in the MAINTENANCE database (`PG_MAINT_DB`, default `postgres`), which every
+caller on the cluster can reach and none of them owns.
+
+**Not the registry**, which was the first answer here and is wrong for exactly
+the reason `dbPrefix()` exists: a cluster may host more than one estate, and two
+estates have two registries. Locking in one of them serialises that estate and
+leaves the other free to collide on the same `pg_authid` row.
+
+**On a connection of its own**, not one of the pools the app trades on: a mutex
+held for the length of a provision has no business inside a pool a till is
+queueing for, and a long-lived pool to the maintenance database is one more
+thing for shutdown and for a test that drops databases to trip over.
+
+**And a lock is not enough on its own.** During a rolling deploy the old
+container is still serving and holds no lock at all, so the DDL is also retried
+when a peer got there first — the same forgiveness the migration runner already
+extends to `kashikeyo_report`. Both statements are idempotent by construction
+(the password is derived, so two writers write the same value), which is what
+makes retrying correct rather than hopeful. Anything that is not a peer
+collision is reported, not swallowed.
+
+`test/migrate.test.js` asserts the scope (the lock is held in the maintenance
+database), the exclusion (two holders started together never overlap), the
+retry, and that an ordinary fault still surfaces. Six full suite runs after the
+fix: zero. The test deliberately creates no databases of its own — an earlier
+version did, and creating and dropping them beside five suites that are mid-run
+disturbed those instead, which is trading one intermittent failure for another.
+
 ## History has a horizon, the trail does not
 
 `chain.prune_history(op_days, guest_days)` (migration 025), called at boot and
@@ -3289,7 +3347,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 463 tests
+npm test                          # 464 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

@@ -1550,12 +1550,23 @@ test('two devices cannot mint the same id for a new record', () => {
     'counting rows is what collided — this is the behaviour being replaced');
 
   // The rule that replaces it.
+  /* TWENTY THOUSAND, not a thousand, and drawn as fast as the loop runs — so
+     nearly all of them share a millisecond and the RANDOM half is what has to
+     carry them. A weaker rule passes a small sample and fails a shop: the
+     first version of this minted four bytes but kept one base36 digit of each,
+     which is 1.68 million combinations rather than 2^32, and this assertion
+     caught it at 999 of 1000. */
   const seen = new Set();
-  for (let i = 0; i < 500; i++) { seen.add(A.newId('m')); seen.add(B.newId('m')); }
-  assert.strictEqual(seen.size, 1000,
-    'a thousand ids from two devices, all distinct: ' + seen.size);
+  for (let i = 0; i < 10000; i++) { seen.add(A.newId('m')); seen.add(B.newId('m')); }
+  assert.strictEqual(seen.size, 20000,
+    'twenty thousand ids from two devices, all distinct: ' + seen.size);
   const one = A.newId('m');
-  assert.ok(/^m[0-9a-z]{10,}$/.test(one), 'still readable, still says what it is: ' + one);
+  assert.ok(/^m[0-9a-z]{14,}$/.test(one), 'still readable, still says what it is: ' + one);
+  // The random half really is random: a rule that collapsed its alphabet would
+  // show up here before it showed up as a lost row in a shop.
+  const tail = new Set();
+  for (let i = 0; i < 2000; i++) tail.add(A.newId('m').slice(-10));
+  assert.ok(tail.size > 1990, 'the random half varies: ' + tail.size + ' of 2000');
   assert.ok(!/^m\d+$/.test(one), 'and never a count of what this device happens to hold');
 
   /* THROUGH THE SHIPPED EDITOR, not a retyped copy of it. This is the path the

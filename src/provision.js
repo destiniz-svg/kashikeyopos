@@ -4,7 +4,7 @@
    places: the onboarding route (first outlet) and the chain route that adds a
    branch — both behind rank 5. Nothing else imports this. */
 
-const { owner, ownerFor, forget, control } = require('./db');
+const { owner, ownerFor, forget, control, withRoleLock } = require('./db');
 
 /* WHICH DATABASE THE OUTLET IS BEING CREATED IN. `opts.db` is the business's
    own; without one this is the connection's default, which is the
@@ -54,8 +54,15 @@ async function provisionOutlet(opts) {
     const wantedTax = opts.taxCode || null;
     const taxCode = registered ? (wantedTax || 'GGST') : 'NONE';
 
-    const schema = await client.query('SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
-      [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s);
+    /* SERIALISED CLUSTER-WIDE. provision_outlet() creates and alters a LOGIN
+       ROLE, which lives in pg_authid and is shared by every database on the
+       cluster — so two of these running at once in two business databases
+       collide on the same catalog row and Postgres answers the loser "tuple
+       concurrently updated". The lock is taken in the registry, which is the
+       one database every caller can reach and agree on. See withRoleLock(). */
+    const schema = await withRoleLock(() =>
+      client.query('SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
+        [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s));
 
     const businessId = await registry.businessForDb(
       (await client.query('SELECT current_database() AS d')).rows[0].d);

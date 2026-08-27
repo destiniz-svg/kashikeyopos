@@ -13199,18 +13199,25 @@ class Component extends DCLogic {
      by people — they appear in a recipe line, in the menu CSV, and in a
      support conversation — and `m` still means a menu row. */
   newId(prefix) {
+    /* TWO CHARACTERS PER BYTE, and the `slice` that was here kept ONE.
+       `(b + 256).toString(36)` is always exactly two base36 digits for a byte
+       — "74" through "e7" — so dropping the first collapsed 256 values onto
+       36: four bytes became 1.68 million combinations rather than 2^32, and
+       two devices minting inside the same millisecond collided about once in
+       a thousand. The test that draws a thousand ids from two instances is
+       what found it, which is the only reason it was not shipped. */
     let rnd = "";
     try {
       if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-        rnd = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-          .map((b) => (b + 256).toString(36).slice(1)).join("");
+        rnd = Array.from(crypto.getRandomValues(new Uint8Array(5)))
+          .map((b) => (b + 256).toString(36)).join("");
       }
     } catch (e) { rnd = ""; }
     // Never silently: a collision here costs a row, so a browser with no
     // CSPRNG is worth knowing about rather than quietly falling back.
     if (!rnd) {
       this.fault("id", "no CSPRNG for a new record id — falling back to Math.random");
-      rnd = Math.random().toString(36).slice(2, 10);
+      rnd = Math.random().toString(36).slice(2, 12);
     }
     return String(prefix === undefined ? "" : prefix)
       + Date.now().toString(36).slice(-6) + rnd;

@@ -204,6 +204,100 @@ function control() {
   return ownerFor(db);
 }
 
+/* ═══ A ROLE IS CLUSTER-WIDE, AND AN ADVISORY LOCK IS NOT ═══════════════════
+   `pg_advisory_xact_lock` is scoped to the DATABASE the session is connected
+   to, so two processes provisioning outlets in two different business
+   databases take the same key and do not conflict — and then collide inside
+   Postgres on the shared `pg_authid` row with "tuple concurrently updated".
+
+   `src/scripts/migrate.js` already met this for `kashikeyo_report` and removed
+   the race by doing that role ONCE before any worker starts. `provision_outlet`
+   cannot be done once: it is called per outlet, from the fleet migration, from
+   a restore, and from a customer creating a second store — concurrently, by
+   construction. So the race is SERIALISED instead, and the only place a lock
+   can serialise it is a database every one of those callers can reach and
+   agree on: the REGISTRY.
+
+   NOT THE REGISTRY, which was the first answer here and is the wrong scope for
+   the same reason a per-database lock is: `dbPrefix()` exists because A CLUSTER
+   MAY HOST MORE THAN ONE ESTATE, and two estates have two registries. Locking
+   in one of them serialises that estate and leaves the other free to collide on
+   the same shared `pg_authid` row — which is exactly what the test suite is,
+   and exactly what it kept failing on. The lock goes in the MAINTENANCE
+   database, which every caller on the cluster can reach and none of them owns.
+
+   Transaction-scoped, so a caller that dies releases it rather than wedging
+   the next provision.
+
+   AND A LOCK IS NOT ENOUGH ON ITS OWN. During a rolling deploy the old
+   container is still serving, and an older build holds no lock at all — so the
+   DDL is also retried when a peer got there first, the same forgiveness
+   `src/scripts/migrate.js` already extends to `kashikeyo_report`. Both
+   statements are idempotent by construction (the password is derived, so two
+   writers write the same value), which is what makes retrying correct rather
+   than hopeful. */
+const ROLE_LOCK_KEY = 4711002;   // arbitrary, fixed, and shared by every caller
+
+/* Did a peer just do exactly this? Same three shapes the migration runner
+   names: the role existed by the time we created it, or somebody was mid-ALTER
+   on the same catalog row. "tuple concurrently updated" has no dedicated
+   SQLSTATE, so it is matched by message as well as by code. */
+function rolePeerDidIt(e) {
+  if (!e) return false;
+  if (e.code === '42710' || e.code === '23505' || e.code === '40001') return true;
+  return /tuple concurrently updated/i.test(String(e.message || ''));
+}
+
+/* A CONNECTION OF ITS OWN, not one of the pools the app trades on. A mutex
+   held for the length of a provision has no business inside a pool a till is
+   queueing for, and a pool to the maintenance database would then live for the
+   life of the process, be closed by shutdown(), and be one more thing for a
+   test that drops databases to trip over. Provisioning happens rarely enough
+   that one connection is the cheaper answer. */
+function lockClient() {
+  const maint = String(process.env.PG_MAINT_DB || 'postgres').trim() || 'postgres';
+  const cfg = Object.assign(baseConn(), {
+    user: process.env.PGUSER || urlUser() || 'postgres',
+    password: process.env.PGPASSWORD || urlPassword() || '',
+    ssl, database: maint,
+    application_name: 'kashikeyo-role-lock'
+  });
+  return new Client(cfg);
+}
+
+async function withRoleLock(fn) {
+  let held = null;
+  try {
+    const c = lockClient();
+    await c.connect();
+    // An idle connection that dies under a Client emits 'error' too, and an
+    // unhandled one kills the process — the same rule every pool here follows.
+    c.on('error', () => {});
+    await c.query('BEGIN');
+    await c.query('SELECT pg_advisory_xact_lock($1)', [ROLE_LOCK_KEY]);
+    held = c;
+  } catch (e) {
+    /* The maintenance database is unreachable on this deploy. That is not a
+       reason to refuse to provision an outlet — it is a reason to lean on the
+       retry below, which is what an older build during a rolling deploy leans
+       on anyway. */
+    held = null;
+  }
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { return await fn(); } catch (e) {
+        if (attempt >= 3 || !rolePeerDidIt(e)) throw e;
+        await new Promise((r) => setTimeout(r, 40 * (attempt + 1)));
+      }
+    }
+  } finally {
+    if (held) {
+      try { await held.query('COMMIT'); } catch (e) { /* the lock goes anyway */ }
+      try { await held.end(); } catch (e) { /* ignore */ }
+    }
+  }
+}
+
 /* What a business's database is called. One rule, so a name is never spelled
    twice and a typo cannot point two businesses at one database. The prefix is
    configurable because a cluster may host more than one estate — two
@@ -527,7 +621,7 @@ function forget(outletId) {
   if (CONTROL_DB()) require('./business').forgetRoute(id);
 }
 
-module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
+module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout, withRoleLock,
   owner, ownerFor, ownerForOutlet, dbFor, control, businessDb, dbPrefix, CONTROL_DB,
   selfIsBusiness,
   poolFor, canConnect, withOutlet, withOutletRead, withEstate, withOwner,
