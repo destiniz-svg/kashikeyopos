@@ -1451,6 +1451,45 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## A second device is not a second customer
+
+Reported: *"when I log in from another device from the browser, no menu item is
+there."*
+
+A browser that has never been told which store it belongs to answers
+`needStore`, and the bridge sends it to `/account`. **Two completely different
+errands arrive at that one door** — a new customer from the website, and an
+owner whose second device needs telling — and the page opened on *Create your
+account* for both, with **Create account** as the primary button. Following it
+makes a second account, a second business and an empty store, silently, and the
+till then points at it. That is the reported symptom exactly.
+
+`needStore` has been in the install answer all along and the bridge never read
+it: it treated "this install has never been set up" and "this browser has not
+been told" as one state. It carries the errand in the address now
+(`/account?store=1`), the page opens on **Sign in**, and the heading says
+*"Which store is this terminal?"* rather than describing a sign-up. The front
+door keeps its own default, because a customer arriving from the website IS
+signing up.
+
+Measured on a genuinely empty browser — no localStorage at all, which is the
+state a second machine is really in — signing in with the same account: the
+terminal is stamped with the outlet, the PIN screen comes up, and the menu is
+there. Then, with both devices signed in from that one login and only one of
+them touched:
+
+| what moved on device A | reached device B in |
+| --- | --- |
+| a setting (`kdsSla`) | **1.0 s** |
+| a new dish | **4.0 s** |
+| a table opened with a line on it | **4.0 s** |
+
+**What this does not explain.** A menu that is empty at the OUTLET is empty on
+every device, and that is the holding-pen class above, not this. The two are
+told apart by opening the till on the browser that created the items: if they
+appear there and nowhere else, they are in that browser's pen; if they appear
+nowhere, they never landed.
+
 ## Handing over and leaving are different decisions
 
 Asked plainly — *"how to log out of the application"* — and the honest answer
@@ -3531,7 +3570,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 474 tests
+npm test                          # 475 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

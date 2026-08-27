@@ -1922,6 +1922,46 @@ test('a till can be handed over, and it can also be left', () => {
     'and it asks twice — this sits beside the theme toggle on a touch sheet');
 });
 
+/* ═══ A SECOND DEVICE IS NOT A SECOND CUSTOMER ═════════════════════════════
+   Reported: "when I log in from another device from the browser, no menu item
+   is there."
+
+   A browser that has never been told which store it belongs to answers
+   `needStore` and the bridge sends it to /account. Two completely different
+   errands arrive at that one door: a NEW CUSTOMER from the website, and an
+   OWNER whose second device needs to be told its store. The page opened on
+   "Create your account" for both, with Create account as the primary action.
+
+   Following it makes a second account, a second business and an empty store,
+   silently — and the till then points at it. That is the reported symptom
+   exactly: signed in on another device, and no menu. */
+test('a device asking which store it is opens on sign in, not sign up', () => {
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  assert.match(bridge, /if \(!held && install\.needStore\) to = "\/account\?store=1";/,
+    'the errand is carried in the address — the door cannot guess it');
+  assert.match(bridge, /location\.pathname \+ location\.search !== to/,
+    'and the redirect compares the query too, or it loops or never fires');
+
+  const acct = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  assert.match(acct, /var forStore = \/\[\?&\]store=1\\b\/\.test\(location\.search\);/,
+    'the page reads it');
+  assert.match(acct, /var mode = forStore \? "signin" : "signup";/,
+    'and opens on SIGN IN for a terminal — the front door keeps sign up');
+
+  // And it says what is happening. A screen that silently swaps its default
+  // is a screen somebody blames themselves for.
+  assert.match(acct, /Which store is this terminal\?/,
+    'the heading names the errand');
+  assert.match(acct, /does not know which store it belongs to yet/,
+    'and the subtitle explains it, so nobody reads it as a new sign-up');
+
+  /* The server has answered this all along and nobody read it. `needStore` is
+     what distinguishes "this install has never been set up" from "this browser
+     has not been told" — two states the bridge treated as one. */
+  const auth = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'auth.js'), 'utf8');
+  assert.match(auth, /needStore/, 'the install answer carries the distinction');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

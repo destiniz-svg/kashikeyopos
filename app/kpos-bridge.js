@@ -110,8 +110,18 @@
       try { root.dispatchEvent(new CustomEvent("kpos-onboarding", { detail: install })); } catch (e) {}
       var held = "";
       try { held = localStorage.getItem("kashikeyo.account.token") || ""; } catch (e) {}
+      /* TWO DIFFERENT ERRANDS ARRIVE AT THE SAME DOOR, and only one of them is
+         a new customer. `needStore` means this install is set up and THIS
+         BROWSER has not been told which store it is — a second device, a new
+         tablet, a cleared cache — so the person about to type is an owner who
+         already has an account. The front door's default is Create account,
+         and following it makes a SECOND account, a second business and an
+         empty store: which is exactly "I logged in on another device and
+         there is no menu". The errand is carried in the address so the door
+         can open on the right side of itself. */
       var to = held ? "/onboarding" : "/account";
-      if (location.pathname !== to) location.replace(to);
+      if (!held && install.needStore) to = "/account?store=1";
+      if (location.pathname + location.search !== to) location.replace(to);
       return;
     }
 

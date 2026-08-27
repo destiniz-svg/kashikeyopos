@@ -302,7 +302,20 @@ button.link:hover{text-decoration:underline}
   "use strict";
   var KEY = "kashikeyo.account.token";
   var $ = function (id) { return document.getElementById(id); };
-  var mode = "signup";                       // signup | signin | code
+  /* WHICH DOOR OPENS FIRST, and it is not always the same one. This page has
+     two errands. A new customer arrives from the website and is here to sign
+     up. A TERMINAL sends its operator here for a different reason entirely:
+     the install is set up and this browser has not been told which store it
+     belongs to — a second device, a new tablet, a cleared cache — so the
+     person about to type already has an account.
+
+     Defaulting to Create account there is how "I logged in on another device
+     and there is no menu" happens: following the primary action makes a
+     SECOND account, a second business and an empty store, silently, and the
+     till then points at it. The bridge says which errand this is (`?store=1`)
+     and the door opens on the right side of itself. */
+  var forStore = /[?&]store=1\b/.test(location.search);
+  var mode = forStore ? "signin" : "signup";  // signup | signin | code
   var pending = "";                          // the address a code went to
   /* WHETHER IT ACTUALLY WENT. "Check your email" and "We sent a six-digit code
      to …" are both statements of fact, and on an install whose transport
@@ -406,7 +419,8 @@ button.link:hover{text-decoration:underline}
   function paint() {
     var signup = mode === "signup", code = mode === "code";
     $("title").textContent = code ? (sent ? "Check your email" : "No code was sent")
-      : signup ? "Create your account" : "Sign in";
+      : signup ? "Create your account"
+        : forStore ? "Which store is this terminal?" : "Sign in";
     $("sub").textContent = code
       ? (sent
         ? "We sent a six-digit code to " + pending + "."
@@ -415,7 +429,11 @@ button.link:hover{text-decoration:underline}
           + " whoever runs it can read it out, and it goes in below.")
       : signup
         ? "One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that."
-        : "Welcome back.";
+        : forStore
+          ? "This terminal does not know which store it belongs to yet. Sign in"
+            + " with the account that owns it and it will be told — then your"
+            + " staff key their PINs as usual."
+          : "Welcome back.";
     // The two doors stay visible next to each other; entering a code is a step
     // INSIDE one of them, not a third door, so the control goes away there.
     $("seg").style.display = code ? "none" : "grid";
