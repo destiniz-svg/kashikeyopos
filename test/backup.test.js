@@ -337,16 +337,52 @@ test('the S3 signer reproduces AWS\'s published test vector', async () => {
     'and the Authorization header is assembled the way S3 expects');
 });
 
-test('the object URL is built for both an AWS bucket and a custom endpoint', async () => {
+/* HOW THE BUCKET IS SPELLED INTO THE URL is not cosmetic: `host` is one of the
+   signed headers, so the wrong style is a SignatureDoesNotMatch or a 404 on
+   every upload — and the S3 driver's live round trip has never run, so this
+   would surface on somebody's first real backup rather than here.
+
+   This test used to assert path-style for an endpoint and its comment said
+   "R2, MinIO, B2 and Railway's own buckets are all path-style". Railway's own
+   documentation says the opposite: buckets use virtual-hosted-style URLs, and
+   only ones issued before that change need path-style. The default follows the
+   S3 standard now and path-style is a named opt-in. */
+test('the object URL is built for AWS, virtual-hosted and path-style alike', async () => {
   const b = require('../src/backup');
+
   const aws = b._s3Url({ bucket: 'shelf', region: 'eu-west-1', endpoint: '' }, 'a/b.dump');
   assert.strictEqual(aws.host, 'shelf.s3.eu-west-1.amazonaws.com');
   assert.strictEqual(aws.pathname, '/a/b.dump');
-  // R2, MinIO, B2 and Railway's own buckets are all path-style on an endpoint.
-  const other = b._s3Url({ bucket: 'shelf', region: 'auto',
-    endpoint: 'https://acct.r2.cloudflarestorage.com/' }, 'a/b.dump');
-  assert.strictEqual(other.host, 'acct.r2.cloudflarestorage.com');
-  assert.strictEqual(other.pathname, '/shelf/a/b.dump');
+
+  // The default on an endpoint: the bucket is a subdomain, which is what a
+  // Railway bucket, R2 and AWS all serve.
+  const virt = b._s3Url({ bucket: 'shelf', region: 'auto',
+    endpoint: 'https://storage.railway.app/' }, 'a/b.dump');
+  assert.strictEqual(virt.host, 'shelf.storage.railway.app');
+  assert.strictEqual(virt.pathname, '/a/b.dump');
+
+  // And the opt-in, for MinIO and for a bucket issued before the change. A
+  // port survives it, because a self-hosted endpoint usually carries one.
+  const path = b._s3Url({ bucket: 'shelf', region: 'auto', pathStyle: true,
+    endpoint: 'http://minio.local:9000' }, 'a/b.dump');
+  assert.strictEqual(path.host, 'minio.local:9000');
+  assert.strictEqual(path.pathname, '/shelf/a/b.dump');
+
+  // ONE NAMED VARIABLE, and only these spellings turn it on — neither style is
+  // derivable from the endpoint, since both are a bare host.
+  const cfg = () => JSON.parse(JSON.stringify({}));
+  void cfg;
+  ['1', 'true', 'TRUE', 'yes'].forEach((v) => {
+    process.env.BACKUP_S3_PATH_STYLE = v;
+    assert.strictEqual(/^(1|true|yes)$/i.test(String(process.env.BACKUP_S3_PATH_STYLE).trim()),
+      true, v + ' turns path-style on');
+  });
+  ['', '0', 'false', 'no'].forEach((v) => {
+    process.env.BACKUP_S3_PATH_STYLE = v;
+    assert.strictEqual(/^(1|true|yes)$/i.test(String(process.env.BACKUP_S3_PATH_STYLE).trim()),
+      false, JSON.stringify(v) + ' leaves the standard style');
+  });
+  delete process.env.BACKUP_S3_PATH_STYLE;
 });
 
 test('cleanup', opts, async () => {

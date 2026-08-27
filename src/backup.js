@@ -62,7 +62,16 @@ const s3cfg = () => ({
   key: String(process.env.BACKUP_S3_KEY || '').trim(),
   secret: String(process.env.BACKUP_S3_SECRET || '').trim(),
   prefix: String(process.env.BACKUP_S3_PREFIX || 'kashikeyo').trim()
-    .replace(/^\/+|\/+$/g, '')
+    .replace(/^\/+|\/+$/g, ''),
+  /* HOW THE BUCKET IS SPELLED INTO THE URL, and it is not cosmetic — the wrong
+     one is a 404 or a SignatureDoesNotMatch on every upload. Virtual-hosted
+     (`https://<bucket>.<endpoint>/<key>`) is the S3 standard and what a Railway
+     bucket, R2 and AWS all serve; path-style (`https://<endpoint>/<bucket>/…`)
+     is what MinIO defaults to and what older Railway buckets were issued with.
+     Neither can be derived from the endpoint — both are a bare host — so this
+     is a named opt-in rather than a guess that fails on somebody's first real
+     backup. The default follows the standard. */
+  pathStyle: /^(1|true|yes)$/i.test(String(process.env.BACKUP_S3_PATH_STYLE || '').trim())
 });
 
 function driver() {
@@ -277,7 +286,14 @@ function signV4(o) {
 function s3Url(cfg, key) {
   if (cfg.endpoint) {
     const base = cfg.endpoint.replace(/\/+$/, '');
-    return new URL(base + '/' + cfg.bucket + '/' + key);
+    if (cfg.pathStyle) return new URL(base + '/' + cfg.bucket + '/' + key);
+    // Virtual-hosted: the bucket is a subdomain of the endpoint's host, which
+    // is what the signature is computed over as well — `host` is signed, so
+    // getting this wrong is refused rather than merely mis-routed.
+    const u = new URL(base);
+    u.hostname = cfg.bucket + '.' + u.hostname;
+    u.pathname = (u.pathname.replace(/\/+$/, '') || '') + '/' + key;
+    return u;
   }
   return new URL('https://' + cfg.bucket + '.s3.' + cfg.region
     + '.amazonaws.com/' + key);

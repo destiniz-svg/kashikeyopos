@@ -3394,7 +3394,8 @@ hours about their own decision is how an alert channel gets muted.
 | Variable | Effect |
 | --- | --- |
 | `BACKUP_DIR` | A mounted path. The `file` driver. |
-| `BACKUP_S3_BUCKET` + `_KEY` `_SECRET` `_REGION` `_ENDPOINT` `_PREFIX` | Any S3-compatible store. Endpoint empty for AWS, set (path-style) for R2/B2/MinIO. A bucket with no key is refused by name rather than half-configured. |
+| `BACKUP_S3_BUCKET` + `_KEY` `_SECRET` `_REGION` `_ENDPOINT` `_PREFIX` | Any S3-compatible store — a Railway bucket, R2, B2, MinIO, AWS. Endpoint empty for AWS. A bucket with no key is refused by name rather than half-configured. |
+| `BACKUP_S3_PATH_STYLE` | How the bucket is spelled into the URL, and it is **not cosmetic**: `host` is a signed header, so the wrong style fails every upload. Virtual-hosted (`<bucket>.<endpoint>`) is the default and the S3 standard — a Railway bucket, R2 and AWS all serve it. `1` switches to path-style (`<endpoint>/<bucket>`) for MinIO and for a Railway bucket issued before that change. Neither is derivable from the endpoint, since both are a bare host, so this is a named opt-in rather than a guess that fails on somebody's first real backup. This file used to assert the opposite. |
 | `BACKUP_EVERY_HOURS` | Schedule interval (24). 0 turns the schedule off and leaves the CLI working. |
 | `BACKUP_RETAIN_DAYS` | 30. A database's newest good copy is never removed by age, however old. |
 | `BACKUP_STALE_HOURS` | When the watchdog says so (default: twice the interval). |

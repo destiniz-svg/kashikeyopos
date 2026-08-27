@@ -344,8 +344,14 @@ BACKUP_DIR=/var/lib/kashikeyo/backups        a MOUNTED volume, not the
                                              container's ephemeral disk
    — or —
 BACKUP_S3_BUCKET=…  BACKUP_S3_KEY=…  BACKUP_S3_SECRET=…
-BACKUP_S3_REGION=…  BACKUP_S3_ENDPOINT=…     (endpoint for R2/B2/MinIO;
-                                              leave empty for AWS)
+BACKUP_S3_REGION=…  BACKUP_S3_ENDPOINT=…     (endpoint for a Railway bucket,
+                                              R2, B2 or MinIO; empty for AWS)
+BACKUP_S3_PATH_STYLE=1                       ONLY for MinIO, or a Railway
+                                              bucket issued before Railway
+                                              moved to virtual-hosted URLs —
+                                              its Credentials tab says which.
+                                              Wrong either way is a signature
+                                              failure on every upload.
 
 npm run backup -- --check     is this install able to take one, and when
                               did the last good one land
