@@ -1524,6 +1524,93 @@ test('the contract can see a kind that is chosen, not spelled', () => {
     '"' + k + '" is something being compared against, not an op'));
 });
 
+/* ═══ AN OP CARRIES ITS PAYLOAD, OR IT IS NAMED ════════════════════════════
+   `queue(kind, label, entity, payload)` — and a call that stops at three
+   arguments reaches the outlet carrying a sentence and nothing else. The
+   handler then writes from a payload it never got: the row is empty, or the
+   insert fails on a NOT NULL, and the screen says "Saved" either way. It is
+   the worst failure mode available, because it is invisible from the screen
+   that caused it — a live store lost its menu sections to exactly this, and
+   the first symptom was a DIFFERENT screen refusing a dish.
+
+   The check above ("an op that carries a consequence carries its payload")
+   only sees the paths the harness happens to walk. This one reads every
+   `this.queue(` in the file, so a new screen cannot add a bare call quietly.
+
+   The parser skips comments, which the first version of this sweep did not:
+   an apostrophe in a `//` line ("the operator's answer") put it into string
+   mode and it reported payload-carrying ops as bare. A sweep that
+   over-reports sends somebody to fix what is not broken, so it is worth the
+   twenty lines. */
+function queueCalls(src) {
+  const CALL = 'this.queue(';
+  const out = [];
+  let at = src.indexOf(CALL);
+  while (at >= 0) {
+    let i = at + CALL.length, depth = 0, args = [], cur = '', q = null;
+    for (; i < src.length; i++) {
+      const c = src[i], n = src[i + 1];
+      if (q) {
+        if (c === '\\') { cur += c + src[++i]; continue; }
+        if (c === q) q = null;
+        cur += c; continue;
+      }
+      if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (c === '/' && n === '*') { i = src.indexOf('*/', i + 2) + 1; continue; }
+      if (c === '"' || c === "'" || c === '`') { q = c; cur += c; continue; }
+      if ('([{'.indexOf(c) >= 0) depth++;
+      if (')]}'.indexOf(c) >= 0) { if (depth === 0) { args.push(cur); break; } depth--; }
+      if (c === ',' && depth === 0) { args.push(cur); cur = ''; continue; }
+      cur += c;
+    }
+    const m = (args[0] || '').trim().match(/^"([a-z_]+)"$/);
+    if (m) out.push({ kind: m[1], args: args.length, at: at });
+    at = src.indexOf(CALL, at + 1);
+  }
+  return out;
+}
+
+/* The kinds that legitimately carry no payload, each because the op RECORDS
+   something rather than performing it — a signal, a state this device already
+   holds, or a consequence that rode on another op. A kind is on this list
+   because somebody decided it belongs there, which is the whole point: "not
+   modelled yet" and "nothing to send" must stay distinguishable.
+
+   FIVE OF THESE ARE KIND/HANDLER MISMATCHES rather than settled decisions, and
+   they are marked so nobody reads the list as a clean bill of health. Each
+   needs a decision about which side is wrong, and giving two of them a payload
+   would be actively harmful — `consume_recipe` would deduct the stock the sale
+   has already deducted. */
+const BARE_BY_DESIGN = [
+  'ai_menu_draft', 'bank_recon', 'channel_rates', 'credit_reverse', 'fx_rates',
+  'mdr_set', 'menu_import', 'printer_state', 'promo_clamped', 'qr_pay_intent',
+  'recipe_recost', 'recost_items', 'seat_walkin', 'setting_change',
+  'split_payment', 'terminal_update',
+  // ── mismatched, and knowingly left: see the note above
+  'category_insert',   // a STOCK category, sent to the MENU category handler
+  'consume_recipe',    // an announcement; the sale already moved the stock
+  'kds_station',       // a device preference, sent to a handler that moves a docket
+  'modifier_update',   // the screen edits the whole list; the handler takes one
+  'qr_banner_slot'     // a display toggle, sent to a handler that upserts a banner
+];
+
+test('an op reaches the outlet with its payload, or is named as carrying none', () => {
+  const { AUDIT_ONLY } = require('../src/apply');
+  const named = new Set(AUDIT_ONLY.concat(BARE_BY_DESIGN));
+  const bare = queueCalls(SRC).filter((q) => q.args <= 3 && !named.has(q.kind));
+  const kinds = [...new Set(bare.map((q) => q.kind))].sort();
+  assert.deepStrictEqual(kinds, [],
+    'queued with a label and nothing else: ' + kinds.join(', ')
+    + ' — give it the payload its handler reads, or name it in BARE_BY_DESIGN');
+
+  // The parser is the whole contract, so prove it can see a payload that
+  // follows a comment containing an apostrophe — which is what broke it.
+  const probe = 'this.queue("x", "label", "entity",\n  // the operator\'s answer\n  { a: 1 });';
+  const seen = queueCalls(probe);
+  assert.strictEqual(seen.length, 1);
+  assert.strictEqual(seen[0].args, 4, 'a comment must not swallow the payload');
+});
+
 /* ═══ AN ID MINTED ON A DEVICE IS UNIQUE ACROSS DEVICES ═════════════════════
    Reported from a live store: three menu items added, two on one browser and
    one on another, and neither browser showed all three.

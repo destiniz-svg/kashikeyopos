@@ -265,7 +265,7 @@ function lockClient() {
   return new Client(cfg);
 }
 
-async function withRoleLock(fn) {
+async function withRoleLock(fn, opts) {
   let held = null;
   try {
     const c = lockClient();
@@ -283,10 +283,21 @@ async function withRoleLock(fn) {
        on anyway. */
     held = null;
   }
+  /* THE RETRY IS OPT-IN, and that is not fussiness. A caller already inside a
+     transaction — `provisionOutlet()` opens one so the schema, the role and
+     the directory row land together — cannot retry a statement that failed:
+     the first failure aborted its transaction, so every command after it
+     answers "current transaction is aborted" until somebody rolls back.
+     Retrying there turns one recoverable collision into five dead tests, which
+     is exactly what it did.
+
+     So the LOCK is for everyone, and the retry is for callers running on a
+     pool with no transaction of their own to poison. */
+  const tries = (opts && opts.retry) ? 4 : 1;
   try {
     for (let attempt = 0; ; attempt++) {
       try { return await fn(); } catch (e) {
-        if (attempt >= 3 || !rolePeerDidIt(e)) throw e;
+        if (attempt >= tries - 1 || !rolePeerDidIt(e)) throw e;
         await new Promise((r) => setTimeout(r, 40 * (attempt + 1)));
       }
     }

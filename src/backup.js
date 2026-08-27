@@ -536,7 +536,7 @@ async function reprovision(dbName, log) {
        failed on "tuple concurrently updated" — in the one code path somebody
        runs when they have already lost a database. See withRoleLock(). */
     await withRoleLock(() => pool.query('SELECT chain.provision_outlet($1,$2,$3,$4)',
-      [o.id, o.code, o.name, outletPassword(o.id)]));
+      [o.id, o.code, o.name, outletPassword(o.id)]), { retry: true });
     say('[restore] ' + dbName + ' · outlet_' + o.id + ' (' + o.code
       + ') — role and grants re-applied');
   }

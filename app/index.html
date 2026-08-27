@@ -6026,7 +6026,7 @@ class Component extends DCLogic {
         let n = 0;
         this.mutate(undefined, (t) => { n = t.guests.length; t.guests = t.guests.concat([this.newGuest(n)]); });
         this.setState({ activeSplit: n });
-        this.queue("guest_add", "Guest " + (n + 1) + " seated · T" + pad(s.activeTable), "orders");
+        this.queue("guest_add", "Guest " + (n + 1) + " seated · T" + pad(s.activeTable), "orders", { table: this.slotName(s.activeTable), split: 0, guest: this.newGuest(n) });
         this.toast("Guest " + (n + 1) + " added — new items go to their bill");
       },
       editGuest: () => s.activeTable ? this.setState({ modal: { kind: "guest", idx: gi } }) : this.toast("Pick a table first", "warn"),
@@ -7204,7 +7204,7 @@ class Component extends DCLogic {
         startCount: () => {
           if (m.stage !== 2) {
             if (!sel.length) return this.toast("Pick a category", "warn");
-            this.queue("count_open", "Blind count opened · " + sel.length + " categories · " + o.code, "stock_counts");
+            this.queue("count_open", "Blind count opened · " + sel.length + " categories · " + o.code, "stock_counts", { scope: sel.length === 1 ? "category" : "partial", cats: sel.slice(), loc: null });
             this.setState({ modal: Object.assign({}, m, { stage: 2, counted: {} }) });
             return;
           }
@@ -10565,7 +10565,7 @@ class Component extends DCLogic {
     const ackOne = (f) => () => {
       const next = Object.assign({}, acks); next[f.key] = this.me();
       this.setState({ acks: next, modal: null });
-      this.queue("flag_ack", f.kind + " acknowledged · " + f.detail + " · by " + this.me(), "compliance");
+      this.queue("flag_ack", f.kind + " acknowledged · " + f.detail + " · by " + this.me(), "compliance", { id: f.key });
       this.toast("Acknowledged — it stays on the record, it just stops asking");
     };
     const rows = (raw.logs || []).filter((l) => !q || (l[2] + l[3] + l[1]).toLowerCase().indexOf(q) >= 0).slice(0, 120);
@@ -10582,7 +10582,7 @@ class Component extends DCLogic {
             if (!this.canApprove()) return this.toast("Clearing a flag needs a manager — that is the point of it", "warn");
             const next = Object.assign({}, acks); open.forEach((f) => { next[f.key] = this.me(); });
             this.setState({ acks: next });
-            this.queue("flag_ack", open.length + " compliance flag" + (open.length > 1 ? "s" : "") + " acknowledged · by " + this.me(), "compliance");
+            this.queue("flag_ack", open.length + " compliance flag" + (open.length > 1 ? "s" : "") + " acknowledged · by " + this.me(), "compliance", { ids: open.map((x) => x.key) });
             this.toast(open.length + " flag" + (open.length > 1 ? "s" : "") + " acknowledged");
           }
         },
@@ -11052,7 +11052,7 @@ class Component extends DCLogic {
           const all = Object.assign({}, this.state.parOv || {});
           all[it[0]] = val;
           this.setState({ parOv: all });
-          this.queue("par_set", it[2] + " par " + now + " → " + val + " · by " + this.me(), "inventory");
+          this.queue("par_set", it[2] + " par " + now + " → " + val + " · by " + this.me(), "inventory", { ing: it[0], par: val, min: null });
           this.toast(it[2] + " par set to " + val);
         });
     }
@@ -13284,7 +13284,18 @@ class Component extends DCLogic {
       state: "issued"
     };
     this.setState({ docs: [row].concat(this.state.docs || []) });
-    this.queue("credit_note", doc.no + " · " + MVRc(amt) + " against " + ord.no + " · " + reason + " · " + this.me(), "documents");
+    this.queue("credit_note", doc.no + " · " + MVRc(amt) + " against " + ord.no + " · " + reason + " · " + this.me(), "documents", {
+      saleId: ord.id || null, bizDate: ord.bizDate || ord.date || this.today(),
+      net: T.sub, svc: T.svc, tax: T.tax, amt: T.total,
+      method: ord.tender || "cash", reason: reason, note: note,
+      // A credit note is issued where the goods are NOT coming back — that is
+      // what separates it from a refund at the counter — so nothing returns to
+      // the shelf unless somebody says otherwise. The NUMBER on the local row
+      // is this device's own count; the outlet allocates the real one
+      // atomically, which is what stops two tills issuing one.
+      restock: false, docNo: doc.no,
+      lines: (ord.sold || []).map((l) => ({ id: l.id, name: l.name, qty: l.qty, price: l.price }))
+    });
     return row;
   }
   showDoc(d) {
@@ -14067,7 +14078,7 @@ class Component extends DCLogic {
     // it sits a rank above closing it and is logged in its own right.
     if (["SuperAdmin", "ChainAdmin"].indexOf(this.state.roleKey) < 0) return this.toast("Reopening a filed month is an administrator action \u2014 a manager can close, not reopen", "err");
     this.setState({ periods: this.closedPeriods().filter((x) => x !== per) });
-    this.queue("period_reopen", per + " REOPENED \u00b7 by " + this.me(), "periods");
+    this.queue("period_reopen", per + " REOPENED \u00b7 by " + this.me(), "periods", { period: per, why: "reopened by " + this.me() });
     this.toast(per + " reopened \u2014 every report against it will move again", "warn");
   }
   /* WHAT THE BANK HELD WHEN THE BOOKS OPENED — nought until somebody says
@@ -14391,7 +14402,15 @@ class Component extends DCLogic {
     const open = r.lines.filter((l) => l.state === "open").length;
     this.setState({ bank: r.lines, modal: null });
     if (!quiet) {
-      this.queue("bank_match", r.auto + " cleared automatically \u00b7 " + r.prop + " proposed \u00b7 " + open + " unexplained \u00b7 by " + this.me(), "bank");
+      this.queue("bank_match", r.auto + " cleared automatically \u00b7 " + r.prop + " proposed \u00b7 " + open + " unexplained \u00b7 by " + this.me(), "bank",
+        /* THE LINES, not a count of them. `bank_match` updates ONE statement
+           line, and this is the end of a whole reconciliation pass — it used
+           to queue the sentence "12 cleared automatically" and no payload, so
+           nothing was matched at all. Only the lines the pass actually moved
+           travel; a line it left alone has nothing to say. */
+        { lines: r.lines.filter((x) => x.state === "cleared" || x.state === "proposed")
+          .map((x) => ({ id: x.id, state: x.state, acct: x.acct || null,
+            src: x.src || null, ref: x.ref || null })) });
       this.toast(r.auto + " line" + (r.auto === 1 ? "" : "s") + " cleared against the ledger"
         + (r.prop ? " \u00b7 " + r.prop + " need" + (r.prop === 1 ? "s" : "") + " your decision" : "")
         + (open ? " \u00b7 " + open + " unexplained" : ""), r.prop || open ? "warn" : "ok");
@@ -14430,7 +14449,7 @@ class Component extends DCLogic {
         if (Math.abs(l.diff || 0) > 0.005) this.queue("post_journal", "Bank match difference " + MVRc(Math.abs(l.diff)) + " \u00b7 Dr 5600 Cr 1020 \u00b7 " + l.desc, "journal_entries",
           { memo: "Bank match difference \u00b7 " + (l.desc || ""),
             lines: [{ acct: "5600", dr: Math.abs(l.diff) }, { acct: "1020", cr: Math.abs(l.diff) }] });
-        this.queue("bank_match_accept", l.desc + " \u00b7 accepted as " + l.src + " by " + this.me(), "bank");
+        this.queue("bank_match_accept", l.desc + " \u00b7 accepted as " + l.src + " by " + this.me(), "bank", { id: l.id, acct: l.acct || null, post: Math.abs(l.diff || 0) > 0.005 });
       }
     });
     if (l.state === "proposed") acts.push({
@@ -14441,7 +14460,7 @@ class Component extends DCLogic {
       label: "Clear this line", sub: l.src ? "Matches " + l.src + " already in the ledger" : "Marks it reconciled without a ledger match \u2014 a manual clear is logged", style: btn,
       go: () => {
         put({ state: "cleared" }, l.desc + " cleared");
-        if (!l.src) this.queue("bank_clear_manual", l.desc + " \u00b7 " + MVRc(l.amt) + " \u00b7 cleared with no ledger match by " + this.me(), "bank");
+        if (!l.src) this.queue("bank_clear_manual", l.desc + " \u00b7 " + MVRc(l.amt) + " \u00b7 cleared with no ledger match by " + this.me(), "bank", { id: l.id, acct: null, post: false });
       }
     });
     // 5600 is Bank & card charges; 6300 is Administration. Booking a merchant
@@ -14781,7 +14800,7 @@ class Component extends DCLogic {
   setTableStatus(n, st) {
     this.mutate(n, (t) => { t.status = st; if (st === "occupied" && !t.openedAt) t.openedAt = Date.now(); });
     this.setState({ modal: null, activeTable: st === "reserved" ? null : n, pane: st === "reserved" ? "floor" : "menu" });
-    this.queue("table_status", "T" + pad(n) + " → " + st + " · " + this.outlet().code, "orders");
+    this.queue("table_status", "T" + pad(n) + " → " + st + " · " + this.outlet().code, "orders", { table: this.slotName(n), status: st });
     this.toast("T" + pad(n) + (st === "reserved" ? " held for a reservation" : " seated — ticket open"));
   }
   // Seat a booking on the table it was given, or the smallest free table that
@@ -14811,7 +14830,14 @@ class Component extends DCLogic {
       t.resName = r.name; t.resAt = r.t; t.resNote = r.note || ""; t.resPhone = r.phone || "";
       t.resKey = this.resKey(r); t.resSource = r.source || "Till";
     });
-    this.queue("seat_reservation", "Seated " + r.name + " · party " + r.party + " · T" + pad(target), "reservations");
+    this.queue("seat_reservation", "Seated " + r.name + " · party " + r.party + " · T" + pad(target), "reservations",
+      /* The reservation's OWN id, not resKey(). resKey is `time|name`, a local
+         composite this floor uses to mark a row seated; the handler opens the
+         ticket from `reservation` and needs the id the outlet issued. A row
+         taken on this device and not yet synced has none, and the handler says
+         so ("no such reservation") rather than seating a ticket against
+         nothing. */
+      { id: r.id || null, table: this.slotName(target), server: this.me() });
     this.toast(r.name + " seated at T" + pad(target) + (r.note ? " · " + r.note : ""));
   }
   // Switching role re-scopes the nav, so land on the first module the new role
@@ -14938,7 +14964,7 @@ class Component extends DCLogic {
           this.setState({ chainOverride: next, modal: null });
           this.queue("chain_update", "Chain details updated · " + v.name
             + (v.tin ? " · TIN " + v.tin : " · not GST registered")
-            + " · by " + this.me(), "settings");
+            + " · by " + this.me(), "settings", { name: v.name, regNo: v.regNo, tin: v.tin, hq: v.hq });
           this.toast("Chain details saved");
         }
       },
@@ -15362,7 +15388,7 @@ class Component extends DCLogic {
           const list = (vers[String(o.id)] || []).filter((x) => x.from !== from);
           vers[String(o.id)] = list.concat([{ from: from, tax: v.tax, rate: r, sc: +v.sc || 0, by: this.me(), note: v.note }]);
           this.setState({ taxVers: vers, modal: null });
-          this.queue("tax_version", o.code + " · " + v.tax + " " + r + "% from " + from + " · " + v.note + " · by " + this.me(), "tax_rates");
+          this.queue("tax_version", o.code + " · " + v.tax + " " + r + "% from " + from + " · " + v.note + " · by " + this.me(), "tax_rates", { code: v.tax, rate: r, from: from, ref: v.note });
           const live = from <= this.today();
           this.toast(live
             ? "In force now · " + v.tax + " " + r + "% — sales before " + from + " keep their old rate"
@@ -15436,7 +15462,7 @@ class Component extends DCLogic {
           if (!v.name) return this.toast("A trading name is required", "warn");
           const next = { name: v.name.toUpperCase(), tagline: v.tagline, receiptFoot: v.receiptFoot, mark: v.mark, poweredBy: v.poweredBy !== "no" };
           this.setState({ brandOverride: next, modal: null });
-          this.queue("brand_update", "Merchant branding · " + v.name + " · " + (v.scope === "outlet" ? this.outlet().code : "chain-wide"), "settings");
+          this.queue("brand_update", "Merchant branding · " + v.name + " · " + (v.scope === "outlet" ? this.outlet().code : "chain-wide"), "settings", { brand: next });
           this.toast("Branding saved — " + (v.scope === "outlet" ? "this outlet only" : "every outlet") + (next.poweredBy ? "" : " · white label"));
         }
       },
@@ -15517,7 +15543,7 @@ class Component extends DCLogic {
           const row = { id: this.newId("e"), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: +v.amt || 0, freq: v.freq || "monthly", due: Math.min(28, Math.max(1, +v.due || 1)), acct: v.acct || "6300" };
           const local = Object.assign({}, this.state.local, { opex: (this.state.local.opex || []).concat([row]) });
           this.setState({ local: local, modal: null });
-          this.queue("opex_insert", v.cat + " · " + v.vendor + " · " + MVRc(row.amt) + " " + row.freq, "operating_costs");
+          this.queue("opex_insert", v.cat + " · " + v.vendor + " · " + MVRc(row.amt) + " " + row.freq, "operating_costs", { id: row.id, cat: row.cat, vendor: row.vendor, amt: row.amt, freq: row.freq, due: row.due, acct: row.acct, note: v.note || null });
           this.toast(v.cat + " added · " + MVRc(row.amt) + " " + row.freq);
         }
       },
@@ -15541,7 +15567,7 @@ class Component extends DCLogic {
             cost: +v.cost || a.cost, life: +v.life || a.life, svcDays: +v.svcDays || a.svcDays
           });
           this.setState({ assetState: st, modal: null });
-          this.queue("asset_update", a.name + " updated · " + this.locName(+v.outlet || a.outlet), "assets");
+          this.queue("asset_update", a.name + " updated · " + this.locName(+v.outlet || a.outlet), "assets", { id: a.id, state: v.state || null, disposedOn: v.disposedOn || null, disposedValue: v.disposedValue == null ? null : +v.disposedValue });
           this.toast(v.name + " updated");
         },
         onSave: (v) => {
@@ -15550,7 +15576,11 @@ class Component extends DCLogic {
           const row = { id: this.newId("a"), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: today, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
           const local = Object.assign({}, this.state.local, { assets: (this.state.local.assets || []).concat([row]) });
           this.setState({ local: local, modal: null });
-          this.queue("asset_insert", v.name + " · " + this.locName(row.outlet) + " · " + MVRc(row.cost), "assets");
+          this.queue("asset_insert", v.name + " · " + this.locName(row.outlet) + " · " + MVRc(row.cost), "assets", {
+            id: row.id, name: row.name, cat: row.kind, cost: row.cost,
+            bought: row.bought, life: row.life, residual: 0, loc: String(row.outlet),
+            method: v.method || "credit"
+          });
           this.toast(v.name + " added to the register");
         }
       },
@@ -15571,7 +15601,10 @@ class Component extends DCLogic {
           const st = Object.assign({}, this.state.assetState || {});
           st[a.id] = { status: row.down ? "down" : "ok", ytd: (a.ytd || 0) + row.cost, lastSvc: row.down ? a.lastSvc : this.today() };
           this.setState({ maint: (this.state.maint || []).concat([row]), assetState: st, modal: null });
-          this.queue("maintenance_log", a.name + " · " + v.fault + " · repair " + MVRc(row.cost), "maintenance");
+          this.queue("maintenance_log", a.name + " · " + v.fault + " · repair " + MVRc(row.cost), "maintenance", {
+            asset: a.id, kind: row.down ? "breakdown" : "repair", detail: v.fault,
+            cost: row.cost, method: v.method || "cash", on: this.today(), vendor: v.vendor || null
+          });
           if (row.cost > 0) this.queue("post_journal", "Repair " + MVRc(row.cost) + " · Dr 5400 Cr 2100", "journal_entries",
             { memo: "Repair · " + a.name + " · " + v.fault, lines: [{ acct: "5400", dr: row.cost }, { acct: "2100", cr: row.cost }] });
           // 1200 is till-owned, so the stock loss travels as the stock op it
@@ -15751,7 +15784,7 @@ class Component extends DCLogic {
         onSave: (v) => {
           const a = Math.round(+v.amt || 0);
           this.setState({ bankOpen: a, modal: null });
-          this.queue("bank_opening", "Bank opening balance set to " + MVRc(a) + " \u00b7 by " + this.me(), "bank");
+          this.queue("bank_opening", "Bank opening balance set to " + MVRc(a) + " \u00b7 by " + this.me(), "bank", { acct: "1020", asOf: this.today(), amt: a });
           this.toast("Opening balance " + MVRc(a));
         }
       },
@@ -16966,7 +16999,7 @@ class Component extends DCLogic {
       // Loud on purpose. A failed docket that only appears in a log is a docket
       // nobody reprints.
       this.toast(job.label + " did not print — " + why, "err");
-      this.queue("print_failed", job.id + " · " + job.label + " · " + why, "print_jobs");
+      this.queue("print_failed", job.id + " · " + job.label + " · " + why, "print_jobs", { id: job.id, why: why });
     };
     /* A REAL TRANSPORT PRINTS. "done" on this path means a printer took the
        bytes — WebUSB and Web Serial confirm the transfer, and the network
@@ -17049,7 +17082,7 @@ class Component extends DCLogic {
   }
   retryJob(j) {
     this.patchJob(j.id, { state: "queued", tries: (j.tries || 1) + 1, err: "" });
-    this.queue("print_retry", j.id + " · attempt " + ((j.tries || 1) + 1) + " · by " + this.me(), "print_jobs");
+    this.queue("print_retry", j.id + " · attempt " + ((j.tries || 1) + 1) + " · by " + this.me(), "print_jobs", { id: j.id, tries: (j.tries || 1) + 1 });
     setTimeout(() => this.runJob(j.id), 60);
   }
   failedJobs() { return (this.state.printJobs || []).filter((j) => j.state === "failed" && j.outletId === this.state.outletId); }
@@ -17198,7 +17231,7 @@ class Component extends DCLogic {
                 { label: "Send to another printer", sub: "Where a station printer is down mid-service",
                   go: () => { const alt = this.PRINTERS().find((x) => x.id !== j.target && !x.down); if (!alt) return this.toast("Every other printer is down too", "err"); this.patchJob(j.id, { target: alt.id }); this.setState({ modal: null }); this.retryJob(Object.assign({}, j, { target: alt.id })); this.toast("Rerouted to " + alt.name); } },
                 { label: "Give up on this job", sub: "Only when the document is no longer needed",
-                  go: () => { this.patchJob(j.id, { state: "abandoned" }); this.setState({ modal: null }); this.queue("print_abandoned", j.id + " · " + j.label + " · abandoned by " + this.me(), "print_jobs"); this.toast("Job abandoned — it stays in the spool as evidence"); } }
+                  go: () => { this.patchJob(j.id, { state: "abandoned" }); this.setState({ modal: null }); this.queue("print_abandoned", j.id + " · " + j.label + " · abandoned by " + this.me(), "print_jobs", { id: j.id }); this.toast("Job abandoned — it stays in the spool as evidence"); } }
               ] } })
             : null,
           cells: [
@@ -18135,7 +18168,10 @@ class Component extends DCLogic {
   }
   saveProf(v, line) {
     this.setState({ profile: Object.assign({}, this.prof(), v), modal: null });
-    this.queue("company_update", line + " · by " + this.me(), "settings");
+    this.queue("company_update", line + " · by " + this.me(), "settings", {
+      name: v.legalName || v.name || null, regNo: v.regNo || null, tin: v.taxTin || v.tin || null,
+      hq: v.hq || v.address || null, phone: v.phone || null, email: v.email || null
+    });
     this.toast("Saved");
   }
 
@@ -18352,7 +18388,7 @@ class Component extends DCLogic {
           toggles: [{ label: "Show the powered-by line", sub: "Off is white label — the guest sees only your brand", on: this.brandOf().poweredBy !== false, go: gate(() => {
             const b = Object.assign({}, this.brandOf(), { poweredBy: this.brandOf().poweredBy === false });
             this.setState({ brandOverride: b });
-            this.queue("brand_update", "Powered-by line " + (b.poweredBy ? "shown" : "hidden") + " · by " + this.me(), "settings");
+            this.queue("brand_update", "Powered-by line " + (b.poweredBy ? "shown" : "hidden") + " · by " + this.me(), "settings", { brand: b });
             this.toast(b.poweredBy ? "Powered-by line shown" : "White label — powered-by hidden");
           }) }],
           foot: "The vendor brand stays in the terminal. Guests see the restaurant, which is how every serious POS separates the two." },

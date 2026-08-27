@@ -117,14 +117,26 @@ test('the role lock is cluster-wide, and it excludes', opts, async () => {
       throw Object.assign(new Error('tuple concurrently updated'), { code: 'XX000' });
     }
     return 'done';
-  });
+  }, { retry: true });
   assert.strictEqual(out, 'done');
   assert.strictEqual(tries, 3, 'a peer collision is retried, not thrown back');
 
   // But a real fault still is one.
   await assert.rejects(() => db.withRoleLock(async () => {
     throw Object.assign(new Error('relation "nope" does not exist'), { code: '42P01' });
-  }), /does not exist/, 'and anything else is reported, not swallowed');
+  }, { retry: true }), /does not exist/, 'and anything else is reported, not swallowed');
+
+  /* AND A CALLER INSIDE A TRANSACTION IS NEVER RETRIED. provisionOutlet opens
+     one so the schema, the role and the directory row land together; the first
+     failure aborts it, so a retry can only answer "current transaction is
+     aborted" — which is how one recoverable collision became five dead tests
+     before this was made opt-in. */
+  let once = 0;
+  await assert.rejects(() => db.withRoleLock(async () => {
+    once++;
+    throw Object.assign(new Error('tuple concurrently updated'), { code: 'XX000' });
+  }), /tuple concurrently updated/, 'no retry unless the caller asked for one');
+  assert.strictEqual(once, 1, 'and it was tried exactly once: ' + once);
 
   await db.shutdown();
 });

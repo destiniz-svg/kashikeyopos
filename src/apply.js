@@ -1390,13 +1390,24 @@ H.bank_import = async (c, p, ctx) => {
 
 // Three outcomes, never two: an exact hit clears itself, a near miss becomes a
 // proposal a human accepts or rejects, and anything else stays unexplained.
+/* ONE LINE OR A WHOLE PASS. A reconciliation clears and proposes many lines at
+   once, and the screen that runs it cannot name them with a single id — it used
+   to name them with a sentence and no payload, so nothing was matched. */
 H.bank_match = async (c, p, ctx) => {
-  await c.query('UPDATE bank_line SET state = $2, matched_account = $3,'
-    + ' matched_source = $4, matched_id = $5, matched_at = now(), matched_by = $6'
-    + ' WHERE id = $1',
-    [p.id, p.state || 'proposed', p.acct || null, p.src || null,
-      p.ref || null, ctx.actor]);
-  return { ok: true };
+  const many = arr(p.lines);
+  const rows = many.length ? many : (p.id ? [p] : []);
+  if (!rows.length) {
+    throw Object.assign(new Error('this reconciliation named no statement line, so'
+      + ' nothing was matched — run it again on the till'), { status: 400 });
+  }
+  for (const l of rows) {
+    await c.query('UPDATE bank_line SET state = $2, matched_account = $3,'
+      + ' matched_source = $4, matched_id = $5, matched_at = now(), matched_by = $6'
+      + ' WHERE id = $1',
+      [l.id, l.state || 'proposed', l.acct || null, l.src || null,
+        l.ref || null, ctx.actor]);
+  }
+  return { matched: rows.length };
 };
 
 H.bank_match_accept = async (c, p, ctx) => {
@@ -2194,10 +2205,19 @@ H.qr_pay_intent = async (c, p, ctx) => {
   await log(c, 'qr_pay_intent', 'guest_order', p.id, null, { amount: r2(p.amt) });
   return { ok: true };
 };
+/* ONE, OR ALL OF THEM. The compliance screen offers "Acknowledge all N" as
+   well as acknowledging one, and a control that clears eight flags cannot say
+   so with a single id — it used to say it with a LABEL and no payload at all,
+   so nothing was acknowledged whichever button was pressed. */
 H.flag_ack = async (c, p, ctx) => {
-  await c.query('UPDATE guest_request SET ack_at = now(), ack_by = $2 WHERE id = $1',
-    [p.id, ctx.actor]);
-  return { ok: true };
+  const ids = arr(p.ids).length ? arr(p.ids) : (p.id ? [p.id] : []);
+  if (!ids.length) {
+    throw Object.assign(new Error('this acknowledgement named no flag, so nothing was'
+      + ' cleared — acknowledge it again on the till'), { status: 400 });
+  }
+  const r = await c.query('UPDATE guest_request SET ack_at = now(), ack_by = $2'
+    + ' WHERE id = ANY($1::text[]) AND ack_at IS NULL', [ids, ctx.actor]);
+  return { acknowledged: r.rowCount };
 };
 
 // ═══ THE CUSTOMER ══════════════════════════════════════════════════════════
