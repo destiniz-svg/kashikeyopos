@@ -43,7 +43,7 @@ function b64url(buf) { return Buffer.from(buf).toString('base64url'); }
    `typ` is one letter, checked on the way in. A token minted before this
    carries none and is refused, which costs everybody one sign-in: a till keys
    a PIN, a guest rescans, a member asks for a code. That is the correct price. */
-const TYPE = { staff: 's', account: 'a', table: 't', member: 'm' };
+const TYPE = { staff: 's', account: 'a', table: 't', member: 'm', doc: 'd' };
 
 function signWith(secret, typ, payload) {
   const body = b64url(JSON.stringify(Object.assign({ typ: typ }, payload)));
@@ -51,7 +51,13 @@ function signWith(secret, typ, payload) {
   return body + '.' + mac;
 }
 
-function verifyWith(secret, typ, token) {
+/* `sealed` is the MAC and the plane, WITHOUT the clock — never a token, only
+   the two facts a caller may need separately. Every credential path uses
+   verifyWith() and an expired token is simply not one; the single exception is
+   a document link, where the difference between "wrong" and "merely old" is
+   worth telling the person holding it. Nothing is weakened by asking: the
+   signature and the plane still have to hold before a claim is believed. */
+function sealed(secret, typ, token) {
   if (typeof token !== 'string' || token.indexOf('.') < 0) return null;
   const cut = token.lastIndexOf('.');
   const body = token.slice(0, cut), mac = token.slice(cut + 1);
@@ -61,9 +67,15 @@ function verifyWith(secret, typ, token) {
   let claims;
   try { claims = JSON.parse(Buffer.from(body, 'base64url').toString()); }
   catch (e) { return null; }
-  if (!claims || !claims.exp || claims.exp < Date.now()) return null;
+  if (!claims) return null;
   // The plane is not negotiable and it is not inferred from the payload.
   if (claims.typ !== typ) return null;
+  return claims;
+}
+
+function verifyWith(secret, typ, token) {
+  const claims = sealed(secret, typ, token);
+  if (!claims || !claims.exp || claims.exp < Date.now()) return null;
   return claims;
 }
 
@@ -104,6 +116,32 @@ const verifyAccount = (t) => verifyWith(need('SESSION_SECRET'), TYPE.account, t)
 // cannot order, price or settle.
 const signMember = (p) => signWith(portalSecret(), TYPE.member, p);
 const verifyMember = (t) => verifyWith(portalSecret(), TYPE.member, t);
+
+/* A DOCUMENT LINK — an account statement handed to a customer. Signed rather
+   than stored, because unlike a receipt it is DERIVED and it EXPIRES: a
+   statement is a period of activity, and a permanent link to "this customer's
+   account" is a standing window into somebody's spending. It carries an
+   outlet, a member and the period, and grants nothing else — it cannot order,
+   cannot see another customer, and cannot be traded for a session.
+
+   A RECEIPT is deliberately not this shape. It is one document that never
+   changes, the guest keeps it, and a link that expires is a receipt you cannot
+   produce at the moment you need it. That one is a stored token (042). */
+const signDoc = (p) => signWith(portalSecret(), TYPE.doc, p);
+const verifyDoc = (t) => verifyWith(portalSecret(), TYPE.doc, t);
+
+/* AND "WRONG" IS NOT "OLD". A statement link that has aged out is refused by
+   verifyDoc() exactly like a forged one, so the guest holding it is told the
+   link could not be found — and goes to check whether they copied it properly,
+   or concludes the store deleted their record, rather than asking for a new
+   one. The page already carries the right sentence; nothing could ever reach
+   it. This answers which of the two it is, and ONLY for a document link: the
+   MAC and the plane must still hold, so an expired answer is proof the store
+   really did issue this, once. */
+function docExpired(t) {
+  const claims = sealed(portalSecret(), TYPE.doc, t);
+  return !!(claims && claims.exp && Number(claims.exp) < Date.now());
+}
 
 /* PINs are hashed with scrypt and a per-row salt. A PIN is short by nature, so
    the work factor and the sign-in lockout are what make it safe — never the
@@ -147,6 +185,19 @@ function pairCode() {
    A code a person reads out loud is four digits and safe because it expires in
    ten minutes and dies after five tries. This is not read out — it travels in
    a message and lives seven days — so its safety has to be its entropy. */
+/* A RECEIPT'S ADDRESS. Thirty-two characters from the platform CSPRNG — the
+   token IS the credential for one bill, and it is public in the sense that it
+   travels through an inbox and a message app, so its whole defence is that it
+   cannot be guessed or walked. Prefixed so a reader can tell what a link is
+   from the link, which is what stops a receipt token being pasted into a field
+   that wants a member token. */
+function receiptToken() {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < 32; i++) s += A[crypto.randomInt(0, A.length)];
+  return 'RC' + s;
+}
+
 function inviteToken() {
   const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
@@ -164,7 +215,7 @@ function tokenHash(t) {
 
 module.exports = {
   outletPassword, sign, verify, signTable, verifyTable, signMember, verifyMember,
-  signAccount, verifyAccount,
+  signAccount, verifyAccount, signDoc, verifyDoc, docExpired,
   hashPin, pinMatches, randomPin, pairCode, need,
-  inviteToken, tokenHash
+  inviteToken, receiptToken, tokenHash
 };

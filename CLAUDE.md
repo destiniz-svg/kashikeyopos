@@ -28,6 +28,7 @@ src/auth.js            rank gates
 src/limit.js           the doorman: token buckets on the open doors
 src/revoked.js         a revoked session or device is refused, not just recorded
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
+src/routes/doc.js      a receipt or a statement, read by whoever was handed the link
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
@@ -50,6 +51,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        039 a database is not a lobby
                        040 a section is not one browser's opinion
                        041 heat is a property of the dish
+                       042 a receipt has an address
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -66,6 +68,8 @@ app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
 app/kashikeyo-yield.js  what a kilo plates — the estimate BOTH runtimes read
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
+app/kashikeyo-share.js  what a shared bill says, and how a number reaches an app
+app/doc.html           a receipt or a statement, on a phone that has no account here
 app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels,
                        the section glyphs both apps draw) — no trade
 app/kashikeyo-api.js   the durable outbox and the API client
@@ -2600,6 +2604,105 @@ The whole of that was missing, and each piece failed silently:
 Points are awarded by the outlet from its own earn rate (`chain.setting`
 `loyalty.pointsPer`), never from a number the terminal sent.
 
+## A bill somebody can be handed
+
+A guest asks for the bill on WhatsApp, a house-account customer wants last
+month, a receipt is needed for an expense claim a week later. All three are the
+same shape — **a document, at an address, that a person with no account here
+can open** — so there is one page for all three and one composer for the
+message.
+
+```
+https://<handle>.kashikeyopos.com/r/<token>     a receipt
+https://<handle>.kashikeyopos.com/st/<token>    an account statement
+```
+
+**A receipt is stored; a statement is signed.** They look alike and they are
+not the same kind of thing:
+
+- a **receipt** is one document that never changes and the guest KEEPS. So it
+  is a token in the row (`sale.share_token`, migration 042), minted once and
+  kept: a link that expires is a receipt you cannot produce at the moment you
+  need it, and re-sending has to reach the SAME page or the guest's older
+  message points at a document that no longer answers;
+- a **statement** is DERIVED and it is a window into somebody's spending. So
+  it is signed rather than stored — `typ: 'd'`, carrying an outlet, a member,
+  the period and an expiry — and it lasts thirty days. A permanent link to
+  "this customer's account" is a standing window nobody asked for.
+
+**The host names the store.** A shared link is on the store's own subdomain, so
+the token is looked for in the one store the reader is already on — narrower
+and cheaper than searching every business in the cluster for it, which is what
+a bare `/r/<token>` would have to do. `?s=<handle>` is the path form, for a
+deploy with no base domain, and the PAGE forwards it: `docUrl()` spells that
+form and `doc.html` dropped it, so every link of that kind landed on "that
+receipt could not be found". **One named parameter, never the whole query
+string** — a click-wrapper appends its own to anything that goes through an
+inbox, and passing those on is the `?t=` defect the invitation landing already
+paid for once.
+
+**OLD IS NOT WRONG.** `verifyWith()` refuses an expired token exactly like a
+forged one, which is right for every credential plane in this build and wrong
+for this one: a guest whose statement link has aged out was told it could not
+be FOUND, and goes to check their own copying — or concludes the store deleted
+their record — rather than asking for a new one. The page already carried "This
+link has expired" and the 410 that would reach it was unreachable code.
+`sealed()` is the MAC and the plane without the clock; `docExpired()` is the
+only caller allowed to ask, and `sealed()` is deliberately **not exported**,
+because a "verify but ignore expiry" primitive on the module surface is one the
+next reader reaches for on a session. Nothing is weakened: the signature and
+the plane still have to hold, so a 410 is proof the store really did issue this
+once.
+
+**What the document carries is what the guest bought and paid, and not one
+thing more.** No cost, no margin, no staff record, no device, no ticket, no
+other bill, no member id, and no outlet totals. The test names each of them, on
+the document and on every line.
+
+### Three channels, one message
+
+Same shape as the member invitation, and for the same reason: the channel
+decides the transport and which field it addresses, never the words.
+
+| via | how it goes | addresses |
+| --- | --- | --- |
+| `email` | a real send through `src/email.js` | the customer's email |
+| `whatsapp` | click-to-chat (`wa.me/<digits>?text=`), opened from the staff member's own app | their mobile |
+| `viber` | `viber://forward?text=`, the same handoff | their mobile |
+
+`app/kashikeyo-share.js` is the composer, **loaded by the browser as a script
+and required by the server as a module** — like `kashikeyo-rules.js`, and it
+matters here for the same reason: the till shows the cashier the message before
+sending and the server is what sends it. Two copies means proofreading one
+sentence and delivering another.
+
+`msisdn()` is the one definition of a number an app can be handed: digits only,
+leading zeros dropped, **960 prefixed to a bare 7-digit Maldivian mobile**, and
+refused outside 8–15 digits rather than composing a link to nowhere.
+
+**`sent` is derived, never assumed.** WhatsApp and Viber are handoffs and
+answer `sent: false` with the composed URL — that is the only WhatsApp send
+this build can honestly make, exactly as the invitation already says. Email
+answers what the transport answered.
+
+**A refusal names the field and still hands back the link.** No email on file
+is a 409 saying so, with the address of the document attached — the document
+EXISTS; only the delivery could not be made. The till reads that one sentence
+and opens a popup asking for the address, because an instruction to add one is
+only useful next to somewhere to add it; it saves onto the customer through
+`patchRows("custs", …)` — the same one seam every customer edit goes through,
+which is what makes the address reach every other terminal — and then sends,
+so the next receipt asks nothing. An address already on somebody else's record
+is refused by name (migration 018 makes an email a second identity, and two
+customers on one address is one guest signed into another's card). The other
+two channels need no address at all, which is what makes them the easy path: a
+customer taken at a counter has given a name and a number.
+
+Both doors are rank 2 (a cashier hands a guest their bill), rate-limited per
+OUTLET like the invitation — this is about spend, not identity — and both land
+on the trail.
+
+
 ## The navigation is a rail
 
 A **60px icon rail** at every width above a phone. Opening it floats a **236px
@@ -3785,7 +3888,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 482 tests
+npm test                          # 486 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

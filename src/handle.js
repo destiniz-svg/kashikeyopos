@@ -176,5 +176,28 @@ function joinUrl(handle, token) {
     + (handle ? '?s=' + encodeURIComponent(handle) : '');
 }
 
+/* ── WHERE A DOCUMENT LIVES ───────────────────────────────────────────────
+   A receipt and a statement follow the invitation's rule exactly, and for the
+   same reason: they travel to an inbox and a message app, where a path
+   resolves against nothing. So this returns an ABSOLUTE link or an EMPTY
+   STRING — never a path — and the caller refuses the send rather than putting
+   an unfollowable address in front of a guest.
+
+   And never the request's Host: that header is client-supplied, so deriving a
+   receipt link from it would let anyone who can reach the API put their own
+   domain on a document a guest has been told to trust. */
+function docUrl(handle, path, token) {
+  const origin = portalOrigin(handle);
+  if (!origin) return '';
+  const t = encodeURIComponent(String(token || ''));
+  const base = baseDomain();
+  if (base && ok(handle)) return origin + path + '/' + t;
+  return origin + path + '/' + t
+    + (handle ? '?s=' + encodeURIComponent(handle) : '');
+}
+const receiptUrl = (handle, token) => docUrl(handle, '/r', token);
+const statementUrl = (handle, token) => docUrl(handle, '/st', token);
+
 module.exports = { MIN, MAX, SHAPE, normalise, shapeError, ok,
-  baseDomain, appHost, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl, portalOrigin };
+  baseDomain, appHost, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl,
+  receiptUrl, statementUrl, portalOrigin };

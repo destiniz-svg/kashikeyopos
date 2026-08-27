@@ -1,0 +1,237 @@
+<!-- ═══ A DOCUMENT SOMEBODY WAS HANDED ═══════════════════════════════════════
+     A receipt at /r/<token> and an account statement at /st/<token>. One page,
+     told apart by what the token resolves to.
+
+     Deliberately plain: no framework, no template runtime, no sign-in. Whoever
+     opens this got the link on WhatsApp or in an inbox, has no account here
+     and never will, and is very likely on a phone on mobile data. It has to
+     render in one paint and print on one sheet.
+     ══════════════════════════════════════════════════════════════════════ -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Receipt</title>
+<!-- The app's own faces, self-hosted. A CDN link would be refused by this
+     install's CSP (`font-src 'self'`) and the page would silently fall back to
+     a system stack — which is how a receipt ends up looking like a plain-text
+     dump of somebody's bill. -->
+<link rel="stylesheet" href="/fonts.css">
+<style>
+  /* One palette, and it survives either host theme: a receipt is a document,
+     so it is ink on paper at every hour of the day. */
+  :root {
+    --ink: #16161a; --dim: #62626a; --mute: #6e6e77; --line: #e6e6ea;
+    --paper: #ffffff; --ground: #f2f2f4; --accent: #b8431d; --good: #1d6b57;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ground: #121214; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 400 15px/1.55 "Instrument Sans", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: env(safe-area-inset-top) 0 24px;
+  }
+  .sheet {
+    max-width: 460px; margin: 0 auto; background: var(--paper);
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  }
+  @media (min-width: 520px) { body { padding-top: 28px; } }
+  .head { padding: 22px 22px 16px; border-bottom: 1px dashed var(--line); }
+  .shop { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .sub { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+  .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px;
+          font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11.5px;
+          letter-spacing: .02em; color: var(--mute); }
+  .body { padding: 16px 22px; }
+  .row { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; }
+  .row .n { flex: 1 1 auto; min-width: 0; }
+  .row .q { color: var(--mute); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+  .row .v { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums;
+            font-size: 13px; white-space: nowrap; }
+  .tot { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
+  .tot .row { padding: 3px 0; color: var(--dim); font-size: 13.5px; }
+  .tot .row.big { color: var(--ink); font-weight: 700; font-size: 17px; padding-top: 9px; }
+  .tot .row.big .v { font-size: 17px; font-weight: 700; }
+  .pay { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; }
+  .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: .1em;
+         text-transform: uppercase; color: var(--mute); margin-bottom: 6px; }
+  .foot { padding: 16px 22px 22px; border-top: 1px dashed var(--line);
+          color: var(--mute); font-size: 12px; }
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 999px;
+          font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+          text-transform: uppercase; }
+  .void { background: #fbe9e5; color: var(--accent); }
+  .pts { background: #e7f2ee; color: var(--good); }
+  .msg { max-width: 460px; margin: 40px auto; padding: 26px 22px; text-align: center;
+         background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
+  .msg h1 { font-size: 17px; margin: 0 0 6px; }
+  .msg p { color: var(--dim); font-size: 13.5px; margin: 0; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { border: 0; max-width: none; }
+  }
+</style>
+<div id="root" class="msg"><h1>Loading…</h1><p>One moment.</p></div>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  };
+  /* textContent only, everywhere. A dish name and a customer name are typed by
+     people at a counter, and this page is opened by strangers on a link. */
+  function row(name, qty, value, cls) {
+    var r = el("div", "row" + (cls ? " " + cls : ""));
+    var n = el("div", "n", name);
+    r.appendChild(n);
+    if (qty) n.appendChild(el("span", "q", "  × " + qty));
+    r.appendChild(el("div", "v", value));
+    return r;
+  }
+  function money(cur, n) {
+    return cur + " " + (Math.round((Number(n) || 0) * 100) / 100)
+      .toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+  function fail(title, note) {
+    var d = $("root");
+    d.className = "msg";
+    d.textContent = "";
+    d.appendChild(el("h1", null, title));
+    d.appendChild(el("p", null, note));
+  }
+
+  var parts = location.pathname.split("/").filter(Boolean);
+  var kind = parts[0] === "st" ? "st" : "r";
+  var token = parts[1] || "";
+  if (!token) return fail("Nothing to show", "This link is missing its document.");
+
+  /* THE HOST NAMES THE STORE — `<handle>.kashikeyopos.com/r/<token>` — so this
+     page usually sends nothing and the server reads the handle off `Host`. A
+     deploy with no base domain gets the path form instead, and `docUrl()` puts
+     the handle on `?s=`; forwarding it is what makes that form resolve at all.
+     ONE NAMED PARAMETER, never the whole query string: a click-wrapper appends
+     its own, and passing those on is how a foreign value reaches a lookup. */
+  var store = "";
+  try {
+    store = new URLSearchParams(location.search).get("s") || "";
+  } catch (e) { store = ""; }
+  if (!/^[a-z0-9-]{3,40}$/.test(store)) store = "";
+
+  fetch("/api/doc/" + kind + "/" + encodeURIComponent(token)
+    + (store ? "?s=" + encodeURIComponent(store) : ""))
+    .then(function (r) {
+      return r.json().then(function (b) { return { ok: r.ok, status: r.status, b: b }; });
+    })
+    .then(function (r) {
+      if (!r.ok) {
+        return fail(r.status === 410 ? "This link has expired" : "Not found",
+          (r.b && r.b.error) || "Ask the store to send it again.");
+      }
+      render(r.b);
+    })
+    .catch(function () {
+      fail("Could not load", "Check the connection and try again.");
+    });
+
+  function render(d) {
+    document.title = (d.kind === "statement" ? "Statement" : "Receipt")
+      + (d.outlet ? " · " + d.outlet : "");
+    var root = $("root");
+    root.className = "sheet";
+    root.textContent = "";
+
+    var head = el("div", "head");
+    head.appendChild(el("div", "shop", d.outlet || d.company || "Receipt"));
+    if (d.company && d.company !== d.outlet) head.appendChild(el("div", "sub", d.company));
+    if (d.address) head.appendChild(el("div", "sub", d.address));
+    if (d.tin) head.appendChild(el("div", "sub", "TIN " + d.tin));
+    var meta = el("div", "meta");
+    if (d.kind === "statement") {
+      meta.appendChild(el("span", null, d.name || ""));
+      meta.appendChild(el("span", null, d.from + " → " + d.to));
+    } else {
+      meta.appendChild(el("span", null, d.docNo || ""));
+      meta.appendChild(el("span", null, String(d.date || "").slice(0, 10)));
+    }
+    head.appendChild(meta);
+    if (d.voided) {
+      var v = el("div", null);
+      v.style.marginTop = "10px";
+      v.appendChild(el("span", "pill void", "Voided"));
+      head.appendChild(v);
+    }
+    root.appendChild(head);
+
+    var body = el("div", "body");
+    if (d.kind === "statement") renderStatement(d, body);
+    else renderReceipt(d, body);
+    root.appendChild(body);
+
+    var foot = el("div", "foot");
+    foot.appendChild(el("div", null, d.kind === "statement"
+      ? "This statement covers the period shown. Ask the store for anything outside it."
+      : "Thank you. Keep this link — it is your copy of the bill."));
+    root.appendChild(foot);
+  }
+
+  function renderReceipt(d, body) {
+    (d.lines || []).forEach(function (l) {
+      body.appendChild(row(l.name, l.qty > 1 ? l.qty : 0, money(d.currency, l.total)));
+    });
+    var t = el("div", "tot");
+    if (d.discount) t.appendChild(row("Discount", 0, "− " + money(d.currency, d.discount)));
+    t.appendChild(row("Subtotal", 0, money(d.currency, d.net)));
+    if (d.service) t.appendChild(row("Service charge", 0, money(d.currency, d.service)));
+    /* A TAX LINE PRINTS ONLY WHERE ONE WAS CHARGED. A zero line on a document
+       from a business below the threshold claims a registration it does not
+       hold — the same rule the printed receipt already keeps. */
+    if (d.tax) {
+      t.appendChild(row((d.taxLabel || "GST") + " " + d.taxRate + "%", 0,
+        money(d.currency, d.tax)));
+    }
+    if (d.pointsValue) t.appendChild(row("Points redeemed", 0, "− " + money(d.currency, d.pointsValue)));
+    if (d.rounding) t.appendChild(row("Cash rounding", 0, money(d.currency, d.rounding)));
+    if (d.tip) t.appendChild(row("Tip", 0, money(d.currency, d.tip)));
+    t.appendChild(row("Total", 0, money(d.currency, d.total), "big"));
+    body.appendChild(t);
+
+    if ((d.payments || []).length) {
+      var p = el("div", "pay");
+      p.appendChild(el("div", "lbl", "Paid"));
+      d.payments.forEach(function (x) {
+        p.appendChild(row(x.method + (x.reference ? " · " + x.reference : ""),
+          0, money(x.currency || d.currency, x.amount)));
+      });
+      body.appendChild(p);
+    }
+    if (d.points) {
+      var e = el("div", "pay");
+      e.appendChild(el("span", "pill pts", d.points + " points earned"));
+      body.appendChild(e);
+    }
+  }
+
+  function renderStatement(d, body) {
+    if (!(d.lines || []).length) {
+      body.appendChild(el("div", "sub", "Nothing on this account in this period."));
+    }
+    (d.lines || []).forEach(function (l) {
+      var r = row(String(l.date || "").slice(0, 10) + "  " + (l.docNo || ""), 0,
+        money(d.currency, l.total));
+      body.appendChild(r);
+    });
+    var t = el("div", "tot");
+    t.appendChild(row("Spent in this period", 0, money(d.currency, d.spent), "big"));
+    if (d.creditLimit) {
+      t.appendChild(row("Credit limit", 0, money(d.currency, d.creditLimit)));
+      t.appendChild(row("Outstanding", 0, money(d.currency, d.creditUsed)));
+    }
+    if (d.points) t.appendChild(row("Points balance", 0, String(d.points)));
+    body.appendChild(t);
+  }
+})();
+</script>

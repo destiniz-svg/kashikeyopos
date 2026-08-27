@@ -161,6 +161,10 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %1$I.sale (
       id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       receipt_no    text NOT NULL UNIQUE,
+      -- Where this bill lives on the internet, once somebody has shared it.
+      -- NULL until then: a live link on every transaction in the shop, wanted
+      -- or not, is a surface nobody asked for. See migration 042.
+      share_token   text UNIQUE,
       ticket_id     uuid REFERENCES %1$I.ticket(id),
       at            timestamptz NOT NULL DEFAULT now(),
       business_date date NOT NULL,

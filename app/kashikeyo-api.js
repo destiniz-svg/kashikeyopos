@@ -633,6 +633,21 @@
        a code nobody can use. The answer carries the address the SERVER
        spelled, because only the server knows where the base domain ends, and
        whether anything was actually SENT — never a guess. */
+    /* ── HANDING A DOCUMENT TO THE GUEST ────────────────────────────────
+       A receipt or an account statement, by email, WhatsApp or Viber. One
+       call each, because the document and its link are the server's to mint
+       and the channel is the only thing the till decides. */
+    shareSale(saleId, via, to) {
+      return this._fetch("/api/outlet/" + this.outletId + "/sale/"
+        + encodeURIComponent(saleId) + "/share",
+        { method: "POST", body: { via: via || "email", to: to || null } });
+    }
+    shareStatement(memberId, via, to, from, until) {
+      return this._fetch("/api/outlet/" + this.outletId + "/member/"
+        + encodeURIComponent(memberId) + "/statement",
+        { method: "POST", body: { via: via || "email", to_addr: to || null,
+          from: from || null, to: until || null } });
+    }
     inviteMember(id, via, to) {
       return this._fetch("/api/outlet/" + this.outletId + "/member/"
         + encodeURIComponent(id) + "/invite",

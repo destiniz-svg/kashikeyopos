@@ -181,6 +181,9 @@ const FORMS = [
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'indent', 'dispatch',
   'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
   'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn', 'plan',
+  // Where an emailed receipt or statement goes when the customer has no
+  // address on file yet. Typed once, saved onto the customer, used now.
+  'docEmail',
   /* Four COMPUTED form specs the sweep never saw. They are written as
      `name: (function () { ... })()` rather than as object literals, and the
      wiring test's extractor matched only `name: {` — so they existed, opened

@@ -1,13 +1,16 @@
 'use strict';
 const express = require('express');
 const { withOutletRead, withOutlet, ownerForOutlet, control } = require('../db');
-const { shapeError, storeUrl, memberUrl, joinUrl, baseDomain } = require('../handle');
+const { shapeError, storeUrl, memberUrl, joinUrl, receiptUrl, statementUrl,
+  baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
-const { randomPin, hashPin, inviteToken, tokenHash } = require('../secrets');
+const { randomPin, hashPin, inviteToken, receiptToken, tokenHash,
+  signDoc } = require('../secrets');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
 const email = require('../email');
 const INVITE = require('../../app/kashikeyo-invite.js');
+const SHARE = require('../../app/kashikeyo-share.js');
 const { gate } = require('../limit');
 
 const r = express.Router({ mergeParams: true });
@@ -263,6 +266,200 @@ async function pointsWorth(c, points) {
    compromised till session cannot turn the outlet into a spam relay. Keyed on
    the OUTLET, not the device: the till is signed in, so the doorman here is
    about spend, not identity. */
+/* ── HANDING A DOCUMENT TO THE GUEST ──────────────────────────────────────
+   A receipt and an account statement, by email, WhatsApp or Viber. THREE
+   CHANNELS AND ONE MECHANISM: the document lives at a permanent address and
+   sharing it is handing over that address. Every till in this category works
+   this way, and it is the only shape in which the three channels are one
+   feature — a message app carries a URL, an inbox carries a URL, a printed QR
+   carries a URL.
+
+   The channel decides the transport and NOTHING else. Email goes through
+   `src/email.js` and answers `sent` honestly; WhatsApp and Viber are handed
+   back as click-to-chat links the cashier's own app completes, which is the
+   only send this build can make on those two. A screen claiming a server-side
+   WhatsApp send is the defect this build keeps refusing to ship.
+
+   Rank 2 — whoever is standing with the guest — and the same per-outlet
+   doorman the invitation has, because an email is billed to the business. */
+const SHARE_KINDS = { email: 1, whatsapp: 1, viber: 1 };
+
+// Where a document would live, or nothing. Checked BEFORE anything is minted:
+// a message carrying `/r/RC…` reaches an inbox with nothing to resolve it, and
+// the guest is left holding a link that does nothing.
+function docLinkOrRefuse(kind, slug, token) {
+  const url = kind === 'statement' ? statementUrl(slug, token) : receiptUrl(slug, token);
+  if (url) return url;
+  const err = new Error('this deploy has no public address, so a shared '
+    + 'document would carry a link that resolves to nothing \u2014 set '
+    + 'PUBLIC_URL (or PORTAL_BASE_DOMAIN) and share it again');
+  err.status = 503;
+  throw err;
+}
+
+async function deliver(via, msg, to) {
+  if (via === 'email') {
+    try {
+      const r0 = await email.send({ to: to, subject: msg.subject, text: msg.body });
+      return { sent: r0.sent === true, reason: r0.reason || '' };
+    } catch (e) {
+      return { sent: false, reason: e.message || 'the transport refused' };
+    }
+  }
+  // Named, not pretended. The cashier completes it from their own app.
+  return { sent: false, reason: via === 'whatsapp'
+    ? 'WhatsApp has no server transport here \u2014 open the link and WhatsApp '
+      + 'will have the message ready to send'
+    : 'Viber has no server transport here \u2014 open the link and Viber will '
+      + 'have the message ready to share' };
+}
+
+r.post('/sale/:saleId/share', sameOutlet, atLeast('till'),
+  gate('doc-share', { id: [120, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    const via = String((req.body || {}).via || 'email').toLowerCase();
+    if (!SHARE_KINDS[via]) {
+      return res.status(400).json({ error: 'not a channel this build can share on: ' + via });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = (await c.query('SELECT slug, name, currency FROM chain.outlet'
+          + ' WHERE id = $1', [req.ctx.outletId])).rows[0] || {};
+        docLinkOrRefuse('receipt', o.slug || '', 'RC' + 'x'.repeat(32));
+
+        const sale = (await c.query('SELECT s.*, m.name AS member_name,'
+          + ' m.phone AS member_phone, m.email AS member_email'
+          + ' FROM sale s LEFT JOIN chain.member m ON m.id = s.member_id'
+          + ' WHERE s.id = $1', [req.params.saleId])).rows[0];
+        if (!sale) return null;
+
+        /* MINTED ONCE AND KEPT. A receipt re-sent has to reach the SAME page:
+           a new link every time would leave the guest's older message pointing
+           at a document that no longer answers, which is a receipt they cannot
+           produce at the moment they need it. */
+        let tok = sale.share_token;
+        if (!tok) {
+          tok = receiptToken();
+          await c.query('UPDATE sale SET share_token = $2 WHERE id = $1',
+            [sale.id, tok]);
+        }
+        return { o: o, sale: sale, token: tok };
+      });
+      if (!out) return res.status(404).json({ error: 'no such sale at this outlet' });
+
+      const link = docLinkOrRefuse('receipt', out.o.slug || '', out.token);
+      /* THE ADDRESS TO USE, in one order that is the same on every channel:
+         what the cashier typed for this send, then what is on the customer's
+         record. A guest who gives an address at the counter is answering for
+         this receipt; the record is the standing answer. */
+      const typed = String((req.body || {}).to || '').trim();
+      const to = typed || (via === 'email' ? (out.sale.member_email || '')
+        : (out.sale.member_phone || ''));
+      const doc = {
+        kind: 'receipt', outlet: out.o.name || '',
+        name: out.sale.member_name || '', docNo: out.sale.receipt_no,
+        total: Number(out.sale.total) || 0, currency: out.o.currency || 'MVR',
+        when: String(out.sale.business_date || '').slice(0, 10),
+        link: link, email: via === 'email' ? to : (out.sale.member_email || ''),
+        phone: via === 'email' ? (out.sale.member_phone || '') : to
+      };
+      const msg = { subject: SHARE.subjectFor('receipt', doc), body: SHARE.bodyFor('receipt', doc) };
+
+      const blocked = SHARE.why(via, doc);
+      if (blocked) return res.status(409).json({ error: blocked, link: link });
+
+      const sent = await deliver(via, msg, to);
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'receipt_shared','sale',$2,$3)",
+        [req.ctx.outletId, out.sale.id, JSON.stringify({
+          by: req.ctx.actor, via: via, to: to, sent: sent.sent,
+          doc: out.sale.receipt_no })]));
+
+      res.set('cache-control', 'no-store').json({
+        link: link, docNo: out.sale.receipt_no, via: via, to: to,
+        subject: msg.subject, body: msg.body,
+        // Click-to-chat, for the two channels a person completes by hand.
+        handoff: via === 'email' ? '' : SHARE.channelUrl(via, doc),
+        sent: sent.sent === true, reason: sent.reason || ''
+      });
+    } catch (e) {
+      if (e && e.status === 503) return res.status(503).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* A STATEMENT is a PERIOD, so it names one — an account summary with no dates
+   is a figure the customer cannot check against anything. Signed rather than
+   stored and it expires, because a permanent link to "this customer's account"
+   is a standing window into somebody's spending; a receipt is one document
+   they keep, which is why that one does not expire. */
+const STATEMENT_DAYS = 30;
+
+r.post('/member/:memberId/statement', sameOutlet, atLeast('till'),
+  gate('doc-share', { id: [120, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    const via = String((req.body || {}).via || 'email').toLowerCase();
+    if (!SHARE_KINDS[via]) {
+      return res.status(400).json({ error: 'not a channel this build can share on: ' + via });
+    }
+    const day = (v, fallback) => {
+      const t = String(v || '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : fallback;
+    };
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = (await c.query('SELECT slug, name, currency FROM chain.outlet'
+          + ' WHERE id = $1', [req.ctx.outletId])).rows[0] || {};
+        const today = (await c.query('SELECT current_date::text AS d')).rows[0].d;
+        const back = (await c.query(
+          "SELECT (current_date - interval '90 days')::date::text AS d")).rows[0].d;
+        const m = (await c.query('SELECT id, name, phone, email, credit_used'
+          + ' FROM chain.member WHERE id = $1', [req.params.memberId])).rows[0];
+        if (!m) return null;
+        return { o: o, m: m,
+          from: day((req.body || {}).from, back), to: day((req.body || {}).to, today) };
+      });
+      if (!out) return res.status(404).json({ error: 'no such customer' });
+
+      const tok = signDoc({ o: req.ctx.outletId, m: out.m.id,
+        f: out.from, t: out.to, exp: Date.now() + STATEMENT_DAYS * 86400e3 });
+      const link = docLinkOrRefuse('statement', out.o.slug || '', tok);
+
+      const typed = String((req.body || {}).to_addr || '').trim();
+      const to = typed || (via === 'email' ? (out.m.email || '') : (out.m.phone || ''));
+      const doc = {
+        kind: 'statement', outlet: out.o.name || '', name: out.m.name || out.m.phone,
+        from: out.from, to: out.to, balance: Number(out.m.credit_used) || 0,
+        currency: out.o.currency || 'MVR', link: link,
+        email: via === 'email' ? to : (out.m.email || ''),
+        phone: via === 'email' ? (out.m.phone || '') : to
+      };
+      const msg = { subject: SHARE.subjectFor('statement', doc),
+        body: SHARE.bodyFor('statement', doc) };
+
+      const blocked = SHARE.why(via, doc);
+      if (blocked) return res.status(409).json({ error: blocked, link: link });
+
+      const sent = await deliver(via, msg, to);
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'statement_shared','member',$2,$3)",
+        [req.ctx.outletId, out.m.id, JSON.stringify({
+          by: req.ctx.actor, via: via, to: to, sent: sent.sent,
+          from: out.from, until: out.to })]));
+
+      res.set('cache-control', 'no-store').json({
+        link: link, via: via, to: to, from: out.from, until: out.to,
+        expires: new Date(Date.now() + STATEMENT_DAYS * 86400e3).toISOString(),
+        days: STATEMENT_DAYS, subject: msg.subject, body: msg.body,
+        handoff: via === 'email' ? '' : SHARE.channelUrl(via, doc),
+        sent: sent.sent === true, reason: sent.reason || ''
+      });
+    } catch (e) {
+      if (e && e.status === 503) return res.status(503).json({ error: e.message });
+      next(e);
+    }
+  });
+
 r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
   gate('invite', { id: [60, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
   async function (req, res, next) {

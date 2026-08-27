@@ -30,6 +30,7 @@
 <script src="./kashikeyo-rules.js"></script>
 <script src="./kashikeyo-yield.js"></script>
 <script src="./kashikeyo-invite.js"></script>
+<script src="./kashikeyo-share.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./kashikeyo-api.js"></script>
 <script src="./kashikeyo-escpos.js"></script>
@@ -1874,6 +1875,7 @@
                 <button onClick="{{ settledDone }}" style="flex:1;padding:11px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">{{ settledDoneLabel }}</button>
               </div>
               <button onClick="{{ doTrail }}" style="{{ trailStyle }}">{{ trailLabel }}</button>
+              <button onClick="{{ doShare }}" style="{{ shareStyle }}">{{ shareLabel }}</button>
               <button onClick="{{ doRefund }}" style="{{ refundStyle }}">{{ refundLabel }}</button>
             </sc-if>
           </div>
@@ -6355,6 +6357,7 @@ class Component extends DCLogic {
       // never renders an unstyled control on the settled or Z screens.
       refundStyle: "display:none", refundLabel: "", doRefund: () => {},
       trailStyle: "display:none", trailLabel: "", doTrail: () => {},
+      shareStyle: "display:none", shareLabel: "", doShare: () => {},
       // A modal that sets neither must not render a nameless button.
       settledDoneLabel: "Close", settledDone: () => this.setState({ modal: null }),
       // Secondary actions under a detail record. Most records have none; a
@@ -8006,6 +8009,14 @@ class Component extends DCLogic {
 
     if (m.kind === "settled") {
       const p = m.snap, T = p.T;
+      /* THE SALE'S ID AT THE OUTLET, which this snapshot cannot have: it is
+         built the instant the bill is settled, and the outlet has not seen the
+         op yet. The settled row comes back with the outlet's own id within a
+         few seconds, and the receipt number is what ties the two together —
+         so the Send control lights up as soon as the document actually has an
+         address, and says so plainly until then. */
+      const srv = (s.settled || []).find((x) => x && x.no && p.no && x.no === p.no) || {};
+      const srvId = srv.id || null;
       const tn = { cash: "Cash", card: "Card", wallet: "BML Pay", credit: "Customer credit" }[p.tender] || p.tender;
       const rows = [
         { n: "Subtotal", v: MVRc(T.sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
@@ -8055,7 +8066,26 @@ class Component extends DCLogic {
         },
         trailLabel: "Where this sale landed · stock, COGS, journal",
         trailStyle: "margin-top:9px;width:100%;padding:11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center;font-family:inherit",
-        doTrail: () => this.openTrail(p)
+        doTrail: () => this.openTrail(p),
+        /* SEND IT TO THE GUEST. A paper receipt is one copy at one counter; a
+           link is the copy they still have next month. Offered on the settled
+           screen because that is the one moment the guest is standing there
+           and can say where to send it — every till in this category asks
+           here, and asking later means chasing somebody who has left.
+
+           Only for a sale the OUTLET has: the document lives at the outlet's
+           address, so a bill still in this device's outbox has none yet. It
+           says so rather than offering a link that resolves to nothing. */
+        shareLabel: srvId ? "Send the receipt · email, WhatsApp or Viber"
+          : "Send it once this bill reaches the outlet",
+        shareStyle: "margin-top:9px;width:100%;padding:11px;border-radius:999px;background:"
+          + (srvId ? "var(--bg-3)" : "var(--bg-2)")
+          + ";border:1px solid var(--line);color:var(--text"
+          + (srvId ? "" : "-muted") + ");font-size:12px;font-weight:600;text-align:center;font-family:inherit",
+        doShare: () => srvId
+          ? this.shareDoc({ kind: "receipt", id: srvId, member: srv.memberId || p.memberId || null,
+            title: "Receipt " + (p.no || "") + " · " + MVRc(T.total) })
+          : this.toast("This bill has not reached the outlet yet — it will send once it has", "warn")
       };
     }
     if (m.kind === "creditNote") {
@@ -8317,6 +8347,16 @@ class Component extends DCLogic {
         // record rather than behind another screen.
         detailActsStyle: this.can("customers", "e") ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
         detailActs: (this.can("customers", "e") ? [{
+          /* THEIR ACCOUNT, ON ONE PAGE. A statement is what a house-account
+             customer asks for at the end of the month, and until now the only
+             answer was a CSV somebody had to attach to something. Same
+             mechanism as the receipt: a link, three channels, and the store
+             chooses none of them for the guest. */
+          label: "Send their statement",
+          style: "flex:1 1 100%;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
+          go: () => this.shareDoc({ kind: "statement", id: c.id, member: c.id,
+            title: (c.name || c.phone) + " · last 90 days" })
+        }] : []).concat(this.can("customers", "e") ? [{
           /* One control, because the channel is a decision made INSIDE the
              form beside the message it will send. Three buttons sent copy
              nobody had read — and the wording is the part a guest judges the
@@ -13306,6 +13346,110 @@ class Component extends DCLogic {
     return (((this.state.local || {}).menucats) || []).some((c) => c && c.id === cat);
   }
 
+  /* ── HANDING A DOCUMENT TO THE GUEST ─────────────────────────────────────
+     A bill, a completed receipt and a customer's account statement, by email,
+     WhatsApp or Viber. THREE CHANNELS AND ONE MECHANISM: the document lives
+     at a permanent address and sharing it is handing over that address. That
+     is how every till in this category does it, and it is the only shape in
+     which the three are one feature rather than three.
+
+     The channel decides the transport and nothing else. Email is a real send
+     through the install's own transport and answers honestly when there is
+     none; WhatsApp and Viber open the cashier's OWN app with the message
+     composed, which is the only send this build can make on those two. A
+     screen claiming a server-side WhatsApp send would be the defect this
+     build keeps refusing to ship.
+
+     ONE SHEET, not three buttons, for the same reason the invitation has one:
+     the message is shown before it goes, and the wording is the part a guest
+     judges the restaurant by. */
+  SHARE_CHANNELS() {
+    const S = window.KASHIKEYO_SHARE;
+    return (S && S.CHANNELS) || [["email", "Email", ""]];
+  }
+  shareDoc(spec) {
+    const s = spec || {};
+    const acts = this.SHARE_CHANNELS().map((ch) => ({
+      label: ch[1], sub: ch[2],
+      style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
+      go: () => this.sendDoc(s, ch[0], null)
+    }));
+    acts.push({
+      head: "Or hand it over yourself",
+      label: "Copy the link",
+      sub: "Paste it anywhere — the same page, whichever way it travels",
+      style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
+      go: () => this.sendDoc(s, "copy", null)
+    });
+    this.setState({ modal: { kind: "actions",
+      title: s.kind === "statement" ? "Send the statement" : "Send the receipt",
+      sub: s.title || "", acts: acts } });
+  }
+
+  /* THE SEND. One path for all three channels and the copy: ask the outlet for
+     the document's address, then either it went or the cashier finishes it.
+
+     AND THE ONE REFUSAL THAT IS AN INSTRUCTION. Email needs an address, and a
+     customer taken at a counter has given a name and a number. The server
+     answers 409 by name; this opens a field to type one, saves it onto the
+     CUSTOMER so the next receipt needs no typing, and sends. An instruction to
+     add an address is only useful next to somewhere to add it. */
+  sendDoc(spec, via, addr) {
+    const s = spec || {};
+    const B = window.KPOS_BRIDGE;
+    const call = via === "copy" ? "email" : via;
+    if (!B || !B.shareSale || !B.shareStatement) {
+      return this.toast("Sharing needs the outlet — this terminal is not connected to one", "warn");
+    }
+    const go = s.kind === "statement"
+      ? B.shareStatement(s.id, call, addr, s.from, s.to)
+      : B.shareSale(s.id, call, addr);
+    return go.then((r) => {
+      if (via === "copy") return this.copyLink(r.link);
+      this.setState({ modal: null });
+      if (r.handoff) {
+        // The cashier's own app, with the message already composed. Opened
+        // rather than navigated to, so the till keeps its place.
+        try { window.open(r.handoff, "_blank", "noopener"); }
+        catch (e) { return this.copyLink(r.link); }
+        return this.toast(r.via === "viber" ? "Viber opened with the message ready"
+          : "WhatsApp opened with the message ready");
+      }
+      if (r.sent) return this.toast("Sent to " + r.to);
+      /* NOT SENT IS NOT AN ERROR AND NOT A SUCCESS. The document exists and
+         has an address; what did not happen is the delivery, and the reason
+         is the install's, not this guest's. The link is copied so the send
+         can still be completed by hand. */
+      this.copyLink(r.link);
+      return this.toast("Not sent — " + (r.reason || "no email transport on this install")
+        + ". The link is copied.", "warn");
+    }).catch((e) => {
+      const msg = (e && e.message) || "";
+      if (/no email address on file/i.test(msg)) return this.askEmail(s);
+      if (/no usable mobile/i.test(msg)) {
+        return this.toast("No mobile number on this customer — add one on their record first", "warn");
+      }
+      return this.toast(msg || "The outlet refused the send", "err");
+    });
+  }
+  copyLink(link) {
+    if (!link) return this.toast("There is no link to copy", "warn");
+    try {
+      navigator.clipboard.writeText(link);
+      this.toast("Link copied");
+    } catch (e) {
+      this.toast(link, "warn");
+    }
+  }
+  /* THE POPUP THE ADDRESS COMES FROM. Typed once, saved onto the customer, and
+     used for this send — so the next receipt needs no typing at all. It saves
+     through the same one seam every customer edit goes through, which is what
+     makes the address reach every other terminal too. */
+  askEmail(spec) {
+    this._docPending = spec || {};
+    this.openForm("docEmail", null);
+  }
+
   /* ── the settings, after a bootstrap ─────────────────────────────────────
      The same rule the sections follow, and for the same reason. `state.prefs`
      is this terminal's un-synced edit so the screen answers immediately and
@@ -16519,6 +16663,29 @@ class Component extends DCLogic {
           this.toast(this.slotName(row.n) + " · " + p + " cover" + (p === 1 ? "" : "s"));
         }
       },
+      docEmail: {
+        title: "Where should it go?", sub: "This customer has no email address on file yet",
+        save: "Save and send",
+        foot: "The address is saved on the customer, so the next receipt or statement goes without asking. The phone number stays their identity \u2014 an email is a second way to reach them and a second way into their card.",
+        fields: [{ k: "email", label: "Email address", v: "", full: 1 }],
+        onSave: (v) => {
+          const mail = this.emailOn(v.email);
+          if (!mail) return this.toast("That is not an email address \u2014 check it and try again", "warn");
+          const spec = this._docPending || {};
+          const c = spec.member
+            ? (K().CUSTOMERS || []).find((x) => x.id === spec.member) : null;
+          const clash = this.emailTaken(mail, c ? c.id : null);
+          if (clash) {
+            return this.toast(mail + " is already on " + clash.name
+              + "\u2019s record \u2014 an address can only sign one customer in", "warn");
+          }
+          // Saved through the one seam every customer edit goes through, so it
+          // reaches the outlet and every other terminal rather than this screen.
+          if (c) this.patchRows("custs", [c.id], { email: mail }, c.name + " \u00b7 email saved", "customers");
+          else this.setState({ modal: null });
+          this.sendDoc(spec, "email", mail);
+        }
+      },
       cust: {
         /* THE EMAIL IS A FIELD, because the portal invitation offers to send on
            one and the refusal says "add one on the customer first" — which
@@ -16536,6 +16703,14 @@ class Component extends DCLogic {
            Gold here wrote a column no screen reads and watched the panel keep
            saying Bronze. A control that cannot do what it appears to do is
            worse than no control. */
+      /* ── THE ADDRESS AN EMAILED DOCUMENT NEEDS ─────────────────────────
+         A customer taken at a counter has given a name and a number; the
+         email is optional and most rows have none. So the moment a cashier
+         picks Email, this asks for one — and SAVES IT ONTO THE CUSTOMER, so
+         the next receipt needs no typing and every other terminal has it too.
+
+         Typed once, kept for ever, used now. A form that took the address for
+         this one send and threw it away would ask again on the next bill. */
         title: "Add customer", sub: "Loyalty, credit and the portal are keyed off this row", save: "Create customer",
         editTitle: "Edit customer", editSub: "Contact details, and what they may put on account",
         foot: "The phone number is the identity and the portal accepts either half — an email is optional, and only needed to invite them by email. Tier is worked out from points against the loyalty ladder, so it is not set here. A credit limit greater than zero opens a house account; the server tracks the outstanding balance and every overrun is recorded on the audit trail.",

@@ -357,6 +357,10 @@
        but not wired, so the code is read out at the counter — and the answer
        says which of the two happened rather than claiming a send. */
     inviteMember: function (id, via, to) { return api.inviteMember(id, via, to); },
+    shareSale: function (id, via, to) { return api.shareSale(id, via, to); },
+    shareStatement: function (id, via, to, from, until) {
+      return api.shareStatement(id, via, to, from, until);
+    },
     revokeMember: function (id) { return api.revokeMember(id); },
     /* Ending every other session is a real call, and it answers with a real
        count. The old control queued an audit-only op and toasted a number it

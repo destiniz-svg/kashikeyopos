@@ -2071,6 +2071,130 @@ test('a dish carries its tags, its heat and its add-ons', opts, async () => {
     + (odd.body.results[0].error || ''));
 });
 
+/* ═══ HANDING A DOCUMENT TO THE GUEST ══════════════════════════════════════
+   A receipt and an account statement, by email, WhatsApp or Viber. THREE
+   CHANNELS AND ONE MECHANISM: the document lives at a permanent address and
+   sharing it is handing over that address — which is how every till in this
+   category does it, and the only shape in which the three are one feature.
+
+   What is asserted here is the whole contract: the link is minted once and
+   kept, the channel decides the transport and nothing else, email answers
+   honestly when there is no transport, a missing address is refused BY NAME
+   so the till knows to ask for one, and the public page carries what a guest
+   bought and paid — and not one thing more. */
+test('a receipt is shared as a link, and the link answers', opts, async () => {
+  const saleRow = await one('SELECT id, receipt_no FROM sale ORDER BY at DESC LIMIT 1');
+  assert.ok(saleRow, 'this outlet has rung a sale to share');
+
+  const first = await post('/api/outlet/' + outletId + '/sale/' + saleRow.id
+    + '/share', { via: 'whatsapp', to: '+960 7712345' }, token);
+  assert.strictEqual(first.status, 200, JSON.stringify(first.body));
+  assert.match(first.body.link, /\/r\/RC[A-Za-z0-9]{32}$/,
+    'the document has an absolute address: ' + first.body.link);
+  assert.strictEqual(first.body.sent, false,
+    'WhatsApp is a handoff, never a claimed server send');
+  assert.match(first.body.handoff, /^https:\/\/wa\.me\/9607712345\?text=/,
+    'and the cashier gets their own app, with the message composed');
+  assert.ok(first.body.body.indexOf(first.body.link) >= 0,
+    'the message carries the link');
+
+  /* MINTED ONCE AND KEPT. A receipt re-sent has to reach the SAME page: a new
+     link every time would leave the guest's older message pointing at a
+     document that no longer answers. */
+  const again = await post('/api/outlet/' + outletId + '/sale/' + saleRow.id
+    + '/share', { via: 'viber' }, token);
+  assert.strictEqual(again.body.link, first.body.link,
+    're-sending reaches the same document, not a new one');
+  assert.match(again.body.handoff, /^viber:\/\/forward\?text=/, 'Viber gets its own');
+
+  // ── AND THE PAGE ANSWERS, to nobody in particular. Whoever opens it got the
+  //    link in a message and has no account here.
+  const tok = first.body.link.split('/r/')[1];
+  /* THE HOST NAMES THE STORE. A receipt link is
+     `https://<handle>.kashikeyopos.com/r/<token>`, so the token is only ever
+     looked for in the one store whose address the guest is already on — which
+     is both narrower and cheaper than searching every business for it. The
+     path form carries the handle on `?s=` for a deploy with no base domain. */
+  const slug = (await one('SELECT slug FROM chain.outlet WHERE id = $1', [outletId])).slug;
+  const doc = await get('/api/doc/r/' + tok + '?s=' + encodeURIComponent(slug), null);
+  assert.strictEqual(doc.status, 200, JSON.stringify(doc.body));
+  assert.strictEqual(doc.body.kind, 'receipt');
+  assert.strictEqual(doc.body.docNo, saleRow.receipt_no, 'it is that bill');
+  assert.ok(doc.body.total !== undefined && doc.body.currency, 'with what was paid');
+
+  /* AND NOT ONE THING MORE. A receipt says what the guest bought and paid; it
+     does not carry cost, margin, the staff who rang it, the ticket, another
+     bill, or the outlet's own totals. */
+  const leaked = ['cogs', 'cost', 'margin', 'staff', 'by_staff', 'device',
+    'ticketId', 'ticket_id', 'server_audit', 'memberId', 'member_id'];
+  leaked.forEach((k) => assert.strictEqual(doc.body[k], undefined,
+    'a receipt must not carry ' + k));
+  (doc.body.lines || []).forEach((l) => leaked.concat(['unit_cost', 'line_cost'])
+    .forEach((k) => assert.strictEqual(l[k], undefined, 'nor may a line carry ' + k)));
+
+  // Without a store to resolve against there is nothing to answer.
+  const nowhere = await get('/api/doc/r/' + tok, null);
+  assert.strictEqual(nowhere.status, 404,
+    'a document link with no store in it resolves to nothing');
+
+  // ── A TOKEN THAT IS NOT ONE is refused on shape, before any lookup.
+  const junk = await get('/api/doc/r/not-a-token', null);
+  assert.strictEqual(junk.status, 404, 'a malformed token is refused');
+});
+
+test('an emailed document refuses by name when there is no address', opts, async () => {
+  const m = await one('SELECT id FROM chain.member ORDER BY joined_at LIMIT 1');
+  if (!m) return;
+  await db.withOutlet({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query('UPDATE chain.member SET email = NULL WHERE id = $1', [m.id]));
+
+  const r = await post('/api/outlet/' + outletId + '/member/' + m.id
+    + '/statement', { via: 'email' }, token);
+  assert.strictEqual(r.status, 409,
+    'refused, and not with a green tick over a send that did not happen');
+  assert.match(r.body.error, /no email address on file/,
+    'BY NAME, so the till knows to ask for one: ' + r.body.error);
+  assert.match(r.body.link || '', /\/st\//,
+    'and the link is still handed back — the document exists, only the'
+    + ' delivery could not be made');
+
+  /* AND THE OTHER TWO CHANNELS DO NOT NEED ONE. A customer taken at a counter
+     has given a name and a number, which is what makes WhatsApp and Viber the
+     easy path and email the one that has to ask. */
+  const w = await post('/api/outlet/' + outletId + '/member/' + m.id
+    + '/statement', { via: 'whatsapp' }, token);
+  assert.strictEqual(w.status, 200, JSON.stringify(w.body));
+  assert.match(w.body.handoff, /^https:\/\/wa\.me\//, 'WhatsApp is composed');
+  assert.ok(w.body.link.indexOf('/st/') > 0, 'and the statement has an address');
+
+  // A statement EXPIRES, unlike a receipt: it is a window into somebody's
+  // spending rather than one document they keep.
+  assert.ok(w.body.expires && w.body.days === 30, 'and it says for how long');
+
+  /* AND OLD IS NOT WRONG. verifyWith() refuses an expired token exactly like a
+     forged one, which is right for every credential plane and wrong for this
+     one: a guest whose link has aged out is told it could not be found, and
+     goes to check their own copying rather than asking for a new one. The page
+     already carried "This link has expired" and nothing could ever reach it. */
+  const secrets = require('../src/secrets');
+  const slug2 = (await one('SELECT slug FROM chain.outlet WHERE id = $1', [outletId])).slug;
+  const aged = secrets.signDoc({ o: outletId, m: m.id, f: '2020-01-01',
+    t: '2020-01-31', exp: Date.now() - 1000 });
+  const gone = await get('/api/doc/st/' + aged + '?s=' + encodeURIComponent(slug2), null);
+  assert.strictEqual(gone.status, 410, 'an aged link says it aged');
+  assert.match(gone.body.error, /expired/, gone.body.error);
+
+  /* Nothing is weakened by answering that: the MAC and the plane still have to
+     hold first, so a 410 is proof the store really did issue this once. */
+  const forged = secrets.sign({ outletId: outletId, rank: 5, actor: null, scope: 'outlet' });
+  const wrong = await get('/api/doc/st/' + forged + '?s=' + encodeURIComponent(slug2), null);
+  assert.strictEqual(wrong.status, 404,
+    'a staff session is not a document link, however unexpired');
+  const tampered = await get('/api/doc/st/' + aged.slice(0, aged.lastIndexOf('.'))
+    + '.' + 'A'.repeat(43) + '?s=' + encodeURIComponent(slug2), null);
+  assert.strictEqual(tampered.status, 404, 'nor is an unsigned claim of expiry');
+});
+
 /* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
    Reported from a live store, and it arrives wearing the wrong face: the till
    parked "Bajiya updated · Short Eats & Snacks · MVR 120" after the outlet

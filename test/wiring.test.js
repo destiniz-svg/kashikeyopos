@@ -1309,7 +1309,16 @@ test('only the named routers reach past the isolation belts', () => {
     'outlet.js': 'a handle is one name across every business, so the registry'
       + ' owns it and chain.outlet.slug follows',
     'guest.js': 'resolves a handle TO a business and an outlet — a business'
-      + ' database only knows its own'
+      + ' database only knows its own',
+    /* A SEVENTH, and it is the SAME question guest.js asks. A receipt link is
+       `https://<handle>.kashikeyopos.com/r/<token>`, so the host names the
+       store and the registry is what turns that name into an outlet — exactly
+       as it does for a QR scan. The alternative was walking every business
+       looking for the token, which is both a privileged connection this file
+       has no business holding and an O(businesses × outlets) scan on a page a
+       guest opens from a message. */
+    'doc.js': 'resolves a handle TO a business and an outlet, so a shared'
+      + ' receipt is looked for in one store rather than in all of them'
   };
 
 
@@ -3537,8 +3546,11 @@ test('a token carries its plane, and the guest plane has its own key', () => {
 
   assert.match(sec, /if \(claims\.typ !== typ\) return null;/,
     'the plane is checked, not inferred from which fields happen to be present');
-  assert.match(sec, /const TYPE = \{ staff: 's', account: 'a', table: 't', member: 'm' \}/,
-    'four planes, four letters');
+  /* FIVE planes now: a DOCUMENT link — an account statement handed to a
+     customer — is signed and expiring, and it must not be tradeable for a
+     member token, a table token or anything else. */
+  assert.match(sec, /const TYPE = \{ staff: 's', account: 'a', table: 't', member: 'm', doc: 'd' \}/,
+    'five planes, five letters');
   ['sign = ', 'verify = '].forEach(() => {});
   assert.match(sec, /signWith\(need\('SESSION_SECRET'\), TYPE\.staff/, 'staff tokens are stamped');
   assert.match(sec, /signWith\(portalSecret\(\), TYPE\.table/, 'table tokens are stamped');
@@ -3707,8 +3719,8 @@ test('the print relay dials the shop LAN and nothing else', () => {
 
 test("'unsafe-eval' is a property of three pages, not of the product", () => {
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(srv, /const EVAL_FREE = \/\^\\\/\(account\|onboarding\)/,
-    'the two front doors are named');
+  assert.match(srv, /const EVAL_FREE = \/\^\\\/\(account\|onboarding\|r\|st\)/,
+    'the two front doors and the two document pages are named');
   assert.match(srv, /EVAL_FREE\.test\(req\.path\) \? csp\(\)\.strict : csp\(\)\.eval/,
     'and served the strict header');
 
@@ -3942,4 +3954,69 @@ test('the settle modal prints what its button says it prints', () => {
   assert.match(SRC, /if \(this\.prefs\(\)\.autoPrint\) \{/, 'the pref is read on the settle path');
   assert.match(SRC, /settledDoneLabel: this\.prefs\(\)\.autoPrint \? "Close"/,
     'and the button stops offering a print that has already happened');
+});
+
+/* ═══ A DOCUMENT LINK CARRIES ITS STORE, OR IT RESOLVES TO NOTHING ══════════
+   `docUrl()` spells a shared receipt two ways: the store's own subdomain,
+   where `Host` names the store, and — for a deploy with no base domain —
+   `PUBLIC_URL/r/<token>?s=<handle>`, which is the only thing that can name it
+   there. The page read the token off the path and asked for the document with
+   no store attached, so every link of the second kind landed on "that receipt
+   could not be found". Found by opening one; invisible from the code, because
+   both halves are individually correct.
+
+   ONE NAMED PARAMETER. A click-wrapper appends its own to any link that goes
+   through an inbox, and forwarding the whole query string is how a foreign
+   value reaches a lookup — the `?t=` defect the invitation landing already
+   paid for once. */
+test('a shared document carries the store its link named', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'doc.html'), 'utf8');
+
+  assert.match(page, /URLSearchParams\(location\.search\)\.get\("s"\)/,
+    'the page reads the handle its own link carried');
+  assert.match(page, /\?s=" \+ encodeURIComponent\(store\)/,
+    'and passes it to the document read, or the path form resolves to nothing');
+  assert.match(page, /\[a-z0-9-\]\{3,40\}/,
+    'held to the shape of a handle, so nothing else can ride in on it');
+  assert.ok(page.indexOf('location.search)') > 0
+    && !/fetch\([^)]*location\.search(?!\))/.test(page),
+    'never the whole query string — a click-wrapper appends its own');
+
+  /* AND THE SERVER READS THE SAME TWO SOURCES, in that order: the host first,
+     because that is what a real store link looks like. */
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'doc.js'), 'utf8');
+  assert.match(doc, /req\.storeHandle \|\| req\.query\.s/,
+    'the host names the store, and the path form falls back to `?s=`');
+});
+
+/* ═══ OLD IS NOT WRONG ══════════════════════════════════════════════════════
+   `verifyWith()` refuses an expired token exactly like a forged one. That is
+   right for every credential plane in this build and wrong for a document
+   link: the only useful thing the person holding an aged statement can do is
+   ask for a new one, and "could not be found" sends them to check their own
+   copying instead. `doc.html` already carried "This link has expired" and the
+   410 that would reach it was unreachable code. */
+test('a statement link that aged out says so, and a forged one does not', () => {
+  const sec = fs.readFileSync(path.join(__dirname, '..', 'src', 'secrets.js'), 'utf8');
+
+  assert.match(sec, /function sealed\(/,
+    'the MAC and the plane are askable without the clock');
+  assert.match(sec, /function docExpired\(/,
+    'and exactly one caller may ask: a document link');
+  /* THE SPLIT MUST NOT WIDEN. `sealed()` is not exported — a "verify but
+     ignore expiry" primitive on the module surface is one the next reader
+     reaches for on a session. */
+  assert.ok(!/\bsealed\b/.test(sec.slice(sec.lastIndexOf('module.exports'))),
+    'sealed() is never exported');
+  assert.match(sec.slice(sec.lastIndexOf('module.exports')), /docExpired/,
+    'docExpired is');
+  assert.match(sec, /function verifyWith[\s\S]{0,240}sealed\(secret, typ, token\)/,
+    'and every other plane still goes through the clock');
+
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'doc.js'), 'utf8');
+  assert.match(doc, /docExpired\(tok\)[\s\S]{0,220}410/,
+    'an aged statement answers 410 rather than 404');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'doc.html'), 'utf8');
+  assert.match(page, /410[\s\S]{0,80}expired/i,
+    'and the page has the sentence that 410 is for');
 });

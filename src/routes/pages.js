@@ -76,4 +76,17 @@ module.exports = function (app, APP) {
      day it was composed. The page reads the token itself and posts it — this
      route only decides which app answers. */
   app.get('/join/:token', send('member.html'));
+
+  /* WHERE A SHARED DOCUMENT LANDS. A receipt at /r/<token> and an account
+     statement at /st/<token> — one page, told apart by what the token
+     resolves to. It answers on a store's own subdomain and on the apex alike,
+     for the same reason /join does: the link is composed into a message and
+     outlives whatever we knew about hostnames the day it was sent.
+
+     No credential beyond the token, deliberately. A guest who is handed their
+     receipt on WhatsApp has no account here and never will, and asking them to
+     sign in to read what they already paid for is how a receipt link becomes a
+     receipt nobody opens. */
+  app.get('/r/:token', send('doc.html'));
+  app.get('/st/:token', send('doc.html'));
 };

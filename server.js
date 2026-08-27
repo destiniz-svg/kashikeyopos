@@ -110,7 +110,10 @@ function csp() {
    the sign-up form and the panel that claims an install. Handing them the
    weakest directive in the policy for a runtime they do not load was a habit,
    not a decision. They get the strict header. */
-const EVAL_FREE = /^\/(account|onboarding)(\/|$)/;
+/* And the two DOCUMENT pages, for the same reason: /r and /st are vanilla DOM
+   opened by a stranger from a link in a message, and a page that has never
+   needed `new Function` should not be handed the permission to use it. */
+const EVAL_FREE = /^\/(account|onboarding|r|st)(\/|$)/;
 
 app.use(function (req, res, next) {
   const o = req.get('origin');
