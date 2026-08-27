@@ -1451,6 +1451,39 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## A failure this shape has only one symptom, so the till says it
+
+Reported three times in one day, each time in the same words — *"I still don't
+see the menu items on the other device"* — and each time the symptom points at
+the wrong device. A back-office row lives in two places until the outlet
+accepts it, and the failure of that lane is **invisible by construction**: the
+row is re-drawn on the browser that made it, on every bootstrap, so THAT screen
+looks right while every other terminal in the shop shows nothing. Three
+speculative fixes went out against a symptom nobody could see the cause of,
+which is the argument for making the cause visible instead.
+
+Sync & Devices leads with **Held on this device** now: what this terminal is
+holding that the outlet has no record of, each row with the reason it is stuck,
+and one control — **Ask the outlet again** — that clears this session's marks
+and replays the pen. The reasons are different situations and only one of them
+resolves on its own:
+
+| reason | what it means |
+| --- | --- |
+| waiting to be delivered | the re-send will carry it; it goes on the next sign-in |
+| its menu section has not reached the outlet either | nobody can save this dish until that section exists — it is held rather than parked again |
+| this record has no write yet | an audit-only collection; there is nothing to send |
+
+The count uses the same IDENTITY test `applyLocal()` uses, and for the same
+reason: this device is what puts the held row into the collection, so a match
+by key alone would report its own work as delivered. A row the outlet accepts
+leaves the list, because a card that keeps counting delivered rows is one
+nobody reads by the second week.
+
+Measured in a browser, on a terminal holding two dishes — one whose section the
+outlet has and one whose section is nowhere: the first is re-sent and lands,
+the second is named on the card with its reason, and the count reads **1**.
+
 ## A second device is not a second customer
 
 Reported: *"when I log in from another device from the browser, no menu item is
@@ -3570,7 +3603,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 475 tests
+npm test                          # 476 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

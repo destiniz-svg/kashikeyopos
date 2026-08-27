@@ -13114,6 +13114,59 @@ class Component extends DCLogic {
     this.reconcilePrefs();
   }
 
+  /* ── WHAT THIS DEVICE IS HOLDING THAT THE OUTLET HAS NEVER SEEN ──────────
+     A back-office row lives in two places until the outlet accepts it, and the
+     failure of that lane is INVISIBLE by construction: the row is re-drawn on
+     the browser that made it, on every bootstrap, so that screen looks right
+     while every other terminal in the shop shows nothing. Reported three times
+     in one day, each time as "I don't see it on the other device" — which is
+     the only symptom it has.
+
+     So the terminal says it out loud. The same identity test `applyLocal()`
+     uses, for the same reason: this device puts the held row INTO the
+     collection, so a match by key alone would report its own work as
+     delivered. */
+  /* ASK AGAIN, NOW. The automatic re-send is once per sign-in, because the
+     outbox owns retrying and queueing on every five-second poll is how a hot
+     outbox is made. A person deciding is a different budget: clear this
+     session's marks and run the pen again. */
+  resendHeld() {
+    if (!this.outletAnswered()) {
+      return this.toast("This terminal has not heard from the outlet yet \u2014 come online and try again", "warn");
+    }
+    const before = this.heldRows().length;
+    this._rowSent = {};
+    this._catSent = {};
+    this.applyLocal();
+    this.flush();
+    this.toast(before
+      ? before + " record" + (before === 1 ? "" : "s") + " sent again \u2014 anything the outlet refuses lands on this screen with its reason"
+      : "Nothing was held");
+  }
+
+  heldRows() {
+    const L = this.state.local || {};
+    const out = [];
+    Object.keys(L).forEach((k) => {
+      const arr = this.coll(k);
+      (L[k] || []).forEach((row) => {
+        const id = this.rowKey(row);
+        const there = arr ? arr.filter((x) => this.rowKey(x) === id)[0] : null;
+        if (there && there !== row) return;              // the outlet has it
+        out.push({
+          coll: k, id: id, name: (row && row.name) || String(id),
+          // Why it is stuck, in the words the operator needs: nothing can be
+          // sent for an audit-only collection, and a dish whose section is
+          // nowhere cannot be saved by anybody until that section exists.
+          why: !this.opFor(k, row) ? "this record has no write yet"
+            : !this.rowCanLand(k, row) ? "its menu section has not reached the outlet either"
+            : "waiting to be delivered"
+        });
+      });
+    });
+    return out;
+  }
+
   /* WHAT A ROW DEPENDS ON HAS TO EXIST, or the re-send only parks it again.
      A dish names a menu section, and `item_category_id_fkey` refuses it if the
      outlet has no such row. The section is re-sent first (above), so a section
@@ -17511,6 +17564,7 @@ class Component extends DCLogic {
         ]
       };
     }
+    const held = this.heldRows();
     return {
       tabs: stabs.concat([{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => {
         const on = !s.online;
@@ -17521,6 +17575,9 @@ class Component extends DCLogic {
       actions: [
         { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); } },
         { label: refusedOps.length ? "Decide on " + refusedOps.length + " refused write" + (refusedOps.length > 1 ? "s" : "") : "Nothing refused", primary: !!refusedOps.length, go: () => refusedOps.length ? this.parkedActions(refusedOps[0]) : this.toast("Nothing has been refused") },
+        { label: held.length ? "Ask the outlet again for " + held.length + " held record" + (held.length === 1 ? "" : "s") : "Nothing held here",
+          primary: !!held.length,
+          go: () => held.length ? this.resendHeld() : this.toast("Every record made on this device has reached the outlet") },
         { label: "Add a kitchen display", go: () => this.openPairing() },
         { label: "Run diagnostics", go: () => this.runDiagnostics() },
         { label: "End session on this device", go: () => this.endSession() }
@@ -17533,7 +17590,24 @@ class Component extends DCLogic {
       })),
       empty: "Outbox is clean. Flip the network pill to Offline on the POS floor, keep selling, and the writes stack up here.",
       cardMin: 250,
-      cards: devices.map((d) => {
+      cards: (held.length ? [{
+        /* THE CARD THAT WOULD HAVE ANSWERED THIS IN ONE LOOK. Records made on
+           this device that the outlet has no row for — the state that renders
+           correctly here and as nothing everywhere else. */
+        title: "Held on this device", sub: "Made here, and the outlet has no record of them",
+        chip: held.length + " record" + (held.length === 1 ? "" : "s"),
+        chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
+        accent: "var(--warn-line)",
+        big: String(held.length), bigSize: 19,
+        rows: held.slice(0, 6).map((h) => [h.name, h.why,
+          h.why === "waiting to be delivered" ? "var(--warn-bright)" : "var(--red-bright)"])
+          .concat(held.length > 6 ? [["and " + (held.length - 6) + " more", "", "t"]] : []),
+        foot: "These show on this screen and on no other terminal, because the"
+          + " outlet never accepted them. That is what \u201cI added it and the"
+          + " other device does not show it\u201d looks like from here. They are"
+          + " re-sent once per sign-in; Ask again sends them now.",
+        go: () => this.resendHeld()
+      }] : []).concat(devices.map((d) => {
         /* Every figure on this card is now the outlet's, or absent. It used
            to be a hardcoded row: "4 min ago", "2 pending", version 4.1.8 —
            on devices that do not exist. */
@@ -17595,7 +17669,7 @@ class Component extends DCLogic {
                   } }
               ] } })
         };
-      }),
+      })),
       notes: [
         ["How offline works", "The terminal writes to IndexedDB first and renders from it, always. Each mutation carries a Lamport counter plus the device id, so replay order is deterministic across terminals in the same outlet even when two of them were offline at once."],
         ["Conflict rule", "Last-writer-wins on open tickets, except anything touching money: a closed ticket, a payment or a credit charge is never overwritten — the replay is rejected and surfaces here for a human decision."],

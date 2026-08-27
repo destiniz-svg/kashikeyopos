@@ -1962,6 +1962,56 @@ test('a device asking which store it is opens on sign in, not sign up', () => {
   assert.match(auth, /needStore/, 'the install answer carries the distinction');
 });
 
+/* ═══ A FAILURE THIS SHAPE HAS ONLY ONE SYMPTOM, SO THE TILL SAYS IT ════════
+   A back-office row lives in two places until the outlet accepts it, and the
+   failure of that lane is INVISIBLE by construction: the row is re-drawn on
+   the browser that made it, on every bootstrap, so that screen looks right
+   while every other terminal in the shop shows nothing. Reported three times
+   in one day, each time as "I don't see it on the other device" — which is
+   the only symptom it has, and it points at the wrong device.
+
+   So Sync & Devices names it: what this terminal is holding that the outlet
+   has no record of, why each one is stuck, and a control to ask again. */
+test('the till says what it is holding that the outlet has never seen', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.__win.KPOS_SYNC = { enqueue: (op) => op.opId };
+  const cat = (F.__win.KPOS.MENU[0] || {}).cat;
+
+  // Nothing held: the card must not exist, or it is noise on every install.
+  assert.strictEqual(F.heldRows().length, 0, 'a clean terminal holds nothing');
+
+  F.state.local = { menu: [
+    { id: 'm-sendable', name: 'PLAIN BUN', cat: cat, price: 12, active: true, recipe: [] },
+    { id: 'm-orphan', name: 'ORPHAN TEA', cat: 'gone-section', price: 15, active: true, recipe: [] }
+  ] };
+  const held = F.heldRows();
+  assert.strictEqual(held.length, 2, 'both are held before anything is sent');
+
+  // THE REASON IS THE POINT. "Waiting" and "cannot be saved by anybody" are
+  // different situations and only one of them resolves on its own.
+  const orphan = held.filter((h) => h.id === 'm-orphan')[0];
+  assert.match(orphan.why, /menu section has not reached the outlet/,
+    'a dish whose section is nowhere says so: ' + orphan.why);
+  const ok = held.filter((h) => h.id === 'm-sendable')[0];
+  assert.strictEqual(ok.why, 'waiting to be delivered');
+
+  // Once the outlet has it, it leaves the list — a card that keeps counting
+  // delivered rows is a card nobody reads by the second week.
+  F.applyLocal();
+  F.__win.KPOS.MENU.push({ id: 'm-sendable', name: 'PLAIN BUN', cat: cat, price: 12 });
+  F.state.local = { menu: (F.state.local.menu || []).filter((r) => r.id !== 'm-sendable') };
+  assert.strictEqual(F.heldRows().map((h) => h.id).join(','), 'm-orphan',
+    'only what is still stuck is counted');
+
+  // And the control is real: it clears this session's marks and runs the pen.
+  assert.match(SRC, /  resendHeld\(\) \{/, 'there is a way to ask again now');
+  const re = SRC.slice(SRC.indexOf('  resendHeld() {'));
+  assert.match(re.slice(0, 900), /this\._rowSent = \{\};[\s\S]*?this\.applyLocal\(\);/,
+    'it clears the once-per-session marks and replays the pen');
+  assert.match(re.slice(0, 900), /outletAnswered\(\)/,
+    'and refuses before the outlet has answered rather than evaporating the ops');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,
