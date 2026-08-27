@@ -4439,3 +4439,25 @@ test('the provision lock wraps the transaction, not the statement', () => {
   assert.match(mig, /return withRoleLock\(\(\) => ensureReportRoleUnlocked\(db, say, opts\)\);/,
     'the report-role writer holds it too');
 });
+
+/* ═══ THE PHONE QUOTES THE MERCHANT'S RATE, WITH OR WITHOUT A ROSTER ════════
+   The member card's programme() preferred the till-published roster and, when
+   no roster had ever been published, fell back to a hard-coded 100-for-25 —
+   while the projection it had ALREADY LOADED carried the outlet's real
+   loyalty setting. Measured: a store publishing 200-for-40 showed 36 points
+   as WORTH MVR 9.00 against the 7.20 the till would honour. And a published
+   ladder carries thresholds with no colours, which painted the whole
+   membership card white on white until the shipped rows' presentation was
+   inherited by key. */
+test("the member card reads the outlet's published rate and skins its ladder", () => {
+  const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  const prog = card.slice(card.indexOf('programme() {'), card.indexOf('programme() {') + 1600);
+  assert.match(prog, /this\.K\(\)\.LOYALTY/, 'the fallback reads the published loyalty setting');
+  assert.match(prog, /Number\(L\.redeemPts\) > 0 \? Number\(L\.redeemPts\) : 100/,
+    'and the literal is only the last resort of a store that never published');
+  assert.match(card, /tierSkin\(t\)/, 'a published rung inherits the shipped presentation');
+  assert.match(card, /TIERS_SHIPPED/, 'from the stashed shipped ladder, not a second copy');
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.match(bridge, /if \(!K\.TIERS_SHIPPED\) K\.TIERS_SHIPPED = K\.TIERS;/,
+    'the bridge stashes the shipped rows before the published ladder replaces them');
+});

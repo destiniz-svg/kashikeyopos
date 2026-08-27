@@ -2657,6 +2657,54 @@ The whole of that was missing, and each piece failed silently:
 Points are awarded by the outlet from its own earn rate (`chain.setting`
 `loyalty.pointsPer`), never from a number the terminal sent.
 
+## The portals, driven as the people who use them
+
+Asked directly — *do the customer and guest portals work end to end?* — so both
+were driven in Chromium as a guest and as a member, against a real store with
+a real menu, and three things fell out. The journeys themselves held: scan →
+menu → round → `guest_order` on the outlet → on the till's five-second poll →
+accepted; and phone → code → card → points, tier, house account, receipts.
+
+**A member could not sign in with their own number.** The row held the
+counter's spelling — `+960 7793216` — and the guest typed `7793216`, which is
+how anyone types their own number. The resolver compared exact bytes, matched
+nobody, and answered the enumeration-safe "a code is on its way" while minting
+nothing: locked out by a space and a country code, with an answer that cannot
+even say why. Migration 046 (`chain.msisdn()`, `chain.member_resolve()`) makes
+both sign-in resolvers read the digits by the same rule `msisdn()` already
+keeps in JS — and AMBIGUITY RESOLVES NOBODY: two members whose numbers
+normalise to the same digits is the phone-side twin of the email defect 018
+closed, and take-one-silently is one guest signed into another's card. Exact
+spellings still name their own rows precisely.
+
+**The card quoted a worth the till would not honour.** `programme()` preferred
+the roster the till publishes and, where no roster had ever been published,
+fell back to a hard-coded 100-points-for-MVR-25 — while the projection the
+card had ALREADY LOADED carried the outlet's real loyalty setting as
+`K().LOYALTY`. Measured: a store publishing 200-for-40 showed 36 points as
+WORTH **MVR 9.00** against the **7.20** the till honours — a promise a quarter
+too generous, on the one figure a guest walks to the counter holding. The
+fallback reads the published setting now; the literals are the last resort of
+a store that has never published anything, the same three-source order the
+till's `LOY()` keeps.
+
+**And a store's own ladder painted the card white on white.** A published
+ladder carries THRESHOLDS; its rows have no colours, and the membership card's
+gradient was composed from `tier.from`/`tier.to` that did not exist —
+`linear-gradient(140deg,undefined…)`, which paints nothing, under white text.
+The whole membership device rendered as a blank white rectangle. The doctrine
+was already written — "the shipped tier rows survive only as presentation: the
+mark and the card gradient" — and now it is wired: the bridge stashes the
+shipped rows as `TIERS_SHIPPED` before the published ladder replaces them, and
+`tierSkin()` gives a rung with no presentation the shipped skin for its key.
+A rung that names its own colours keeps them; only one the ship has never
+heard of falls to the plain member bronze.
+
+One cosmetic finding stated rather than fixed: the two portal pages keep their
+template as real DOM, so the browser validates `d="{{ a.icon }}"` before the
+runtime compiles it and logs three SVG-path errors per load. The icons render
+correctly the moment data binds; the noise is parse-time only.
+
 ## A bill somebody can be handed
 
 A guest asks for the bill on WhatsApp, a house-account customer wants last

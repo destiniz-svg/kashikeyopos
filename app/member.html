@@ -1047,8 +1047,23 @@ class Component extends DCLogic {
      phone entitled to invent a rate. */
   programme() {
     const pub = (this.posSession() || {}).programme;
-    return pub || { earnPer: this.pointsPer(), redeemPts: 100, redeemValue: 25,
-      live: true, tiers: this.K() ? (this.K().TIERS || []) : [], rewards: [] };
+    if (pub) return pub;
+    /* NO ROSTER DOES NOT MEAN NO RATE. The projection this card loaded
+       already carries the outlet's published loyalty setting as K().LOYALTY —
+       the same row applySale() accrues at — and the fallback used to skip it
+       for a hard-coded 100-for-25. Found by signing in as a member of a store
+       publishing 200-for-40: the card said 36 points were WORTH MVR 9.00
+       while the till would honour 7.20 — a promise a quarter too generous, on
+       the one figure a guest walks to the counter holding. The literals are
+       now only the last resort of a store that has never published anything,
+       which is the same three-source order LOY() keeps on the till. */
+    const L = this.K() ? (this.K().LOYALTY || {}) : {};
+    return { earnPer: this.pointsPer(),
+      redeemPts: Number(L.redeemPts) > 0 ? Number(L.redeemPts) : 100,
+      redeemValue: Number(L.redeemValue) > 0 ? Number(L.redeemValue) : 25,
+      live: L.live !== false,
+      tiers: this.K() ? (this.K().TIERS || []) : [],
+      rewards: this.K() ? (this.K().REWARDS || []) : [] };
   }
   // A tier is earned, not stored, and it is ranked on POINTS — the same unit
   // the ladder's thresholds are in. This ranked on lifetime SPEND against
@@ -1061,7 +1076,24 @@ class Component extends DCLogic {
   tierOf(points) {
     let t = this.tiers()[0];
     this.tiers().forEach((x) => { if ((+points || 0) >= (+x.at || 0)) t = x; });
-    return t || { name: "Member", at: 0, mark: "", from: "#8a6a4f", to: "#5d4632" };
+    return this.tierSkin(t);
+  }
+  /* A published ladder carries THRESHOLDS; the shipped rows survive as
+     presentation — the mark and the card gradient. A row that names its own
+     colours keeps them; one that says nothing inherits the shipped skin for
+     its key (or its name), and only a rung the ship has never heard of falls
+     to the plain member bronze. Without this, a store publishing its own
+     ladder painted the whole membership card white on white. */
+  tierSkin(t) {
+    const dflt = { name: "Member", at: 0, mark: "", from: "#8a6a4f", to: "#5d4632" };
+    if (!t) return dflt;
+    if (t.from && t.to) return t;
+    const ship = (this.K() && this.K().TIERS_SHIPPED) || [];
+    const skin = ship.filter((x) => (x.key && t.key && x.key === t.key)
+      || (x.name || "").toLowerCase() === (t.name || "").toLowerCase())[0] || {};
+    return Object.assign({}, t, {
+      mark: t.mark || skin.mark || "",
+      from: skin.from || dflt.from, to: skin.to || dflt.to });
   }
   nextTier(points) { return this.tiers().filter((x) => (+x.at || 0) > (+points || 0))[0] || null; }
   // Points redeemed on this phone are pending until the till clears them; show

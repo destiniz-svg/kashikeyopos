@@ -174,7 +174,16 @@
     // structure; REWARDS is the merchant's catalogue and starts empty.
     // The currency table, so the phone formats money the way the till does.
     if (snap.currencies && snap.currencies.length) K.CURRENCIES = snap.currencies;
-    if (snap.tiers && snap.tiers.length) K.TIERS = snap.tiers;
+    if (snap.tiers && snap.tiers.length) {
+      /* The SHIPPED rows survive as presentation — the mark and the card
+         gradient — exactly as the tier doctrine says. A store that publishes
+         its own ladder publishes THRESHOLDS; its rows carry no colours, and a
+         card drawn from them alone paints white on white (measured: a
+         published two-rung ladder rendered the whole membership card blank).
+         Stashed rather than copied, so there is still one ladder to drift. */
+      if (!K.TIERS_SHIPPED) K.TIERS_SHIPPED = K.TIERS;
+      K.TIERS = snap.tiers;
+    }
     K.REWARDS = snap.rewards || [];
     K.LOYALTY = snap.loyalty || {};
     K.PROMOS = (snap.promos || []).map(function (p) {

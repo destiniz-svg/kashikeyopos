@@ -1810,7 +1810,13 @@ test('a full shift ties: gross to net to tax to cash to COGS', opts, async () =>
    menu and deactivated it, while the toggle that says "Hidden from every
    channel" sent nothing at all. */
 test('hiding a dish sticks, and 86-ing one does not hide it', opts, async () => {
-  const dish = await one('SELECT id FROM item WHERE NOT is_batch AND active LIMIT 1');
+  /* A DEDICATED DISH, NOT `LIMIT 1`. An unordered LIMIT 1 is a coin the
+     planner flips — the batch test's identical pick landed on m3 under heap
+     churn and poisoned five later tests (see the note there). This one then
+     RENAMES its victim to "Hidden dish" and 86es it, which is worse. */
+  await push([{ opId: uuid(), kind: 'dish_upsert',
+    payload: { id: 'd_hideme', name: 'Hide me', cat: 'mains', price: 50 } }]);
+  const dish = { id: 'd_hideme' };
 
   // Hide it. The op is what the terminal's own mapping now sends.
   await push([{ opId: uuid(), kind: 'dish_upsert',
@@ -2598,15 +2604,26 @@ test('a batch the kitchen makes reaches the outlet, and a dish can draw on it',
     + " WHERE item_id = 'SB1' ORDER BY qty DESC");
   assert.strictEqual(lines.length, 2, 'with its inputs');
 
-  // THE POINT: a dish can now reference it. This insert used to fail the
-  // foreign key, because no item was ever written for sub_item_id to find.
-  const dish = await one('SELECT id FROM item WHERE off_menu = false LIMIT 1');
+  /* THE POINT: a dish can now reference it. This insert used to fail the
+     foreign key, because no item was ever written for sub_item_id to find.
+
+     A DEDICATED DISH, NOT `LIMIT 1`. This picked its victim with
+     `SELECT id FROM item WHERE off_menu = false LIMIT 1` — no ORDER BY, so
+     Postgres answered whatever heap tuple came first, and enough churn from
+     the tests before it (the setup-import replay rewrites every item row)
+     re-ordered the heap until the answer was `m3`, Bottled water — the dish
+     five later tests depend on having NO recipe. The batch attached to it,
+     every later m3 sale derived the batch's expansion (the constant 5.09),
+     and nine tests failed together, plan-dependently, for hours of
+     root-causing. An unordered LIMIT 1 is a coin the planner flips. */
+  await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'd_drawsbatch', name: 'Curry of the base', cat: 'mains', price: 90 } }]);
   const d = await push([{ opId: uuid(), kind: 'recipe_update', payload: {
-    item: dish.id, lines: [[ 'SB1', 200, 0, 'sub' ]]
+    item: 'd_drawsbatch', lines: [[ 'SB1', 200, 0, 'sub' ]]
   } }]);
   assert.ok(!d.body.results[0].error, JSON.stringify(d.body.results[0]));
   const drawn = await one('SELECT sub_item_id, qty FROM recipe_line'
-    + ' WHERE item_id = $1', [dish.id]);
+    + " WHERE item_id = 'd_drawsbatch'");
   assert.strictEqual(drawn.sub_item_id, 'SB1', 'the dish draws on the batch');
 
   /* A BATCH IS NOT A DISH. Nobody orders a litre of fish stock, and the till's
@@ -5003,6 +5020,35 @@ test('a killed idle connection is a log line, not an outage', opts, async () => 
   await new Promise((r) => setTimeout(r, 200));
   const q = await o.query('SELECT 1 AS ok');
   assert.strictEqual(q.rows[0].ok, 1, 'the next query gets a fresh connection');
+});
+
+/* ═══ A NUMBER IS ITS DIGITS ════════════════════════════════════════════════
+   Found by driving the member card as a member: the row held the counter's
+   spelling "+960 7793216", the guest typed 7793216, and the resolver compared
+   exact bytes — so the member was locked out of their own card behind the
+   enumeration-safe "a code is on its way". Migration 046 resolves through the
+   msisdn rule the build already keeps, and refuses AMBIGUITY silently: two
+   members whose numbers normalise to the same digits is the phone-side twin
+   of the email defect 018 closed, and take-one-silently is one guest signed
+   into another's card. */
+test('a member signs in with their number however it is typed', opts, async () => {
+  const o = db.owner();
+  await o.query("INSERT INTO chain.member (name, phone) VALUES ('Digits Test', '+960 7441122')");
+  const hit = await o.query("SELECT chain.member_code_set('7441122', 'h', 's', 10) AS id");
+  assert.ok(hit.rows[0].id, 'the bare digits reach the +960-spelled row');
+  const intl = await o.query("SELECT chain.member_code_set('009607441122', 'h', 's', 10) AS id");
+  assert.ok(intl.rows[0].id, 'and so does the 00-prefixed international form');
+
+  // Two members on one number resolve NOBODY — silently, in the same shape
+  // as an unknown address, because whether a number is two customers here is
+  // not a stranger's question to ask.
+  await o.query("INSERT INTO chain.member (name, phone) VALUES ('Digits Twin', '7441122')");
+  const ambig = await o.query("SELECT chain.member_resolve('960 7441122') AS id");
+  assert.strictEqual(ambig.rows[0].id, null, 'ambiguous digits resolve nobody');
+  // Each exact spelling still names its own row precisely.
+  const exact = await o.query("SELECT chain.member_resolve('+960 7441122') AS id");
+  assert.ok(exact.rows[0].id, 'an exact spelling still resolves its own row');
+  await o.query("DELETE FROM chain.member WHERE name LIKE 'Digits %'");
 });
 
 /* READY MEANS AN OUTLET REQUEST CAN BE SERVED.
