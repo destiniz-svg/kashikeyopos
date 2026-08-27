@@ -29,6 +29,7 @@ src/limit.js           the doorman: token buckets on the open doors
 src/revoked.js         a revoked session or device is refused, not just recorded
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
 src/routes/doc.js      a receipt or a statement, read by whoever was handed the link
+src/setup.js           a store's setup, in a file its owner holds
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
@@ -2761,6 +2762,88 @@ OUTLET like the invitation — this is about spend, not identity — and both la
 on the trail.
 
 
+## A setup file is not a backup
+
+Asked as one sentence — *"a local backup in case we reset, and let us set what
+we need in it"* — and it is two requests. A **backup** must be COMPLETE or
+restoring from it is a fiction: tick "menu and customers", skip the sales, and
+the file cannot bring a store back. A **setup file** is the other thing, and
+the picker belongs to it.
+
+`src/setup.js` is that file. It carries what a shop CONFIGURED — sections,
+dishes, recipes, ingredients, batches, add-ons, the floor plan, customers,
+suppliers, settings — and no sales, no payments, no journal, no stock
+movements and no member balances. So it answers the question actually asked:
+we reset the store, give us our setup back. `src/backup.js` is the other one —
+pg_dump, complete, restorable, all-or-nothing by nature — and the card says so
+rather than letting one be mistaken for the other.
+
+**One direction of truth.** The export emits OPS — the same `{kind, payload}`
+the till queues — and the import replays them through the SAME handlers in
+`src/apply.js`. An imported dish and a dish typed at the counter arrive by one
+road: the same validation, the same allergen re-declaration, the same "silence
+preserves" rules. A bespoke importer would be a second way to write a dish, and
+the two would drift the first time either changed.
+
+**The allowlist is the fence.** `IMPORTABLE` is the closed set of kinds a file
+may carry. Without it the endpoint is "run any op you like against this
+outlet", and a hand-edited JSON is a way to post a journal, ring a sale or
+settle a credit balance under an owner's own token. Measured: a file naming
+`post_journal`, `sale` and `settle_credit` is refused three times by name, and
+the ledger does not move.
+
+**Rank 5, and no owner connection.** This is the whole store's configuration
+leaving the building, and putting one back rewrites all of it at once — an
+admin runs the shop, the owner decides what the shop IS. Every table it touches
+is one the outlet's own login role already reads under RLS, so the
+six-exception list does not grow.
+
+**What deliberately does not travel.** The install's own uuid (migration 026),
+because copied into a second store it removes the fence that stops one
+install's outbox replaying into another. Staff PIN hashes, for the reason
+migration 038 exists. `points` and `credit_used`, which are what a guest earned
+and what they owe — maintained by the sale path against 2350, so a balance set
+from a file is a liability nobody posted. A supplier's uuid on an ingredient,
+because the store a file lands in issues its own; the ingredient comes back
+unlinked and the part says so. And `sold_out_reason`: 86-ing a dish is
+tonight's stock, not setup.
+
+**Idempotent by construction**, because every kind on the list is an upsert
+keyed by the row's own id — which is what makes "try it again" a safe
+instruction after a partial import. Each op runs in its own SAVEPOINT, so one
+row the outlet refuses does not throw away the other four hundred, and what was
+refused is REPORTED by name and by part: an import that silently drops a third
+of a menu is worse than one that fails, because the operator believes it
+worked.
+
+**Two things the screen got wrong, both found by tapping it.** The form opened
+BEFORE the parts arrived, and `openForm` seeds every field at the moment it
+opens — so a form that gains its fields afterwards has none of them seeded, and
+all ten parts read "Leave out" until the operator set them one at a time. The
+parts are fetched first now, and everything is included by default: the
+ordinary answer is "all of it", and leaving a part behind is the deliberate
+act. And it was opened on `null`, so the form renderer — which shows a second
+control only where there is a record to act on — never drew **Put a file
+back**, which is half the feature.
+
+Measured end to end in a browser: export from Settings → Device & data (8
+records, `kashikeyo-setup-LOYC-2026-08-27.json`), the store's menu, sections,
+settings and customer details deleted, then the file put back through the same
+form. Everything returned exactly — the dish with its tags and heat, the
+section with its colour and glyph, the customers with their addresses and
+credit limits — and the 18 settled sales were never touched, because they were
+never in the file.
+
+**And `vendor_upsert` only ever inserted.** Named an upsert, called by the
+till's supplier form on every save, and a bare INSERT — so editing a supplier's
+phone number created a SECOND supplier under the same name while the purchase
+orders stayed on the first. Found by writing the import, which replays this op
+and would have duplicated a store's whole supplier list on the second run. It
+resolves by NAME now, case-insensitively, as suppliers already do everywhere
+else in this build; not a unique index, because an install may already hold two
+rows under one name and a migration that refuses to apply is worse than a
+handler that converges.
+
 ## The navigation is a rail
 
 A **60px icon rail** at every width above a phone. Opening it floats a **236px
@@ -3947,7 +4030,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 491 tests
+npm test                          # 494 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

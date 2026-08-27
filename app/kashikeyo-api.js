@@ -642,6 +642,20 @@
         + encodeURIComponent(saleId) + "/share",
         { method: "POST", body: { via: via || "email", to: to || null } });
     }
+    /* THE STORE'S SETUP, AS A FILE. `parts` is what the owner ticked; the
+       server decides the ORDER, because a dish imported before its section is
+       refused by the foreign key exactly as it would be from an outbox. */
+    setupParts() {
+      return this._fetch("/api/outlet/" + this.outletId + "/setup/parts");
+    }
+    exportSetup(parts) {
+      return this._fetch("/api/outlet/" + this.outletId + "/setup/export?parts="
+        + encodeURIComponent((parts || []).join(",")));
+    }
+    importSetup(file, parts) {
+      return this._fetch("/api/outlet/" + this.outletId + "/setup/import",
+        { method: "POST", body: { file: file, parts: parts || null } });
+    }
     shareStatement(memberId, via, to, from, until) {
       return this._fetch("/api/outlet/" + this.outletId + "/member/"
         + encodeURIComponent(memberId) + "/statement",

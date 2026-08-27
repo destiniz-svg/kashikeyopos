@@ -2134,6 +2134,100 @@ test('the name the till gave a bill survives the round trip', opts, async () => 
   assert.strictEqual(none.client_id, null, 'and is null rather than invented');
 });
 
+/* ═══ A STORE'S SETUP, IN A FILE SOMEBODY HOLDS ════════════════════════════
+   Not a backup, and the distinction is the whole design: a file with the menu
+   and none of the takings cannot restore a store. It answers the question that
+   was actually asked — we reset the store, give us our setup back. */
+test('a setup file goes out, comes back, and carries no trading history', opts, async () => {
+  const parts = await get('/api/outlet/' + outletId + '/setup/parts', token);
+  assert.strictEqual(parts.status, 200, JSON.stringify(parts.body));
+  const keys = parts.body.parts.map((p) => p.key);
+  assert.ok(keys.indexOf('menu') >= 0 && keys.indexOf('customers') >= 0, keys.join(','));
+
+  const all = keys.join(',');
+  const file = await get('/api/outlet/' + outletId + '/setup/export?parts=' + all, token);
+  assert.strictEqual(file.status, 200, JSON.stringify(file.body));
+  assert.ok(file.body.ops.length, 'the file carries records');
+  assert.ok(file.body.outlet && file.body.outlet.code, 'and says whose it is');
+
+  /* NOT ONE THING FROM THE TRADING HISTORY. This is the property that makes
+     the file safe to hand somebody, and the one a picker could quietly break. */
+  const forbidden = ['sale', 'post_journal', 'settle_credit', 'payment',
+    'stock_adjust', 'loyalty_update', 'close_ticket', 'refund'];
+  file.body.ops.forEach((o) => assert.ok(forbidden.indexOf(o.kind) < 0,
+    'a setup file must not carry ' + o.kind));
+  const asText = JSON.stringify(file.body);
+  assert.ok(asText.indexOf('credit_used') < 0, 'nor what a customer owes');
+  assert.ok(asText.indexOf('pin_hash') < 0 && asText.indexOf('pin_salt') < 0,
+    'nor a staff credential');
+  /* NOR THE INSTALL'S OWN UUID (migration 026): copy that into a second store
+     and the fence that stops one install's outbox replaying into another is
+     gone. */
+  file.body.ops.filter((o) => o.kind === 'setting_change').forEach((o) =>
+    assert.notStrictEqual(o.payload.key, 'install', 'nor the install identity'));
+
+  // ── IDEMPOTENT. Every record is an upsert keyed by its own id, which is what
+  //    makes "try it again" a safe instruction after a partial import.
+  const before = await one('SELECT count(*)::int AS n FROM item');
+  const first = await post('/api/outlet/' + outletId + '/setup/import',
+    { file: file.body }, token);
+  assert.strictEqual(first.status, 200, JSON.stringify(first.body));
+  assert.strictEqual(first.body.refused.length, 0, JSON.stringify(first.body.refused));
+  const again = await post('/api/outlet/' + outletId + '/setup/import',
+    { file: file.body }, token);
+  assert.strictEqual(again.status, 200);
+  const after = await one('SELECT count(*)::int AS n FROM item');
+  assert.strictEqual(after.n, before.n, 'importing twice creates nothing twice');
+
+  /* ── AND THE FENCE. Without the allowlist this endpoint is "run any op you
+     like against this outlet", and a hand-edited JSON becomes a way to post a
+     journal or ring a sale under an owner's own token. */
+  const evil = await post('/api/outlet/' + outletId + '/setup/import', { file: {
+    format: file.body.format,
+    ops: [{ kind: 'post_journal', payload: { memo: 'from a file', lines: [] } },
+      { kind: 'sale', payload: { total: 999999 } }]
+  } }, token);
+  assert.strictEqual(evil.status, 200, 'it answers rather than throwing');
+  assert.strictEqual(Object.keys(evil.body.applied).length, 0, 'and applied nothing');
+  assert.strictEqual(evil.body.refused.length, 2, 'refusing both by name');
+  evil.body.refused.forEach((r) => assert.match(r.why, /does not carry/, r.why));
+  const dirt = await one("SELECT count(*)::int AS n FROM journal WHERE memo = 'from a file'");
+  assert.strictEqual(dirt.n, 0, 'and moved no money at all');
+
+  // A file this build cannot read is refused before anything is written.
+  const old = await post('/api/outlet/' + outletId + '/setup/import',
+    { file: { format: 99, ops: [{ kind: 'dish_upsert', payload: {} }] } }, token);
+  assert.strictEqual(old.status, 400);
+  assert.match(old.body.error, /different version/, old.body.error);
+
+  // A part this build has nothing for is named, never silently ignored.
+  const nope = await get('/api/outlet/' + outletId + '/setup/export?parts=payroll', token);
+  assert.strictEqual(nope.status, 400);
+  assert.match(nope.body.error, /nothing called payroll/, nope.body.error);
+});
+
+/* AN UPSERT THAT ONLY EVER INSERTED. `vendor_upsert` is what the till's
+   supplier form calls on every save and it was a bare INSERT, so editing a
+   supplier's phone number created a SECOND supplier under the same name and
+   the purchase orders stayed on the first. Found by writing the import, which
+   replays this op and would have duplicated a store's supplier list every
+   time. Resolved by name now, as suppliers already are everywhere else. */
+test('saving a supplier twice is one supplier', opts, async () => {
+  const name = 'Reef Drill Suppliers ' + Date.now().toString(36);
+  await push([{ opId: uuid(), kind: 'vendor_upsert', lamport: 910,
+    payload: { name: name, phone: '+960 3001111', terms: 14 } }]);
+  await push([{ opId: uuid(), kind: 'vendor_upsert', lamport: 911,
+    payload: { name: name.toUpperCase(), phone: '+960 3002222' } }]);
+
+  const rows = await db.withOutletRead({ outletId: outletId, rank: 5, actor: null,
+    scope: 'outlet' }, (c) => c.query('SELECT name, phone, terms_days FROM chain.supplier'
+    + ' WHERE lower(name) = lower($1)', [name]));
+  assert.strictEqual(rows.rows.length, 1, 'one row, whatever the caps lock said');
+  assert.strictEqual(rows.rows[0].phone, '+960 3002222', 'the later edit won');
+  assert.strictEqual(rows.rows[0].terms_days, 14,
+    'and silence preserved what the second save did not mention');
+});
+
 test('a receipt is shared as a link, and the link answers', opts, async () => {
   const saleRow = await one('SELECT id, receipt_no FROM sale ORDER BY at DESC LIMIT 1');
   assert.ok(saleRow, 'this outlet has rung a sale to share');

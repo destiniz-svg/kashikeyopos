@@ -12,6 +12,7 @@ const email = require('../email');
 const INVITE = require('../../app/kashikeyo-invite.js');
 const SHARE = require('../../app/kashikeyo-share.js');
 const { gate } = require('../limit');
+const setup = require('../setup');
 
 const r = express.Router({ mergeParams: true });
 
@@ -393,6 +394,76 @@ r.post('/sale/:saleId/share', sameOutlet, atLeast('till'),
       });
     } catch (e) {
       if (e && e.status === 503) return res.status(503).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* ═══ A STORE'S SETUP, IN A FILE SOMEBODY HOLDS ════════════════════════════
+   Download what the shop spent a fortnight typing in — sections, dishes,
+   recipes, ingredients, customers, suppliers, the floor plan, the settings —
+   and put it back after a reset.
+
+   RANK 5, because this is the whole store's configuration leaving the
+   building, and putting one back rewrites every one of those things at once.
+   Not rank 4: an admin runs the shop; the owner decides what the shop IS.
+
+   NO OWNER CONNECTION. Every table this touches is one the outlet's own login
+   role already reads under RLS — it is the same data the bootstrap publishes
+   to the till on every sign-in. So the six-exception list in `src/db.js` does
+   not grow, and this endpoint cannot reach a business it is not scoped to.
+
+   AUDITED BOTH WAYS. A configuration leaving on somebody's laptop, and a
+   configuration arriving from one, are both events a support call three weeks
+   later needs to find. */
+r.get('/setup/parts', sameOutlet, atLeast('owner'), function (req, res) {
+  res.json({ parts: setup.PARTS(), format: setup.FORMAT });
+});
+
+r.get('/setup/export', sameOutlet, atLeast('owner'),
+  gate('setup-export', { id: [30, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    try {
+      const file = await withOutletRead(req.ctx, async function (c) {
+        const o = (await c.query('SELECT id, code, name FROM chain.outlet'
+          + ' WHERE id = $1', [req.ctx.outletId])).rows[0] || {};
+        return setup.exportSetup(c, { parts: req.query.parts, outlet: o });
+      });
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'setup_exported','outlet',$2,$3)",
+        [req.ctx.outletId, String(req.ctx.outletId), JSON.stringify({
+          by: req.ctx.actor, parts: file.parts, counts: file.counts })]));
+      const name = 'kashikeyo-setup-' + (file.outlet.code || req.ctx.outletId)
+        + '-' + String(file.at).slice(0, 10) + '.json';
+      res.set('content-disposition', 'attachment; filename="' + name + '"')
+        .set('cache-control', 'no-store')
+        .json(file);
+    } catch (e) {
+      if (e && e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* A setup file carries dish photographs, which are the largest thing in it —
+   the global parser is capped at 4mb and a photographed menu is bigger than
+   that. Its own parser rather than a wider global one: every other door in
+   this app should stay at 4mb. */
+r.post('/setup/import', sameOutlet, atLeast('owner'),
+  express.json({ limit: '48mb' }),
+  gate('setup-import', { id: [10, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    try {
+      const body = req.body || {};
+      const file = body.file || body;
+      const out = await withOutlet(req.ctx, (c) => setup.importSetup(c, file,
+        { parts: body.parts == null ? null : body.parts, ctx: req.ctx }));
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'setup_imported','outlet',$2,$3)",
+        [req.ctx.outletId, String(req.ctx.outletId), JSON.stringify({
+          by: req.ctx.actor, applied: out.applied, refused: out.refused.length,
+          from: (file.outlet || {}).code || null, at: file.at || null })]));
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) {
+      if (e && e.status) return res.status(e.status).json({ error: e.message });
       next(e);
     }
   });

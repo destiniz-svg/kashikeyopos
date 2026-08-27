@@ -13487,6 +13487,53 @@ class Component extends DCLogic {
       return this.toast(msg || "The outlet refused the send", "err");
     });
   }
+  /* ── a file leaving the browser, and one coming in ────────────────────────
+     The app is an ordinary page, so a blob and an `<a download>` are the whole
+     mechanism. The URL is REVOKED after the click: a setup file holds every
+     dish photograph the store has, and leaving those alive for the life of the
+     tab is megabytes nobody asked to keep. */
+  saveFile(name, obj) {
+    try {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 4000);
+      return true;
+    } catch (e) {
+      this.fault("file", "this browser would not save the file: " + (e && e.message));
+      return false;
+    }
+  }
+  /* READ HERE, not posted blind. The file is parsed and shape-checked in the
+     browser so "that is not a setup file" is answered instantly rather than
+     after uploading forty megabytes of somebody's holiday photos. */
+  pickFile(then) {
+    const el = document.createElement("input");
+    el.type = "file";
+    el.accept = "application/json,.json";
+    el.onchange = () => {
+      const f = (el.files || [])[0];
+      if (!f) return then(null, "no file was chosen");
+      const rd = new FileReader();
+      rd.onerror = () => then(null, "that file could not be read");
+      rd.onload = () => {
+        let obj;
+        try { obj = JSON.parse(String(rd.result)); }
+        catch (e) { return then(null, "that file is not a setup file \u2014 it is not even JSON"); }
+        if (!obj || !Array.isArray(obj.ops)) {
+          return then(null, "that file is not a setup file from this app");
+        }
+        then(obj, null);
+      };
+      rd.readAsText(f);
+    };
+    el.click();
+  }
   copyLink(link) {
     if (!link) return this.toast("There is no link to copy", "warn");
     try {
@@ -16718,6 +16765,105 @@ class Component extends DCLogic {
           this.toast(this.slotName(row.n) + " · " + p + " cover" + (p === 1 ? "" : "s"));
         }
       },
+      /* ═══ THE SETUP FILE ══════════════════════════════════════════════════
+         One form, both directions, because they are one decision: what do I
+         want in the file, and am I taking it out or putting it back.
+
+         THE PARTS COME FROM THE SERVER, never a list retyped here. A second
+         copy of that list is how a checkbox ends up naming something the
+         export has never heard of — the screen would offer it, the server
+         would refuse the whole call by name, and the operator would be reading
+         a list this build does not have. `state.setupParts` is filled on open.
+
+         AND WHAT IT CANNOT DO IS ON THE FORM, not in a help page. A file with
+         the menu and none of the takings cannot restore a store; somebody
+         reaching for this after losing a database has to be told that here,
+         while they are still looking for the thing that will help. */
+      setupFile: (() => {
+        const parts = this.state.setupParts || [];
+        const armed = this._setupArmed;
+        return {
+          title: "Store setup file",
+          sub: parts.length ? "Choose what belongs in it"
+            : "Asking the outlet what it can put in a file\u2026",
+          save: "Download the file",
+          foot: "This file carries what you CONFIGURED \u2014 not what you traded. No sales, no payments, no journal, no points and no credit balances are in it, so it cannot bring a store back from nothing; that is what a Backup is for. What it can do is give a reset store its menu, its recipes, its customers and its settings back, and it is safe to import the same file twice.",
+          /* EVERYTHING IS IN BY DEFAULT. A picker that starts with ten
+             dropdowns reading "Leave out" is a control that fights the person
+             using it: the ordinary answer is "all of it", and leaving a part
+             behind is the deliberate act. The `v` is what seeds the control —
+             a `pre` only runs when a form is opened on an existing row, and
+             this one is opened on nothing. */
+          fields: parts.map((p) => ({ k: "p_" + p.key, label: p.label, full: 1,
+            v: "1",
+            options: [{ v: "1", l: "Include \u00b7 " + p.note },
+              { v: "", l: "Leave out" }] })),
+          onSave: async (v) => {
+            const want = parts.filter((p) => v["p_" + p.key]).map((p) => p.key);
+            if (!want.length) {
+              return this.toast("Nothing is included, so there is nothing to put in a file", "warn");
+            }
+            const B = window.KPOS_BRIDGE;
+            if (!B || !B.exportSetup) {
+              return this.toast("A setup file needs the outlet \u2014 this terminal is not connected to one", "warn");
+            }
+            try {
+              const file = await B.exportSetup(want);
+              const counts = file.counts || {};
+              const n = Object.keys(counts).reduce((a, k) => a + (counts[k] || 0), 0);
+              this.saveFile("kashikeyo-setup-" + ((file.outlet || {}).code || "store")
+                + "-" + String(file.at || "").slice(0, 10) + ".json", file);
+              this.setState({ modal: null });
+              this.toast(n + " record" + (n === 1 ? "" : "s")
+                + " downloaded \u00b7 keep the file somewhere you will find it");
+            } catch (e) {
+              this.toast((e && e.message) || "The outlet could not build that file", "err");
+            }
+          },
+          /* PUTTING ONE BACK is a different decision from taking one out, so it
+             is a second control rather than a mode. Two taps, the same shape
+             signing out of a terminal uses: this overwrites a menu, and a
+             dialog on a touch screen is dismissed by muscle memory before it
+             is read. */
+          second: parts.length ? {
+            label: armed ? "Tap again to choose a file" : "Put a file back\u2026",
+            go: () => {
+              if (!armed) {
+                this._setupArmed = true;
+                this.setState({ tick: Date.now() });
+                setTimeout(() => { this._setupArmed = false; this.setState({ tick: Date.now() }); }, 4000);
+                return;
+              }
+              this._setupArmed = false;
+              this.pickFile(async (file, why) => {
+                if (why) return this.toast(why, "warn");
+                const B = window.KPOS_BRIDGE;
+                if (!B || !B.importSetup) {
+                  return this.toast("Putting a file back needs the outlet \u2014 this terminal is not connected to one", "warn");
+                }
+                try {
+                  const r = await B.importSetup(file, null);
+                  const done = Object.keys(r.applied || {})
+                    .reduce((a, k) => a + r.applied[k], 0);
+                  this.setState({ modal: null });
+                  if (B.refresh) await B.refresh();
+                  /* WHAT WAS REFUSED IS NAMED. An import that silently drops a
+                     third of a menu is worse than one that fails, because the
+                     operator believes it worked. */
+                  if (r.refused && r.refused.length) {
+                    this.toast(done + " put back \u00b7 " + r.refused.length
+                      + " refused \u2014 " + r.refused[0].why, "warn");
+                  } else {
+                    this.toast(done + " record" + (done === 1 ? "" : "s") + " put back");
+                  }
+                } catch (e) {
+                  this.toast((e && e.message) || "The outlet refused that file", "err");
+                }
+              });
+            }
+          } : null
+        };
+      })(),
       /* TWO SITUATIONS, AND ONLY ONE OF THEM HAS A CUSTOMER. A bill rung on a
          member can have the address kept, so the next receipt asks nothing.
          A walk-in has no record to keep it ON — and the first version of this
@@ -19079,6 +19225,43 @@ class Component extends DCLogic {
           rows: [["What is copied", "the whole business, per business"], ["Kept", "where the install was pointed"], ["This device", "needs none"], ["Its state", "with whoever runs the install"]],
           foot: "The database is the only state \u2014 this terminal's offline cache rebuilds itself from the server, so nothing on the device needs backing up. Copies are taken against the database with the install's own credentials, so whether one landed is a fact this screen cannot read and deliberately does not guess at: `npm run backup -- --check` answers it where the answer is, and a copy that stops arriving raises an alert on its own.",
           goLabel: "", go: null },
+        /* ═══ THE SETUP FILE ═══════════════════════════════════════════════
+           What a shop spent a fortnight typing in, as a file its owner holds.
+           Deliberately NOT called a backup: it carries no sales, no payments,
+           no journal and no member balances, so it cannot bring a store back
+           from nothing — and a control that let somebody tick "menu only" and
+           called the result a backup would be the exact defect this build
+           keeps refusing to ship. It answers a different question, and the one
+           that was actually asked: we reset the store, give us our setup back. */
+        { title: "Store setup file", sub: "Download what you configured, and put it back", chip: "Owner", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["Carries", "menu, recipes, customers, settings"], ["Never carries", "sales, payments, the ledger"], ["Kept", "wherever you save the file"], ["Putting it back", "safe to repeat"]],
+          foot: "Choose what belongs in it and the file downloads to this device. Every record in it is an upsert keyed by its own id, so importing the same file twice changes nothing the second time — which is what makes “try it again” safe. It is not a backup and does not pretend to be: a file with your menu and none of your takings cannot restore a store, and the trading history is what a reset is meant to clear. For the copy that CAN bring a store back, see Backup below.",
+          goLabel: this.rank() >= 5 ? "Download or restore setup" : "",
+          /* THE PARTS COME FROM THE OUTLET, and they are fetched BEFORE the
+             form opens. Opening first and filling in after looks tidier and is
+             wrong twice: `openForm` seeds every field's default at the moment
+             it opens, so a form that gains its fields afterwards has none of
+             them seeded — every part read "Leave out" and the operator had to
+             set ten dropdowns to get the ordinary answer. A list retyped on
+             this screen instead would be worse again: a control offering
+             something the export has never heard of.
+
+             Opened on `{}` rather than on nothing, because the form renderer
+             shows a second control only where there is a record to act on, and
+             the record here is the store's own setup. */
+          go: this.rank() >= 5 ? async () => {
+            const B = window.KPOS_BRIDGE;
+            if (!B || !B.setupParts) {
+              return this.toast("A setup file needs the outlet \u2014 this terminal is not connected to one", "warn");
+            }
+            try {
+              const r = await B.setupParts();
+              this.setState({ setupParts: (r && r.parts) || [] });
+              this.openForm("setupFile", {});
+            } catch (e) {
+              this.toast((e && e.message) || "The outlet did not answer what it can put in a file", "warn");
+            }
+          } : null },
         { title: "Restore", sub: "An operator procedure, not a button", chip: "Off the app", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
           rows: [["Run by", "whoever holds the database"], ["Lands", "beside the live one first"], ["Tills", "keep trading until it is swapped"], ["Rung since", "lost on the swap"]],
           foot: "A restore is put BESIDE the live database, not over it, so the shop keeps trading while somebody checks the copy holds what they think it holds; pointing the business at it is a separate, deliberate act. Everything rung between the archive and that moment is gone. The outlet login roles are cluster-wide and are not inside a backup, so they are re-applied as part of the restore \u2014 which is why this is a command with the archive named out loud, and not a button here that could do half of it.",

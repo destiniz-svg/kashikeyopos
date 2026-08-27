@@ -4113,3 +4113,60 @@ test('the address popup says which of the two situations it is in', () => {
   assert.match(spec.slice(0, 2600), /There is no customer record to keep it on/,
     'and the foot promises no save it cannot make');
 });
+
+/* ═══ A SETUP FILE IS NOT A BACKUP ═════════════════════════════════════════
+   "Let us pick what goes in the backup" is two requests wearing one sentence.
+   A BACKUP must be complete or restoring from it is a fiction — tick "menu
+   and customers", skip the sales, and the file cannot bring a store back. So
+   the picker belongs to a SETUP file, which says what it is, and the screen
+   that offers it says what it cannot do. */
+test('the setup file says what it is, and the picker belongs to it', () => {
+  const SETUP = fs.readFileSync(path.join(__dirname, '..', 'src', 'setup.js'), 'utf8');
+
+  /* ONE DIRECTION OF TRUTH: the export emits the same ops the till queues and
+     the import replays them through the same handlers, so an imported dish
+     and a typed one arrive by one road. A bespoke importer would be a second
+     way to write a dish. */
+  assert.match(SETUP, /const \{ HANDLERS \} = require\('\.\/apply'\)/,
+    'the import runs the till’s own handlers');
+  assert.match(SETUP, /HANDLERS\[kind\]\(c, op\.payload \|\| \{\}, o\.ctx \|\| \{\}\)/,
+    'and nothing else writes a row');
+
+  /* THE FENCE. Without the allowlist this is "run any op you like": a
+     hand-edited JSON posts a journal under an owner's own token. */
+  const S = require('../src/setup');
+  const kinds = Object.keys(S._IMPORTABLE);
+  assert.ok(kinds.length, 'the allowlist is not empty');
+  ['sale', 'post_journal', 'settle_credit', 'refund', 'void_sale', 'stock_adjust',
+    'loyalty_update', 'close_ticket', 'payment_run', 'vendor_payment']
+    .forEach((k) => assert.ok(kinds.indexOf(k) < 0,
+      'a setup file must never be able to carry ' + k));
+  kinds.forEach((k) => assert.ok(HANDLERS[k],
+    k + ' is on the allowlist but has no handler'));
+
+  // The install's own uuid (026) must not travel: copied into a second store,
+  // the fence that stops one install's outbox replaying into another is gone.
+  assert.ok(S._SETTING_NEVER.install, 'the install identity never travels');
+
+  /* AND THE SCREEN SAYS WHAT THE FILE CANNOT DO, on the card and on the form,
+     because somebody reaching for this after losing a database has to be told
+     while they are still looking for the thing that would have helped. */
+  assert.match(SRC, /title: "Store setup file"/, 'the card exists');
+  assert.match(SRC, /It is not a backup and does not pretend to be/,
+    'and refuses the word it is not');
+  assert.match(SRC, /Never carries", "sales, payments, the ledger"/,
+    'naming what is absent, not only what is present');
+  assert.match(SRC, /this\.rank\(\) >= 5 \? "Download or restore setup" : ""/,
+    'rank 5: the owner decides what the shop IS');
+
+  /* THE PARTS COME FROM THE OUTLET, fetched BEFORE the form opens. `openForm`
+     seeds every field at the moment it opens, so a form that gains its fields
+     afterwards has none of them seeded — measured in a browser, every part
+     read "Leave out" and the ordinary answer took ten taps. */
+  assert.match(SRC, /await B\.setupParts\(\)[\s\S]{0,220}this\.openForm\("setupFile", \{\}\)/,
+    'the parts are loaded, then the form opens');
+  assert.ok(!/openForm\("setupFile", null\)/.test(SRC),
+    'never opened on nothing — the second control needs a record to act on');
+  assert.match(SRC, /k: "p_" \+ p\.key, label: p\.label, full: 1,\s*\n\s*v: "1"/,
+    'and everything is included by default');
+});

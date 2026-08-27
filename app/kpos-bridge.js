@@ -361,6 +361,12 @@
     shareStatement: function (id, via, to, from, until) {
       return api.shareStatement(id, via, to, from, until);
     },
+    /* THE SETUP FILE, both directions. Not outbox ops: an export has to
+       answer with the file itself, and an import must not be replayed three
+       hours later from a device that has been in a drawer. */
+    setupParts: function () { return api.setupParts(); },
+    exportSetup: function (parts) { return api.exportSetup(parts); },
+    importSetup: function (file, parts) { return api.importSetup(file, parts); },
     revokeMember: function (id) { return api.revokeMember(id); },
     /* Ending every other session is a real call, and it answers with a real
        count. The old control queued an audit-only op and toasted a number it

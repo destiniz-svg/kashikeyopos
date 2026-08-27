@@ -2117,10 +2117,43 @@ H.qr_banner_slot = async (c, p, ctx) => {
   return setSetting(c, ctx, 'qrBanners', !!p.on);
 };
 
+/* AN UPSERT THAT ONLY EVER INSERTED. This is named `vendor_upsert`, the till's
+   supplier form calls it on every save, and it was a bare INSERT — so editing
+   a supplier's phone number created a SECOND supplier with the same name, and
+   the purchase orders stayed on the first one. Found by writing the setup
+   import, which replays this op and would have duplicated a store's whole
+   supplier list on the second import.
+
+   Resolved BY NAME, which is how a supplier is already identified everywhere
+   else in this build: `NATURAL_KEY` in the till matches a supplier row by
+   name, and the money ops (`vendor_payment`, `grn_priced`) look one up by name
+   because a seed-era numeric id fed to a uuid column was killing every payment
+   that named an invoice. Case-insensitive, because "Reef Suppliers" and "REEF
+   SUPPLIERS" are one company and a waiter's caps lock is not a new vendor.
+
+   Not a unique index: an install may already hold two rows under one name from
+   before this, and a migration that refuses to apply is worse than a handler
+   that converges. Silence preserves, as everywhere else — a caller that says
+   nothing about the lead time keeps the one on record. */
 H.vendor_upsert = async (c, p) => {
+  const name = String(p.name || '').trim();
+  if (!name) return { skipped: 'a supplier is named by its name' };
+  const there = await one(c, 'SELECT id FROM chain.supplier'
+    + ' WHERE lower(name) = lower($1) AND active ORDER BY id LIMIT 1', [name]);
+  if (there) {
+    await c.query('UPDATE chain.supplier SET name = $2,'
+      + ' trn = coalesce($3, trn), contact = coalesce($4, contact),'
+      + ' phone = coalesce($5, phone), email = coalesce($6, email),'
+      + ' terms_days = coalesce($7, terms_days), lead_days = coalesce($8, lead_days)'
+      + ' WHERE id = $1',
+      [there.id, name, p.trn || null, p.contact || null, p.phone || null,
+        p.email || null, p.terms == null ? null : num(p.terms),
+        p.lead == null ? null : num(p.lead)]);
+    return { vendorId: there.id };
+  }
   const q = await one(c, 'INSERT INTO chain.supplier (name, trn, contact, phone, email,'
     + ' terms_days, lead_days) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-    [p.name, p.trn || null, p.contact || null, p.phone || null, p.email || null,
+    [name, p.trn || null, p.contact || null, p.phone || null, p.email || null,
       num(p.terms) || 30, num(p.lead) || 2]);
   return { vendorId: q.id };
 };
