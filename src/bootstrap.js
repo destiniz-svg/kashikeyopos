@@ -414,7 +414,26 @@ async function buildBootstrap(ctx) {
       units: (setting.units || []).map((u) => [u.code, u.name, u.base, u.base, u.factor, 0]),
       unitsFor: unitsByIng,
       inv: ingredients.rows.map((r) => [ctx.outletId, r.id, num(r.on_hand)]),
-      ledger: [], batches: [], logs: [], vendors: [], purch: [], reqs: [],
+      /* THE SUPPLIERS THE OUTLET HOLDS. `chain.supplier` has been read into
+         `suppliers` and published as `VENDORS` since the schema was written,
+         and NOTHING has ever read `KPOS.VENDORS` — every vendor screen, every
+         purchase form and every export reads `KPOS_RAW.vendors`, which was
+         published as a literal empty array. So an outlet's supplier list
+         reached no terminal, and a vendor added on one device lived in that
+         browser's holding pen for ever: on screen there, absent everywhere
+         else, and re-inserted by the pen on every bootstrap. Same shape as
+         `oset`, one collection along. */
+      ledger: [], batches: [], logs: [],
+      /* Only what `chain.supplier` actually holds. A kind, a credit limit and
+         an address are fields the vendor FORM collects and the table has no
+         column for — publishing an invented value would be worse than the
+         screen's own fallback, which reads as "not recorded". */
+      vendors: suppliers.rows.map((r) => ({
+        id: r.id, name: r.name, contact: r.contact || '', phone: r.phone || '',
+        email: r.email || '', tin: r.trn || '', terms: r.terms_days,
+        lead: r.lead_days, status: r.active === false ? 'inactive' : 'active'
+      })),
+      purch: [], reqs: [],
       disp: [], prod: [], roles: []
     };
 

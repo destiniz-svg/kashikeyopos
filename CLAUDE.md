@@ -1451,6 +1451,42 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## The outlet does not always keep the id this device minted
+
+Reported: *"when I add a customer I see a duplicate record, but when I log in
+from another browser it shows correctly."*
+
+A dish is upserted BY the id the till gave it, so the holding pen finds the
+outlet's copy by that id. A **customer is not**: `member_upsert` ignores an id
+that is not a uuid — which is every id a till invents — and the outlet issues
+its own. So the row comes back under a DIFFERENT id, the pen never matches it,
+and `applyLocal()` unshifts the local copy on top of the outlet's on every
+bootstrap. Two rows, on the browser that added them and nowhere else.
+
+Measured by driving Guests & Credit in two real browsers, before and after:
+
+| | before | after |
+| --- | --- | --- |
+| the browser that added them | `cb7omh198c077a27i` **and** `c83f9160-…` | `f1fc0e0a-…` |
+| a second browser, untouched | `c83f9160-…` | `f1fc0e0a-…` |
+
+`NATURAL_KEY` names the field the outlet actually keys a collection on — a
+customer by `phone`, a supplier by `name` — and `sameRow()` is what lets the
+pen recognise its own row coming back wearing the id the outlet chose. It
+**falls back to the id** where the natural key is missing on either side, so
+two half-filled rows are never silently merged into one customer.
+
+**And the outlet's suppliers reached no terminal at all.** `chain.supplier` has
+been read and published as `KPOS.VENDORS` since the schema was written, and
+**nothing has ever read `KPOS.VENDORS`** — every vendor screen, purchase form
+and export reads `KPOS_RAW.vendors`, which the bootstrap published as a literal
+`[]`. Same shape as `oset`, one collection along: a vendor added on one device
+lived in that browser's pen for ever, and the outlet's own supplier list was
+invisible everywhere. Only the columns `chain.supplier` actually has are
+published — a kind, a credit limit and an address are fields the form collects
+and the table has no column for, and inventing them would be worse than the
+screen's own "not recorded".
+
 ## The first dish a store ever creates
 
 This is the root of every *"I added menu items and the other device does not
@@ -3645,7 +3681,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 477 tests
+npm test                          # 478 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

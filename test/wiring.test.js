@@ -2101,6 +2101,61 @@ test('the first dish on a store with no sections creates its section first', () 
     'a store WITH sections writes no section — only the dish');
 });
 
+/* ═══ THE OUTLET DOES NOT ALWAYS KEEP THE ID THIS DEVICE MINTED ════════════
+   Reported: "when I add a customer I see a duplicate record, but when I log in
+   from another browser it shows correctly."
+
+   A dish is upserted BY the id the till gave it, so the holding pen finds the
+   outlet's copy by that id. A CUSTOMER is not: `member_upsert` ignores an id
+   that is not a uuid — which is every id a till invents — and the outlet
+   issues its own. So the row comes back under a DIFFERENT id, the pen never
+   matches it, and `applyLocal()` unshifts the local copy on top of the
+   outlet's on every bootstrap. Two rows, on the browser that added them and
+   nowhere else, which is exactly how it was reported. */
+test('a customer the outlet re-keyed is recognised, not duplicated', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.__win.KPOS_SYNC = { enqueue: (op) => op.opId };
+
+  // What the till holds: the row it made, under the id IT minted.
+  const mine = { id: 'c-mtb-local', name: 'Hassan Moosa', phone: '7771234',
+    email: '', credit: 0, points: 0 };
+  F.state.local = { custs: [mine] };
+  F.__win.KPOS.CUSTOMERS = [];
+  F.applyLocal();
+  assert.strictEqual(F.__win.KPOS.CUSTOMERS.length, 1,
+    'before the outlet has it, the pen draws it — otherwise it vanishes on save');
+
+  /* THE BOOTSTRAP, with the outlet's own uuid. This is the row the till just
+     created, coming back wearing an id this device has never seen. */
+  F.__win.KPOS.CUSTOMERS = [{ id: '9f1c2b74-0000-4000-8000-000000000001',
+    name: 'Hassan Moosa', phone: '7771234', email: '', credit: 0, points: 0 }];
+  F.applyLocal();
+
+  assert.strictEqual(F.__win.KPOS.CUSTOMERS.length, 1,
+    'ONE customer, not two — the duplicate is what was reported');
+  assert.strictEqual(F.__win.KPOS.CUSTOMERS[0].id,
+    '9f1c2b74-0000-4000-8000-000000000001', "and it is the OUTLET's row that stands");
+  assert.strictEqual(((F.state.local || {}).custs || []).length, 0,
+    'the pen releases it, so a later edit made anywhere else is not shadowed');
+  assert.strictEqual(F.heldRows().length, 0,
+    'and nothing is reported as held — it was delivered, under another id');
+
+  // A DIFFERENT customer is still held. The key is the phone, not the fact of
+  // being a customer.
+  F.state.local = { custs: [{ id: 'c-other', name: 'Aishath', phone: '7779999' }] };
+  assert.strictEqual(F.heldRows().length, 1, 'a genuinely undelivered one still counts');
+
+  // AND THE FALLBACK IS THE ID. A half-filled row with no phone must never be
+  // matched to a different customer just because both are missing the key.
+  const G = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  G.__win.KPOS_SYNC = { enqueue: (op) => op.opId };
+  G.__win.KPOS.CUSTOMERS = [{ id: 'srv-1', name: 'Someone', phone: '' }];
+  G.state.local = { custs: [{ id: 'c-mine', name: 'Another', phone: '' }] };
+  G.applyLocal();
+  assert.strictEqual(G.__win.KPOS.CUSTOMERS.length, 2,
+    'two rows with no phone between them are two customers, not one');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,
@@ -2880,9 +2935,11 @@ test('an un-synced back-office row survives every bootstrap, not just the first'
   assert.match(apply, /if \(there && there !== row\) \{ dropped\+\+; return; \}/,
     'a row the outlet has already accepted is not added twice — it leaves the'
     + ' pen, because a held copy that outlives delivery shadows every later edit');
-  assert.match(apply, /const there = arr\.filter\(\(x\) => this\.rowKey\(x\) === id\)\[0\];/,
-    'and the match is by identity, so this replay cannot read its own insertion'
-    + ' from the last pass as the outlet having accepted the row');
+  assert.match(apply, /const there = arr\.filter\(\(x\) => this\.sameRow\(k, x, row\)\)\[0\];/,
+    'and the match is by identity first, so this replay cannot read its own'
+    + ' insertion from the last pass as the outlet having accepted the row —'
+    + ' through sameRow(), which also knows the collections whose id the OUTLET'
+    + ' allocates rather than this device');
 });
 
 /* A DATABASE IS NOT A LOBBY. Postgres grants CONNECT on every database to

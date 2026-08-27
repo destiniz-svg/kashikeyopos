@@ -13060,6 +13060,35 @@ class Component extends DCLogic {
     stockcats: () => (window.KPOS_RAW || {}).cats
   };
   coll(k) { const f = this.COLLS[k]; return f ? (f() || null) : null; }
+  /* ── THE OUTLET DOES NOT ALWAYS KEEP THE ID THIS DEVICE MINTED ───────────
+     Reported: "when I add a customer I see a duplicate record, but from
+     another browser it shows correctly."
+
+     A dish is upserted BY the id the till gave it, so the holding pen can find
+     the outlet's copy by that id. A CUSTOMER is not: `member_upsert` ignores
+     an id that is not a uuid — which is every id a till invents — and the
+     outlet issues its own. So the row comes back under a DIFFERENT id, the pen
+     never matches it, and `applyLocal()` unshifts the local copy on top of the
+     outlet's on every bootstrap. Two rows, on the browser that added them and
+     nowhere else, which is exactly how it was reported. A supplier is the same
+     shape: `vendor_upsert` resolves by NAME and the op carries no id at all.
+
+     NATURAL_KEY names the field the outlet actually keys the collection on.
+     Comparing on it is what lets the pen recognise its own row coming back
+     wearing the id the outlet chose. */
+  NATURAL_KEY = { custs: "phone", vendors: "name" };
+  sameRow(coll, a, b) {
+    const k = this.NATURAL_KEY[coll];
+    if (!k) return this.rowKey(a) === this.rowKey(b);
+    // Arrays are the item master's shape and have no named fields; they key by
+    // id, and the item master is not one of these collections.
+    if (Array.isArray(a) || Array.isArray(b)) return this.rowKey(a) === this.rowKey(b);
+    const norm = (r) => String((r && r[k]) || "").trim().toLowerCase();
+    const av = norm(a);
+    // Falls back to the id where the natural key is missing on either side,
+    // so a half-filled row is never silently matched to a different customer.
+    return av ? av === norm(b) : this.rowKey(a) === this.rowKey(b);
+  }
   // The item master is stored as arrays (id first), everything else as objects.
   rowKey(r) { return r ? (Array.isArray(r) ? r[0] : (r.no !== undefined ? r.no : r.id)) : null; }
   /* A ROW THE OUTLET HAS NO RECORD OF HAS NOT BEEN DELIVERED, whatever the
@@ -13134,13 +13163,18 @@ class Component extends DCLogic {
       const mine = [];
       (L[k] || []).forEach((row) => {
         const id = this.rowKey(row);
-        /* Matched by IDENTITY, not by key. This function is what puts the held
-           row into the collection, so a later pass finds an id it inserted
-           itself — and reading that as "the outlet has it" would drop the row
-           from the pen on the strength of its own work. A bootstrap replaces
-           the collection wholesale, so the outlet's copy is always a different
-           object; ours is always the same one. */
-        const there = arr.filter((x) => this.rowKey(x) === id)[0];
+        /* Matched by IDENTITY first, and by the collection's own key second.
+           This function is what puts the held row into the collection, so a
+           later pass finds a row it inserted itself — and reading that as "the
+           outlet has it" would drop the row from the pen on the strength of
+           its own work. A bootstrap replaces the collection wholesale, so the
+           outlet's copy is always a different object; ours is always the same
+           one.
+
+           `sameRow()` is what makes the key half right for a collection whose
+           id the OUTLET allocates — a customer, a supplier — where the row
+           comes back wearing an id this device has never seen. */
+        const there = arr.filter((x) => this.sameRow(k, x, row))[0];
         if (there && there !== row) { dropped++; return; }
         if (!there) arr.unshift(row);
         mine.push(row);
@@ -13199,7 +13233,7 @@ class Component extends DCLogic {
       const arr = this.coll(k);
       (L[k] || []).forEach((row) => {
         const id = this.rowKey(row);
-        const there = arr ? arr.filter((x) => this.rowKey(x) === id)[0] : null;
+        const there = arr ? arr.filter((x) => this.sameRow(k, x, row))[0] : null;
         if (there && there !== row) return;              // the outlet has it
         out.push({
           coll: k, id: id, name: (row && row.name) || String(id),
