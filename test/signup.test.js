@@ -117,7 +117,7 @@ test('a new customer gets from the sign-up form to step one', { skip }, async (t
       null, { timeout: 20000 });
     const heading = await p.evaluate(
       () => (document.querySelector('h1, h2') || {}).textContent || '');
-    assert.match(heading, /Who is trading\?/,
+    assert.match(heading, /Business information/,
       'and on step one of the panel, not on a page that asks them to sign in again');
 
     const business = posts.find((x) => x.path === '/api/account/business');

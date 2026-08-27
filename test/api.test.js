@@ -143,10 +143,28 @@ test('onboarding writes the records the running app reads', opts, async () => {
   // nothing is not registered, because most new ones are not.
   let r = await post('/api/onboarding/company', {
     legalName: 'Test Trading Pvt Ltd', regNo: 'C-0001/2026', gstRegistered: 'yes',
-    tin: 'T1000001GST501', address: 'Test address, Malé'
+    tin: 'T1000001GST501', address: 'Test address, Malé',
+    phone: '3321234', email: 'accounts@test.mv',
+    /* The five the panel collects that are presentation rather than
+       predicates — nothing joins on a website. chain.company.brand has carried
+       exactly this shape since the schema was written; what was missing was
+       anything asking for them. */
+    brand: { logo: 'data:image/png;base64,AAA', type: 'restaurant',
+      website: 'https://test.mv', zip: '20000', mobile: '7771234' }
   });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
   assert.strictEqual(r.body.gstRegistered, true, 'and it says so back');
+
+  /* THE COMPANY'S OWN CONTACT COMES BACK, so the outlet step can offer "same
+     as the business" and mean it after a reload. Without this the offer reads
+     off whatever step 1 happened to leave in the page, and a refresh turns it
+     into a control that sends nothing. */
+  const st1 = await get('/api/onboarding/state');
+  assert.ok(st1.body.company, 'the panel is told what the company said');
+  assert.strictEqual(st1.body.company.address, 'Test address, Malé');
+  assert.strictEqual(st1.body.company.phone, '3321234');
+  assert.strictEqual(st1.body.company.brand.website, 'https://test.mv',
+    'including the presentation half of it');
 
   // The legal entity is required in full — but the TIN is required of a
   // REGISTERED business and of nobody else. Asking a business below the
@@ -170,11 +188,36 @@ test('onboarding writes the records the running app reads', opts, async () => {
   // 2 · first outlet — its own schema and its own login role
   r = await post('/api/onboarding/outlet', {
     name: 'Test Outlet', code: 'TSTO', kind: 'restaurant',
-    taxCode: 'GGST', servicePct: 10, address: 'Test street'
+    taxCode: 'GGST', taxRate: 8, taxFrom: '2026-01-01',
+    servicePct: 10, address: 'Test street',
+    // Migration 044: the store's own face. A field the panel collects and
+    // writes nowhere is the defect this build refuses by name.
+    brand: { logo: 'data:image/png;base64,BBB', email: 'shop@test.mv',
+      website: 'https://shop.test.mv', zip: '20001', mobile: '7775678' }
   });
   assert.strictEqual(r.status, 201, JSON.stringify(r.body));
   outletId = r.body.id;
   assert.strictEqual(r.body.schema, 'outlet_' + outletId);
+
+  {
+    const co = await db.owner().query('SELECT brand FROM chain.company WHERE id = 1');
+    assert.strictEqual(co.rows[0].brand.website, 'https://test.mv',
+      "the company's face reached chain.company.brand");
+    assert.strictEqual(co.rows[0].brand.zip, '20000');
+    const ou = await db.owner().query('SELECT brand FROM chain.outlet WHERE id = $1',
+      [outletId]);
+    assert.strictEqual(ou.rows[0].brand.email, 'shop@test.mv',
+      "and the outlet's reached chain.outlet.brand");
+    assert.strictEqual(ou.rows[0].brand.zip, '20001');
+    /* The rate the OUTLET step gave, in one write with the schema and the
+       login role — which is why the separate tax step was only ever
+       confirming a version that already existed. */
+    const tv = await db.owner().query('SELECT code, rate FROM chain.tax_version'
+      + ' WHERE outlet_id = $1', [outletId]);
+    assert.strictEqual(tv.rows.length, 1, 'one version, written by the outlet step');
+    assert.strictEqual(tv.rows[0].code, 'GGST');
+    assert.strictEqual(Number(tv.rows[0].rate), 8);
+  }
 
   // 3 · owner account — callable exactly once in the life of an installation
   r = await post('/api/onboarding/owner', { name: 'Test Owner', pin: '4718' });

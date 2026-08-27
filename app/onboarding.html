@@ -28,7 +28,7 @@
 </script>
 <style>
 /* ═══ THE PANEL ═════════════════════════════════════════════════════════════
-   Fourteen steps, forced by dependency, each writing the records the running
+   Thirteen steps, forced by dependency, each writing the records the running
    app reads — through the same handlers the app itself uses. There is no
    config blob and no wizard-only table: if step 2 wrote something only the
    wizard understood, step 2 would become un-editable the moment the wizard
@@ -83,8 +83,8 @@ body{
 .railHead{padding:0 22px 12px;font-size:9.5px;font-weight:800;letter-spacing:.11em;
   text-transform:uppercase;color:var(--text-faint)}
 .steps{display:flex;flex-direction:column;position:relative}
-/* The spine itself: one line behind every node, so the fourteen read as a
-   sequence rather than fourteen unrelated buttons. */
+/* The spine itself: one line behind every node, so the steps read as a
+   sequence rather than as unrelated buttons. */
 .steps:before{content:"";position:absolute;left:calc(22px + 12px);top:16px;bottom:16px;
   width:2px;background:var(--line);border-radius:2px}
 .step{display:flex;align-items:flex-start;gap:13px;padding:9px 22px;border:0;width:100%;
@@ -218,7 +218,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   .stage{padding-top:22px;padding-bottom:148px}
   /* The action never scrolls out of reach. On a phone this is the difference
      between an install somebody finishes and one they abandon halfway down a
-     fourteen-row table — and the fourteen-row table is step 11. */
+     long table — and the longest of them is the floor plan. */
   .row{position:fixed;left:0;right:0;bottom:0;z-index:40;margin:0;gap:8px;
     padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));
     background:var(--bg-1);border-top:1px solid var(--line-2);
@@ -232,6 +232,82 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
      about to press is a toast nobody reads. */
   .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
+
+/* ── the pill stepper: three nodes, and every state is a fact ───────────── */
+.pills{display:flex;align-items:center;gap:0;margin:0 0 20px;flex-wrap:nowrap;
+  overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.pills::-webkit-scrollbar{display:none}
+.pill{display:flex;align-items:center;gap:9px;background:transparent;border:0;
+  padding:4px 2px;color:var(--text-faint);min-height:44px;flex:0 0 auto}
+.pill:disabled{cursor:not-allowed}
+.pill .pd{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;
+  background:var(--bg-2);color:var(--text-faint);border:1.5px solid var(--line-2);
+  transition:background .16s,color .16s,border-color .16s;flex:0 0 auto}
+.pill .pl{font-size:11.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.pill.done .pd{background:var(--go-dim);color:var(--go-bright);border-color:var(--go-line)}
+.pill.done .pl{color:var(--text-muted)}
+.pill.now .pd{background:var(--text);color:var(--bg-0);border-color:var(--text)}
+.pill.now .pl{color:var(--text)}
+.pline{flex:1 1 22px;min-width:22px;height:2px;border-radius:2px;background:var(--line-2);
+  margin:0 10px}
+.pline.done{background:var(--go-line)}
+/* On a phone three labelled pills do not fit, and a stepper whose last node is
+   cut off at the edge is a stepper that has stopped saying how many there are.
+   The dots always fit; only the node you are on needs naming, and the bar at
+   the top carries the count. */
+@media (max-width:560px){
+  .pill .pl{display:none}
+  .pill.now .pl{display:block}
+  .pline{margin:0 7px;min-width:14px}
+}
+
+/* ── a toggle is a question with two written answers ────────────────────── */
+.tog{display:flex;align-items:center;gap:14px;background:var(--bg-2);
+  border:1px solid var(--line-2);border-radius:12px;padding:13px 15px}
+.tog .tt{min-width:0;flex:1}
+.tog .tt b{display:block;font-size:13px;font-weight:700;letter-spacing:-.01em;
+  color:var(--text);text-wrap:pretty}
+.tog .tt small{display:block;font-size:11px;color:var(--text-muted);margin-top:2px}
+.sw{flex:0 0 auto;width:52px;height:30px;border-radius:20px;border:1.5px solid var(--line-3);
+  background:var(--bg-3);padding:0;position:relative;transition:background .16s,border-color .16s}
+.sw i{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
+  background:var(--text-muted);transition:transform .16s,background .16s;display:block}
+.sw.on{background:var(--go);border-color:var(--go)}
+.sw.on i{transform:translateX(22px);background:var(--on-go)}
+.sw:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* ── the logo, and what became of the file that was picked ──────────────── */
+.logo{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+.lp{width:78px;height:78px;border-radius:14px;flex:0 0 auto;cursor:pointer;
+  background:var(--bg-2);border:1px solid var(--line-2);display:grid;place-items:center;
+  overflow:hidden;transition:border-color .14s}
+.lp:hover{border-color:var(--line-3)}
+.lp.empty{border-style:dashed}
+.lp.empty:after{content:"Logo";font-size:9.5px;font-weight:800;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-faint)}
+.lp img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.ls{min-width:150px;flex:1 1 auto;display:flex;flex-direction:column;gap:8px}
+.la{display:flex;gap:8px;flex-wrap:wrap}
+button.mini.ghosty{background:transparent}
+
+/* ── what is about to be submitted ──────────────────────────────────────── */
+.sum{margin-top:22px;background:var(--bg-2);border:1px solid var(--line-2);
+  border-radius:13px;padding:16px 17px}
+.sumh{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--text-faint);margin-bottom:6px}
+.sum .kv{border-top-color:var(--line)}
+.sum .hint{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+/* The spine runs the whole height of .steps, so a heading sitting on it
+   needs its own ground or the line strikes the words through. */
+.railHead.sub{padding-top:16px;background:var(--bg-0);position:relative;z-index:1}
+.steps .railHead.sub:first-child{padding-top:0}
+textarea{min-height:84px;resize:vertical;line-height:1.5}
+/* The application's last act is a submission, and it reads as one. Green is
+   the FILL role here, the same one the terminal uses for a confirmed act. */
+button.go.ok{background:var(--go);color:var(--on-go);
+  box-shadow:0 1px 2px rgba(0,0,0,.16),0 8px 22px var(--go-dim)}
+
 @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
 </style>
 </head>
@@ -241,7 +317,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   <div class="mb">
     <img src="brand/kashikeyo-mark.png" alt="">
     <div class="mt"><b id="moTitle">Setting up</b><small id="moSub">KashikeyoPOS</small></div>
-    <span class="mn" id="moNo">1 / 14</span>
+    <span class="mn" id="moNo">1</span>
   </div>
   <div class="mbar"><i id="moBar" style="width:0%"></i></div>
 </div>
@@ -254,7 +330,6 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
         <small>Restaurant platform</small>
       </div>
     </div>
-    <div class="railHead">Setting up</div>
     <div class="steps" id="steps"></div>
   </aside>
   <main class="stage" id="stage"></main>
@@ -264,67 +339,121 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 (function () {
   "use strict";
 
-  /* ── the fourteen, forced by dependency ───────────────────────────────────
+  /* ── the steps, forced by dependency ──────────────────────────────────────
      Each `write` posts to the SAME handler the running app uses, so the
-     wizard's output and the app's model cannot drift. `edit` names where the
+     panel's output and the app's model cannot drift. `edit` names where the
      step lives once the app is running — that is the promise this panel makes,
-     and it is the reason none of these steps writes a config blob. */
+     and it is the reason none of these steps writes a config blob.
+
+     ONE FACT IS ASKED ONCE. Three things used to be asked twice, and each was
+     invisible from the step that asked second:
+
+       · the ADDRESS, the PHONE and the EMAIL, on the company and again on the
+         outlet — and a single-outlet business trades at its registered address
+         on its registered number, so the honest default is "the same", said
+         once and shown rather than typed again;
+       · the TAX CLASS, on the outlet and again on a step of its own;
+       · the RATE and the SERVICE CHARGE, likewise — `servicePct` appeared on
+         both, literally the same field under the same label.
+
+     The tax step is gone, and it was never doing anything: provisionOutlet()
+     writes chain.tax_version from the outlet step's own taxCode, taxRate and
+     taxFrom, so the server already reported the tax step done before anybody
+     reached it. A step that opens on "Saved · continue" is a step asking a
+     question it has already been given the answer to.
+
+     The first three are the APPLICATION — the company, the store, the person —
+     and they are the three that must be written before an install can do
+     anything at all. Everything after them is the shop being set up, and the
+     till nudges through it on its own Today list. */
   var STEPS = [
     {
-      key: "company", n: 1, label: "Company",
+      key: "company", label: "Business", eyebrow: "Step 1",
       sub: "The entity that files the return",
-      title: "Who is trading?",
-      lede: "This is the legal entity — the name on the return, its registration number, its registered address and who to reach. It is not the name over the door: your outlets are named on the next step, and one business may have several. The fascia a guest sees is set per outlet, under branding.",
+      title: "Business information",
+      lede: "Tell us about your business. This is the legal entity — the name on the return, its registration number and its registered address. It is not the name over the door: your outlets are named on the next step, and one business may have several.",
       why: "A receipt carries the TIN of the entity that took the money, so it is asked for only if you have one. A business below the GST threshold has none, and inventing one here would be a false statement to a tax authority — which is also why nothing is pre-filled.",
       edit: "Settings → Company",
       fields: [
-        { k: "legalName", label: "Registered legal name", req: true, full: true, ph: "e.g. Kashikeyo Group Pvt Ltd" },
-        { k: "regNo", label: "Company registration number", req: true, mono: true, ph: "C-0000/2026" },
-        { k: "gstRegistered", label: "GST registration", type: "select", req: true, full: true,
-          v: "no",
+        { k: "logo", label: "Logo", type: "logo", full: true,
+          hint: "PNG or JPG, up to 2 MB. It is scaled down on this device before it is sent — a four-megapixel photograph of a signboard costs every terminal its storage budget. Prints on the receipt and heads the guest's menu." },
+        { k: "legalName", label: "Business name", req: true, full: true, ph: "Your registered legal name" },
+        { k: "bizType", label: "Business type", type: "select", req: true,
           options: [
-            ["no", "Not registered for GST"],
-            ["yes", "Registered for GST"]
-          ],
-          hint: "In the Maldives a business registers once taxable supplies pass MVR 1,000,000 in any 12 months — the tourism sector registers whatever the turnover. Below that, you charge nothing and no tax line prints at all. The app measures your own turnover against the threshold and tells you when this answer has to change." },
-        { k: "tin", label: "TIN", mono: true, ph: "1000000GST501",
+            ["restaurant", "Restaurant"], ["cafe", "Café or teashop"],
+            ["hotel", "Hotel or resort"], ["guesthouse", "Guesthouse"],
+            ["bakery", "Bakery"], ["takeaway", "Takeaway and delivery"],
+            ["catering", "Catering"], ["retail", "Retail shop"], ["other", "Something else"]
+          ] },
+        { k: "regNo", label: "Registration number", req: true, mono: true, ph: "C-0000/2026" },
+        { k: "gstRegistered", label: "GST registered", type: "toggle", full: true,
+          v: "no", on: "yes", off: "no",
+          onLabel: "This is a taxable business",
+          offLabel: "Not registered for GST",
+          pressOn: "Press if this business is registered for GST",
+          pressOff: "Press if it is not registered",
+          hint: "In the Maldives a business registers once taxable supplies pass MVR 1,000,000 in any 12 months — the tourism sector registers whatever the turnover. Below that you charge nothing and no tax line prints at all. The app keeps measuring your own turnover against the threshold and tells you when this answer has to change." },
+        { k: "tin", label: "TIN", mono: true, ph: "1000000GST501", full: true,
           showIf: { k: "gstRegistered", is: "yes" },
           hint: "What MIRA issued you. It prints on every receipt." },
-        { k: "address", label: "Registered address", req: true, full: true },
+        { k: "address", label: "Address", req: true, full: true, type: "textarea",
+          ph: "Full registered address" },
         { k: "atoll", label: "Atoll or city" },
+        { k: "zip", label: "Postal code", mono: true, ph: "20000" },
+        { k: "phone", label: "Telephone", ph: "+960 ..." },
+        { k: "mobile", label: "Mobile", ph: "+960 7..." },
+        { k: "email", label: "Email", type: "email", req: true, ph: "business@example.com",
+          hint: "Where receipts, statements and anything the app sends come from and go to." },
+        { k: "website", label: "Website", ph: "https://..." },
         { k: "currency", label: "Base currency", type: "select", req: true, v: "MVR",
           options: [["MVR", "MVR — Maldivian rufiyaa"], ["USD", "USD — US dollar"]],
-          hint: "The currency this business keeps its books in. Every price, receipt, report and ledger figure is in it. A guest may still pay in another currency at the counter." },
-        { k: "phone", label: "Telephone" },
-        { k: "email", label: "Accounts email", type: "email" }
+          hint: "The currency this business keeps its books in. Every price, receipt, report and ledger figure is in it. A guest may still pay in another currency at the counter." }
       ],
       foot: "Saving writes chain.company. Every receipt, invoice and tax return reads it back from there rather than keeping its own copy, so a correction lands everywhere at once.",
-      write: function (v) { return post("company", v); }
+      write: function (v) {
+        return post("company", {
+          legalName: v.legalName, regNo: v.regNo, gstRegistered: v.gstRegistered,
+          tin: v.tin, address: v.address, atoll: v.atoll, phone: v.phone,
+          email: v.email, currency: v.currency,
+          /* The five that are presentation, not predicates — nothing joins on
+             a website. chain.company.brand has carried exactly this since the
+             schema was written. */
+          brand: { logo: v.logo || "", type: v.bizType || "", website: v.website || "",
+            zip: v.zip || "", mobile: v.mobile || "" }
+        });
+      }
     },
     {
-      key: "outlet", n: 2, label: "First outlet",
+      key: "outlet", label: "Outlet", eyebrow: "Step 2",
       sub: "Its own schema and its own login role",
-      title: "The first place you trade from",
-      lede: "An outlet sits under the business you named on step 1 — one business, one or many outlets, and this is the first. Give it the name a guest would recognise on the door; the company's registered name stays on step 1 and prints on the tax line. An outlet is not a filter on shared data: it gets its own Postgres schema and its own database login, granted access to that schema alone — another outlet's tables are unreachable, not merely hidden.",
+      title: "Outlet information",
+      lede: "Details about your first outlet. An outlet sits under the business you named on step 1 — one business, one or many outlets, and this is the first. Give it the name a guest would recognise on the door. An outlet is not a filter on shared data: it gets its own Postgres schema and its own database login, granted access to that schema alone.",
       why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Whether there is a rate at all was answered on step 1 — a business below the threshold charges nothing rather than quietly assuming 8%.",
       edit: "Chain & Outlets → the outlet",
       fields: [
-        { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee",
+        { k: "logo", label: "Logo", type: "logo", full: true,
+          hint: function () {
+            return "Leave it empty and this outlet uses the business logo. Set one only where the store trades under its own mark.";
+          } },
+        { k: "name", label: "Outlet name", req: true, full: true, ph: "Main branch",
           hint: "The store, not the company. It is what the fascia says, what a docket is headed with, and what you pick between when the business has more than one." },
-        { k: "code", label: "Short code", req: true, mono: true, ph: "KOCHA", hint: "Goes in front of every document number. Letters and digits, up to eight." },
-        { k: "slug", label: "Store address", type: "handle", from: "name", full: true,
-          ph: "chaandhanee",
-          hint: "Where your guests scan to. This is printed on the table cards, so it is worth getting right — lower case letters, numbers and hyphens." },
-        { k: "kind", label: "What it is", type: "select", options: [
+        { k: "kind", label: "Outlet type", type: "select", options: [
           ["restaurant", "Restaurant — takes money"],
           ["central_kitchen", "Central kitchen — produces, does not sell"],
           ["main_store", "Main store — receives and dispatches"]
         ] },
+        { k: "code", label: "Short code", req: true, mono: true, ph: "KOCHA",
+          hint: "Goes in front of every document number. Letters and digits, up to eight." },
+        { k: "slug", label: "Store address", type: "handle", from: "name", full: true,
+          ph: "chaandhanee",
+          hint: "Where your guests scan to. This is printed on the table cards, so it is worth getting right — lower case letters, numbers and hyphens." },
+        /* ── the tax profile, where it is decided ──────────────────────────
+           This was a step of its own, immediately after this one, asking the
+           class and the service charge over again and the rate for the first
+           time. It belongs here: provisionOutlet() writes chain.tax_version
+           from these three in the same transaction that creates the schema, so
+           the separate step was confirming a version that already existed. */
         { k: "taxCode", label: "Tax class", type: "select",
-          /* Which rate, once the COMPANY is registered. Whether there is a rate
-             at all was answered on step 1, and offering "not registered" again
-             here invites two answers to one question. Deferred, because STEPS
-             is built before anybody has answered anything. */
           options: function () {
             return state.gstRegistered()
               ? [["GGST", "GGST — general goods and services"],
@@ -336,34 +465,84 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
               ? "TGST if this outlet is in a tourism zone; GGST otherwise."
               : "This business is not registered for GST, so this outlet charges nothing. Change it on step 1 if that is wrong.";
           } },
-        { k: "servicePct", label: "Service charge %", type: "number", v: "10",
-          hint: "Charged on the goods, distributed to staff, and itself taxable." },
+        { k: "taxRate", label: "Rate %", type: "number", mono: true,
+          when: function () { return state.gstRegistered(); },
+          v: function () { return String(state.statutory(state.taxCodeTyped())); },
+          // GGST is 8, TGST is 16. The class is chosen after this box is
+          // filled, so the box has to follow it — see the note in renderFields.
+          follows: { k: "taxCode", value: function (code) { return String(state.statutory(code)); } },
+          hint: "The statutory rate in force today is filled in. Change it only if yours differs — a tax version carries the date it took effect, so next year's change cannot restate this year's receipts." },
+        { k: "taxFrom", label: "In force from", type: "date",
+          when: function () { return state.gstRegistered(); },
+          v: function () { return today(); } },
+        { k: "servicePct", label: "Service charge %", type: "number", mono: true, v: "10",
+          hint: "Charged on the goods, distributed to staff, and itself taxable. It is not a tax and is unaffected by GST registration." },
         { k: "dayStart", label: "Trading day starts", type: "time", v: "04:00",
           hint: "The trading day is not the calendar day: a sale at 01:30 belongs to last night." },
-        { k: "address", label: "Street address", full: true },
-        { k: "phone", label: "Telephone" }
+        /* ── asked once ────────────────────────────────────────────────────
+           A single-outlet business trades at its registered address on its
+           registered number, and typing both twice is the panel asking for
+           something it is already holding. The offer reads off the RECORD, not
+           off what step 1 left in the page, so it survives a reload. */
+        { k: "sameAs", label: "Address and contact", type: "toggle", full: true,
+          v: "yes", on: "yes", off: "no",
+          onLabel: function () {
+            var c = companyFacts();
+            return "Same as the business" + (c.address ? " · " + oneLine(c.address) : "");
+          },
+          offLabel: "This outlet has its own",
+          pressOn: "Press to use the business address and contact",
+          pressOff: "Press if this store trades somewhere else",
+          hint: "Turn it off where the store trades somewhere other than the registered address — a second branch, a kiosk, a resort island." },
+        { k: "address", label: "Outlet address", full: true, type: "textarea",
+          showIf: { k: "sameAs", is: "no" } },
+        { k: "atoll", label: "Atoll or city", showIf: { k: "sameAs", is: "no" } },
+        { k: "zip", label: "Postal code", mono: true, showIf: { k: "sameAs", is: "no" } },
+        { k: "phone", label: "Telephone", showIf: { k: "sameAs", is: "no" } },
+        { k: "mobile", label: "Mobile", showIf: { k: "sameAs", is: "no" } },
+        { k: "email", label: "Email", type: "email", showIf: { k: "sameAs", is: "no" } },
+        { k: "website", label: "Website", showIf: { k: "sameAs", is: "no" } }
       ],
-      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, records the tax version in force from today, and reserves the store address for good.",
+      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, records the tax version in force from the date above, and reserves the store address for good.",
       write: function (v) {
-        v.servicePct = Number(v.servicePct) || 0;
-        return post("outlet", v);
+        var c = companyFacts();
+        var own = v.sameAs !== "yes";
+        return post("outlet", {
+          name: v.name, code: v.code, kind: v.kind, slug: v.slug,
+          taxCode: v.taxCode || null,
+          taxRate: state.gstRegistered() && v.taxRate !== "" ? Number(v.taxRate) : undefined,
+          taxFrom: state.gstRegistered() ? (v.taxFrom || undefined) : undefined,
+          servicePct: Number(v.servicePct) || 0,
+          dayStart: v.dayStart,
+          address: own ? v.address : c.address,
+          atoll: own ? v.atoll : c.atoll,
+          phone: own ? v.phone : c.phone,
+          brand: {
+            logo: v.logo || "",
+            email: (own ? v.email : c.email) || "",
+            website: (own ? v.website : (c.brand || {}).website) || "",
+            zip: (own ? v.zip : (c.brand || {}).zip) || "",
+            mobile: (own ? v.mobile : (c.brand || {}).mobile) || ""
+          }
+        });
       }
     },
     {
-      key: "owner", n: 3, label: "Owner account",
+      key: "owner", label: "Your account", eyebrow: "Step 3",
       sub: "Rank 5 — the only account that can create others",
-      title: "Your own account",
-      lede: "One five-rank ladder runs the whole system: Kitchen 1, Till 2, Manager 3, Admin 4, Owner 5. This is the rank-5 account, and it is the only one that can create the others.",
+      title: "Your account",
+      lede: "This will be the admin user for your business. One five-rank ladder runs the whole system: Kitchen 1, Till 2, Manager 3, Admin 4, Owner 5. This is the rank-5 account, and it is the only one that can create the others.",
       why: "A shared till never asks for a password. Staff tap their own face and key four digits — that is what makes a void, a discount or a drawer opening attributable to a person. Your PIN is hashed with scrypt and a per-row salt the moment you set it, and is never displayed again.",
       edit: "Chain & Outlets → Users & roles",
       fields: [
-        { k: "name", label: "Your name", req: true, full: true },
+        { k: "name", label: "Full name", req: true, full: true, ph: "Your full name" },
         { k: "pin", label: "Choose a PIN", req: true, mono: true, type: "password",
           attrs: { inputmode: "numeric", maxlength: "8", autocomplete: "new-password" },
-          hint: "Four to eight digits. Five wrong attempts lock this terminal for fifteen minutes." },
+          hint: "Four to eight digits. Six wrong attempts lock this terminal for fifteen minutes." },
         { k: "pin2", label: "Repeat the PIN", req: true, mono: true, type: "password",
           attrs: { inputmode: "numeric", maxlength: "8", autocomplete: "new-password" } }
       ],
+      summary: true,
       foot: "This account can be claimed exactly once in the life of an installation. After that, accounts are created from Users & roles by an admin, and never above their own rank.",
       validate: function (v) {
         if (!/^\d{4,8}$/.test(v.pin)) return "A PIN is four to eight digits.";
@@ -383,46 +562,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "tax", n: 4, label: "Tax profile",
-      sub: "The rate in force, and from when",
-      title: "Confirm the rate you charge",
-      lede: "A tax version is law, not a setting. It carries the date it took effect, so a rate change next year cannot restate a return you have already filed.",
-      why: "Prices on the menu are set exclusive of GST and the tax is shown as its own line — the same arithmetic on the till, on the guest's phone and on the receipt.",
-      edit: "Settings → Tax profile",
-      dynamic: function () {
-        var o = state.outlet || {};
-        // Not registered: there is no rate to confirm, and a select defaulting
-        // to GGST beside a "Rate %" box is how a business that charges nothing
-        // ends up with 8% in its history.
-        if (!state.gstRegistered()) {
-          return {
-            title: "No GST to confirm",
-            lede: "This business is not registered for GST, so it charges none and no tax line prints on anything it issues.",
-            why: "The app keeps measuring turnover against the registration threshold and will tell you the moment it is crossed. Registering then is one action in Settings — it sets the rate on every outlet at once, from the date you give it.",
-            foot: "Saving records that this outlet charges no GST. Nothing about that is permanent: register whenever the business has to, and every rate is dated from the day you give it.",
-            fields: [
-              { k: "servicePct", label: "Service charge %", type: "number",
-                v: String(Number(o.service_pct) || 10),
-                hint: "Service charge is not a tax. It is charged on the goods and distributed to staff, and it is unaffected by GST registration." }
-            ]
-          };
-        }
-        return {
-          fields: [
-            { k: "code", label: "Tax class", type: "select", v: o.tax_code === 'TGST' ? 'TGST' : 'GGST',
-              options: [["GGST", "GGST — general"], ["TGST", "TGST — tourism sector"]] },
-            { k: "rate", label: "Rate %", type: "number", v: String(state.statutory(o.tax_code || "GGST")),
-              hint: "The statutory rate in force today is filled in. Change it only if yours differs." },
-            { k: "from", label: "In force from", type: "date", v: today() },
-            { k: "servicePct", label: "Service charge %", type: "number", v: String(Number(o.service_pct) || 10) }
-          ]
-        };
-      },
-      foot: "Saving adds a version to this outlet's rate history. Nothing already settled is restated.",
-      write: function (v) { return post("tax", v); }
-    },
-    {
-      key: "series", n: 5, label: "Document series",
+      key: "series", label: "Document series",
       sub: "Once used, never renumbered",
       title: "How your documents are numbered",
       lede: "Every numbered document — receipt, credit note, purchase order, goods received note, indent, dispatch, journal voucher — is allocated from a series under a row lock, so two terminals can never mint the same number.",
@@ -447,7 +587,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "chart", n: 6, label: "Chart of accounts",
+      key: "chart", label: "Chart of accounts",
       sub: "Shipped complete — confirm the bank",
       title: "The books are already set up",
       lede: "Thirty-five accounts ship with the product, and the codes are load-bearing: the auto-posting rules, the profit and loss grouping and the GST return all read them. Nine of them belong to the till and a manual journal will refuse to touch them, because the ledger reconciles to the POS by construction.",
@@ -463,7 +603,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       write: function (v) { return post("chart", v); }
     },
     {
-      key: "units", n: 7, label: "Units",
+      key: "units", label: "Units",
       sub: "What the kitchen buys and cooks in",
       title: "Units, and how they convert",
       lede: "A recipe is written in the unit a chef thinks in — grams, millilitres, pieces — and stock is bought in the unit a supplier sells in. The factor between them is the only thing that keeps a plate cost honest.",
@@ -483,7 +623,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       write: function (v) { return post("units", { units: v.units }); }
     },
     {
-      key: "locations", n: 8, label: "Locations",
+      key: "locations", label: "Locations",
       sub: "Stock cannot exist without one",
       title: "Where stock is held",
       lede: "Every gram in the system sits somewhere. A location is a place a person can walk to and count — the kitchen line, the dry store, the freezer.",
@@ -507,7 +647,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "items", n: 9, label: "Items",
+      key: "items", label: "Items",
       sub: "The first ingredients, with a cost",
       title: "What the kitchen buys",
       lede: "An ingredient carries the unit it is cooked in, the unit it is bought in, and what it costs. That is everything a recipe needs to price a plate.",
@@ -540,7 +680,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "menu", n: 10, label: "Menu",
+      key: "menu", label: "Menu",
       sub: "Sections, dishes, then the recipe on each",
       title: "What you sell",
       lede: "A dish carries a price and a recipe. The price is what the guest pays; the recipe is what leaves the kitchen when they do — and it is what turns a sale into a stock movement and a cost of sales at the moment of sale, rather than in a nightly batch.",
@@ -586,7 +726,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "floor", n: 11, label: "Tables and zones",
+      key: "floor", label: "Tables and zones",
       sub: "Or takeaway only, if that is the business",
       title: "The floor",
       lede: "A floor plan is a list of tables, not a count. A restaurant adds a two-top, pushes two together for a party of eight, or takes the terrace out of service for a week — none of which a number can express.",
@@ -623,7 +763,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "staff", n: 12, label: "Staff",
+      key: "staff", label: "Staff",
       sub: "The people who will use it, each with a rank",
       title: "Who works here",
       lede: "Rank decides what someone can reach: Kitchen 1 sees the kitchen display, Till 2 takes money, Manager 3 approves and receives, Admin 4 changes the configuration, Owner 5 reads across outlets.",
@@ -659,7 +799,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
     },
     {
-      key: "device", n: 13, label: "Device",
+      key: "device", label: "Device",
       sub: "A device is attributable or it takes no money",
       title: "Register this terminal",
       lede: "Every action carries who did it, when, and on which device. A terminal that is not registered is a terminal nobody can hold to account, so it is not allowed to take money.",
@@ -677,7 +817,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       write: function (v) { return api("POST", "/api/auth/devices", v); }
     },
     {
-      key: "register", n: 14, label: "Open the register",
+      key: "register", label: "Open the register",
       sub: "Float counted. Only now can a sale happen",
       title: "Count the float",
       lede: "A closed register cannot take money. Without an opening float there is no expected cash at the end of the shift, and therefore no over or short — the one control every cash-handling business is actually audited on.",
@@ -691,6 +831,18 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     }
   ];
 
+  /* THE NUMBER IS DERIVED, NEVER TYPED. Every step used to carry its own `n`
+     and the screen its own literal 14 — so folding one step into another was
+     a fourteen-place edit, and a missed one reads as "step 5 of 14" over the
+     fourth card. The first three are the application; the rest is the shop. */
+  var APPLICATION = { company: 1, outlet: 1, owner: 1 };
+  STEPS.forEach(function (s, i) {
+    s.n = i + 1;
+    s.apply = !!APPLICATION[s.key];
+    s.group = s.apply ? "Application" : "Set up the shop";
+  });
+  var APPLY_N = STEPS.filter(function (s) { return s.apply; }).length;
+
   /* ── state ────────────────────────────────────────────────────────────── */
   var state = {
     token: null, at: 0, done: {}, outlet: null, install: null,
@@ -703,8 +855,16 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       var typed = (state.vals && state.vals.company) || null;
       if (typed && typed.gstRegistered !== undefined) return typed.gstRegistered === "yes";
       if (state.gst !== undefined) return !!state.gst;
-      var o = state.outlet || {};
-      return !!o.tax_code && o.tax_code !== "NONE";
+      var o = state.outletRec || {};
+      return !!o.taxCode && o.taxCode !== "NONE";
+    },
+    /* The class as it stands ON SCREEN, so the rate beside it is the rate for
+       that class rather than for whatever was saved last. */
+    taxCodeTyped: function () {
+      var v = (state.vals && state.vals.outlet) || {};
+      if (v.taxCode) return v.taxCode;
+      var o = state.outletRec || {};
+      return o.taxCode && o.taxCode !== "NONE" ? o.taxCode : "GGST";
     },
     statutory: function (code) {
       var rows = (state.install && state.install.tax) || [];
@@ -712,6 +872,28 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       return hit ? hit.rate : (code === "TGST" ? 16 : code === "NONE" ? 0 : 8);
     }
   };
+
+  /* WHAT THE COMPANY SAID, wherever it is. What step 1 typed this sitting, or
+     the record the server hands back — because "same as the business" has to
+     survive a reload of this page, and a step that offers it off a variable
+     the page no longer holds is a step that quietly sends nothing. */
+  function companyFacts() {
+    var typed = (state.vals && state.vals.company) || null;
+    var saved = state.company || null;
+    if (typed && (typed.address || typed.legalName)) {
+      return {
+        legalName: typed.legalName, address: typed.address, atoll: typed.atoll,
+        phone: typed.phone, email: typed.email, currency: typed.currency,
+        brand: { website: typed.website, zip: typed.zip, mobile: typed.mobile,
+          logo: typed.logo, type: typed.bizType }
+      };
+    }
+    return saved || { brand: {} };
+  }
+  // An address is typed with line breaks; a one-line label cannot carry them.
+  function oneLine(s) {
+    return String(s || "").replace(/\s+/g, " ").trim().slice(0, 46);
+  }
 
   function today() { return new Date().toISOString().slice(0, 10); }
   function slug(s) {
@@ -752,7 +934,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     if (state.claim) headers["x-claim-token"] = state.claim;
     /* WHICH BUSINESS, for the account that owns more than one. Silent for the
        ordinary customer who owns exactly one; for a group that has signed up a
-       second company, this is what stops fourteen steps of setup landing in
+       second company, this is what stops a whole setup landing in
        whichever database happened to be created last. Read once from the
        address, because that is where a link from Settings or an email would
        carry it. */
@@ -805,10 +987,20 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       state.business = r.business || "";
       state.businessId = r.businessId || state.businessId || null;
       state.businesses = r.businesses || [];
+      state.company = r.company || null;
+      /* The saved outlet, from the onboarding plane rather than from
+         /api/auth/install — that payload is the anonymous LOCK SCREEN's, and
+         widening it to carry a store's slug, kind and brand would put them in
+         front of anybody who can reach the door. */
+      state.outletRec = r.outlet || null;
       return api("GET", "/api/auth/install");
     }).then(function (i) {
       state.install = i;
-      state.outlet = (i.outlets || [])[0] || null;
+      /* DELIBERATELY NOT KEPT. /api/auth/install resolves its outlet from the
+         TERMINAL's own stamp, not from the business being set up, so on a
+         machine already signed into one store it answers about that store.
+         Every reader here now uses state.outletRec, which the onboarding plane
+         resolves from the business this panel is actually configuring. */
       if (!state.token) {
         try {
           var t = JSON.parse(localStorage.getItem("kashikeyo.token") || "null");
@@ -835,6 +1027,42 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
        Offering it here is a prefill and nothing more: whatever is saved on
        this step is the registered name, and the registry adopts it. */
     if (step.key === "company" && state.business) v.legalName = state.business;
+    /* AND WHAT IT ALREADY SAID, where the step has been saved. Going Back used
+       to show an empty form over a chip reading "done" — every answer still in
+       the database and none of it on screen, which reads as work lost. The
+       record is what fills it, so what is shown is what is stored. */
+    if (step.key === "company" && state.company) {
+      var c = state.company, cb = c.brand || {};
+      if (c.legalName) v.legalName = c.legalName;
+      if (c.regNo) v.regNo = c.regNo;
+      if (c.tin) v.tin = c.tin;
+      if (c.address) v.address = c.address;
+      if (c.atoll) v.atoll = c.atoll;
+      if (c.phone) v.phone = c.phone;
+      if (c.email) v.email = c.email;
+      if (c.currency) v.currency = c.currency;
+      if (cb.type) v.bizType = cb.type;
+      if (cb.website) v.website = cb.website;
+      if (cb.zip) v.zip = cb.zip;
+      if (cb.mobile) v.mobile = cb.mobile;
+      if (cb.logo) v.logo = cb.logo;
+      v.gstRegistered = state.gst ? "yes" : "no";
+    }
+    if (step.key === "outlet" && state.outletRec) {
+      var o = state.outletRec, ob = o.brand || {};
+      if (o.name) v.name = o.name;
+      if (o.code) v.code = o.code;
+      if (o.slug) v.slug = o.slug;
+      if (o.kind) v.kind = o.kind;
+      if (o.taxCode) v.taxCode = o.taxCode;
+      if (o.servicePct != null) v.servicePct = o.servicePct;
+      if (o.dayStart) v.dayStart = o.dayStart;
+      // The rate IN FORCE, not the statutory rate for the class. A store that
+      // charges a rate of its own must be shown its own on the way back.
+      if (o.taxRate != null) v.taxRate = o.taxRate;
+      if (o.taxFrom) v.taxFrom = o.taxFrom;
+      if (ob.logo) v.logo = ob.logo;
+    }
     if (step.key === "series") {
       v.series = [
         { kind: "SALE", prefix: pfx("R"), start: 1 },
@@ -874,8 +1102,15 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     if (step.key === "staff") v.staff = [blank(step), blank(step)];
     return v;
   }
+  /* THIS BUSINESS'S OUTLET CODE, from the onboarding plane. It used to come
+     from /api/auth/install — which resolves the outlet from the TERMINAL's own
+     stamp, not from the business being set up. An owner standing at a machine
+     already signed into their first store, setting up their second, would have
+     had the second store's document series prefixed with the first store's
+     code: `SEAS-R` on Reef Island's receipts, permanently, because a series
+     that has issued a number can never be renumbered. */
   function pfx(suffix) {
-    return ((state.outlet && state.outlet.code) || "DOC") + "-" + suffix;
+    return ((state.outletRec && state.outletRec.code) || "DOC") + "-" + suffix;
   }
   function blank(step) {
     var row = {};
@@ -895,6 +1130,12 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
   function fieldsOf(step) {
     var fields = step.dynamic ? step.dynamic().fields : step.fields;
+    /* A field that does not APPLY is different from one that is hidden by
+       another answer. `showIf` is a live relationship between two controls on
+       one card; `when` is whether the question exists at all for this business
+       — the GST rate does not exist for a business that charges none, and
+       rendering it hidden would still put an empty rate in the payload. */
+    fields = (fields || []).filter(function (f) { return !f.when || f.when(); });
     /* A field may defer any of its own properties to render time by giving a
        function instead of a value. STEPS is built before `state` exists — it is
        a literal at the top of this file — so anything that depends on what the
@@ -904,7 +1145,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     return (fields || []).map(function (f) {
       var live = null;
       Object.keys(f).forEach(function (k) {
-        if (typeof f[k] === "function" && k !== "showIf") {
+        if (typeof f[k] === "function" && k !== "showIf" && k !== "when") {
           live = live || Object.assign({}, f);
           live[k] = f[k]();
         }
@@ -919,7 +1160,20 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   function renderRail() {
     var el = document.getElementById("steps");
     el.innerHTML = "";
+    var group = null;
     STEPS.forEach(function (s, i) {
+      /* The application and the shop are two different jobs, and running them
+         together as one column of thirteen says the float count is as much a
+         precondition as the company is. It is not: three steps have to be
+         written before an install can do anything, and the rest is setting a
+         shop up, which the till goes on nudging through afterwards. */
+      if (s.group !== group) {
+        group = s.group;
+        var head = document.createElement("div");
+        head.className = "railHead sub";
+        head.textContent = group;
+        el.appendChild(head);
+      }
       var b = document.createElement("button");
       b.className = "step" + (state.done[s.key] ? " done" : "");
       b.setAttribute("aria-current", i === current ? "true" : "false");
@@ -947,11 +1201,14 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
     var view = viewOf(step);
     var h = el("div");
+    var where = step.apply
+      ? "Step " + step.n + " of " + APPLY_N
+      : "Step " + step.n + " of " + STEPS.length;
     h.appendChild(el("div", { class: "chip" + (state.done[step.key] ? " ok" : "") },
-      state.done[step.key] ? "Step " + step.n + " of 14 · done" : "Step " + step.n + " of 14"));
+      state.done[step.key] ? where + " · done" : where));
     /* WHICH BUSINESS THIS IS SETTING UP, but only where there is a choice to
        get wrong. An account owns exactly one in the ordinary case, and naming
-       it on every screen is noise; an account that owns two is fourteen steps
+       it on every screen is noise; an account that owns two is a whole setup
        away from finding out from the company name on a receipt which one it
        just configured. */
     if ((state.businesses || []).length > 1 && state.business) {
@@ -965,14 +1222,19 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     h.appendChild(el("p", { class: "sub" }, view.lede));
     if (view.why) h.appendChild(el("p", { class: "why" }, view.why));
     var bar = el("div", { class: "bar" });
-    bar.appendChild(el("i", { style: "width:" + Math.round((doneN / 14) * 100) + "%" }));
+    bar.appendChild(el("i", { style: "width:" + Math.round((doneN / STEPS.length) * 100) + "%" }));
     h.appendChild(bar);
     stage.appendChild(h);
+    // The three application steps get the stepper the form is shaped around;
+    // the ten after them get the rail, which is where a thirteen-long sequence
+    // belongs. Two devices for two jobs, not one device stretched over both.
+    if (step.apply) h.insertBefore(renderPills(), h.firstChild);
 
     var card = el("div", { class: "card" });
     if (step.table) card.appendChild(renderTable(step, v));
     else card.appendChild(renderFields(step, v));
     if (step.key === "chart") card.appendChild(renderChartSummary());
+    if (step.summary) card.appendChild(renderApplicationSummary());
     card.appendChild(el("div", { class: "foot" }, view.foot));
     stage.appendChild(card);
 
@@ -981,13 +1243,21 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     stage.appendChild(err);
 
     var row = el("div", { class: "row" });
-    var save = el("button", { class: "go", type: "button" },
-      state.done[step.key] ? "Saved · continue" : (step.n === 14 ? "Open the register and start" : "Save and continue"));
+    /* The last application step SUBMITS — that is the moment the business,
+       the store and the person all exist, and it reads differently from the
+       nine "save and continue" that follow it. The last step of all opens the
+       register, which is the moment a sale becomes possible. */
+    var last = current === STEPS.length - 1;
+    var submits = step.apply && step.n === APPLY_N;
+    var save = el("button", { class: "go" + (submits ? " ok" : ""), type: "button" },
+      state.done[step.key] ? "Saved · continue"
+        : last ? "Open the register and start"
+          : submits ? "Submit application ✓" : "Continue →");
     save.addEventListener("click", function () { commit(step, v, save, err); });
     row.appendChild(save);
 
     if (current > 0) {
-      var back = el("button", { class: "ghost", type: "button" }, "Back");
+      var back = el("button", { class: "ghost", type: "button" }, "← Back");
       back.addEventListener("click", function () { current--; render(); });
       row.appendChild(back);
     }
@@ -1005,9 +1275,9 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     // how far in, how much is left — live in the bar at the top instead.
     document.getElementById("moTitle").textContent = step.label;
     document.getElementById("moSub").textContent = step.sub;
-    document.getElementById("moNo").textContent = step.n + " / 14";
+    document.getElementById("moNo").textContent = step.n + " / " + STEPS.length;
     document.getElementById("moBar").style.width =
-      Math.round((doneN / 14) * 100) + "%";
+      Math.round((doneN / STEPS.length) * 100) + "%";
 
     window.scrollTo(0, 0);
   }
@@ -1040,6 +1310,10 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
         + "&from=" + encodeURIComponent(v[f.from] || "");
       api("GET", "/api/onboarding/handle" + q).then(function (r) {
         if (mine !== seq) return;                 // a later keystroke won
+        // The server is the only thing that knows where the base domain ends,
+        // so the whole address can only ever be spelled from its answer. The
+        // summary on step 3 quotes the same one this field showed.
+        if (r.base) state.portalBase = r.base;
         // Nothing typed yet: offer the business's own name as the address,
         // filled in rather than described, so it can be corrected in place.
         if (!typed && !input.value && r.suggested) {
@@ -1076,7 +1350,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
   function renderFields(step, v) {
     var grid = el("div", { class: "grid" });
-    var inputs = {}, derived = [], conditional = [];
+    var inputs = {}, derived = [], conditional = [], follows = [];
     (fieldsOf(step) || []).forEach(function (f) {
       var wrap = el("div", { class: "f" + (f.full ? " full" : "") });
       var lab = el("label", {}, f.label);
@@ -1090,6 +1364,14 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
           input.appendChild(opt);
         });
         input.value = v[f.k] || (f.options[0] || [])[0] || "";
+      } else if (f.type === "textarea") {
+        input = el("textarea", { rows: "3" });
+        if (f.ph) input.placeholder = f.ph;
+        input.value = v[f.k] === undefined ? "" : v[f.k];
+      } else if (f.type === "toggle") {
+        input = toggleControl(wrap, lab, f, v);
+      } else if (f.type === "logo") {
+        input = logoControl(wrap, f, v);
       } else {
         input = el("input", { type: f.type || "text" });
         if (f.mono) input.className = "mono";
@@ -1100,10 +1382,14 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       }
       input.addEventListener("input", function () { v[f.k] = input.value; });
       input.addEventListener("change", function () { v[f.k] = input.value; });
-      wrap.appendChild(input);
+      // A toggle and a logo have already put their own furniture in the wrap;
+      // what they hand back is the element carrying the VALUE, which is what
+      // showIf reads and what nothing else needs to see.
+      if (f.type !== "toggle" && f.type !== "logo") wrap.appendChild(input);
       inputs[f.k] = input;
       if (f.type === "handle") derived.push({ wrap: wrap, input: input, f: f });
       if (f.showIf) conditional.push({ wrap: wrap, input: input, f: f });
+      if (f.follows) follows.push({ input: input, f: f });
       if (f.hint) wrap.appendChild(el("div", { class: "hint" }, f.hint));
       grid.appendChild(wrap);
     });
@@ -1122,6 +1408,30 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       if (src) { src.addEventListener("change", apply); src.addEventListener("input", apply); }
       apply();
     });
+    /* ── A FIGURE THAT FOLLOWS ANOTHER ANSWER ──────────────────────────────
+       Found by driving this panel rather than by reading it: the rate box is
+       filled with the statutory rate for the class, and the class is chosen
+       AFTER the box has been filled. So picking TGST — the tourism sector,
+       which is 16% — left 8% sitting beside it, and the outlet was created
+       charging half what it owes. A tourism outlet at 8% is a debt to MIRA
+       nobody notices until an audit, which is the same failure this build
+       already refuses in `applySale()`.
+
+       The rate follows the class, and STOPS following the moment somebody
+       types their own — a business whose rate genuinely differs must not have
+       it stomped by a select. Same rule the store address already keeps: a
+       suggestion steps aside for an answer, a decision never does. */
+    follows.forEach(function (d) {
+      var src = inputs[d.f.follows.k];
+      if (!src) return;
+      var mine = false;
+      d.input.addEventListener("input", function () { mine = true; });
+      src.addEventListener("change", function () {
+        if (mine) return;
+        d.input.value = d.f.follows.value(src.value);
+        v[d.f.k] = d.input.value;
+      });
+    });
     // Wired after the loop, not inside it: a field that derives from another
     // one has to be able to find it, and the one it derives from may not have
     // been built yet when its own turn came round.
@@ -1129,7 +1439,152 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     return grid;
   }
 
-  function renderTable(step, v) {
+  /* ── a toggle, which is a question with two answers ──────────────────────
+     Not a checkbox: a checkbox says "on" and leaves "off" to be inferred from
+     an empty box, and the two answers here are both statements — a business
+     that is not registered for GST is making a claim, not failing to make one.
+     So both sides are written out and the one in force is the one showing.
+
+     The value lives on a hidden input rather than on the button, because
+     `showIf` reads `.value` off whatever it is pointed at and a button has
+     none. It dispatches `change` so a conditional field reacts the moment it
+     is pressed, exactly as a select does. */
+  function toggleControl(wrap, lab, f, v) {
+    var hidden = el("input", { type: "hidden" });
+    var on = f.on === undefined ? "yes" : f.on;
+    var off = f.off === undefined ? "no" : f.off;
+    hidden.value = v[f.k] === undefined ? (f.v === undefined ? off : f.v) : v[f.k];
+    v[f.k] = hidden.value;
+
+    var panel = el("div", { class: "tog" });
+    var text = el("div", { class: "tt" });
+    var title = el("b", {}, "");
+    var note = el("small", {}, "");
+    text.appendChild(title); text.appendChild(note);
+    var sw = el("button", { class: "sw", type: "button", role: "switch" });
+    sw.appendChild(el("i"));
+    panel.appendChild(text);
+    panel.appendChild(sw);
+
+    function paint() {
+      var is = hidden.value === on;
+      sw.setAttribute("aria-checked", is ? "true" : "false");
+      sw.classList.toggle("on", is);
+      var t = is ? f.onLabel : f.offLabel;
+      title.textContent = typeof t === "function" ? t() : (t || f.label);
+      /* The label the SWITCH carries is the state it is in; the line under it
+         is what pressing it would DO. Saying both is what stops a toggle being
+         a control somebody has to press to find out — and each is written out
+         as its own sentence rather than composed from the other, because
+         "Press to say " + "This is a taxable business" reads as two sentences
+         welded together, which is exactly how it read on screen. */
+      var pr = is ? f.pressOff : f.pressOn;
+      note.textContent = typeof pr === "function" ? pr() : (pr || "");
+      sw.setAttribute("aria-label", f.label + " — " + title.textContent);
+    }
+    sw.addEventListener("click", function () {
+      hidden.value = hidden.value === on ? off : on;
+      v[f.k] = hidden.value;
+      paint();
+      hidden.dispatchEvent(new Event("change"));
+    });
+    paint();
+    wrap.appendChild(panel);
+    wrap.appendChild(hidden);
+    return hidden;
+  }
+
+  /* ── a logo, scaled on the device that took it ───────────────────────────
+     The same rule a dish photograph already follows: what comes off a phone is
+     a four-megapixel JPEG, and a four-megapixel JPEG in an offline cache costs
+     a terminal its whole storage budget. 320px on the longest side lands under
+     a hundred kilobytes for any real mark.
+
+     PNG stays PNG. A logo is the one image in this app that genuinely needs
+     transparency — re-encoding it as JPEG puts a white box behind the mark on
+     every dark receipt header and every dark menu. */
+  function logoControl(wrap, f, v) {
+    var hidden = el("input", { type: "hidden" });
+    hidden.value = v[f.k] || "";
+
+    var box = el("div", { class: "logo" });
+    var pic = el("div", { class: "lp" });
+    var img = el("img", { alt: "" });
+    pic.appendChild(img);
+    var side = el("div", { class: "ls" });
+    var pick = el("button", { class: "mini", type: "button" }, "Upload logo");
+    var drop = el("button", { class: "mini ghosty", type: "button" }, "Remove");
+    var says = el("div", { class: "hint" }, "");
+    var file = el("input", { type: "file", accept: "image/png,image/jpeg" });
+    file.style.display = "none";
+    var acts = el("div", { class: "la" });
+    acts.appendChild(pick); acts.appendChild(drop);
+    side.appendChild(acts); side.appendChild(says);
+    box.appendChild(pic); box.appendChild(side); box.appendChild(file);
+
+    function paint(msg) {
+      var has = !!hidden.value;
+      img.style.display = has ? "" : "none";
+      if (has) img.src = hidden.value;
+      pic.classList.toggle("empty", !has);
+      pick.textContent = has ? "Replace" : "Upload logo";
+      drop.style.display = has ? "" : "none";
+      says.textContent = msg || (has ? "Stored with the record and printed from it."
+        : "None — click to browse. PNG or JPG, up to 2 MB.");
+      says.style.color = msg ? "var(--danger-bright)" : "";
+    }
+    pick.addEventListener("click", function () { file.click(); });
+    pic.addEventListener("click", function () { file.click(); });
+    drop.addEventListener("click", function () {
+      hidden.value = ""; v[f.k] = ""; file.value = ""; paint();
+    });
+    file.addEventListener("change", function () {
+      var got = file.files && file.files[0];
+      if (!got) return;
+      // Refused by NAME, not silently ignored. A picker that accepts a file
+      // and shows nothing is a picker somebody tries three times.
+      if (!/^image\/(png|jpeg)$/.test(got.type)) {
+        return paint("That is a " + (got.type || "file of an unknown kind")
+          + " — a logo is a PNG or a JPG.");
+      }
+      if (got.size > 2 * 1024 * 1024) {
+        return paint("That file is " + Math.round(got.size / 1048576 * 10) / 10
+          + " MB — the limit is 2 MB.");
+      }
+      paint("Scaling it down…");
+      var rd = new FileReader();
+      rd.onerror = function () { paint("That file could not be read."); };
+      rd.onload = function () {
+        var im = new Image();
+        im.onerror = function () { paint("That file is not an image this browser can open."); };
+        im.onload = function () {
+          try {
+            var max = 320;
+            var sc = Math.min(1, max / Math.max(im.width, im.height));
+            var cv = document.createElement("canvas");
+            cv.width = Math.max(1, Math.round(im.width * sc));
+            cv.height = Math.max(1, Math.round(im.height * sc));
+            cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+            var out = got.type === "image/png"
+              ? cv.toDataURL("image/png")
+              : cv.toDataURL("image/jpeg", 0.85);
+            hidden.value = out;
+            v[f.k] = out;
+            paint(cv.width + "×" + cv.height + " · "
+              + Math.round(out.length * 0.75 / 1024) + " KB");
+          } catch (e) { paint("That image could not be scaled: " + e.message); }
+        };
+        im.src = rd.result;
+      };
+      rd.readAsDataURL(got);
+    });
+    paint();
+    wrap.appendChild(box);
+    wrap.appendChild(hidden);
+    return hidden;
+  }
+
+  function renderTable(step, v) {""
     var key = step.table.rows;
     var rows = v[key] || (v[key] = []);
     var box = el("div");
@@ -1238,6 +1693,66 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     return box;
   }
 
+  /* ── the pill stepper ────────────────────────────────────────────────────
+     Three nodes and two lines, and every one of them is a fact rather than a
+     decoration: filled is where you are, ticked is written, pale is ahead. It
+     is drawn only over the application, because a stepper is legible at three
+     and a smear at thirteen — the rail is what carries the long sequence.
+
+     Reachability is the same rule the rail keeps: a step is reachable if the
+     one before it is done, so this cannot be used to jump the dependency. */
+  function renderPills() {
+    var box = el("div", { class: "pills" });
+    STEPS.filter(function (s) { return s.apply; }).forEach(function (s, i) {
+      var idx = STEPS.indexOf(s);
+      if (i) box.appendChild(el("span", { class: "pline"
+        + (state.done[STEPS[idx - 1].key] ? " done" : "") }));
+      var reachable = idx === 0 || state.done[STEPS[idx - 1].key] || state.done[s.key];
+      var b = el("button", { class: "pill" + (state.done[s.key] ? " done" : "")
+        + (idx === current ? " now" : ""), type: "button" });
+      b.disabled = !reachable;
+      b.setAttribute("aria-current", idx === current ? "step" : "false");
+      var dot = el("span", { class: "pd" }, state.done[s.key] ? "✓" : String(s.n));
+      var lab = el("span", { class: "pl" }, s.label);
+      b.appendChild(dot); b.appendChild(lab);
+      b.addEventListener("click", function () { if (reachable) { current = idx; render(); } });
+      box.appendChild(b);
+    });
+    return box;
+  }
+
+  /* ── what is about to be submitted ───────────────────────────────────────
+     Read off what has actually been written or typed, never off a literal.
+     A summary that states a plan nobody chose, or an outlet nobody named, is
+     the invented-figure defect with a border round it — so a line with no
+     answer says so rather than guessing one. */
+  function renderApplicationSummary() {
+    var c = companyFacts();
+    var o = (state.vals && state.vals.outlet) || {};
+    var out = state.outletRec || {};
+    var box = el("div", { class: "sum" });
+    box.appendChild(el("div", { class: "sumh" }, "Your application"));
+    var rows = [
+      ["Business", c.legalName || state.business || "—"],
+      ["GST", state.gstRegistered() ? "Registered" : "Not registered"],
+      ["Outlet", out.name || o.name || "—"],
+      ["Store address", (out.slug || o.slug)
+        ? (out.slug || o.slug) + (state.portalBase ? "." + state.portalBase : "")
+        : "—"],
+      ["Currency", c.currency || "MVR"]
+    ];
+    rows.forEach(function (r) {
+      var kv = el("div", { class: "kv" });
+      kv.appendChild(el("b", {}, r[0]));
+      kv.appendChild(el("span", {}, r[1]));
+      box.appendChild(kv);
+    });
+    box.appendChild(el("div", { class: "hint" },
+      "Submitting creates the rank-5 account and signs this terminal in as it. "
+      + "Everything above is editable afterwards from Settings."));
+    return box;
+  }
+
   function renderChartSummary() {
     var box = el("div");
     box.style.marginTop = "18px";
@@ -1310,7 +1825,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
   function advance() {
     if (current < STEPS.length - 1) { current++; render(); return; }
-    // Fourteen of fourteen. Stamp it and hand over to the floor.
+    // The last of them. Stamp it and hand over to the floor.
     api("POST", "/api/onboarding/finish", {}).catch(function () {}).then(function () {
       toast("Set up — opening the floor");
       setTimeout(function () { location.href = "/"; }, 700);

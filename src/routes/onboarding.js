@@ -295,6 +295,46 @@ r.get('/state', async function (req, res, next) {
     // answer, not one inferred from an outlet that does not exist yet.
     const reg = await biz(req).query('SELECT chain.gst_registered() AS on');
     const gstRegistered = !!reg.rows[0].on;
+    /* WHAT HAS ALREADY BEEN SAID, so the panel can show it back. Two jobs:
+       "same as the business" on step 2 has to read the RECORD or a reload
+       breaks the offer, and a step somebody goes Back to must show what is
+       stored rather than an empty form under a chip reading "done".
+
+       Only until an owner exists — the same window the setup code covers, and
+       after that this is Settings' job, behind a session. */
+    let company = null;
+    let outletRec = null;
+    if (done.company && !done.owner) {
+      const co = await biz(req).query('SELECT legal_name, reg_no, tin, address,'
+        + ' atoll, phone, email, base_currency, brand FROM chain.company WHERE id = 1');
+      const c = co.rows[0] || {};
+      company = { legalName: c.legal_name, regNo: c.reg_no, tin: c.tin,
+        address: c.address, atoll: c.atoll, phone: c.phone, email: c.email,
+        currency: c.base_currency, brand: c.brand || {} };
+    }
+    if (done.outlet && !done.owner) {
+      const o = await biz(req).query('SELECT o.id, o.code, o.name, o.slug, o.kind,'
+        + ' o.tax_code, o.service_pct, o.day_start, o.address, o.atoll, o.phone, o.brand,'
+        // The rate IN FORCE, not the statutory one for the class: a store that
+        // charges a rate of its own must be shown its own on the way back.
+        + ' (SELECT tv.rate FROM chain.tax_version tv WHERE tv.outlet_id = o.id'
+        + '   AND tv.effective_from <= current_date'
+        + '   AND (tv.effective_to IS NULL OR tv.effective_to >= current_date)'
+        + '   ORDER BY tv.effective_from DESC LIMIT 1) AS tax_rate,'
+        + ' (SELECT tv.effective_from FROM chain.tax_version tv WHERE tv.outlet_id = o.id'
+        + '   ORDER BY tv.effective_from DESC LIMIT 1) AS tax_from'
+        + ' FROM chain.outlet o ORDER BY o.id LIMIT 1');
+      const x = o.rows[0];
+      if (x) {
+        outletRec = { id: x.id, code: x.code, name: x.name, slug: x.slug,
+          kind: x.kind, taxCode: x.tax_code,
+          servicePct: x.service_pct == null ? null : String(Number(x.service_pct)),
+          dayStart: x.day_start ? String(x.day_start).slice(0, 5) : null,
+          address: x.address, atoll: x.atoll, phone: x.phone, brand: x.brand || {},
+          taxRate: x.tax_rate == null ? null : String(Number(x.tax_rate)),
+          taxFrom: x.tax_from ? String(x.tax_from).slice(0, 10) : null };
+      }
+    }
     let deeper = {};
     if (done.outlet) {
       const o = await biz(req).query('SELECT id, schema_name FROM chain.outlet'
@@ -360,6 +400,16 @@ r.get('/state', async function (req, res, next) {
          working title. */
       business: req.bizName || null,
       businessId: req.bizId || null,
+      /* THE COMPANY'S OWN CONTACT, so step 2 can offer "same as the business"
+         and mean it. A single-outlet business trades at its registered address
+         on its registered number — asking for both twice is the panel asking a
+         customer to type the same street name into two boxes. It has to come
+         from the RECORD rather than from what step 1 happened to leave in the
+         page, or the offer is broken by a reload. Only what step 1 itself
+         collected, and only until an owner exists, which is the same window
+         the setup code covers. */
+      company: company,
+      outlet: outletRec,
       /* EVERY business this account owns, so a group with two can be told
          which one it is setting up rather than discovering it afterwards from
          the company name on a receipt. One business is the ordinary case and
@@ -534,6 +584,11 @@ r.post('/outlet', openDoor, claim, async function (req, res, next) {
       taxCode: b.taxCode || null, taxRate: b.taxRate, taxFrom: b.taxFrom,
       servicePct: b.servicePct == null ? 10 : b.servicePct,
       address: b.address, atoll: b.atoll, phone: b.phone,
+      /* The store's own face — logo, email, website, postal code, mobile.
+         Migration 044 gave the outlet a `brand` of its own for exactly these:
+         they are what a receipt and a portal print, and none of them is a
+         column anybody queries on. */
+      brand: b.brand || null,
       // An outlet keeps the company's books, so it keeps the company's
       // currency unless it is explicitly given another one.
       tz: b.tz, currency: b.currency || (await baseCurrency(biz(req))), dayStart: b.dayStart,

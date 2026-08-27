@@ -93,9 +93,10 @@ starting clean is simpler and skips the one irreversible step in this document.
 3. **Sign up on the website.** Confirm the email, and a database is created for
    that business. No seller is in the loop and no infrastructure is provisioned
    per customer.
-4. **Work the fourteen steps.** The last one hands you the floor, signed in as
-   the owner, with a PIN you set. **Write that PIN down before you close the
-   tab.**
+4. **Work the steps.** Three are the application — the business, its first
+   store, your own account — and the ten after them set the shop up. The last
+   one hands you the floor, signed in as the owner, with a PIN you set.
+   **Write that PIN down before you close the tab.**
 
 There is no seed data and no demo. A new business has no outlets, no dishes, no
 staff and no PIN until onboarding writes them.

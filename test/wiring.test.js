@@ -4271,3 +4271,112 @@ test('a refused session says what the server said, and the terminal locks', () =
     'and says what happens to work not yet delivered');
   assert.match(SRC, /this\.fault\("session",/, 'and it lands on Diagnostics');
 });
+
+/* ═══ ONE FACT IS ASKED ONCE ════════════════════════════════════════════════
+   Three things were asked twice on the onboarding panel, and every one of them
+   was invisible from the step that asked second — nothing errors, nothing is
+   lost, the customer simply types their own street name into two boxes and
+   answers the same tax question on two screens. Repetition is the kind of
+   defect a test has to hold, because it never announces itself.
+
+   The tax step was the worst of the three: provisionOutlet() writes
+   chain.tax_version from the outlet step's own taxCode, taxRate and taxFrom,
+   so the server reported that step DONE before anybody reached it, and it
+   could only ever open on "Saved · continue". */
+test('the onboarding panel asks one fact once', () => {
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
+
+  const steps = panel.slice(panel.indexOf('var STEPS = ['),
+    panel.indexOf('var APPLICATION = {'));
+
+  // Every key that appears in more than one step's field list, with what it
+  // is allowed to appear twice for. Nothing is allowed twice today.
+  const perStep = {};
+  let key = null;
+  steps.split('\n').forEach((line) => {
+    const k = line.match(/^\s{4}key: "([a-z]+)"/);
+    if (k) { key = k[1]; perStep[key] = perStep[key] || []; return; }
+    const f = line.match(/\{ k: "([A-Za-z0-9]+)"/);
+    if (f && key) perStep[key].push(f[1]);
+  });
+
+  const CONTACT = ['address', 'atoll', 'phone', 'email', 'zip', 'mobile', 'website'];
+  CONTACT.forEach((k) => {
+    const asked = Object.keys(perStep).filter((s) => perStep[s].indexOf(k) >= 0);
+    /* The outlet may ask again, but only BEHIND the toggle: "same as the
+       business" is the default and the fields are hidden until somebody says
+       this store trades somewhere else. Asked outright on both steps is the
+       defect. */
+    asked.forEach((s) => {
+      if (s === 'company') return;
+      const step = steps.slice(steps.indexOf('key: "' + s + '"'));
+      const field = (step.match(new RegExp('\\{ k: "' + k + '",[\\s\\S]{0,300}?\\},\\n')) || [''])[0];
+      assert.match(field, /showIf: \{ k: "sameAs", is: "no" \}/,
+        k + ' on the ' + s + ' step is asked only where it differs');
+    });
+  });
+
+  // And the outlet step sends the company's answer when it is not asked.
+  const outlet = steps.slice(steps.indexOf('key: "outlet"'));
+  assert.match(outlet, /var own = v\.sameAs !== "yes";/,
+    'the outlet step knows which answer it is sending');
+  assert.match(outlet, /address: own \? v\.address : c\.address/,
+    "and sends the company's where the store has not given its own");
+
+  // The tax step is gone, absorbed into the step that already wrote its row.
+  assert.ok(!/key: "tax"/.test(panel), 'there is no separate tax step');
+
+  /* AND THE PANEL READS THE BUSINESS IT IS SETTING UP, not the terminal it is
+     being typed on. /api/auth/install resolves its outlet from the TERMINAL's
+     own stamp — so an owner standing at a machine already signed into their
+     first store, setting up their second, was shown the FIRST store's code,
+     tax class and rate. The document-series prefix is built from that code,
+     and a series that has issued a number can never be renumbered: the second
+     store's receipts would have carried the first store's prefix for good. */
+  assert.ok(!/state\.outlet\b(?!Rec)/.test(panel),
+    'nothing reads the lock screen\'s idea of which outlet this is');
+  assert.match(panel, /state\.outletRec && state\.outletRec\.code/,
+    'the series prefix comes from this business\'s own outlet');
+
+  /* THE NUMBER IS DERIVED. Every step used to carry its own `n` and the screen
+     its own literal 14, so folding one step into another was a fourteen-place
+     edit and a missed one reads as "step 5 of 14" over the fourth card. */
+  assert.ok(!/\bn: \d+, label:/.test(panel), 'no step numbers itself');
+  assert.match(panel, /STEPS\.forEach\(function \(s, i\) \{\n\s*s\.n = i \+ 1;/,
+    'the number comes from the position');
+  /* Comments describe the defect being fixed and are allowed to quote it; the
+     CODE is what must not count to a literal. Strip the prose first, or this
+     check fails on the paragraph explaining why it exists. */
+  const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/of 14|\/ 14\b|doneN \/ 14/.test(code),
+    'and nothing counts to a literal fourteen');
+});
+
+/* A logo is an image off a phone, and a four-megapixel JPEG in an offline
+   cache costs a terminal its whole storage budget — the same rule the dish
+   photograph already follows. PNG stays PNG: a logo is the one image in this
+   app that genuinely needs transparency, and re-encoding it as JPEG puts a
+   white box behind the mark on every dark receipt header. */
+test('a logo is scaled on the device, and a PNG stays a PNG', () => {
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
+  const fn = panel.slice(panel.indexOf('function logoControl('),
+    panel.indexOf('function renderTable('));
+  assert.match(fn, /var max = 320;/, 'it is scaled down before it is sent');
+  assert.match(fn, /got\.type === "image\/png"\s*\n?\s*\? cv\.toDataURL\("image\/png"\)/,
+    'and a PNG keeps its transparency');
+  assert.match(fn, /2 \* 1024 \* 1024/, 'a file over the limit is refused');
+  assert.match(fn, /a logo is a PNG or a JPG/, 'and refused BY NAME, not ignored');
+
+  // Both logos reach a column. A field collected, toasted as saved and written
+  // nowhere is the defect this build refuses by name.
+  assert.match(panel, /brand: \{ logo: v\.logo \|\| "", type: v\.bizType/,
+    "the company's logo rides on chain.company.brand");
+  assert.match(panel, /logo: v\.logo \|\| "",\n\s*email:/,
+    "and the outlet's on chain.outlet.brand");
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '044_an_outlet_has_a_face.sql'), 'utf8');
+  assert.match(mig, /ALTER TABLE chain\.outlet ADD COLUMN IF NOT EXISTS brand jsonb/,
+    'which migration 044 gave it');
+});

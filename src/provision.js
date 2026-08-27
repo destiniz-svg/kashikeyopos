@@ -76,12 +76,16 @@ async function provisionOutlet(opts) {
       + ' tax_code = $4, service_pct = coalesce($5, service_pct),'
       + ' address = $6, atoll = $7, phone = $8, tz = coalesce($9, tz),'
       + ' currency = coalesce($10, currency), day_start = coalesce($11, day_start),'
-      + ' slug = $12 WHERE id = $1',
+      /* SILENCE PRESERVES, the same rule item.off_menu follows. A caller that
+         says nothing about the store's face keeps the face it has; only an
+         object replaces one. Reprovisioning an outlet to restore its role must
+         not wipe its logo. */
+      + " slug = $12, brand = coalesce($13::jsonb, brand) WHERE id = $1",
       [id, opts.kind || null, opts.parentId || null, taxCode,
         opts.servicePct == null ? null : Number(opts.servicePct),
         opts.address || null, opts.atoll || null, opts.phone || null,
         opts.tz || null, opts.currency || null, opts.dayStart || null,
-        chosen]);
+        chosen, opts.brand == null ? null : JSON.stringify(opts.brand)]);
 
     /* CLAIMED IN THE REGISTRY, where the name is unique across every business.
        chain.outlet.slug is a local copy for the pages this database renders;

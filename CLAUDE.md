@@ -54,6 +54,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        041 heat is a property of the dish
                        042 a receipt has an address
                        043 a sale the till can name
+                       044 an outlet has a face
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -64,7 +65,8 @@ src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
 app/index.html         the terminal (POS, KDS, back office) — one app, gated by rank
-app/onboarding.html    the fourteen-step panel an empty install lands on
+app/onboarding.html    the panel an empty install lands on — three application
+                       steps, then ten that set the shop up
 app/guest.html         the QR portal
 app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
@@ -2829,6 +2831,107 @@ OUTLET like the invitation — this is about spend, not identity — and both la
 on the trail.
 
 
+## The onboarding panel asks one fact once
+
+Reported as *"onboarding has some repetitive fields"*, and the repetition was
+real in three places. None of them errors, none of them loses anything, and
+that is exactly why they survived: a customer simply types their own street
+name into two boxes and answers the same tax question on two screens.
+
+- **The address, the phone and the email** were asked on the company step and
+  again on the outlet step. A single-outlet business trades at its registered
+  address on its registered number, so the honest default is *the same*, said
+  once and shown rather than typed again. **Same as the business** is a toggle
+  on step 2, on by default, and the fields appear only when somebody says this
+  store trades somewhere else. It reads off the RECORD — `/state` carries the
+  company's own contact — because an offer that reads off what step 1 left in
+  the page is an offer a reload turns into a control that sends nothing.
+- **The tax class and the service charge** were asked on the outlet step and
+  again on a tax step immediately after it. `servicePct` was literally the same
+  field under the same label, twice.
+- **The tax step was never doing anything.** `provisionOutlet()` writes
+  `chain.tax_version` from the outlet step's own `taxCode`, `taxRate` and
+  `taxFrom`, in the same transaction that creates the schema and the login
+  role — so `/state` reported that step DONE before anybody reached it, and it
+  could only ever open on *Saved · continue*. A step whose only possible state
+  is "saved" is a step asking a question it has already been given the answer
+  to. It is gone; the rate and the date it takes effect moved up beside the
+  class that decides them. Thirteen steps, not fourteen.
+
+**The first three are the APPLICATION.** The company, the store and the person
+are what must be written before an install can do anything at all; the ten
+after them are the shop being set up, which the till goes on nudging through on
+its own Today list. So the two are shaped differently: a three-node pill
+stepper over the application, the rail for the long sequence. A stepper is
+legible at three and a smear at thirteen.
+
+**The number is derived, never typed.** Every step used to carry its own `n`
+and the screen its own literal 14, so folding one step into another was a
+fourteen-place edit and a missed one reads as "step 5 of 14" over the fourth
+card. `STEPS.forEach` sets it from the position.
+
+**A field a form collects has to land somewhere.** The three steps now ask for
+what a business actually hands over — a logo, a business type, a website, a
+postal code, a mobile. `chain.company.brand` has carried exactly that shape
+since the schema was written and nothing had ever asked for it;
+`chain.outlet` had no equivalent, so **migration 044** gives it one. jsonb
+rather than five columns for the same reason the company has one: these are
+presentation, not predicates, and nothing joins on a website. A field
+collected, toasted as saved and written nowhere is the defect this build
+refuses by name, and the honest alternatives were to add the column or stop
+asking.
+
+Two things are deliberately NOT asked, though the form they were taken from
+asks both. **An outlet TIN**: in the Maldives the taxpayer registers with MIRA,
+not the shop — registration is a COMPANY fact, and a second TIN field invites a
+business to invent one. **An activity registration document**: nobody reviews
+an application here, because signing up creates the store, so a 10 MB PDF
+nothing reads is a control that does nothing.
+
+**A logo is scaled on the device that took it**, 320px on the longest side —
+the same rule a dish photograph already follows, and for the same reason. A
+PNG stays a PNG: a logo is the one image in this app that genuinely needs
+transparency, and re-encoding it as JPEG puts a white box behind the mark on
+every dark receipt header.
+
+### Two defects found by driving it, neither reachable by reading it
+
+**A tourism outlet was created charging 8%.** The rate box is filled with the
+statutory rate for the class the step opens on — GGST, 8% — and the class is
+chosen AFTER it has been filled. So picking TGST, which is 16%, left 8% sitting
+beside it. Measured against a real database before the fix: `tax_code` TGST,
+`tax_version` rate **8.00**. A tourism outlet at half its rate is a debt to
+MIRA nobody notices until an audit, which is the failure `applySale()` already
+refuses on the other side. The rate follows the class now, and STOPS following
+the moment somebody types their own — a business whose rate genuinely differs
+must not have it stomped by a select, the same rule the store address already
+keeps: a suggestion steps aside for an answer, a decision never does.
+
+**And the panel was reading the wrong outlet.** `state.outlet` came from
+`/api/auth/install`, which resolves its outlet from the TERMINAL's own stamp
+rather than from the business being set up. An owner standing at a machine
+already signed into their first store, setting up their second, was shown the
+first store's code, tax class and rate — and `pfx()` builds the document-series
+prefix from that code. A series that has issued a number can never be
+renumbered, so the second store's receipts would have carried the first store's
+prefix for good. Every reader uses `state.outletRec` now, which the onboarding
+plane resolves from the business this panel is actually configuring; the lock
+screen's payload is deliberately not widened to carry a store's slug, kind and
+brand, because it answers before anybody has signed in.
+
+Going Back also shows what is STORED rather than an empty form under a chip
+reading "done" — every answer still in the database and none of it on screen,
+which reads as work lost. `/state` carries the saved company and the saved
+outlet, including the rate actually in force rather than the statutory one for
+the class.
+
+Measured by driving the shipped panel in Chromium, twice: a business that is
+not registered for GST (the TIN field appears and disappears with the toggle,
+the outlet inherits the company's address, phone, email, website, postal code
+and mobile while keeping a logo of its own) and one that is (TGST at 16.00 in
+`chain.tax_version`, its own address, its own email). At 390px the page does
+not scroll sideways and no control is under 44px on its short axis.
+
 ## A setup file is not a backup
 
 Asked as one sentence — *"a local backup in case we reset, and let us set what
@@ -3837,7 +3940,7 @@ store request on the website lands in Mission Control; **Provision** creates
 the install, links the request, and **emails the customer their address and
 setup code in the same act** — the message deliberately carries no password,
 because they set their own on their own install's `/account`. From there they
-run the fourteen onboarding steps themselves and land on a live trial. A form
+run the onboarding steps themselves and land on a live trial. A form
 anybody on the internet can post still never spins up paid infrastructure;
 what changed is that everything after the seller's one click is self-serve.
 

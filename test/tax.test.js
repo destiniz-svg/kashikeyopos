@@ -146,10 +146,16 @@ test('onboarding asks whether the business is registered, and defaults to NOT', 
   const panel = fs.readFileSync(
     path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
 
-  const field = (panel.match(/\{ k: "gstRegistered",[\s\S]{0,700}?\},\n/) || [''])[0];
+  const field = (panel.match(/\{ k: "gstRegistered",[\s\S]{0,900}?\},\n/) || [''])[0];
   assert.ok(field, 'step 1 asks the question outright');
-  assert.match(field, /"no", "Not registered for GST"/, 'both answers are offered');
-  assert.match(field, /"yes", "Registered for GST"/);
+  /* BOTH ANSWERS ARE WRITTEN OUT. This was a select and is now a toggle, and
+     the property that matters is unchanged by that: a business that is not
+     registered for GST is making a statement, not failing to make one, so the
+     off side carries words of its own rather than leaving the reader to infer
+     it from an unlit switch. */
+  assert.match(field, /offLabel: "Not registered for GST"/, 'the off side says what it means');
+  assert.match(field, /onLabel: "This is a taxable business"/, 'and so does the on side');
+  assert.match(field, /on: "yes", off: "no"/, 'and the two answers are the two the server reads');
   // Most new businesses are below the threshold. A default of "registered"
   // is a default that puts 8% on a menu nobody agreed to.
   assert.match(field, /v: "no"/, 'and the default is not registered');
@@ -164,27 +170,78 @@ test('onboarding asks whether the business is registered, and defaults to NOT', 
     'it appears only when it applies');
 });
 
-test('the tax step claims nothing of a business that charges nothing', () => {
+test('the tax profile is asked once, and claims nothing of a business that charges nothing', () => {
   const fs = require('fs');
   const path = require('path');
   const panel = fs.readFileSync(
     path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
 
-  const step = panel.slice(panel.indexOf('key: "tax"'), panel.indexOf('key: "series"'));
-  assert.match(step, /if \(!state\.gstRegistered\(\)\)/,
-    'the step branches on the answer');
-  assert.match(step, /No GST to confirm/, 'and says so');
+  /* ASKED ONCE. There used to be a tax STEP after the outlet step, asking the
+     class and the service charge over again and the rate for the first time —
+     while provisionOutlet() had already written chain.tax_version from the
+     outlet step's own answers, so the server reported that step done before
+     anybody reached it. A step whose only possible state is "saved" is a step
+     asking a question it has been given the answer to. */
+  assert.ok(!/key: "tax"/.test(panel), 'there is no separate tax step');
+  assert.ok(!/post\("tax"/.test(panel), 'and nothing posts to the tax handler');
+  const servicePct = panel.match(/k: "servicePct"/g) || [];
+  assert.strictEqual(servicePct.length, 1,
+    'the service charge is asked in exactly one place');
 
-  /* The registered branch asserts "Prices on the menu are set exclusive of GST
-     and the tax is shown as its own line". For a business that is not
-     registered that is simply untrue, and the step used to say it to everybody
-     — over a rate box defaulting to 8%. */
-  const unreg = step.slice(step.indexOf('if (!state.gstRegistered()'),
-    step.indexOf('return {\n          fields:'));
-  assert.ok(!/shown as its own line/.test(unreg),
-    'the unregistered branch does not promise a tax line');
-  assert.ok(!/k: "rate"/.test(unreg), 'and does not ask for a rate');
-  assert.ok(!/k: "code"/.test(unreg), 'or a tax class');
+  const step = panel.slice(panel.indexOf('key: "outlet"'), panel.indexOf('key: "owner"'));
+
+  // The class offered depends on the answer given on step 1: a business that
+  // is not registered is offered NONE and nothing else, rather than a select
+  // defaulting to GGST beside a rate box.
+  assert.match(step, /state\.gstRegistered\(\)\s*\n?\s*\? \[\["GGST"/,
+    'the class branches on the answer');
+  assert.match(step, /\[\["NONE", "Not registered for GST"\]\]/,
+    'and an unregistered business is offered only that');
+
+  /* The RATE and the date it takes effect do not merely hide for a business
+     that charges none — they do not apply, so they are not rendered and not
+     sent. A hidden field that still reaches the payload is how a business that
+     charges nothing acquires a rate. */
+  const rate = (step.match(/\{ k: "taxRate",[\s\S]{0,400}?\},\n/) || [''])[0];
+  assert.ok(rate, 'the rate is asked on the outlet step');
+  assert.match(rate, /when: function \(\) \{ return state\.gstRegistered\(\); \}/,
+    'and only where there is a rate to charge');
+  const from = (step.match(/\{ k: "taxFrom",[\s\S]{0,300}?\},\n/) || [''])[0];
+  assert.match(from, /when: function \(\) \{ return state\.gstRegistered\(\); \}/,
+    'and so is the date it takes effect');
+  assert.match(step, /taxRate: state\.gstRegistered\(\)/,
+    'and the payload asks the same question again before sending either');
+});
+
+/* ═══ THE RATE FOLLOWS THE CLASS ════════════════════════════════════════════
+   Found by driving the panel rather than by reading it. The rate box is filled
+   with the statutory rate for the class the step opens on — GGST, 8% — and the
+   class is chosen AFTER it has been filled. So picking TGST, the tourism
+   sector at 16%, left 8% sitting beside it, and the outlet was created
+   charging half what it owes. Measured against a real database before the fix:
+   tax_code TGST, tax_version rate 8.00.
+
+   A tourism outlet at 8% is a debt to MIRA nobody notices until an audit,
+   which is the failure applySale() already refuses on the other side. */
+test('the GST rate follows the class it is charged under', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
+
+  const rate = panel.slice(panel.indexOf('{ k: "taxRate"'), panel.indexOf('{ k: "taxFrom"'));
+  assert.match(rate, /follows: \{ k: "taxCode", value: function \(code\) \{ return String\(state\.statutory\(code\)\); \} \}/,
+    'the rate is bound to the class');
+
+  /* And it STOPS following the moment somebody types their own. A business
+     whose rate genuinely differs must not have it stomped by a select — the
+     same rule the store address already keeps, where a suggestion steps aside
+     for an answer and a decision never does. */
+  const wire = panel.slice(panel.indexOf('follows.forEach(function (d)'),
+    panel.indexOf('derived.forEach(function (d)'));
+  assert.match(wire, /d\.input\.addEventListener\("input", function \(\) \{ mine = true; \}\);/,
+    'a typed figure is remembered as typed');
+  assert.match(wire, /if \(mine\) return;/, 'and is never overwritten afterwards');
 });
 
 test('a receipt prints no TIN when the business has none', () => {
