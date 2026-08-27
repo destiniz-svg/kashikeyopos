@@ -7347,7 +7347,7 @@ class Component extends DCLogic {
             img: String(d.img || "")
           };
           if (m.id) this.patchRows("menu", [m.id], next, name + " updated \u00b7 " + this.catMeta(d.cat).name + " \u00b7 " + MVRc(price), "menu");
-          else this.insertRow("menu", Object.assign({ id: this.nextId("menu", "m"), recipe: [] }, next),
+          else this.insertRow("menu", Object.assign({ id: this.newId("m"), recipe: [] }, next),
             "Dish created \u00b7 " + name + " at " + MVRc(price), "menu_items");
         }
       };
@@ -13170,6 +13170,51 @@ class Component extends DCLogic {
     return { food: "Food", beverage: "Beverage", packaging: "Packaging", cleaning: "Cleaning", equipment: "Equipment", services: "Services" }[k || "food"] || "Food";
   }
   vendor(id) { return ((window.KPOS_RAW || {}).vendors || []).find((x) => x.id === id) || null; }
+  /* AN ID MINTED ON A DEVICE HAS TO BE UNIQUE ACROSS DEVICES.
+
+     `nextId()` counts the rows THIS browser is holding and adds one. Two
+     terminals that have not yet seen each other's work therefore mint the
+     SAME id — and `dish_upsert` upserts on it, so the second one to reach the
+     outlet SILENTLY DESTROYS the first. Measured in two real browsers against
+     a real outlet, before this was written: three dishes added, two rows left,
+     and the one that vanished had a toast saying it was created.
+
+     Within one browser it is fine, and that is what made it invisible:
+     `insertRow()` unshifts the new row into the collection before queueing, so
+     a terminal adding two in a row gets m4 then m5. It is only the second
+     terminal that collides, which is exactly the case nobody tests by hand.
+
+     This build already answers this twice — `opId` is a v4 uuid from the
+     platform CSPRNG, and `ticket_line.client_id` is a uuid because a line
+     created offline has to be nameable before any server has seen it. A menu
+     row is the same problem, so it gets the same answer: minted locally, from
+     the CSPRNG, and never from a count of what this device happens to hold.
+
+     The prefix stays, and so does a time component, because these ids are read
+     by people — they appear in a recipe line, in the menu CSV, and in a
+     support conversation — and `m` still means a menu row. */
+  newId(prefix) {
+    let rnd = "";
+    try {
+      if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+        rnd = Array.from(crypto.getRandomValues(new Uint8Array(4)))
+          .map((b) => (b + 256).toString(36).slice(1)).join("");
+      }
+    } catch (e) { rnd = ""; }
+    // Never silently: a collision here costs a row, so a browser with no
+    // CSPRNG is worth knowing about rather than quietly falling back.
+    if (!rnd) {
+      this.fault("id", "no CSPRNG for a new record id — falling back to Math.random");
+      rnd = Math.random().toString(36).slice(2, 10);
+    }
+    return String(prefix === undefined ? "" : prefix)
+      + Date.now().toString(36).slice(-6) + rnd;
+  }
+  /* Counts rows, so it collides across devices — see newId() above. It is kept
+     for the two places whose id never leaves this browser: an outlet row that
+     onboarding replaces with the id the REGISTRY allocates, and a supplier,
+     whose op resolves by NAME and carries no id at all. Anything whose id
+     reaches the outlet as a key must use newId(). */
   nextId(k, prefix) {
     const arr = this.coll(k) || []; let max = 0;
     arr.forEach((r) => { const m = String(r.id === undefined ? "" : r.id).match(/(\d+)$/); if (m) max = Math.max(max, +m[1]); });
@@ -13602,7 +13647,7 @@ class Component extends DCLogic {
       Object.assign(p[0], set);
       patches.push({ coll: "menu", keys: [p[0].id], set: set });
     });
-    const made = plan.add.map((rec) => Object.assign({ id: this.nextId("menu", "m"), veg: rec.tags.indexOf("veg") >= 0, img: "", recipe: [] }, rec));
+    const made = plan.add.map((rec) => Object.assign({ id: this.newId("m"), veg: rec.tags.indexOf("veg") >= 0, img: "", recipe: [] }, rec));
     made.forEach((row) => { (K0.MENU || []).unshift(row); });
     local.menu = (local.menu || []).concat(made);
     this.setState({ local: local, patches: patches, modal: null });
@@ -15581,7 +15626,7 @@ class Component extends DCLogic {
           const price = +v.price || 0;
           if (price <= 0) return this.toast("Price must be greater than zero", "warn");
           this.insertRow("menu", {
-            id: this.nextId("menu", "m"), cat: v.cat, name: v.name,
+            id: this.newId("m"), cat: v.cat, name: v.name,
             desc: v.desc || "House dish", price: price, veg: v.veg === "yes", img: "", recipe: []
           }, "Dish created · " + v.name + " at " + MVRc(price), "menu_items");
         }
@@ -16014,7 +16059,7 @@ class Component extends DCLogic {
           const clash = this.emailTaken(mail, null);
           if (clash) return this.toast(mail + " is already on " + clash.name + "\u2019s record — an address can only sign one customer in", "warn");
           this.insertRow("custs", {
-            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, email: mail || "",
+            id: this.newId("c"), name: v.name, phone: v.phone, email: mail || "",
             visits: 0, spent: 0, points: 0,
             credit: +v.credit || 0, used: 0, last: "never", seen: "",
             invitedVia: "", invitedAt: "", invites: 0, revoked: ""
@@ -16402,7 +16447,7 @@ class Component extends DCLogic {
         onSave: (v) => {
           if (!v.title) return this.toast("A headline is required", "warn");
           this.insertRow("banners", {
-            id: this.nextId("banners", "b"), outlet: +v.outlet || 0, title: v.title,
+            id: this.newId("b"), outlet: +v.outlet || 0, title: v.title,
             sub: v.sub || "", code: (v.code || "").trim().toUpperCase(), img: v.img || "img/hero.jpg",
             active: v.active !== "no"
           }, "Banner published · " + v.title, "banners");
@@ -17276,7 +17321,7 @@ class Component extends DCLogic {
               const want = String(d.cat || "").toLowerCase();
               const cat = (cats.find((c) => c.name.toLowerCase() === want) || cats.find((c) => c.id === want) || cats[0] || { id: "mains" }).id;
               this.insertRow("menu", {
-                id: this.nextId("menu", "m"), cat: cat, name: d.name, desc: d.why || "AI draft",
+                id: this.newId("m"), cat: cat, name: d.name, desc: d.why || "AI draft",
                 price: Math.round(d.price || 0) || 120, veg: !!d.veg, img: "", recipe: [], draft: true
               }, "Staged · " + d.name, "menu_items");
             });

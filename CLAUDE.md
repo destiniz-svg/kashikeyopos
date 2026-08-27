@@ -1388,6 +1388,37 @@ both are shown. What changed is that only the terminal's OWN faults make the
 line a warning, because only those are something anybody here can fix, and the
 foreign ones say where they came from instead of asking for a bug report.
 
+## An id minted on a device is unique across devices
+
+Reported from a live store: three menu items added, two on one browser and one
+on another, and neither browser showed all three.
+
+`nextId()` counts the rows THAT BROWSER is holding and adds one. Two terminals
+that have not yet seen each other's work therefore mint the SAME id — and
+`dish_upsert` upserts on it, so the second one to reach the outlet **silently
+destroys the first**. Measured in two real browsers against a real outlet
+before this was written: three dishes added, **two rows left**, and the one
+that vanished had a toast saying it was created.
+
+Within one browser it is fine, and that is what made it invisible: `insertRow()`
+unshifts the new row into the collection before queueing, so a terminal adding
+two in a row gets `m4` then `m5`. Only the SECOND terminal collides, which is
+exactly the case nobody tests by hand.
+
+This build already answers this twice — `opId` is a v4 uuid from the platform
+CSPRNG, and `ticket_line.client_id` is a uuid because a line created offline has
+to be nameable before any server has seen it. A menu row is the same problem, so
+`newId()` gives it the same answer: a readable prefix, a time component and four
+CSPRNG bytes, minted locally and never from a count of what this device happens
+to hold. A browser with no CSPRNG registers a **fault** rather than falling back
+quietly, because a collision here costs a row.
+
+Six call sites moved — the four that create a dish, plus a banner and a
+customer. Two still count, and they are the two whose id never becomes a key at
+the outlet: an outlet row is replaced by the id the REGISTRY allocates, and a
+supplier's op resolves by NAME and carries no id at all. `test/wiring.test.js`
+pins that list, so a seventh has to justify itself there.
+
 ## A menu section is the outlet's, not one browser's
 
 Reported from a live store, and it arrived wearing the wrong face: the till
@@ -3237,7 +3268,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 461 tests
+npm test                          # 463 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

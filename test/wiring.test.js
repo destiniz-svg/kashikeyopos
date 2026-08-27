@@ -1524,6 +1524,74 @@ test('the contract can see a kind that is chosen, not spelled', () => {
     '"' + k + '" is something being compared against, not an op'));
 });
 
+/* ═══ AN ID MINTED ON A DEVICE IS UNIQUE ACROSS DEVICES ═════════════════════
+   Reported from a live store: three menu items added, two on one browser and
+   one on another, and neither browser showed all three.
+
+   `nextId()` counts the rows THIS browser is holding and adds one, so two
+   terminals that have not yet seen each other's work mint the SAME id — and
+   `dish_upsert` upserts on it, so the second to reach the outlet SILENTLY
+   DESTROYS the first. Measured in two real browsers against a real outlet:
+   three dishes added, TWO rows left, and the one that vanished had a toast
+   saying it was created.
+
+   Within one browser it is fine, which is what made it invisible: insertRow()
+   unshifts the new row before queueing, so one terminal adding two in a row
+   gets m4 then m5. Only the second terminal collides. */
+test('two devices cannot mint the same id for a new record', () => {
+  // Two INSTANCES is two devices: each holds its own copy of the same menu,
+  // which is precisely the situation that collided.
+  const A = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const B = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+
+  // The defect, stated as a fact about the old rule: counting rows gives both
+  // devices the same answer, every time.
+  assert.strictEqual(A.nextId('menu', 'm'), B.nextId('menu', 'm'),
+    'counting rows is what collided — this is the behaviour being replaced');
+
+  // The rule that replaces it.
+  const seen = new Set();
+  for (let i = 0; i < 500; i++) { seen.add(A.newId('m')); seen.add(B.newId('m')); }
+  assert.strictEqual(seen.size, 1000,
+    'a thousand ids from two devices, all distinct: ' + seen.size);
+  const one = A.newId('m');
+  assert.ok(/^m[0-9a-z]{10,}$/.test(one), 'still readable, still says what it is: ' + one);
+  assert.ok(!/^m\d+$/.test(one), 'and never a count of what this device happens to hold');
+
+  /* THROUGH THE SHIPPED EDITOR, not a retyped copy of it. This is the path the
+     store used: the dish modal's own save handler. */
+  const dish = { name: 'Bajiya', desc: '', cat: 'mains', price: 120, station: 'hot',
+    tags: [], spice: 0, addons: null, hidden: false, img: '' };
+  const mA = { kind: 'dishb', id: null, d: dish };
+  A.state.modal = mA;
+  A.modalVals(mA).dbSave();
+  const mB = { kind: 'dishb', id: null, d: dish };
+  B.state.modal = mB;
+  B.modalVals(mB).dbSave();
+  const idOf = (F) => (F.coll('menu') || [])[0] && (F.coll('menu') || [])[0].id;
+  assert.ok(idOf(A) && idOf(B), 'both devices created a dish');
+  assert.notStrictEqual(idOf(A), idOf(B),
+    'and the second does not overwrite the first: ' + idOf(A) + ' vs ' + idOf(B));
+});
+
+/* The two that keep counting do so because their id never becomes a key at the
+   outlet: an outlet row is replaced by the id the REGISTRY allocates, and a
+   supplier's op resolves by NAME and carries no id at all. Anything else must
+   mint. */
+test('every id that becomes a key at the outlet is minted, not counted', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const counted = [...IDX.matchAll(/this\.nextId\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.deepStrictEqual(counted.sort(), ['"outlets"', '"vendors"'],
+    'a new counted id has to justify itself here: ' + counted.join(' · '));
+  ['"menu", "m"', '"banners", "b"', '"custs", "c"'].forEach((c) => {
+    assert.ok(IDX.indexOf('this.nextId(' + c + ')') < 0,
+      c + ' keys a row at the outlet, so counting it collides across devices');
+  });
+  assert.ok(IDX.indexOf('this.newId("m")') > 0, 'a dish is minted');
+  assert.ok(/crypto\.getRandomValues/.test(IDX.slice(IDX.indexOf('newId(prefix) {'),
+    IDX.indexOf('nextId(k, prefix) {'))), 'from the platform CSPRNG, like opId already is');
+});
+
 /* ═══ THE POLL IS PAID FOR, SO IT HAD BETTER BE READ ════════════════════════
    Every signed-in terminal asks its outlet what changed every five seconds.
    The bridge dispatched that answer as `kpos-tick` and NOTHING CONSUMED IT —
