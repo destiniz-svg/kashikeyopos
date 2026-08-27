@@ -1451,6 +1451,48 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## The first dish a store ever creates
+
+This is the root of every *"I added menu items and the other device does not
+show them"* report, and the reason three fixes before it did not help: they
+made a lost row RECOVERABLE and said nothing about a row that could never land
+in the first place.
+
+The dish editor defaulted its section to `(cats[0] || {}).id || "mains"`. A
+store that has not made a section yet has no `cats[0]` — so **every dish on a
+brand-new store was created in a section called `mains` that nobody had ever
+created**, and `item_category_id_fkey` refused it on every retry, for ever. The
+toast said "Dish created", the holding pen re-drew the row on that browser
+after every bootstrap, and no other terminal ever saw it. The AI menu builder
+had the same literal fallback.
+
+Measured by driving the SHIPPED SCREENS in two real browsers — sign in, Menu
+Master, New dish, type a name and a price, Create dish:
+
+| | before | after |
+| --- | --- | --- |
+| browser A | `MASALA TEA` | `Mains` · `MASALA TEA` |
+| browser B, same account | **nothing** | `Mains` · `MASALA TEA` |
+| `outlet_39.item` | **0 rows** | 1 row |
+| `outlet_39.op_log` | **0 rows** | `menu_category_insert` then `dish_upsert` |
+
+The op never survived its first apply, which is why nothing was parked and
+nothing was visible anywhere: there was no evidence to find.
+
+`ensureSection()` makes the section real BEFORE the dish is queued, through the
+same one seam a section write already goes through — so it carries the lower
+lamport and is applied first in the same push. The id is kept **stable**
+(`mains`, `drinks`, …) rather than minted, because the write is an upsert keyed
+by it and two devices that both need a Mains section must converge on one row;
+that is the opposite rule from a DISH id, and deliberately so. A shipped id
+gets its shipped NAME — a section called "mains" on the till rail and the
+guest's menu is the same defect wearing a lower-case letter.
+
+**Why the suite did not catch it.** Every test in it enqueued ops directly,
+which skips the dish editor, `insertRow()` and `queue()` entirely — the whole
+client half. `test/wiring.test.js` now drives the editor itself, on a store
+with no sections, and fails against the version that shipped.
+
 ## A failure this shape has only one symptom, so the till says it
 
 Reported three times in one day, each time in the same words — *"I still don't
@@ -3603,7 +3645,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 476 tests
+npm test                          # 477 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

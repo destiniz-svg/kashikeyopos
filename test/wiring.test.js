@@ -2012,6 +2012,95 @@ test('the till says what it is holding that the outlet has never seen', () => {
     'and refuses before the outlet has answered rather than evaporating the ops');
 });
 
+/* ═══ THE FIRST DISH A STORE EVER CREATES ═══════════════════════════════════
+   The root of every "I added menu items and the other device does not show
+   them" report, and the reason three fixes before it did not help: they made
+   a lost row recoverable and said nothing about a row that could never land.
+
+   The dish editor defaulted its section to `(cats[0] || {}).id || "mains"`.
+   A store that has not made a section yet has no cats[0] — so every dish on a
+   brand-new store was created in a section called `mains` THAT NOBODY HAD
+   EVER CREATED, and `item_category_id_fkey` refused it on every retry, for
+   ever. The toast said "Dish created", the holding pen re-drew the row on that
+   browser after every bootstrap, and no other terminal ever saw it.
+
+   Measured by driving the shipped screens in two real browsers before the fix:
+   browser A showed MASALA TEA, browser B showed nothing, and the outlet had no
+   item row and no op_log row at all — the op never survived its first apply.
+
+   EVERY TEST IN THIS SUITE ENQUEUED OPS DIRECTLY, which is why it survived:
+   that path skips the dish editor, insertRow() and queue() entirely. This one
+   drives the editor. */
+test('the first dish on a store with no sections creates its section first', () => {
+  const kpos = FX.kpos();
+  const F = H.makeInstance({ kpos: kpos, raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  // A STORE THAT HAS NEVER MADE A SECTION. This is a real customer on their
+  // first afternoon, and it was the one state nothing tested.
+  F.__win.KPOS.MENU_CATEGORIES = [];
+  F.__win.KPOS.MENU = [];
+  F.state.local = {}; F.state.catMeta = {};
+
+  F.openDish(null);
+  const v = F.modalVals(F.state.modal);
+  assert.ok(v.dbSave, 'the dish editor opened');
+  // The section the form defaulted to, on a store with none of its own.
+  const cat = F.state.modal.d.cat;
+  assert.ok(cat, 'it still picks one — a dish belongs somewhere');
+
+  F.setState({ modal: Object.assign({}, F.state.modal,
+    { d: Object.assign({}, F.state.modal.d, { name: 'MASALA TEA', price: '25' }) }) });
+  F.modalVals(F.state.modal).dbSave();
+
+  const kinds = queued.map((q) => q.kind);
+  const sec = kinds.indexOf('menu_category_insert');
+  const dish = kinds.indexOf('dish_upsert');
+  assert.ok(sec >= 0,
+    'the section is created for real — without it the dish is refused by'
+    + ' item_category_id_fkey on every retry, for ever');
+  assert.ok(dish >= 0, 'and the dish is queued');
+  assert.ok(sec < dish,
+    'the section FIRST, so it carries the lower lamport and is applied first');
+
+  // AND IT IS A SECTION, not an id wearing a name. "mains" on the till rail
+  // and on the guest's menu is the same defect in lower case.
+  const payload = queued[sec].payload;
+  assert.strictEqual(payload.id, cat, 'keyed by the id the dish names');
+  assert.strictEqual(payload.name, 'Mains',
+    'under its shipped name, not its id: ' + payload.name);
+  assert.strictEqual(queued[dish].payload.cat, cat, 'and the dish lands in it');
+
+  /* THE ID IS STABLE, NOT MINTED. The write is an upsert keyed by it, so two
+     devices that both need a Mains section converge on one row rather than
+     two — which is the opposite rule from a DISH id, and deliberately so. */
+  const G = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const other = [];
+  G.__win.KPOS_SYNC = { enqueue: (op) => { other.push(op); return op.opId; } };
+  G.__win.KPOS.MENU_CATEGORIES = []; G.__win.KPOS.MENU = [];
+  G.state.local = {}; G.state.catMeta = {};
+  G.openDish(null);
+  G.setState({ modal: Object.assign({}, G.state.modal,
+    { d: Object.assign({}, G.state.modal.d, { name: 'PLAIN TEA', price: '20' }) }) });
+  G.modalVals(G.state.modal).dbSave();
+  const otherSec = other.filter((q) => q.kind === 'menu_category_insert')[0];
+  assert.strictEqual(otherSec.payload.id, payload.id,
+    'a second device needing the same section writes the same row, not a rival');
+
+  // A section the outlet ALREADY has is not re-created.
+  const P = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const third = [];
+  P.__win.KPOS_SYNC = { enqueue: (op) => { third.push(op); return op.opId; } };
+  P.state.local = {}; P.state.catMeta = {};
+  P.openDish(null);
+  P.setState({ modal: Object.assign({}, P.state.modal,
+    { d: Object.assign({}, P.state.modal.d, { name: 'ANOTHER', price: '30' }) }) });
+  P.modalVals(P.state.modal).dbSave();
+  assert.strictEqual(third.filter((q) => q.kind === 'menu_category_insert').length, 0,
+    'a store WITH sections writes no section — only the dish');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

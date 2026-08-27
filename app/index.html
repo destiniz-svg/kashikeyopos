@@ -4907,6 +4907,51 @@ class Component extends DCLogic {
      was refused by `item_category_id_fkey` on every retry until the outbox
      parked it. That is what was reported from a live store, and it is why this
      is one function rather than three call sites. */
+  /* ── A DISH CANNOT BE SAVED INTO A SECTION THAT DOES NOT EXIST ───────────
+     This is the root of every "I added menu items and the other device does
+     not show them" report, and it is a defect of the FIRST dish a store ever
+     creates. The dish editor defaulted its section to
+     `(cats[0] || {}).id || "mains"`, and a store that has not made a section
+     yet has no cats[0] — so every dish on a brand-new store was created in a
+     section called `mains` THAT NOBODY HAD EVER CREATED. `item_category_id_fkey`
+     refuses it, on every retry, for ever. The toast said "Dish created", the
+     row was re-drawn on that browser by the holding pen on every bootstrap,
+     and no other terminal ever saw it. Measured by driving the real screens:
+     browser A showed MASALA TEA, browser B showed nothing, and the outlet had
+     no item row and no op_log row at all.
+
+     So the section is made real BEFORE the dish is queued — through the same
+     one seam a section write already goes through, which means it carries the
+     lower lamport and is applied first in the same push.
+
+     The id is kept STABLE (`mains`, `drinks`, …) rather than minted: the write
+     is an upsert keyed by it, so two devices that both need a Mains section
+     converge on one row instead of two. A shipped id gets its shipped NAME —
+     a section called "mains" on the rail and the guest's menu is the same
+     defect wearing a lower-case letter. */
+  SHIPPED_SECTIONS = {
+    starters: "Starters", mains: "Mains", grill: "Grill", rice: "Rice & noodles",
+    sides: "Sides", desserts: "Desserts", drinks: "Drinks", coffee: "Hot drinks",
+    soup: "Soups", salad: "Salads", seafood: "Seafood", main: "Mains"
+  };
+  ensureSection(id) {
+    const key = String(id || "").trim();
+    if (!key) return;
+    if (((K() || {}).MENU_CATEGORIES || []).some((c) => c.id === key)) return;
+    if ((((this.state.local || {}).menucats) || []).some((c) => c && c.id === key)) return;
+    const name = this.SHIPPED_SECTIONS[key]
+      || key.replace(/[-_]+/g, " ").replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+    const meta = { id: key, name: name, icon: key, color: this.catHue(key),
+      station: this.defaultStation(key), hidden: false, pos: null };
+    // Held here as well as sent, so the rail draws it at once and the pen
+    // re-sends it if this push does not land.
+    const L = Object.assign({}, this.state.local || {});
+    L.menucats = (L.menucats || []).concat([meta]);
+    this.setState({ local: L });
+    const list = (K() || {}).MENU_CATEGORIES;
+    if (list && !list.some((c) => c.id === key)) list.push(meta);
+    this.catWrite(key, meta, "Menu section created \u00b7 " + name);
+  }
   catWrite(id, meta, label) {
     this.queue("menu_category_insert", label, "menu_categories", {
       id: id, name: meta.name, icon: meta.icon || null, colour: meta.color || null,
@@ -7414,6 +7459,9 @@ class Component extends DCLogic {
             // the same outbox and the same item.image column as the name.
             img: String(d.img || "")
           };
+          // The section first, or the dish is refused by the key that has been
+          // refusing every first dish this build ever created.
+          this.ensureSection(d.cat);
           if (m.id) this.patchRows("menu", [m.id], next, name + " updated \u00b7 " + this.catMeta(d.cat).name + " \u00b7 " + MVRc(price), "menu");
           else this.insertRow("menu", Object.assign({ id: this.newId("m"), recipe: [] }, next),
             "Dish created \u00b7 " + name + " at " + MVRc(price), "menu_items");
@@ -17698,6 +17746,7 @@ class Component extends DCLogic {
             res.dishes.forEach((d) => {
               const want = String(d.cat || "").toLowerCase();
               const cat = (cats.find((c) => c.name.toLowerCase() === want) || cats.find((c) => c.id === want) || cats[0] || { id: "mains" }).id;
+              this.ensureSection(cat);
               this.insertRow("menu", {
                 id: this.newId("m"), cat: cat, name: d.name, desc: d.why || "AI draft",
                 price: Math.round(d.price || 0) || 120, veg: !!d.veg, img: "", recipe: [], draft: true
