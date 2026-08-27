@@ -1451,6 +1451,41 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## Handing over and leaving are different decisions
+
+Asked plainly — *"how to log out of the application"* — and the honest answer
+was that you could not. The identity sheet in the top bar offered **Switch
+user**, which clears who is on the screen and KEEPS the token. That is right
+for a handover a dozen times a shift: the till is still the till, and its
+outbox is still delivering behind the lock screen. It is not signing out.
+
+Actually leaving was offered nowhere. `POST /api/auth/signout` has been written
+since the API was, `KPOS_SYNC.signOut()` calls it and drops the token, and
+**nothing had ever called that** — the bridge did not even expose it. So a copy
+of a browser's storage stayed a way into the till until the token expired on
+its own, and the one screen a person would look at for this had one row where
+it needed two.
+
+- **`lockTill()`** is the handover, under its own name so the two can never
+  quietly become one. It keeps the token on purpose.
+- **Sign out of this terminal** drops the token, stops the poll and revokes
+  `chain.session.revoked_at`, which `src/revoked.js` reads on every
+  authenticated request — so the refusal is immediate rather than "until it
+  expires". Measured against a live outlet: the token is 200 before and **401
+  after**, and no other session is touched.
+- **Undelivered work is NAMED, not blocked.** The confirm counts what has not
+  reached the outlet. Those ops are durable in IndexedDB and survive signing
+  out; what changes is that nothing will deliver them until somebody signs in
+  here again, and that is a fact whoever is walking away needs *before* they
+  walk away. Two taps, because this sits on a touch sheet beside the theme
+  toggle.
+- **`/account` bounces a signed-in owner straight to the till**, so the only
+  screen that can strand somebody is "One more thing" — signed in, one word
+  short of a business, with nothing saying whose account that is. It carries
+  **Not you? Sign out** now. There is no cookie and no server session on that
+  plane: an account token is a signed blob that expires on its own, so dropping
+  it is the whole of signing out there.
+
 ## A row the outlet has no record of has not been delivered
 
 Reported straight after the section fix landed: *"I added three menu items, two
@@ -3496,7 +3531,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 472 tests
+npm test                          # 474 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

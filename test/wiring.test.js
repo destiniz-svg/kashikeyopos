@@ -1872,6 +1872,56 @@ test('the section pen survives a reload, and the re-send carries the name', () =
   assert.strictEqual(sec.payload.station, 'bar', 'and the station its dishes fire to');
 });
 
+/* ═══ HANDING OVER AND LEAVING ARE DIFFERENT DECISIONS ══════════════════════
+   Only one of them existed. The identity sheet offered "Switch user", which
+   clears who is on the screen and KEEPS the token — right for a handover a
+   dozen times a shift, because the till is still the till and its outbox is
+   still delivering behind the lock. Actually leaving was offered nowhere:
+   `POST /api/auth/signout` has been written since the API was, the client's
+   `signOut()` calls it and drops the token, and NOTHING has ever called that.
+   So a copy of a browser's storage stayed a way into the till until the token
+   expired on its own — and the answer to "how do I log out" was that you
+   could not. */
+test('a till can be handed over, and it can also be left', () => {
+  // ── the two are separate methods, so neither can quietly become the other.
+  assert.match(SRC, /  lockTill\(\) \{/, 'the handover has its own name');
+  const lock = SRC.slice(SRC.indexOf('  lockTill() {'));
+  assert.ok(lock.slice(0, 400).indexOf('KPOS_BRIDGE') < 0,
+    'and it does NOT drop the token — the till keeps delivering behind the lock');
+
+  // ── the bridge exposes the real one, which is what was missing.
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  assert.match(bridge, /signOut: function \(\) \{ return api\.signOut\(\); \}/,
+    'ending a session is reachable from the app at all');
+
+  // ── and the client's own signOut revokes server-side rather than only
+  //    forgetting locally: a token nobody dropped is a token that still works.
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const so = api.slice(api.indexOf('    signOut() {'));
+  assert.match(so.slice(0, 700), /localStorage\.removeItem\(TOKEN_KEY\)/, 'the token is dropped');
+  assert.match(so.slice(0, 700), /\/api\/auth\/signout/, 'and the outlet is told to revoke it');
+
+  // ── the sheet offers both, and says which is which. Two rows that read the
+  //    same are one row an operator picks at random.
+  const sheet = SRC.slice(SRC.indexOf('if (m.kind === "switch")'));
+  const body = sheet.slice(0, sheet.indexOf('head: "How this till looks"'));
+  assert.match(body, /Switch user/, 'the handover');
+  assert.match(body, /Sign out of this terminal/, 'and leaving');
+  assert.match(body, /the till stays connected and keeps delivering/,
+    'the handover says it keeps the till connected');
+  assert.match(body, /stops being a way in until somebody signs in again/,
+    'and signing out says what it actually ends');
+
+  // ── UNDELIVERED WORK IS NAMED, not blocked. The ops are durable and survive
+  //    signing out; what changes is that nothing will deliver them until
+  //    somebody signs in here again, which is a fact whoever is walking away
+  //    needs BEFORE they walk away.
+  assert.match(body, /not reached the outlet/,
+    'the confirm counts what is still owed to the outlet');
+  assert.match(body, /_signOutArmed/,
+    'and it asks twice — this sits beside the theme toggle on a touch sheet');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

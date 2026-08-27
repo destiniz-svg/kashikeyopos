@@ -2263,11 +2263,17 @@ class Component extends DCLogic {
   // The lowest rank in the ladder. Nothing is evaluated above this while nobody
   // is signed in, so a permission check cannot pass on a dead session.
   LOCKED_ROLE = "Cashier";
-  signOut() {
+  /* THE HANDOVER. Clears who is on the screen and KEEPS the token: the till is
+     still the till, its outbox is still delivering, and the next person keys
+     their PIN. Signing out — ending the session on the outlet — is a different
+     decision and is on the same sheet, one row down. */
+  lockTill() {
     const n = (this.state.session || {}).name;
     this.setState({ session: null, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
     if (n) this.queue("sign_out", n + " signed out · " + this.deviceCode(), "sessions");
   }
+  // Kept under its old name for anything still calling it.
+  signOut() { return this.lockTill(); }
   // ── Register session ─────────────────────────────────────────────────────
   // A closed register cannot take money. Without this a till has no opening
   // float, no expected cash and therefore no over/short — the single control
@@ -6954,8 +6960,60 @@ class Component extends DCLogic {
       acts.push({
         head: "Who is on this till",
         label: sess ? "Switch user — signed in as " + sess.name : "Sign in with a PIN",
-        sub: sess ? "Locks the terminal and asks for the next person's PIN" : "Tap your name, key four digits",
-        style: sess ? btn : on, go: () => this.signOut()
+        sub: sess ? "Locks the terminal and asks for the next person's PIN — the till stays connected and keeps delivering" : "Tap your name, key four digits",
+        style: sess ? btn : on, go: () => this.lockTill()
+      });
+      /* SIGNING OUT AND HANDING OVER ARE DIFFERENT DECISIONS, and only one of
+         them existed. `lockTill()` clears who is on the screen and keeps the
+         token, which is right for a handover a dozen times a shift — the till
+         is still the till, and its outbox is still delivering behind the lock.
+
+         Actually LEAVING was not offered anywhere. `POST /api/auth/signout`
+         has been written since the API was, `KPOS_SYNC.signOut()` calls it and
+         drops the token, and NOTHING has ever called that — so a copy of a
+         browser's storage stayed a way into the till until the token expired
+         on its own. A control that does not exist is not safer than one that
+         does; it just moves the problem to whoever finds the tablet.
+
+         Undelivered work is NAMED rather than blocking it. The ops are durable
+         in IndexedDB and survive signing out, but nothing will deliver them
+         until somebody signs in again, and that is a fact whoever is walking
+         away needs before they walk away — not after. */
+      const owed = (s.outbox || []).filter((x) => x.state === "queued"
+        || x.state === "refused" || x.state === "parked").length;
+      const armed = this._signOutArmed;
+      acts.push({
+        label: armed ? "Tap again to sign out" : "Sign out of this terminal",
+        sub: armed
+          ? (owed ? owed + (owed === 1 ? " operation has" : " operations have")
+              + " not reached the outlet — they are kept and will go when somebody signs in here again"
+            : "Everything this till wrote has reached the outlet")
+          : "Ends this session on the outlet — this browser stops being a way in until somebody signs in again",
+        style: armed ? on : btn,
+        go: () => {
+          if (!armed) {
+            this._signOutArmed = true;
+            this.setState({ modal: Object.assign({}, m) });
+            setTimeout(() => {
+              if (!this._signOutArmed) return;
+              this._signOutArmed = false;
+              this.setState({ modal: this.state.modal });
+            }, 4000);
+            return;
+          }
+          this._signOutArmed = false;
+          const B = window.KPOS_BRIDGE;
+          const name = (s.session || {}).name;
+          if (name) this.queue("sign_out", name + " signed out \u00b7 " + this.deviceCode(), "sessions");
+          this.setState({ session: null, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
+          if (B && B.signOut) {
+            Promise.resolve(B.signOut())
+              .then(() => this.toast("Signed out \u2014 this session is ended on the outlet"))
+              .catch(() => this.toast("Signed out here \u2014 the outlet could not be told, so the session ends when it expires", "warn"));
+          } else {
+            this.toast("Signed out here \u2014 this terminal is not connected to an outlet", "warn");
+          }
+        }
       });
       // Seven palettes in light and dark have existed since the first build and
       // lived four levels deep in Settings, where a manager on a counter tablet

@@ -254,6 +254,12 @@ button.link:hover{text-decoration:underline}
       <div class="links">
         <button class="link" id="useCode" type="button">Email me a code instead</button>
         <button class="link" id="startOver" type="button" style="display:none">Use a different address</button>
+        <!-- SIGNED IN AS THE WRONG ACCOUNT, WITH NO WAY OUT. This page bounces
+             an account that owns something straight to the till, so the one
+             screen that can strand somebody is "One more thing" — signed in,
+             one word short, and nothing on it says whose account that is or
+             offers to leave it. -->
+        <button class="link" id="signOut" type="button" style="display:none">Not you? Sign out</button>
       </div>
 
       <p class="foot" id="foot">
@@ -505,6 +511,7 @@ button.link:hover{text-decoration:underline}
         + " It is the company that files the return, not the caf\u00e9 — you"
         + " name the store itself in the next step.";
       $("bizName").focus();
+      $("signOut").style.display = "inline";
       say("", "");
       return;
     }
@@ -650,6 +657,17 @@ button.link:hover{text-decoration:underline}
         + "your-store." + p.base + " — the menu and the customer's card, both.";
     }
   }).catch(function () { $("alts").style.display = "none"; });
+
+  /* LEAVING. The token is this browser's only claim to the account, so
+     dropping it is the whole of signing out here — there is no cookie and no
+     server session to end: an account token is a signed blob that expires on
+     its own. Reloading rather than repainting, so nothing carried in a
+     closure outlives the account that put it there. */
+  $("signOut").addEventListener("click", function () {
+    forget();
+    rememberStore("");
+    location.href = "/account";
+  });
 
   // Already signed in? Go where this account belongs.
   if (token()) {

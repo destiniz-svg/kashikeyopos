@@ -365,6 +365,13 @@
     registerDevice: function (body) { return api.registerDevice(body); },
     changePin: function (cur, next) { return api.changePin(cur, next); },
     claimDevice: function (code) { return api.claimDevice(code); },
+    /* END THIS SESSION. Different from the lock screen, which is a handover:
+       this drops the token, stops the poll, and POSTs /api/auth/signout so the
+       session row is revoked — a copy of this browser's storage stops being a
+       way into the till. The client method has existed since the API was
+       written and NOTHING has ever called it, which is why the sheet offered
+       "Switch user" and no way to actually leave. */
+    signOut: function () { return api.signOut(); },
     signOutDevice: function (id) { return api.signOutDevice(id); },
     deregisterDevice: function (id) { return api.deregisterDevice(id); },
     rename: async function (h) {

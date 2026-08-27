@@ -4555,6 +4555,41 @@ test('readiness fails when an outlet cannot be reached with its own role', opts,
 
 /* CROSS-PLANE TOKEN USE, behaviourally. The static pin is in wiring; this is
    the proof that the doors actually refuse. */
+/* ═══ SIGNING OUT ENDS THE SESSION, IT DOES NOT ONLY HIDE IT ════════════════
+   The endpoint has been written since the API was and nothing in the app ever
+   called it: the identity sheet offered "Switch user", which clears who is on
+   the screen and keeps the token, and there was no way to actually leave. So a
+   copy of a browser's storage stayed a way into the till until the token
+   expired on its own.
+
+   What makes it real is `src/revoked.js` reading `chain.session.revoked_at` on
+   every authenticated request — the column existed for months with nothing
+   reading it, which is the same defect wearing an earlier face. */
+test('signing out revokes the session, and the token stops working', opts, async () => {
+  // A second sign-in, so the suite's own session survives the revocation.
+  const extra = await post('/api/auth/pin', { pin: '4718', outletId });
+  assert.ok(extra.body.token, 'a second terminal signs in');
+  const t2 = extra.body.token;
+
+  // It works before.
+  const before = await get('/api/outlet/' + outletId + '/bootstrap', t2);
+  assert.strictEqual(before.status, 200, 'the fresh token is good');
+
+  const bye = await post('/api/auth/signout', {}, t2);
+  assert.strictEqual(bye.status, 200, 'the sign-out is accepted');
+
+  // And not after. A revoked session is REFUSED, not merely recorded — which
+  // is what makes losing a tablet survivable.
+  const after = await get('/api/outlet/' + outletId + '/bootstrap', t2);
+  assert.strictEqual(after.status, 401,
+    'the token is refused once the session is revoked, not honoured until it expires');
+
+  // The suite's own session is untouched: signing out is this session, never
+  // every session — that is a different, rank-gated control.
+  const mine = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(mine.status, 200, 'nobody else was signed out');
+});
+
 test('a token from one plane is refused by every other', opts, async () => {
   const S = require('../src/secrets');
 
