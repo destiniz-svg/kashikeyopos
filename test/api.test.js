@@ -220,8 +220,18 @@ test('onboarding writes the records the running app reads', opts, async () => {
   }
 
   // 3 · owner account — callable exactly once in the life of an installation
-  r = await post('/api/onboarding/owner', { name: 'Test Owner', pin: '4718' });
+  r = await post('/api/onboarding/owner', { name: 'Test Owner', pin: '4718',
+    phone: '+960 7551234' });
   assert.strictEqual(r.status, 201, JSON.stringify(r.body));
+  {
+    /* The admin's own mobile (migration 045) reaches their STAFF row — the
+       person's record, not the company's — and deliberately not the
+       bootstrap's roster, which any signed-in till can read. */
+    const ph = await db.owner().query(
+      'SELECT phone FROM chain.staff WHERE id = $1', [r.body.staffId]);
+    assert.strictEqual(ph.rows[0].phone, '+960 7551234',
+      "the admin's mobile lands on their staff record");
+  }
   token = r.body.token;
   assert.strictEqual(r.body.rank, 5);
 

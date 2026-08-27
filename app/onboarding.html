@@ -301,6 +301,11 @@ button.mini.ghosty{background:transparent}
 /* The spine runs the whole height of .steps, so a heading sitting on it
    needs its own ground or the line strikes the words through. */
 .railHead.sub{padding-top:16px;background:var(--bg-0);position:relative;z-index:1}
+.legal{margin-top:18px;font-size:11px;color:var(--text-muted);line-height:1.6;
+  max-width:64ch;text-wrap:pretty}
+.legal a{color:var(--text-dim);text-decoration:underline;text-underline-offset:2px}
+.legal a:hover{color:var(--text)}
+.pill .pd svg{width:15px;height:15px;display:block}
 .steps .railHead.sub:first-child{padding-top:0}
 textarea{min-height:84px;resize:vertical;line-height:1.5}
 /* The application's last act is a submission, and it reads as one. Green is
@@ -536,6 +541,8 @@ button.go.ok{background:var(--go);color:var(--on-go);
       edit: "Chain & Outlets → Users & roles",
       fields: [
         { k: "name", label: "Full name", req: true, full: true, ph: "Your full name" },
+        { k: "phone", label: "Mobile", req: true, mono: true, ph: "+960 7XX XXXX",
+          hint: "Yours, not the shop's. It is who support rings when the install needs a person, and it goes on your staff record — never on the roster a till can read." },
         { k: "pin", label: "Choose a PIN", req: true, mono: true, type: "password",
           attrs: { inputmode: "numeric", maxlength: "8", autocomplete: "new-password" },
           hint: "Four to eight digits. Six wrong attempts lock this terminal for fifteen minutes." },
@@ -551,7 +558,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
         return null;
       },
       write: function (v) {
-        return post("owner", { name: v.name, pin: v.pin }).then(function (r) {
+        return post("owner", { name: v.name, pin: v.pin, phone: v.phone }).then(function (r) {
           state.token = r.token;
           try { localStorage.setItem("kashikeyo.token", JSON.stringify({
             token: r.token, outletId: r.outletId, rank: r.rank, name: r.name,
@@ -836,6 +843,13 @@ button.go.ok{background:var(--go);color:var(--on-go);
      a fourteen-place edit, and a missed one reads as "step 5 of 14" over the
      fourth card. The first three are the application; the rest is the shop. */
   var APPLICATION = { company: 1, outlet: 1, owner: 1 };
+  // The stepper's marks, as the reference form draws them: the entity, the
+  // shopfront, the person. A done step swaps its icon for the tick.
+  var PILL_ICONS = {
+    company: "M3 21h18M5 21V8l2-5h10l2 5v13M9 21v-5h6v5M8 11h2M14 11h2",
+    outlet: "M4 10 5.5 3h13L20 10M4 10v11h16V10M4 10h16M9 21v-6h6v6",
+    owner: "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21v-1a7 7 0 0 1 14 0v1"
+  };
   STEPS.forEach(function (s, i) {
     s.n = i + 1;
     s.apply = !!APPLICATION[s.key];
@@ -988,6 +1002,9 @@ button.go.ok{background:var(--go);color:var(--on-go);
       state.businessId = r.businessId || state.businessId || null;
       state.businesses = r.businesses || [];
       state.company = r.company || null;
+      state.siteBase = r.siteBase || null;
+      state.accountEmail = r.accountEmail || null;
+      state.licence = r.licence || null;
       /* The saved outlet, from the onboarding plane rather than from
          /api/auth/install — that payload is the anonymous LOCK SCREEN's, and
          widening it to carry a store's slug, kind and brand would put them in
@@ -1027,6 +1044,10 @@ button.go.ok{background:var(--go);color:var(--on-go);
        Offering it here is a prefill and nothing more: whatever is saved on
        this step is the registered name, and the registry adopts it. */
     if (step.key === "company" && state.business) v.legalName = state.business;
+    /* The address they signed up with, offered as the business email — a
+       prefill and nothing more, because a group's accounts inbox is often not
+       the founder's own. Editable in place; what is saved is the answer. */
+    if (step.key === "company" && !v.email && state.accountEmail) v.email = state.accountEmail;
     /* AND WHAT IT ALREADY SAID, where the step has been saved. Going Back used
        to show an empty form over a chip reading "done" — every answer still in
        the database and none of it on screen, which reads as work lost. The
@@ -1270,6 +1291,26 @@ button.go.ok{background:var(--go);color:var(--on-go);
     where.style.marginLeft = "auto";
     row.appendChild(where);
     stage.appendChild(row);
+
+    /* The application's foot, on the application alone. The links are
+       ABSOLUTE ADDRESSES ON THE BASE DOMAIN or they are not drawn — the
+       website owns the apex, so a relative /terms on the app's own host
+       answers 404, and a legal link that 404s is worse than none. Same rule
+       joinUrl() keeps for the invitation. */
+    if (step.apply && state.siteBase) {
+      var legal = el("div", { class: "legal" });
+      legal.appendChild(el("span", {}, "By submitting this application you agree to the "));
+      legal.appendChild(el("a", { href: "https://" + state.siteBase + "/terms",
+        target: "_blank", rel: "noopener" }, "Terms & Conditions"));
+      legal.appendChild(el("span", {}, " and the "));
+      legal.appendChild(el("a", { href: "https://" + state.siteBase + "/privacy",
+        target: "_blank", rel: "noopener" }, "Privacy Policy"));
+      legal.appendChild(el("span", {}, ". Need help? "));
+      legal.appendChild(el("a", { href: "https://" + state.siteBase + "/docs",
+        target: "_blank", rel: "noopener" }, "Read the guide"));
+      legal.appendChild(el("span", {}, "."));
+      stage.appendChild(legal);
+    }
 
     // The rail is hidden on a phone, so the same three facts — which step,
     // how far in, how much is left — live in the bar at the top instead.
@@ -1712,7 +1753,19 @@ button.go.ok{background:var(--go);color:var(--on-go);
         + (idx === current ? " now" : ""), type: "button" });
       b.disabled = !reachable;
       b.setAttribute("aria-current", idx === current ? "step" : "false");
-      var dot = el("span", { class: "pd" }, state.done[s.key] ? "✓" : String(s.n));
+      var dot = el("span", { class: "pd" }, state.done[s.key] ? "✓" : undefined);
+      if (!state.done[s.key]) {
+        var ic = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        ic.setAttribute("viewBox", "0 0 24 24");
+        ic.setAttribute("fill", "none"); ic.setAttribute("stroke", "currentColor");
+        ic.setAttribute("stroke-width", "1.8"); ic.setAttribute("stroke-linecap", "round");
+        ic.setAttribute("stroke-linejoin", "round");
+        ic.setAttribute("aria-hidden", "true");
+        var ph = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        ph.setAttribute("d", PILL_ICONS[s.key] || "");
+        ic.appendChild(ph);
+        dot.appendChild(ic);
+      }
       var lab = el("span", { class: "pl" }, s.label);
       b.appendChild(dot); b.appendChild(lab);
       b.addEventListener("click", function () { if (reachable) { current = idx; render(); } });
@@ -1741,6 +1794,15 @@ button.go.ok{background:var(--go);color:var(--on-go);
         : "—"],
       ["Currency", c.currency || "MVR"]
     ];
+    /* THE PLAN, only where the install actually carries one. A seller-set
+       licence is a fact worth summarising; a self-serve signup has none yet,
+       and a row reading "Plan — none" would be the panel asserting a state
+       nobody chose. No price ever: chain.licence carries no price, and this
+       build does not invent figures. */
+    if (state.licence && state.licence.kind) {
+      rows.push(["Plan", state.licence.kind
+        + (state.licence.trialEnds ? " · until " + state.licence.trialEnds : "")]);
+    }
     rows.forEach(function (r) {
       var kv = el("div", { class: "kv" });
       kv.appendChild(el("b", {}, r[0]));

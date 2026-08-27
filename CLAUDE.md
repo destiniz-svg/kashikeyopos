@@ -55,6 +55,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        042 a receipt has an address
                        043 a sale the till can name
                        044 an outlet has a face
+                       045 a person has a number
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -2900,6 +2901,41 @@ the same rule a dish photograph already follows, and for the same reason. A
 PNG stays a PNG: a logo is the one image in this app that genuinely needs
 transparency, and re-encoding it as JPEG puts a white box behind the mark on
 every dark receipt header.
+
+### The inventory pass against the reference form
+
+Asked afterwards — *check if anything on the input is missing* — and an
+element-by-element diff of the reference screens against the shipped panel
+found five gaps, four of them real:
+
+- **the admin's mobile** had nowhere to land: `chain.staff` carried no phone
+  column, so the reference's step-3 field could not be inherited. Migration
+  045 adds it (nullable — every earlier staff row asked nobody); `/owner`
+  writes it after the claim so `chain.claim_first_owner()`'s SECURITY DEFINER
+  signature stays exactly what 005 audited; the bootstrap deliberately does
+  not publish it, because a roster any signed-in till reads does not need
+  everybody's personal number. The reference's step-3 EMAIL is deliberately
+  NOT inherited — the account signed in with one to get here, and asking it
+  again is the ask-twice defect this panel just shed;
+- **the legal foot** ("By submitting … Terms & Conditions") linked to nothing
+  because nothing published where the legal pages live. `/state` carries
+  `siteBase` now and the application steps draw absolute links to
+  `/terms`, `/privacy` and `/docs` on the base domain — or nothing, the same
+  absolute-or-nothing rule `joinUrl()` keeps, because a relative `/terms` on
+  the app host answers 404 and a legal link that 404s is worse than none;
+- **the stepper's icons** — building, storefront, person — replaced the bare
+  numbers on the three pills; a done step still swaps to the tick;
+- **the plan** appears in the step-3 summary only where `chain.licence`
+  actually carries one (a seller-provisioned install); a self-serve signup
+  has no licence yet and shows nothing, and no price is ever printed because
+  the licence carries none — the reference's MVR 300/700 cards are another
+  product's price list and inheriting them would be an invented figure;
+- the business email prefills from the account's own address — offered, never
+  asserted, editable in place, and the saved record wins on the way back.
+
+Still deliberately not inherited: a required logo (blocking a signup for want
+of a PNG costs a customer), the outlet TIN, and the activity-registration PDF
+— each stated in the section above.
 
 ### Two defects found by driving it, neither reachable by reading it
 

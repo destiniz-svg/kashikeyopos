@@ -4310,6 +4310,12 @@ test('the onboarding panel asks one fact once', () => {
        defect. */
     asked.forEach((s) => {
       if (s === 'company') return;
+      /* The owner step's mobile is the PERSON'S, not the shopfront's — the
+         admin's own number on their staff record (migration 045), a different
+         fact from the company telephone, so asking both is not asking one
+         fact twice. Every other step still has to justify a contact field
+         behind the sameAs toggle. */
+      if (s === 'owner' && k === 'phone') return;
       const step = steps.slice(steps.indexOf('key: "' + s + '"'));
       const field = (step.match(new RegExp('\\{ k: "' + k + '",[\\s\\S]{0,300}?\\},\\n')) || [''])[0];
       assert.match(field, /showIf: \{ k: "sameAs", is: "no" \}/,

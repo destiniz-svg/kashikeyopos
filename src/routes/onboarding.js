@@ -400,6 +400,28 @@ r.get('/state', async function (req, res, next) {
          working title. */
       business: req.bizName || null,
       businessId: req.bizId || null,
+      /* WHERE THE LEGAL PAGES LIVE. The website owns the apex, so the terms
+         and privacy the application's foot links to are absolute addresses on
+         the base domain — or nothing, the same rule joinUrl() keeps: a
+         relative /terms on the app host answers 404, which is worse than no
+         link. */
+      siteBase: baseDomain() || null,
+      /* THE ACCOUNT'S OWN ADDRESS, as a prefill for the business email —
+         offered, never asserted: a group's accounts inbox is often not the
+         founder's own, so the field stays editable and whatever is saved is
+         the answer. */
+      accountEmail: req.account ? req.account.email : null,
+      /* THE PLAN, where one has actually been set. A seller-provisioned
+         install carries a licence; a self-serve signup has none yet, and
+         showing nothing there is the doctrine — a plan row nobody wrote is
+         not summarised, and no price is ever invented. */
+      licence: await biz(req).query(
+        'SELECT kind, trial_ends FROM chain.licence ORDER BY set_at DESC LIMIT 1')
+        .then((q2) => q2.rows[0]
+          ? { kind: q2.rows[0].kind,
+            trialEnds: q2.rows[0].trial_ends ? String(q2.rows[0].trial_ends).slice(0, 10) : null }
+          : null)
+        .catch(() => null),
       /* THE COMPANY'S OWN CONTACT, so step 2 can offer "same as the business"
          and mean it. A single-outlet business trades at its registered address
          on its registered number — asking for both twice is the panel asking a
@@ -618,6 +640,14 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
       [o.rows[0].id, b.name, h.hash, h.salt]);
     const hours = Number(process.env.SESSION_TTL_HOURS || 12);
     const staffId = q.rows[0].id;
+    /* The admin's own mobile (migration 045). Written after the claim rather
+       than through it, so chain.claim_first_owner()'s SECURITY DEFINER
+       signature — the once-in-an-install's-life door — stays exactly what
+       005 audited. Absent is allowed: an older panel sends none. */
+    if (b.phone && String(b.phone).trim()) {
+      await biz(req).query('UPDATE chain.staff SET phone = $2 WHERE id = $1',
+        [staffId, String(b.phone).trim()]).catch(() => {});
+    }
     await withOutlet({ outletId: o.rows[0].id, rank: 5, actor: staffId }, (c) =>
       c.query('INSERT INTO chain.session (staff_id, outlet_id, rank, expires_at)'
         + " VALUES ($1,$2,5, now() + ($3 || ' hours')::interval)",
