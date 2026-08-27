@@ -2029,6 +2029,13 @@ class Component extends DCLogic {
     accPer: null,
     modifiers: this._saved.modifiers || null,
     local: this._saved.local || {},
+    /* The section pen, restored. It is the same class of thing as `local` and
+       `prefs` — this terminal's un-synced answer about a section's name,
+       colour, glyph, station and order — and it was neither written nor read
+       back, so a reload lost every one of them and the re-send that follows
+       had nothing left but the id. */
+    catMeta: this._saved.catMeta || {},
+    catOrder: this._saved.catOrder || null,
     patches: this._saved.patches || [],
     res: this._saved.res || [], resActs: this._saved.resActs || {},
     // Fulfilment stage per order, keyed by order reference. The guest's tracker
@@ -2157,7 +2164,7 @@ class Component extends DCLogic {
     const body = {
       v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox),
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
-      local: s.local, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
+      local: s.local, catMeta: s.catMeta, catOrder: s.catOrder, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
       fulfil: s.fulfil,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
@@ -12999,6 +13006,18 @@ class Component extends DCLogic {
   applyLocal() {
     const L = this.state.local || {}, P = this.state.patches || [];
     this._rowSent = this._rowSent || {};
+    /* SECTIONS FIRST, and the order is the whole point. A push is applied in
+       lamport order, which is the order the ops were queued in — so a dish
+       queued before the section it sits in is APPLIED before it, and
+       `item_category_id_fkey` refuses it exactly as it did the first time.
+       Reported from a live store while this was the wrong way round:
+
+         Dish created · NESCAFE MILK at MVR 20 — insert or update on table
+         "item" violates foreign key constraint "item_category_id_fkey"
+
+       A re-send lane that re-creates the refusal it exists to clear is worse
+       than none, because it parks a second op saying the same thing. */
+    this.reconcileCats();
     const kept = {};
     let dropped = 0;
     Object.keys(L).forEach((k) => {
@@ -13021,6 +13040,7 @@ class Component extends DCLogic {
         mine.push(row);
         const seen = k + ":" + id;
         if (this._rowSent[seen] || !this.outletAnswered()) return;
+        if (!this.rowCanLand(k, row)) return;
         const op = this.opFor(k, row);
         if (!op) return;
         this._rowSent[seen] = true;
@@ -13033,8 +13053,26 @@ class Component extends DCLogic {
       const arr = this.coll(p.coll); if (!arr) return;
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
-    this.reconcileCats();
     this.reconcilePrefs();
+  }
+
+  /* WHAT A ROW DEPENDS ON HAS TO EXIST, or the re-send only parks it again.
+     A dish names a menu section, and `item_category_id_fkey` refuses it if the
+     outlet has no such row. The section is re-sent first (above), so a section
+     THIS TERMINAL is holding will be there by the time the dish is applied —
+     but a dish naming a section that is neither at the outlet nor in this
+     pen cannot be saved by anybody, and queueing it produces one more parked
+     op per session saying what the last one already said.
+
+     So it stays in the pen, on the screen, and the refusal already on Sync &
+     Devices carries the reason in English. Anything with no dependency to
+     check lands or does not on its own merits, which is the ordinary case. */
+  rowCanLand(coll, row) {
+    if (coll !== "menu") return true;
+    const cat = row && row.cat;
+    if (!cat) return true;
+    if (((K() || {}).MENU_CATEGORIES || []).some((c) => c.id === cat)) return true;
+    return (((this.state.local || {}).menucats) || []).some((c) => c && c.id === cat);
   }
 
   /* ── the settings, after a bootstrap ─────────────────────────────────────
@@ -13103,7 +13141,15 @@ class Component extends DCLogic {
       if (!id || this._catSent[id] || !this.outletAnswered()) return;
       if (list.some((c) => c.id === id && c.icon != null)) return;
       this._catSent[id] = true;
-      this.catWrite(id, this.catMeta(id), "Menu section re-sent \u00b7 " + (row.name || id));
+      /* THE HELD ROW IS THE RECORD, and `catMeta(id)` is a later edit layered
+         on top of it. Asking catMeta alone gave `{ id, name: id }` for a
+         section the outlet has never published — so a re-send created a
+         section at the outlet literally named `hot-drinks-mtb373zz`, on the
+         till rail and the guest's menu. Measured in a browser exactly that
+         way. The row carries every field its editor collected; catMeta only
+         wins where somebody has since changed one. */
+      const meta = Object.assign({}, row, (this.state.catMeta || {})[id] || {});
+      this.catWrite(id, meta, "Menu section re-sent \u00b7 " + (row.name || id));
     });
   }
   /* ── master data, one seam ───────────────────────────────────────────────

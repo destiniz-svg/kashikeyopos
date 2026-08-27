@@ -1492,6 +1492,42 @@ enqueues nothing. The op evaporates, the row is marked as asked for, and the
 terminal never asks again. `outletAnswered()` is that fence, and
 `reconcileCats()` had the same defect and now shares it.
 
+**And the SECTION goes first.** A push is applied in lamport order, which is
+the order the ops were queued in — so a dish queued before the section it sits
+in is APPLIED before it, and `item_category_id_fkey` refuses it exactly as it
+did the first time. Reported off a live Sync screen while the first version of
+this had it the wrong way round:
+
+```
+Dish created · NESCAFE MILK at MVR 20 — insert or update on table "item"
+violates foreign key constraint "item_category_id_fkey"
+```
+
+`reconcileCats()` runs at the TOP of `applyLocal()` now, so a held section
+carries the lower lamport. A re-send lane that re-creates the refusal it exists
+to clear is worse than none, because it parks a second op saying what the first
+one said — which is also why `rowCanLand()` holds back a dish naming a section
+that is neither at the outlet nor in this pen: nobody can save that dish, so it
+waits on the screen instead of parking again.
+
+**And the refusal is read by a person.** `e.message` went straight to the
+parked lane, so what an operator opened quoted a constraint name and a table
+name at them. `opSays()` in `src/routes/sync.js` translates a NAMED constraint
+by name — the same rule `checkSays()` already keeps for the handle route — and
+repeats anything a trigger RAISEd exactly as written, because a person composed
+that sentence.
+
+**The section pen had to survive a reload before any of this could work.**
+`state.catMeta` and `state.catOrder` are the same class of thing as
+`state.local` and `state.prefs` — this terminal's un-synced answer about a
+section's name, colour, glyph, station and order — and neither was written to
+the session nor read back from it. So a reload lost all of them and the
+re-send had nothing left but the id: measured in a browser, a section reached
+the outlet named `hot-drinks-mtb373zz`, on the till rail and on the guest's
+menu. Both are persisted now, and the re-send composes the HELD ROW under any
+later edit rather than asking `catMeta(id)`, which answers `{ id, name: id }`
+for a section the outlet has never published.
+
 Sending one the outlet was already about to accept costs a duplicate op and can
 never cost a duplicate ROW: every one of these is an upsert keyed by the row's
 own id, which is the same property that makes the outbox safe to replay at all.
@@ -3460,7 +3496,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 469 tests
+npm test                          # 472 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

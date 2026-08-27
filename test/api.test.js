@@ -2013,6 +2013,20 @@ test('a menu section reaches the outlet, and the dish in it can be saved', opts,
   assert.strictEqual(cat.station, 'hot', 'and so is the station its dishes fire to');
   assert.strictEqual(cat.hidden, false);
 
+  /* AND A REFUSAL IS READ BY A PERSON. Reported verbatim off a live Sync
+     screen: "Dish created · NESCAFE MILK at MVR 20 — insert or update on table
+     "item" violates foreign key constraint "item_category_id_fkey"". Every
+     fact an operator needs is in that sentence and none of it is legible. */
+  const nowhere = await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'm-nescafe', name: 'NESCAFE MILK', cat: 'no-such-section', price: 20,
+    active: true, offMenu: false, soldOutReason: null, diets: [], recipe: []
+  } }]);
+  const said = String((nowhere.body.results[0] || {}).error || '');
+  assert.match(said, /menu section the outlet has no record of/,
+    'the refusal says what is wrong: ' + said);
+  assert.ok(!/foreign key constraint/.test(said),
+    'and not by quoting a constraint name at whoever opened the parked lane');
+
   // ── THE DISH THAT WAS PARKED. This is the exact save that was refused.
   const dishOp = await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
     id: 'bajiya', name: 'Bajiya', cat: 'short-eats-snacks', price: 120,

@@ -137,7 +137,7 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
           await c.query('SET CONSTRAINTS ALL IMMEDIATE');
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT ' + sp);
-          out.push({ opId: op.opId, error: e.message });
+          out.push({ opId: op.opId, error: opSays(e) });
           continue;
         }
         await c.query('RELEASE SAVEPOINT ' + sp);
@@ -169,6 +169,44 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
     res.json({ results, at: Date.now() });
   } catch (e) { next(e); }
 });
+
+/* ── A REFUSAL IS READ BY A PERSON ────────────────────────────────────────
+   A parked op is what an operator opens when the till says a dish will not
+   save, so `e.message` going straight through is the same defect the handle
+   route already fixed one level up: an internal constraint name and a table
+   name handed to whoever asked, saying nothing anybody can act on. Reported
+   from a live store, verbatim off the Sync screen:
+
+     Dish created · NESCAFE MILK at MVR 20 — insert or update on table "item"
+     violates foreign key constraint "item_category_id_fkey"
+
+   Everything an operator needs is in that sentence and none of it is legible:
+   the dish is in a menu SECTION the outlet has no row for. Same rule as
+   `checkSays()` — a named constraint is Postgres phrasing it, so it is
+   translated by name; anything a trigger or a function RAISEd was written for
+   a person and is repeated exactly as written. */
+const CONSTRAINT_SAYS = {
+  item_category_id_fkey: 'This dish is in a menu section the outlet has no'
+    + ' record of. The section has to reach the outlet before a dish can be'
+    + ' saved into it — open Menu, open the section, and save it.',
+  recipe_line_sub_item_id_fkey: 'This recipe draws on a batch the outlet has no'
+    + ' record of. Save the batch first, then the recipe.',
+  recipe_line_ingredient_id_fkey: 'This recipe names an item the outlet has no'
+    + ' record of. Save it in the item master first.',
+  ticket_line_ticket_id_fkey: 'This line belongs to a bill the outlet has no'
+    + ' record of — the bill it was added to never arrived.'
+};
+function opSays(e) {
+  if (!e) return 'the outlet refused this without saying why';
+  // 23503 foreign key, 23505 unique, 23514 check. Only a NAMED constraint is
+  // Postgres's own phrasing; a RAISE carries a sentence somebody composed.
+  if (e.constraint && CONSTRAINT_SAYS[e.constraint]) return CONSTRAINT_SAYS[e.constraint];
+  if (e.constraint && (e.code === '23503' || e.code === '23505' || e.code === '23514')) {
+    return 'The outlet refused this — it depends on a record the outlet does'
+      + ' not have, or one it already has under another name.';
+  }
+  return e.message;
+}
 
 /* ═══ PULL ══════════════════════════════════════════════════════════════════
    What has happened since this device last looked: applied ops (so it can

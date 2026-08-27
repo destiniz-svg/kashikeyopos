@@ -1638,7 +1638,7 @@ test('a setting is the outlet\'s, unless it is named as this terminal\'s', () =>
   // ── and the pen empties. Without this the first terminal to change a
   //    setting keeps its own answer for ever and never sees anybody else's.
   assert.match(SRC, /reconcilePrefs\(\) \{/, 'there is a reconciliation');
-  assert.match(SRC, /this\.reconcileCats\(\);\s*\n\s*this\.reconcilePrefs\(\);/,
+  assert.match(SRC, /applyLocal\(\) \{[\s\S]{0,4000}?this\.reconcilePrefs\(\);/,
     'and it runs on every bootstrap, beside the sections it mirrors');
   const rec = SRC.slice(SRC.indexOf('  reconcilePrefs() {'));
   assert.match(rec.slice(0, 700), /!this\.isDevicePref\(k\)[\s\S]*?hasOwnProperty\.call\(pub, k\)/,
@@ -1761,7 +1761,8 @@ test('a held row the outlet never received is re-sent, and one it has is dropped
   const G = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
   const late = [];
   G.__win.KPOS_SYNC = null;
-  G.state.local = { menu: [{ id: 'm-too-early', name: 'Too early', cat: 'c1',
+  const cat = (G.__win.KPOS.MENU[0] || {}).cat;
+  G.state.local = { menu: [{ id: 'm-too-early', name: 'Too early', cat: cat,
     price: 10, active: true, recipe: [] }] };
   G.applyLocal();
   assert.strictEqual(G._rowSent['menu:m-too-early'], undefined,
@@ -1774,6 +1775,120 @@ test('a held row the outlet never received is re-sent, and one it has is dropped
   G.applyLocal();
   assert.strictEqual(late.filter((q) => q.kind === 'dish_upsert').length, 1,
     'the first pass with an outbox and an outlet answer is the one that sends');
+});
+
+/* ═══ THE SECTION GOES FIRST, OR THE RE-SEND RE-CREATES THE REFUSAL ═════════
+   Reported off a live Sync screen while this was the wrong way round:
+
+     Dish created · NESCAFE MILK at MVR 20 — insert or update on table "item"
+     violates foreign key constraint "item_category_id_fkey"
+
+   A push is applied in lamport order, which is the order the ops were queued
+   in. So a dish queued before the section it sits in is APPLIED before it and
+   refused by the same key that refused it the first time — a re-send lane
+   that re-creates the refusal it exists to clear, and parks a second op saying
+   what the first one said.
+
+   And a dish naming a section that is neither at the outlet nor in this pen
+   cannot be saved by anybody: it stays held rather than parking again. */
+test('a re-sent dish lands after its section, and one with no section waits', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  // A section this terminal holds and the outlet does not, with a dish in it —
+  // exactly the pair a live store is sitting on.
+  F.state.local = {
+    menucats: [{ id: 'short-eats', name: 'Short Eats & Snacks' }],
+    menu: [{ id: 'm-nescafe', name: 'NESCAFE MILK', cat: 'short-eats',
+      price: 20, active: true, recipe: [] }]
+  };
+  F.applyLocal();
+
+  const kinds = queued.map((q) => q.kind);
+  const section = kinds.indexOf('menu_category_insert');
+  const dish = kinds.indexOf('dish_upsert');
+  assert.ok(section >= 0, 'the section the outlet never received is re-sent');
+  assert.ok(dish >= 0, 'and so is the dish that was refused for want of it');
+  assert.ok(section < dish,
+    'the section is queued FIRST, so it carries the lower lamport and is'
+    + ' applied first — queued after, the dish is refused all over again');
+
+  // ── a dish whose section is nowhere at all is held, not parked again.
+  const G = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const later = [];
+  G.__win.KPOS_SYNC = { enqueue: (op) => { later.push(op); return op.opId; } };
+  G.state.local = { menu: [{ id: 'm-orphaned', name: 'Orphan', cat: 'no-such-section',
+    price: 20, active: true, recipe: [] }] };
+  G.applyLocal();
+  assert.strictEqual(later.filter((q) => q.kind === 'dish_upsert').length, 0,
+    'a dish nobody can save is not queued to be refused a second time');
+  assert.ok(G.__win.KPOS.MENU.some((x) => x.id === 'm-orphaned'),
+    'it is still on the screen, and still in the pen, waiting for its section');
+});
+
+/* AND THE REFUSAL IS READ BY A PERSON. `e.message` went straight to the parked
+   lane, so what an operator opened said `violates foreign key constraint
+   "item_category_id_fkey"` — every fact they need, none of it legible. Same
+   rule the handle route already keeps for a check violation: a NAMED
+   constraint is Postgres phrasing it and is translated; a RAISE was written
+   for a person and is repeated as written. */
+/* THE SECTION PEN HAS TO SURVIVE A RELOAD, or the re-send that follows has
+   nothing left but the id. `state.catMeta` and `state.catOrder` are the same
+   class of thing as `state.local` and `state.prefs` — this terminal's
+   un-synced answer about a section's name, colour, glyph, station and order —
+   and neither was written to the session nor read back from it. Measured in a
+   browser: a section held on one terminal reached the outlet named
+   `hot-drinks-mtb373zz`, on the till rail and on the guest's menu. */
+test('the section pen survives a reload, and the re-send carries the name', () => {
+  assert.match(SRC, /catMeta: s\.catMeta, catOrder: s\.catOrder/,
+    'both halves of the section pen are persisted');
+  assert.match(SRC, /catMeta: this\._saved\.catMeta \|\| \{\}/,
+    'and read back, or persisting them is write-only');
+  assert.match(SRC, /catOrder: this\._saved\.catOrder \|\| null/,
+    'the order too — null is "nobody has re-ordered", not an empty rail');
+
+  // The held ROW is the record; catMeta is a later edit layered on it.
+  const rec = SRC.slice(SRC.indexOf('  reconcileCats() {'));
+  assert.match(rec.slice(0, 2200),
+    /const meta = Object\.assign\(\{\}, row, \(this\.state\.catMeta \|\| \{\}\)\[id\] \|\| \{\}\);/,
+    'the re-send names the section from the row it is holding, never from'
+    + ' catMeta alone, which answers { id, name: id } for a section the outlet'
+    + ' has never published');
+
+  // And behaviourally: a pen with a name in the row and nothing in catMeta.
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+  F.state.catMeta = {};
+  F.state.local = { menucats: [{ id: 'hot-drinks-x9', name: 'Hot Drinks',
+    color: '#8a6f4f', icon: 'coffee', station: 'bar', hidden: false }] };
+  F.applyLocal();
+  const sec = queued.filter((q) => q.kind === 'menu_category_insert')[0];
+  assert.ok(sec, 'the section is re-sent');
+  assert.strictEqual(sec.payload.name, 'Hot Drinks',
+    'under its name, not its id — an id on the rail is what shipped');
+  assert.strictEqual(sec.payload.icon, 'coffee', 'with the glyph it was given');
+  assert.strictEqual(sec.payload.station, 'bar', 'and the station its dishes fire to');
+});
+
+test('a constraint refusal speaks English on the parked lane', () => {
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+  assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,
+    'the push handler translates rather than passing the driver message through');
+  const { HANDLERS } = require('../src/apply');
+  assert.ok(HANDLERS, 'apply is loadable');
+
+  // The one that was reported, by name.
+  assert.match(sync, /item_category_id_fkey:/,
+    'the key that refused NESCAFE MILK is named');
+  assert.match(sync, /menu section the outlet has no/,
+    'and it says what is actually wrong, in words an operator can act on');
+
+  // A sentence somebody wrote is never rewritten. That is the whole of the
+  // rule, and losing it would silently swallow every RAISE in the schema.
+  assert.match(sync, /return e\.message;/,
+    'an unnamed refusal is repeated as written — a person composed it');
 });
 
 test('an op reaches the outlet with its payload, or is named as carrying none', () => {
