@@ -1779,16 +1779,31 @@ H.menu_category_reorder = async (c, p) => {
 
 H.dish_upsert = async (c, p, ctx) => {
   const id = p.id || slug(p.name);
+  /* SILENCE IS NOT AN ANSWER, for four fields now rather than one. `tags` had
+     a column from the first migration, the handler wrote it, and the bootstrap
+     published it — and the till never SENT it, so every save arrived with
+     `tags` undefined, `arr()` made it empty, and the dish came back with Chef's
+     pick, New, Signature and Gluten free erased. Reported exactly that way.
+
+     `coalesce` on the array means a caller that says nothing keeps what is
+     there, and a caller that means "no tags" sends `[]` — the same rule
+     `off_menu` already follows, and for the same reason: a bulk import or an
+     older build must not silently strip a dish. */
+  const tags = Array.isArray(p.tags) ? p.tags : null;
+  const spice = p.spice === undefined || p.spice === null ? null
+    : Math.max(0, Math.min(3, Math.round(num(p.spice))));
   await c.query('INSERT INTO item (id, name, category_id, station, price, yield_qty,'
     + ' unit, prep_mins, description, image, allergens, diets, tags, active, off_menu,'
-    + ' sold_out_reason, pos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'
-    + ' coalesce($14,true), coalesce($15,false), $16, $17)'
+    + ' sold_out_reason, pos, spice) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'
+    + ' coalesce($13, \'{}\'::text[]),'
+    + ' coalesce($14,true), coalesce($15,false), $16, $17, coalesce($18,0))'
     + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
     + ' category_id = excluded.category_id, station = excluded.station,'
     + ' price = excluded.price, yield_qty = excluded.yield_qty, unit = excluded.unit,'
     + ' prep_mins = excluded.prep_mins, description = excluded.description,'
     + ' image = excluded.image, allergens = excluded.allergens, diets = excluded.diets,'
-    + ' tags = excluded.tags, active = excluded.active,'
+    + ' tags = coalesce($13, item.tags), active = excluded.active,'
+    + ' spice = coalesce($18, item.spice),'
     /* Preserved when the caller is SILENT about it. off_menu is a standing
        menu decision, and `excluded.off_menu` (coalesced to false at insert)
        meant any save that did not mention it — a bulk import, an older build —
@@ -1799,8 +1814,22 @@ H.dish_upsert = async (c, p, ctx) => {
     + ' sold_out_reason = excluded.sold_out_reason',
     [id, p.name, p.cat || null, p.station || 'main', r2(p.price), num(p.yield) || 1,
       p.unit || 'plate', num(p.prep) || 12, p.desc || null, p.img || null,
-      arr(p.allergens), arr(p.diets), arr(p.tags), p.active, p.offMenu,
-      p.soldOutReason || null, num(p.pos)]);
+      arr(p.allergens), arr(p.diets), tags, p.active, p.offMenu,
+      p.soldOutReason || null, num(p.pos), spice]);
+  /* THE ADD-ONS THIS DISH OFFERS. `null` means "inherit whatever the section
+     offers" — the editor's own default and a real answer — so only an ARRAY
+     is written, and writing one is exhaustive: what is not in it is no longer
+     offered. Unknown groups are dropped rather than refusing the whole save,
+     because a dish that will not save over a stale add-on list is a dish
+     nobody can edit. */
+  if (Array.isArray(p.addons)) {
+    await c.query('DELETE FROM item_modifier WHERE item_id = $1', [id]);
+    if (p.addons.length) {
+      await c.query('INSERT INTO item_modifier (item_id, group_id)'
+        + ' SELECT $1, g.id FROM modifier_group g WHERE g.id = ANY($2::text[])'
+        + ' ON CONFLICT DO NOTHING', [id, p.addons.map(String)]);
+    }
+  }
   if (Array.isArray(p.recipe)) await writeRecipe(c, id, p.recipe);
   await publishDeclaration(c, id);
   await log(c, 'dish_upsert', 'item', id, null, { name: p.name, price: r2(p.price) });

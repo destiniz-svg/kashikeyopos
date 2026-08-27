@@ -182,8 +182,16 @@ async function buildBootstrap(ctx) {
          recipe_line.sub_item_id resolve — but nobody orders a litre of fish
          stock, and the till's grid, the guest's menu and the KDS all build
          from this list. It is published separately, below. */
+      /* `addons` is a THREE-state answer and the third one is the default: an
+         array is exactly these groups, an empty array is "none beside the
+         section's", and null is "inherit the section" — which is what a dish
+         nobody has chosen for carries, and what the editor draws as "Section
+         default". A row with no item_modifier rows is indistinguishable from
+         one somebody cleared, so the absence is published as null and the
+         till's own three-way control decides. */
       MENU: items.rows.filter((r) => !r.is_batch)
-        .map((r) => menuOf(r, recipeByItem[r.id] || [])),
+        .map((r) => menuOf(r, recipeByItem[r.id] || [],
+          modsByItem[r.id] ? modsByItem[r.id].map((m) => m.group_id) : null)),
       /* The batches the kitchen makes, with what each yields net of reduction
          and the loss that explains why that is less than went in. This is what
          a sub-recipe used to be: three of them hard-coded into the terminal's
@@ -804,7 +812,7 @@ function currentRates(versions, tz) {
 }
 
 // price is the chain master price; recipe is [ingredientId, qty in base unit].
-function menuOf(r, recipe) {
+function menuOf(r, recipe, mods) {
   return {
     id: r.id, cat: r.category_id, name: r.name, desc: r.description || '',
     price: num(r.price), veg: (r.diets || []).indexOf('veg') >= 0,
@@ -823,6 +831,12 @@ function menuOf(r, recipe) {
     hidden: !!r.off_menu, off: !!r.sold_out_reason,
     offMenu: r.off_menu, soldOutReason: r.sold_out_reason || '',
     allergens: r.allergens || [], diets: r.diets || [], tags: r.tags || [],
+    /* Heat, on the editor's own four rungs (041), and the add-on groups this
+       dish offers. Both were collected by the form and published by nobody:
+       `dishSpice()` read a field no row has ever carried, and `addonsFor()`
+       read an `addons` list that only ever existed inside one open modal. */
+    spice: num(r.spice),
+    addons: mods === null ? null : mods,
     recipe: recipe.map((l) => [l.ingredient_id || l.sub_item_id, num(l.qty),
       num(l.waste_pct), l.sub_item_id ? 'sub' : 'ing'])
   };

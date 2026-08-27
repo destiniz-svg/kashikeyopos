@@ -351,6 +351,10 @@ BEGIN
       allergens   text[] NOT NULL DEFAULT '{}',
       diets       text[] NOT NULL DEFAULT '{}',
       tags        text[] NOT NULL DEFAULT '{}',
+      -- What the kitchen says about heat, on the editor's own four rungs.
+      -- Zero is a statement ("not spicy"), not the absence of one. See 041.
+      spice       smallint NOT NULL DEFAULT 0
+                    CONSTRAINT item_spice_scale CHECK (spice BETWEEN 0 AND 3),
       active      boolean NOT NULL DEFAULT true,
       off_menu    boolean NOT NULL DEFAULT false,
       sold_out_reason text,

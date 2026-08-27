@@ -13377,6 +13377,22 @@ class Component extends DCLogic {
         active: r.active === false ? false : true,
         offMenu: !!r.hidden,
         soldOutReason: r.off ? (r.offReason || "86'd on the floor") : null,
+        /* WHAT THE EDITOR COLLECTS AND THIS MAPPING USED TO DROP. Three
+           fields the dish form asks for reached the outlet never: the TAGS
+           (Chef's pick, New, Signature, Gluten free — a column since the first
+           migration, written by the handler, published by the bootstrap, and
+           simply not sent, so every save came back with them erased), the
+           HEAT, which had nowhere to be stored at all until migration 041,
+           and the ADD-ONS, which decide what the till and the QR menu offer
+           beside the dish.
+
+           `tags` is always an array here because the editor always has one —
+           an empty array is "no tags", which is a decision. `addons` is null
+           when the dish inherits its section's list, and that null is what
+           the handler reads as silence. */
+        tags: (r.tags || []).slice(),
+        spice: Math.max(0, Math.min(3, num(r.spice))),
+        addons: r.addons ? r.addons.slice() : null,
         diets: r.veg ? ["veg"] : [], recipe: r.recipe || []
       })],
       items: ["item_upsert", (r) => (Array.isArray(r) ? {
@@ -14063,7 +14079,20 @@ class Component extends DCLogic {
     local.menu = (local.menu || []).concat(made);
     this.setState({ local: local, patches: patches, modal: null });
     const label = plan.add.length + " dish" + (plan.add.length === 1 ? "" : "es") + " added \u00b7 " + plan.upd.length + " updated";
-    this.queue("menu_import", "Menu imported \u00b7 " + label, "menu_items");
+    /* THE IMPORT CARRIES THE DISHES. `H.menu_import` has always existed and
+       loops `dish_upsert` over what it is given — and this call site sent a
+       label and nothing else, so a menu imported from a spreadsheet was
+       written into one browser and reached the outlet never. The added rows
+       would eventually go out through the holding pen; the UPDATED ones are
+       patches and would not have gone at all.
+
+       Composed through the one mapping every dish write goes through, so an
+       imported dish and a typed one arrive in the same shape. */
+    const rows = made.concat(plan.upd.map((u) => u[0]));
+    const dishes = rows.map((r) => this.opFor("menu", r)).filter(Boolean)
+      .map((o) => o.payload);
+    this.queue("menu_import", "Menu imported \u00b7 " + label, "menu_items",
+      { dishes: dishes });
     this.toast("Menu imported \u00b7 " + label);
   }
   downloadText(name, text, mime) {

@@ -1585,7 +1585,7 @@ function queueCalls(src) {
    would be actively harmful — `consume_recipe` would deduct the stock the sale
    has already deducted. */
 const BARE_BY_DESIGN = [
-  'ai_menu_draft', 'bank_recon', 'credit_reverse', 'menu_import',
+  'ai_menu_draft', 'bank_recon', 'credit_reverse',
   'printer_state', 'promo_clamped', 'qr_pay_intent',
   'recipe_recost', 'recost_items', 'seat_walkin',
   'split_payment', 'terminal_update',
@@ -2154,6 +2154,77 @@ test('a customer the outlet re-keyed is recognised, not duplicated', () => {
   G.applyLocal();
   assert.strictEqual(G.__win.KPOS.CUSTOMERS.length, 2,
     'two rows with no phone between them are two customers, not one');
+});
+
+/* ═══ EVERYTHING THE DISH EDITOR COLLECTS IS SENT ══════════════════════════
+   Reported: "an item added shows, and its tags and heat are not recorded and
+   synced." The form asks for eleven things and the op carried eight.
+
+   `tags` had a column from the first migration, the handler wrote it and the
+   bootstrap published it — and this mapping never sent them, so `arr(undefined)`
+   made the array empty and every save came back with Chef's pick, New,
+   Signature and Gluten free erased. `spice` had nowhere to be stored at all
+   until migration 041. `addons` decide what the till and the QR menu offer
+   beside the dish and reached the outlet never. */
+test('a dish op carries its tags, its heat and its add-ons', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const op = F.opFor('menu', {
+    id: 'd1', name: 'MASALA TEA', cat: 'hot', price: 25, desc: '', station: 'bar',
+    tags: ['chef', 'new'], spice: 2, addons: ['g-extras'], veg: false, recipe: []
+  });
+  assert.strictEqual(op.kind, 'dish_upsert');
+  assert.deepStrictEqual(op.payload.tags, ['chef', 'new'],
+    'the tags the editor collected are in the payload');
+  assert.strictEqual(op.payload.spice, 2, 'and the heat');
+  assert.deepStrictEqual(op.payload.addons, ['g-extras'], 'and the add-ons');
+
+  // NULL ADD-ONS IS "inherit the section", which is the editor's own default
+  // and a real answer — it must not arrive as an empty list, which would clear
+  // every add-on the section offers.
+  const inherit = F.opFor('menu', { id: 'd2', name: 'X', cat: 'hot', price: 1,
+    tags: [], spice: 0, addons: null, recipe: [] });
+  assert.strictEqual(inherit.payload.addons, null,
+    'silence about add-ons stays silence, not a clearing');
+  assert.deepStrictEqual(inherit.payload.tags, [],
+    'while an empty TAG list is a decision and is sent as one');
+
+  // A figure off the four-rung scale never reaches the wire.
+  assert.strictEqual(F.opFor('menu', { id: 'd3', name: 'X', cat: 'h', price: 1,
+    spice: 99, recipe: [] }).payload.spice, 3, 'heat is clamped to the scale');
+
+  /* AND THE ROUND TRIP ON THE SHIPPED READERS. `dishTags()` and `dishSpice()`
+     are what every surface reads — the menu master, the till tile, the printed
+     list — so a field the bootstrap does not publish reads as absent however
+     faithfully it was stored. */
+  const back = { id: 'd1', name: 'MASALA TEA', cat: 'hot', price: 25,
+    tags: ['chef', 'new'], spice: 2, diets: [], veg: false };
+  assert.deepStrictEqual(F.dishTags(back), ['chef', 'new'],
+    'the tags come back off the published row');
+  assert.strictEqual(F.dishSpice(back), 2, 'and so does the heat');
+
+  // The dish editor re-opens on what the outlet holds, not on a default.
+  F.__win.KPOS.MENU = [back];
+  F.openDish('d1');
+  assert.deepStrictEqual(F.state.modal.d.tags, ['chef', 'new'],
+    'reopening the editor shows the tags that were saved');
+  assert.strictEqual(F.state.modal.d.spice, 2, 'and the heat');
+});
+
+/* AND THE CSV IMPORT CARRIES ITS DISHES. `H.menu_import` has always existed
+   and loops `dish_upsert` over what it is given; the call site sent a label
+   and nothing else, so a menu imported from a spreadsheet was written into one
+   browser and reached the outlet never. */
+test('a menu imported from a spreadsheet reaches the outlet', () => {
+  const src = SRC.slice(SRC.indexOf('  applyMenuImport(plan) {'));
+  const body = src.slice(0, src.indexOf('  downloadText('));
+  assert.match(body, /this\.queue\("menu_import"[\s\S]*?\{ dishes: dishes \}/,
+    'the import op carries the dishes its handler reads');
+  assert.match(body, /this\.opFor\("menu", r\)/,
+    'composed through the one mapping every dish write goes through, so an'
+    + ' imported dish and a typed one arrive in the same shape');
+  assert.match(body, /made\.concat\(plan\.upd\.map/,
+    'and it carries the UPDATED rows too — those are patches, and the holding'
+    + ' pen would never have re-sent them');
 });
 
 test('a constraint refusal speaks English on the parked lane', () => {

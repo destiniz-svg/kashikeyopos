@@ -1962,6 +1962,115 @@ test('a setting an owner changes reaches the outlet, and every terminal', opts, 
     'the shop holds no opinion about one screen\'s sidebar, printer or station');
 });
 
+/* ═══ EVERYTHING THE DISH EDITOR COLLECTS REACHES THE OUTLET ═══════════════
+   Reported: "an item added shows, and its tags and heat are not recorded and
+   synced."
+
+   Both halves were true and they failed differently. TAGS had a column from
+   the first migration, the handler wrote it and the bootstrap published it —
+   and `COLLECTION_OP.menu` never SENT them, so every save arrived with `tags`
+   undefined, `arr()` made it empty, and the dish came back with Chef's pick,
+   New, Signature and Gluten free erased. HEAT had nowhere to go at all: the
+   editor collects it on a four-rung scale and no table in this build had a
+   column for it, so it died with the modal. ADD-ONS were the third: collected,
+   never sent, never published, so `addonsFor()` always fell through to the
+   section's list. */
+test('a dish carries its tags, its heat and its add-ons', opts, async () => {
+  await push([{ opId: uuid(), kind: 'menu_category_insert',
+    payload: { id: 'hot-food', name: 'Hot food', icon: 'main', pos: null } }]);
+
+  const saved = await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 25,
+    station: 'bar', active: true, offMenu: false, soldOutReason: null,
+    tags: ['chef', 'new', 'gf'], spice: 2, diets: [], recipe: []
+  } }]);
+  assert.ok(!saved.body.results[0].error, 'the dish lands');
+
+  let row = await one('SELECT tags, spice FROM item WHERE id = $1', ['d-masala']);
+  assert.deepStrictEqual(row.tags, ['chef', 'new', 'gf'], 'the tags are stored');
+  assert.strictEqual(row.spice, 2, 'and the heat, on the editor\'s own scale');
+
+  // ── and a terminal that has never seen this dish is told both.
+  let boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  let pub = (boot.body.kpos.MENU || []).find((m) => m.id === 'd-masala');
+  assert.ok(pub, 'the dish is published');
+  assert.deepStrictEqual(pub.tags, ['chef', 'new', 'gf'], 'with its tags');
+  assert.strictEqual(pub.spice, 2, 'and its heat');
+
+  /* SILENCE PRESERVES, the same rule off_menu already follows. A bulk import
+     or an older build that says nothing about tags must not strip a dish. */
+  await push([{ opId: uuid(), kind: 'dish_upsert',
+    payload: { id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 30 } }]);
+  row = await one('SELECT tags, spice, price FROM item WHERE id = $1', ['d-masala']);
+  assert.strictEqual(Number(row.price), 30, 'the reprice lands');
+  assert.deepStrictEqual(row.tags, ['chef', 'new', 'gf'], 'and says nothing about the tags');
+  assert.strictEqual(row.spice, 2, 'or the heat');
+
+  // An EMPTY array is a decision and is obeyed — that is the difference.
+  await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 30,
+    tags: [], spice: 0 } }]);
+  row = await one('SELECT tags, spice FROM item WHERE id = $1', ['d-masala']);
+  assert.deepStrictEqual(row.tags, [], 'clearing the tags reaches the outlet');
+  assert.strictEqual(row.spice, 0, 'and so does "not spicy"');
+
+  // A figure off the scale is clamped rather than refusing the whole save —
+  // the money is not involved and a dish nobody can save is worse.
+  await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 30, spice: 9 } }]);
+  row = await one('SELECT spice FROM item WHERE id = $1', ['d-masala']);
+  assert.strictEqual(row.spice, 3, 'a figure off the scale is clamped to it');
+
+  /* ── THE ADD-ONS. `null` is "inherit the section", which is the editor's own
+     default and a real answer, so only an ARRAY is written. */
+  await push([{ opId: uuid(), kind: 'modifier_update', payload: {
+    group: 'addg-extras', groupName: 'Extras', min: 0, max: 3,
+    id: 'extra-shot', name: 'Extra shot', price: 8 } }]);
+  const groups = await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+    (c) => c.query('SELECT id FROM modifier_group ORDER BY id'));
+  if (groups.rows.length) {
+    const g = groups.rows[0].id;
+    await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+      id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 30, addons: [g] } }]);
+    const mods = await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+      (c) => c.query('SELECT group_id FROM item_modifier WHERE item_id = $1', ['d-masala']));
+    assert.deepStrictEqual(mods.rows.map((r) => r.group_id), [g],
+      'the add-on group the dish was given is the one it offers');
+
+    boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    pub = (boot.body.kpos.MENU || []).find((m) => m.id === 'd-masala');
+    assert.deepStrictEqual(pub.addons, [g], 'and every terminal is told');
+
+    // Saying nothing leaves it alone; an empty array clears it.
+    await push([{ opId: uuid(), kind: 'dish_upsert',
+      payload: { id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 31 } }]);
+    const still = await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+      (c) => c.query('SELECT group_id FROM item_modifier WHERE item_id = $1', ['d-masala']));
+    assert.strictEqual(still.rows.length, 1, 'silence keeps the add-ons');
+
+    await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+      id: 'd-masala', name: 'MASALA TEA', cat: 'hot-food', price: 31, addons: [] } }]);
+    const none = await db.withOutletRead({ outletId, rank: 5, actor: null, scope: 'outlet' },
+      (c) => c.query('SELECT group_id FROM item_modifier WHERE item_id = $1', ['d-masala']));
+    assert.strictEqual(none.rows.length, 0, 'an empty list is a decision and is obeyed');
+
+    boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    pub = (boot.body.kpos.MENU || []).find((m) => m.id === 'd-masala');
+    assert.strictEqual(pub.addons, null,
+      'and a dish offering none reads as "inherit the section", which is what'
+      + ' the editor draws — the absence cannot be told from a clearing');
+  }
+
+  // A DISH THE OUTLET HAS NEVER HEARD OF is not refused for want of a known
+  // add-on group: a stale list must not make a dish unsaveable.
+  const odd = await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'd-odd', name: 'ODD ONE', cat: 'hot-food', price: 12,
+    addons: ['no-such-group'] } }]);
+  assert.ok(!odd.body.results[0].error,
+    'an unknown add-on group is dropped, not fatal: '
+    + (odd.body.results[0].error || ''));
+});
+
 /* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
    Reported from a live store, and it arrives wearing the wrong face: the till
    parked "Bajiya updated · Short Eats & Snacks · MVR 120" after the outlet

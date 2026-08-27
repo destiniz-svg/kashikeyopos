@@ -49,6 +49,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        038 a PIN hash never leaves the database
                        039 a database is not a lobby
                        040 a section is not one browser's opinion
+                       041 heat is a property of the dish
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -1450,6 +1451,66 @@ has.
 The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
+
+## Everything the dish editor collects reaches the outlet
+
+Reported: *"an item added shows, and its tags and heat are not recorded and
+synced."* The form asks for eleven things and the op carried eight. Three
+fields were collected, toasted as saved, and reached the outlet never — each
+failing in a different way, which is why none of them looked like the others.
+
+| field | column | handler wrote it | bootstrap published it | op SENT it |
+| --- | --- | --- | --- | --- |
+| `tags` | since 003 | yes | yes | **no** |
+| `spice` | **none** | no | no | **no** |
+| `addons` | `item_modifier` | only via `modifier_update` | no | **no** |
+
+**Tags needed no schema at all.** The column was there from the first
+migration, `H.dish_upsert` wrote `arr(p.tags)`, and `menuOf` published
+`r.tags` — and `COLLECTION_OP.menu` never sent them, so every save arrived
+with `tags` undefined, `arr()` made it an empty array, and the dish came back
+with Chef's pick, New, Signature and Gluten free erased. Four correct pieces
+and one missing line.
+
+**Heat had nowhere to go.** `dishSpice()` reads `m.spice`, the editor collects
+it on a four-rung scale, and no table in this build has ever had a column for
+it — it lived in whatever object the modal was holding and died with it.
+Migration 041 gives it one. Zero is a real answer and is the default, because
+"not spicy" is a statement a kitchen makes rather than the absence of one, and
+the CHECK is the editor's own scale.
+
+**Silence preserves, for tags and heat as it already did for `off_menu`.**
+`coalesce($13, item.tags)` means a caller that says nothing keeps what is
+there and a caller that means "no tags" sends `[]`. Without it a bulk import
+or an older build would strip a dish on every pass. A heat figure off the
+scale is clamped rather than refusing the save: no money is involved and a
+dish nobody can save is worse than one whose chilli count was rounded.
+
+**Add-ons are three-state and the third is the default.** An array is exactly
+these groups, an empty array is none, and `null` is "inherit the section" —
+what the editor draws as *Section default* and what a dish nobody has chosen
+for carries. So only an ARRAY is written, and writing one is exhaustive. An
+unknown group is dropped rather than refusing the save, because a dish that
+will not save over a stale add-on list is a dish nobody can edit.
+
+**And the CSV import carried none of it.** `H.menu_import` has always existed
+and loops `dish_upsert` over what it is given; the call site sent a label and
+nothing else, so a menu imported from a spreadsheet was written into one
+browser and reached the outlet never — the added rows would eventually go out
+through the holding pen, and the UPDATED ones are patches and would not have
+gone at all. It composes its payload through `opFor("menu", …)`, the one
+mapping every dish write goes through, so an imported dish and a typed one
+arrive in the same shape.
+
+Measured by driving the real editor — tick Chef's pick and Signature, set the
+heat to Hot, Create dish:
+
+```
+A right after save:  {"tags":["chef","signature"],"spice":3}
+A after a bootstrap: {"tags":["chef","signature"],"spice":3}
+B (never touched):   {"tags":["chef","signature"],"spice":3}
+outlet_39.item       MASALA TEA | {chef,signature} | 3 | mains
+```
 
 ## The outlet does not always keep the id this device minted
 
@@ -3681,7 +3742,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 478 tests
+npm test                          # 481 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
