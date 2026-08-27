@@ -1413,11 +1413,32 @@ CSPRNG bytes, minted locally and never from a count of what this device happens
 to hold. A browser with no CSPRNG registers a **fault** rather than falling back
 quietly, because a collision here costs a row.
 
-Six call sites moved — the four that create a dish, plus a banner and a
-customer. Two still count, and they are the two whose id never becomes a key at
-the outlet: an outlet row is replaced by the id the REGISTRY allocates, and a
-supplier's op resolves by NAME and carries no id at all. `test/wiring.test.js`
-pins that list, so a seventh has to justify itself there.
+**The whole class went the same way, not just the dish that was reported.**
+Fourteen call sites now mint; two still count, and they are the two whose id
+never becomes a key at the outlet — an outlet row is replaced by the id the
+REGISTRY allocates, and a supplier's op resolves by NAME and carries no id at
+all. `test/wiring.test.js` pins that list, so a third has to justify itself
+there.
+
+**The item master was the worst of them, and it is not a lost row.**
+`recipe_line.ingredient_id` and `stock_move.ingredient_id` both reference
+`ingredient.id`, and the id was `max(existing) + 1` over the rows one browser
+held. So two devices minting the same one does not merely overwrite a record:
+it **re-points every recipe and every stock movement at a different
+ingredient**, and the only symptom is a margin and a shelf that are quietly
+wrong. Measured against a real outlet: two ingredients added from two devices,
+**one row left** — "DEVICE A FLOUR" replaced by "DEVICE B SUGAR" under the same
+id, with any recipe on it silently switched from one to the other.
+
+**A batch's prefix is load-bearing.** `isSub()` tells a batch from an ingredient
+by the FIRST CHARACTER, so a batch mints as `S…` and an ingredient as `i…`; the
+test asserts two hundred of each are classified correctly, because an
+ingredient that happened to start with an S would be costed as a batch nobody
+has.
+
+The clock-only ids went too — opex, assets, employees, modifiers and rewards
+were `"e" + Date.now()` and friends. Two devices in the same millisecond is
+unlikely and not impossible, and the cost is a row.
 
 ## A menu section is the outlet's, not one browser's
 

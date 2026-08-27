@@ -7537,9 +7537,14 @@ class Component extends DCLogic {
           if (cst <= 0) return this.toast("A cost per purchase unit is required \u2014 an item costed at nothing makes the dish look free", "warn");
           const stock = m.newUnit || "KG";
           const base = stock === "KG" ? "GRM" : stock === "LTR" ? "ML" : "PCS";
-          const items = (raw.items || []);
-          const nid = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
-          const code = "IT-" + String(nid).padStart(4, "0");
+          /* MINTED, NOT COUNTED — and this is the worst one to get wrong.
+             `recipe_line.ingredient_id` and `stock_move.ingredient_id` both
+             reference this id, so two devices minting the same one does not
+             merely lose a row: it re-points every recipe and every stock
+             movement at a DIFFERENT ingredient, and the only symptom is a
+             margin and a shelf that are quietly wrong. */
+          const nid = this.newId("i");
+          const code = nid;
           const row = [nid, 1, nm.toUpperCase(), stock, cst, "raw", code, base, stock, "180", 100, 0, 0];
           // Inserted WITHOUT closing the modal: the lines already entered are
           // modal state, and closing is exactly what used to lose them.
@@ -14685,7 +14690,9 @@ class Component extends DCLogic {
     if (batch <= 0) return this.toast("A batch size is needed to cost a gram of it", "warn");
     const loss = Math.min(0.8, Math.max(0, (+v.loss || 0) / 100));
     const subs = (this.state.local.subs || []).slice();
-    const id = row ? row.id : "S" + (this.SUBS().reduce((a, x) => Math.max(a, +String(x.id).slice(1) || 0), 0) + 1);
+    // Minted, not counted. The "S" is load-bearing — isSub() reads the first
+    // character to tell a batch from an ingredient — so it stays the prefix.
+    const id = row ? row.id : this.newId("S");
     const next = { id: id, name: v.name, batch: batch, unit: v.unit || "g", loss: loss, lines: lines, note: v.note || "" };
     const at = subs.findIndex((x) => x.id === id);
     if (at >= 0) subs[at] = Object.assign({}, subs[at], next); else subs.push(next);
@@ -15086,9 +15093,10 @@ class Component extends DCLogic {
           const base = v.base || "GRM", stock = v.stock || "KG";
           const ok = base === stock || (base === "GRM" && stock === "KG") || (base === "ML" && stock === "LTR");
           if (!ok) return this.toast("No conversion exists from " + base + " to " + stock + " — pick grams/kg, ml/litre, or the same unit on both", "warn");
-          const items = (raw.items || []);
-          const id = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
-          const code = "IT-" + String(id).padStart(4, "0");
+          // Minted, not counted — see the item master note above: a collision
+          // here re-points recipes and stock moves, not just this row.
+          const id = this.newId("i");
+          const code = id;
           const row = [id, +v.cat || 1, v.name.toUpperCase(), stock, cost, "raw", code, base, stock, String(+v.shelf || 180), 100, 0, 0];
           this.insertRow("items", row, "Item created · " + v.name.toUpperCase() + " · " + code + " · " + MVR(cost) + "/" + stock, "items");
         }
@@ -15461,7 +15469,7 @@ class Component extends DCLogic {
           const floor = this.rules().min_wage_medium || 6000;
           if (basic < floor) return this.toast("Below the MVR " + floor + " sector minimum wage", "warn");
           const local = v.kind === "local";
-          const id = "s" + ((K0.STAFF || []).length + 1 + Date.now() % 1000);
+          const id = this.newId("s");
           const mrps = v.pension === "auto" ? local : v.pension === "yes";
           this.insertRow("staff", {
             id: id, name: v.name, outlet: +v.outlet || this.state.outletId, job: v.job,
@@ -15499,7 +15507,7 @@ class Component extends DCLogic {
         },
         onSave: (v) => {
           if (!v.cat || !v.vendor) return this.toast("Category and vendor are required", "warn");
-          const row = { id: "e" + Date.now(), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: +v.amt || 0, freq: v.freq || "monthly", due: Math.min(28, Math.max(1, +v.due || 1)), acct: v.acct || "6300" };
+          const row = { id: this.newId("e"), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: +v.amt || 0, freq: v.freq || "monthly", due: Math.min(28, Math.max(1, +v.due || 1)), acct: v.acct || "6300" };
           const local = Object.assign({}, this.state.local, { opex: (this.state.local.opex || []).concat([row]) });
           this.setState({ local: local, modal: null });
           this.queue("opex_insert", v.cat + " · " + v.vendor + " · " + MVRc(row.amt) + " " + row.freq, "operating_costs");
@@ -15532,7 +15540,7 @@ class Component extends DCLogic {
         onSave: (v) => {
           if (!v.name) return this.toast("Give the equipment a name", "warn");
           const today = this.today();
-          const row = { id: "a" + Date.now(), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: today, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
+          const row = { id: this.newId("a"), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: today, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
           const local = Object.assign({}, this.state.local, { assets: (this.state.local.assets || []).concat([row]) });
           this.setState({ local: local, modal: null });
           this.queue("asset_insert", v.name + " · " + this.locName(row.outlet) + " · " + MVRc(row.cost), "assets");
@@ -15647,7 +15655,7 @@ class Component extends DCLogic {
             if (!name) return this.toast("An add-on needs a name", "warn");
             const ids = this.catsFromNames(v.cats);
             if (ids === null) return;
-            this.setMods(mods.concat([{ id: "mod" + (mods.length + 1) + "-" + Date.now(), name: name, price: Math.max(0, +v.price || 0), cats: ids }]),
+            this.setMods(mods.concat([{ id: this.newId("mod"), name: name, price: Math.max(0, +v.price || 0), cats: ids }]),
               name + " added · " + (+v.price ? MVRc(+v.price) : "free"));
           },
           onEdit: (v, a) => {
@@ -15864,7 +15872,7 @@ class Component extends DCLogic {
           if (!v.name) return this.toast("A reward needs a name", "warn");
           const list = this.LOY().rewards;
           if (list.length >= 40) return this.toast("Forty rewards is the ceiling for one catalogue", "warn");
-          const rewards = list.concat([{ id: "rw" + (list.length + 1) + "-" + Date.now(), name: v.name, cost: Math.max(1, +v.cost || 0), tier: v.tier, active: v.active === "1" }]);
+          const rewards = list.concat([{ id: this.newId("rw"), name: v.name, cost: Math.max(1, +v.cost || 0), tier: v.tier, active: v.active === "1" }]);
           this.setLoy({ rewards: rewards }, "Reward added \u00b7 " + v.name, { rewards: rewards });
         }
       },

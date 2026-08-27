@@ -1583,13 +1583,36 @@ test('every id that becomes a key at the outlet is minted, not counted', () => {
   const counted = [...IDX.matchAll(/this\.nextId\(([^)]*)\)/g)].map((m) => m[1].trim());
   assert.deepStrictEqual(counted.sort(), ['"outlets"', '"vendors"'],
     'a new counted id has to justify itself here: ' + counted.join(' · '));
-  ['"menu", "m"', '"banners", "b"', '"custs", "c"'].forEach((c) => {
-    assert.ok(IDX.indexOf('this.nextId(' + c + ')') < 0,
-      c + ' keys a row at the outlet, so counting it collides across devices');
-  });
-  assert.ok(IDX.indexOf('this.newId("m")') > 0, 'a dish is minted');
   assert.ok(/crypto\.getRandomValues/.test(IDX.slice(IDX.indexOf('newId(prefix) {'),
     IDX.indexOf('nextId(k, prefix) {'))), 'from the platform CSPRNG, like opId already is');
+
+  /* THE WHOLE CLASS, not just the dish that was reported. Each of these ends
+     up as the conflict target of an upsert on the server, so counting rows —
+     or seeding only from a clock — costs a row the moment a second device
+     does the same thing in the same window. */
+  ['m', 'i', 'S', 'e', 'a', 's', 'mod', 'rw', 'b', 'c'].forEach((pfx) => {
+    assert.ok(IDX.indexOf('this.newId("' + pfx + '")') > 0,
+      'the "' + pfx + '" record is minted');
+  });
+  // And none of the old shapes survive anywhere.
+  [/reduce\(\(a, x\) => Math\.max\(a, x\[0\]/, /Math\.max\(a, \+String\(x\.id\)/,
+    /id: "e" \+ Date\.now\(\)/, /id: "a" \+ Date\.now\(\)/,
+    /"mod" \+ \(mods\.length/, /"rw" \+ \(list\.length/, /"s" \+ \(\(K0\.STAFF/]
+    .forEach((re) => assert.ok(!re.test(IDX),
+      'a counted or clock-only id is back: ' + re));
+
+  /* A BATCH'S PREFIX IS LOAD-BEARING. isSub() reads the first character to
+     tell a batch from an ingredient, so a batch id that stopped starting with
+     "S" would be costed as an ingredient nobody has — and an ingredient id
+     that STARTED with one would be costed as a batch. */
+  assert.ok(/isSub\(id\) \{ return String\(id\)\.charAt\(0\) === "S"; \}/.test(IDX),
+    'the discriminator is still the first character');
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  for (let i = 0; i < 200; i++) {
+    assert.ok(F.isSub(F.newId('S')), 'a batch is always recognised as one');
+    assert.ok(!F.isSub(F.newId('i')), 'and an ingredient is never mistaken for one');
+    assert.ok(!F.isSub(F.newId('m')), 'nor is a dish');
+  }
 });
 
 /* ═══ THE POLL IS PAID FOR, SO IT HAD BETTER BE READ ════════════════════════
