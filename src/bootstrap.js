@@ -863,6 +863,118 @@ function employeeOf(r) {
 
 // The floor keys tickets by "<outletId>:<slot>", which is what the terminal
 // reads; a split bill is the same table with a second slot.
+/* ═══ THE SLICE A FIVE-SECOND POLL CAN AFFORD ═══════════════════════════════
+   Every signed-in terminal already asks its outlet what changed every five
+   seconds. The answer was DISPATCHED AND DISCARDED — `kpos-tick` had no
+   listener anywhere — so the only thing that ever re-read the outlet was a
+   bootstrap, and a bootstrap happens on sign-in, after THIS device's own
+   material push, and on an explicit refresh. A table opened on the handheld
+   was therefore invisible at the counter until the counter happened to write
+   something of its own or somebody reloaded the page.
+
+   `buildState()` is not the answer to that: it is thirty queries and it
+   carries sixty days of settled sales, which measured at 853 bytes a row —
+   about 1.7 MB on a shop with two thousand bills, on every terminal, twelve
+   times a minute. What a shop actually needs to share second by second is
+   bounded and small, and NONE of it grows with trading history:
+
+     · the floor — every open or held ticket, WITH its lines
+     · today's takings — the business date only, never the history
+     · the drawer, and what guests have ordered or asked for
+
+   NARROWER THAN `buildState` ON PURPOSE, and only where a reader would find
+   nothing. `state.kds` and `state.held` are both carried by the bootstrap and
+   read by nobody — the kitchen screen derives its queue from the tickets, and
+   `held` in the terminal is that device's own parked bills, which are local
+   and persisted. Twelve reads a minute is the wrong place to keep paying for
+   rows no screen opens.
+
+   Shaped by the same functions the bootstrap uses (`ticketMap`, `ticketOf`,
+   `settledOf`), because a second shaping path is how the poll and the
+   bootstrap would come to disagree about one bill.
+
+   `settledToday` is deliberately NOT called `settled`. The bootstrap's
+   `settled` is a wholesale refill and the client replaces its cache with it;
+   this is today's rows only, and it MERGES. A partial answer that can be
+   mistaken for a complete one is how a terminal loses two months of history
+   to a poll. */
+async function buildLive(ctx, opts) {
+  /* WHAT HAS BEEN SETTLED SINCE THIS DEVICE LAST ASKED, not the whole day
+     twelve times a minute. The tickets have to be sent whole — a terminal
+     cannot tell "unchanged" from "closed and gone" out of a partial list, and
+     the floor is what this poll exists for — but a bill that was already
+     delivered is a bill that does not need delivering again. `since` is 0 on
+     the first tick after sign-in, which is the one time the whole trading day
+     is wanted; and it is bounded by the business date either way, so a device
+     that has been dark for a week does not ask for a week of sales here. The
+     bootstrap it just ran already gave it those. */
+  const since = new Date(Number((opts || {}).since || 0) || 0);
+  return withOutletRead(ctx, async function (c) {
+    const q = await all(c, {
+      tickets: ["SELECT * FROM ticket WHERE status IN ('open','held') ORDER BY opened_at"],
+      lines: ['SELECT l.* FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
+        + " WHERE t.status IN ('open','held') ORDER BY l.at"],
+      /* THE OUTLET'S OWN BUSINESS DATE, not `now() - 1 day`. Malé is UTC+5 and
+         a container is UTC, so an interval would file most of an evening's
+         trade under the wrong day — the defect migration 016 exists to have
+         ended. setContext() has already put the outlet's zone on this
+         transaction, so `current_date` is the outlet's. */
+      sales: ['SELECT * FROM sale WHERE business_date = current_date AND at > $1'
+        + ' ORDER BY at DESC LIMIT 2000', [since]],
+      saleLines: ['SELECT sl.* FROM sale_line sl JOIN sale s ON s.id = sl.sale_id'
+        + ' WHERE s.business_date = current_date AND s.at > $1', [since]],
+      payments: ['SELECT p.* FROM payment p JOIN sale s ON s.id = p.sale_id'
+        + ' WHERE s.business_date = current_date AND s.at > $1', [since]],
+      drawer: ['SELECT * FROM drawer_session WHERE closed_at IS NULL'
+        + ' ORDER BY opened_at DESC LIMIT 1'],
+      guestOrders: ['SELECT * FROM guest_order WHERE accepted_at IS NULL'
+        + ' AND rejected_reason IS NULL ORDER BY at'],
+      guestReqs: ['SELECT * FROM guest_request WHERE ack_at IS NULL ORDER BY at'],
+    });
+
+    const linesByTicket = {};
+    q.lines.rows.forEach((l) => {
+      (linesByTicket[l.ticket_id] = linesByTicket[l.ticket_id] || []).push(l);
+    });
+    const slBySale = {};
+    q.saleLines.rows.forEach((l) => {
+      (slBySale[l.sale_id] = slBySale[l.sale_id] || []).push(l);
+    });
+    const payBySale = {};
+    q.payments.rows.forEach((p) => {
+      (payBySale[p.sale_id] = payBySale[p.sale_id] || []).push(p);
+    });
+    // A settled row names the table it was rung on, and the ticket it came
+    // from may well have closed — so the label is read off the open ones we
+    // have and left null otherwise, exactly as the bootstrap does.
+    const ticketTable = {};
+    q.tickets.rows.forEach((t) => { ticketTable[t.id] = t.table_no; });
+    const open = q.drawer.rows[0];
+
+    return {
+      // Says this is a SLICE. A reader that cannot tell a partial answer from
+      // a whole one will eventually treat one as the other.
+      live: true,
+      outletId: ctx.outletId,
+      at: Date.now(),
+      tickets: ticketMap(q.tickets.rows, linesByTicket),
+      settledToday: q.sales.rows.map((s) => settledOf(s, slBySale[s.id] || [],
+        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id])),
+      register: open ? {
+        open: true, id: open.id, float: num(open.float_amount),
+        openedBy: open.opened_by, openedAt: ms(open.opened_at)
+      } : { open: false },
+      guestOrders: q.guestOrders.rows.map((g) => ({
+        id: g.id, table: g.table_no, lines: g.lines, promo: g.promo,
+        name: g.guest_name, phone: g.guest_phone, at: ms(g.at), note: g.note
+      })),
+      guestRequests: q.guestReqs.rows.map((g) => ({
+        id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at)
+      }))
+    };
+  });
+}
+
 function ticketMap(rows, linesByTicket) {
   const out = {};
   rows.filter((t) => t.status === 'open').forEach((t) => {
@@ -1098,4 +1210,4 @@ const DEFAULT_TIERS = [
 const { baseDomain, portalOrigin } = require('./handle');
 const { ALLERGENS, DIETS } = require('../app/kashikeyo-rules.js');
 
-module.exports = { buildBootstrap, buildState, all, MODULES, rolesOf, ALLERGENS, DIETS };
+module.exports = { buildBootstrap, buildState, buildLive, all, MODULES, rolesOf, ALLERGENS, DIETS };

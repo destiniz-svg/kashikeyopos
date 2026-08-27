@@ -2741,6 +2741,23 @@ class Component extends DCLogic {
     const patch = {};
     if (live.outletId && live.outletId !== s.outletId) patch.outletId = live.outletId;
     if (live.settled) patch.settled = live.settled;
+    /* TODAY'S TAKINGS, FROM THE FIVE-SECOND SLICE — merged, never assigned.
+       `settled` above is the bootstrap's wholesale refill and may replace the
+       cache outright; this is the trading day only, arriving twelve times a
+       minute, and assigning it would delete two months of history on the
+       first tick. Keyed on the sale id, and the outlet's row wins: a bill
+       settled on the till beside this one is a row this terminal has never
+       seen, and a bill it settled itself is a row the outlet has since
+       repaired (a tax rate, a COGS, a credit overrun), so the later answer is
+       the outlet's either way. */
+    if (Array.isArray(live.settledToday)) {
+      const seen = {};
+      live.settledToday.forEach((r) => { if (r && r.id) seen[r.id] = r; });
+      const kept = (s.settled || []).filter((r) => !(r && r.id && seen[r.id]));
+      if (live.settledToday.length || kept.length !== (s.settled || []).length) {
+        patch.settled = live.settledToday.concat(kept);
+      }
+    }
     if (live.register) patch.register = live.register;
     if (live.counts) patch.counts = live.counts;
     if (live.res) patch.res = live.res;

@@ -1808,6 +1808,87 @@ test('hiding a dish sticks, and 86-ing one does not hide it', opts, async () => 
   assert.strictEqual(m.hidden, false, 'while still being on the menu');
 });
 
+/* ═══ ONE OUTLET, MANY TERMINALS, ONE ANSWER ════════════════════════════════
+   Every signed-in terminal has always polled `/sync/pull` every five seconds,
+   and the answer was DISPATCHED AND DISCARDED — `kpos-tick` had no listener
+   anywhere in the three app pages. So the only thing that ever re-read the
+   outlet was a bootstrap, which happens on sign-in, after THIS device's own
+   material push, and on an explicit refresh. A table opened on the handheld
+   was invisible at the counter until the counter wrote something of its own,
+   and a bill settled on one till never reached the other till's takings.
+
+   Measured in two real browsers before this was written: over twenty seconds
+   of polling, the second terminal saw none of a table, a dish, a section or a
+   sale. This is the server half of the fix — the slice that makes it possible
+   — asked of the endpoint the poll actually calls. */
+test('the five-second poll carries the floor, today\'s takings and the drawer', opts, async () => {
+  // A poll from a device that has just come up: `since` is 0, so it is told
+  // the whole trading day once, and the floor as it stands.
+  const cold = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  assert.strictEqual(cold.status, 200);
+  const st = cold.body.state;
+  assert.ok(st, 'the poll carries a live slice at all — this is what was missing');
+  assert.strictEqual(st.live, true, 'and says it is a SLICE, not a whole state');
+  assert.ok(st.settledToday, 'today\'s takings ride the poll');
+  assert.strictEqual(st.settled, undefined,
+    'and are NOT called `settled`: that key is the bootstrap\'s wholesale refill, '
+    + 'and a partial answer under it would delete the history every five seconds');
+  assert.ok(st.register && typeof st.register.open === 'boolean', 'the drawer');
+  assert.ok(Array.isArray(st.guestOrders) && Array.isArray(st.guestRequests),
+    'and what guests have ordered or asked for');
+
+  /* THE STAMP IS THE DATABASE'S CLOCK. It is compared against `applied_at` and
+     `sale.at`, which Postgres wrote — so a few hundred milliseconds of skew
+     between this process and the database would silently drop whatever landed
+     in the gap, for ever, with nothing on any screen to say a bill went
+     missing. */
+  const dbNow = await one('SELECT (extract(epoch from clock_timestamp()) * 1000)::bigint AS ms');
+  assert.ok(Math.abs(Number(cold.body.now) - Number(dbNow.ms)) < 5000,
+    'the stamp is read off the clock its own predicates are compared against');
+
+  // A TICKET ARRIVES WITH ITS LINES. The pull has always carried ticket
+  // headers and nothing read them; a bill rendered from a header is a bill
+  // that looks empty, which is worse than not showing it.
+  const table = 'T77';
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, item: 'm1', name: 'Grilled Reef Fish', qty: 2, price: 185,
+    lid: uuid(), split: 0
+  } }]);
+  const after = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  const key = Object.keys(after.body.state.tickets || {}).find((k) => k.indexOf(table) === 0);
+  assert.ok(key, 'a table opened on another terminal is on the floor this one reads');
+  assert.ok((after.body.state.tickets[key].lines || []).length >= 1,
+    'and it carries its lines, not just a header');
+
+  /* THE WINDOW OVERLAPS ITSELF. `now()` in Postgres is the TRANSACTION's start
+     time, so a sale whose transaction opened before a stamp and committed
+     after it carries an `at` the next window would otherwise have passed. */
+  const t0 = Number(after.body.now);
+  const sale = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), channel: 'dine_in', covers: 2,
+    sub: 300, disc: 0, net: 300, svc: 0, tax: 0, round: 0, total: 300,
+    taxCode: 'NONE', taxLabel: '', taxRate: 0, cogs: 0,
+    server: 'Test Owner', cur: 'MVR', rate: 1, fgn: 0,
+    sold: [{ id: 'm1', name: 'Grilled Reef Fish', qty: 2, price: 150, amount: 300, cost: 0 }],
+    payments: [{ method: 'cash', amt: 300, tendered: 300, chg: 0 }],
+    stockMoves: []
+  } }]);
+  assert.ok(!sale.body.results[0].error, 'the bill settles');
+  const next = await get('/api/outlet/' + outletId + '/sync/pull?since=' + t0, token);
+  assert.ok((next.body.state.settledToday || []).some((x) => Number(x.total) === 300),
+    'and the terminal that did not ring it is told, on its very next poll');
+
+  // A STEADY POLL DOES NOT RE-SEND THE DAY. The floor is sent whole — a
+  // terminal cannot tell "unchanged" from "closed and gone" out of a partial
+  // list — but a bill already delivered is not delivered again.
+  const steady = await get('/api/outlet/' + outletId + '/sync/pull?since='
+    + (Number(next.body.now) + 60000), token);
+  assert.strictEqual((steady.body.state.settledToday || []).length, 0,
+    'nothing new since, so nothing is re-sent');
+  assert.ok(Object.keys(steady.body.state.tickets || {}).length >= 1,
+    'while the floor is still whole, because that is what the poll is for');
+});
+
 /* ═══ A MENU SECTION IS THE OUTLET'S, NOT ONE BROWSER'S ═════════════════════
    Reported from a live store, and it arrives wearing the wrong face: the till
    parked "Bajiya updated · Short Eats & Snacks · MVR 120" after the outlet

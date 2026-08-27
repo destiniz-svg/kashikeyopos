@@ -784,6 +784,79 @@ p50 is ~9% worse, and that is the honest trade: the same work now commits in
 more transactions, so the median request pays a little more. Live serving is
 unaffected — 30 terminals at p50 147 / p95 293 / p99 383 ms, zero errors.
 
+### One outlet, many terminals, one answer
+
+Every signed-in terminal has always asked its outlet what changed every five
+seconds. **The answer was dispatched and discarded** — the bridge fired
+`kpos-tick` and no handler existed in any of the three app pages — so twelve
+requests a minute per terminal were paid for and thrown away, and the only
+thing that ever re-read the outlet was a BOOTSTRAP: on sign-in, after THIS
+device's own material push, or on an explicit refresh.
+
+So a floor was not shared at all. A table opened on the handheld was invisible
+at the counter until the counter happened to write something of its own; a bill
+settled on one till never reached the other till's takings; a dish priced in the
+back office reached the till it was priced on and nowhere else. Measured in two
+real browsers against one outlet before any of this was written: over twenty
+seconds of polling, the second terminal saw **none** of a table, a dish, a
+section or a sale rung on the first.
+
+**`buildState()` is not the answer.** It is thirty queries and sixty days of
+settled sales — 853 bytes a row, measured, so about 1.7 MB on a shop with two
+thousand bills, on every terminal, twelve times a minute. What a shop actually
+needs to share second by second is bounded and **none of it grows with trading
+history**:
+
+```
+buildLive(ctx, {since})     the floor — every open or held ticket, WITH lines
+                            today's takings — the business date, since `since`
+                            the drawer, guest orders, guest requests
+```
+
+Measured on the same outlet: `buildState` 100.7 KB in 30 ms · `buildLive` 43.4 KB
+in 7 ms on the first tick, **21.4 KB steady**, all of it the open tickets, which
+is what the poll exists for.
+
+- **One merge path.** The tick is folded in through `KPOS_REAL.state` and the
+  `kpos-live` event — the same two things a bootstrap uses — so the terminal
+  grows no second way to absorb the same rows. `seed()` remains the one place
+  tickets are mapped onto this floor's slots.
+- **`settledToday` is deliberately not `settled`.** The bootstrap's `settled` is
+  a wholesale refill and the client replaces its cache with it; this is the
+  trading day only, arriving twelve times a minute, and a partial answer that can
+  be mistaken for a complete one is how a terminal loses two months of history to
+  a poll. It merges by id, and the outlet's row wins — a bill this device settled
+  itself is a row the outlet has since repaired.
+- **The floor is sent whole; the day is sent incrementally.** A terminal cannot
+  tell "unchanged" from "closed and gone" out of a partial ticket list, so the
+  tickets are always complete; a bill already delivered is not delivered again.
+- **One clock, and a window that overlaps itself.** `since` is compared against
+  `applied_at` and `sale.at`, which Postgres wrote, so the stamp is read off
+  `clock_timestamp()` rather than the app's `Date.now()` — a few hundred
+  milliseconds of skew would otherwise drop whatever landed in the gap, for ever,
+  with nothing on any screen to say a bill went missing. And `now()` in Postgres
+  is the TRANSACTION's start time, so a sale that opened before a stamp and
+  committed after it would carry an `at` the next window had already passed: the
+  window reaches back five seconds every time, and the client merges by id, so a
+  row delivered twice is the same row.
+- **What the slice does not carry, a bootstrap re-reads.** `TICK_COVERS` in
+  `app/kpos-bridge.js` is the closed list of kinds whose whole consequence is
+  already in the slice. It **fails open**: an unclassified kind falls through to
+  a re-read, so the list can cost an extra read and can never cost staleness.
+  Throttled to one read every ten seconds, and never two at once.
+- **A slow floor.** A sale is covered — its takings, its ticket and its docket
+  are all in the slice — but what it also did, to a member's points, the credit
+  balance, the stock ledger and the journal, is not. Those ride a bootstrap every
+  five minutes rather than making every terminal re-read the whole outlet twelve
+  times a minute during service.
+
+Measured after: a table opened on one browser reaches the other **with its
+lines** in ~2.5 s; a section and a dish in ~5 s; a settled bill on the second
+terminal's takings in ~5 s. `test/api.test.js` asks the endpoint the poll
+actually calls; `test/wiring.test.js` pins the shape, the merge and the
+fail-open, because a listener that was never there is exactly the thing that
+disappears again without a word.
+
 ### The clock that orders one outlet's work
 
 A Lamport clock means nothing unless it is RECEIVED as well as sent, and this
@@ -3164,7 +3237,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 459 tests
+npm test                          # 461 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

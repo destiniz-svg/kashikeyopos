@@ -3,7 +3,7 @@ const express = require('express');
 const { withOutlet, withOutletRead } = require('../db');
 const { sameOutlet, atLeast } = require('../auth');
 const { applyOp } = require('../apply');
-const { all } = require('../bootstrap');
+const { all, buildLive } = require('../bootstrap');
 
 const r = express.Router({ mergeParams: true });
 
@@ -175,11 +175,32 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
    settle its own outbox), guest orders and requests waiting on the till, and
    the kitchen board. The full state comes from /bootstrap; this is the tick.
    ═══════════════════════════════════════════════════════════════════════ */
+/* ONE CLOCK, AND A WINDOW THAT OVERLAPS ITSELF.
+
+   `since` is a stamp this route issued and the device sent back. It is
+   compared against `applied_at` and `sale.at`, which are the DATABASE's
+   clock — so it has to BE the database's clock, or a few hundred
+   milliseconds of skew between the app process and Postgres silently drops
+   whatever landed in the gap, for ever, with nothing on any screen to say a
+   bill went missing.
+
+   And one clock is still not enough: `now()` in Postgres is the TRANSACTION's
+   start time, so a sale whose transaction opened before this stamp and
+   committed after it carries an `at` this window has already passed. The
+   window therefore reaches back a few seconds every time. It costs a handful
+   of rows re-sent to a device that already has them, and the client merges by
+   id, so a row delivered twice is the same row. */
+const PULL_OVERLAP_MS = 5000;
+
 r.get('/pull', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
-  const since = new Date(Number(req.query.since || 0) || 0);
+  const asked = Number(req.query.since || 0) || 0;
+  const since = new Date(asked ? Math.max(0, asked - PULL_OVERLAP_MS) : 0);
   try {
     const out = await withOutletRead(req.ctx, async function (c) {
       const q = await all(c, {
+        // The stamp the device will send back, read off the clock the
+        // predicates above are compared against.
+        now: ['SELECT (extract(epoch from clock_timestamp()) * 1000)::bigint AS ms'],
         ops: ['SELECT op_id, kind, label, entity, result, applied_at, lamport'
           + ' FROM op_log WHERE applied_at > $1 ORDER BY applied_at LIMIT 500', [since]],
         orders: ['SELECT id, table_no, lines, promo, guest_name, guest_phone, note, at'
@@ -199,11 +220,27 @@ r.get('/pull', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
       const tickets = q.tickets;
 
       return {
-        now: Date.now(),
+        now: Number(q.now.rows[0].ms),
         ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows,
         kds: kds.rows, tickets: tickets.rows
       };
     });
+    /* THE FLOOR THIS POLL EXISTS TO SHARE, in the shape the terminal already
+       merges. The rows above are headers — a ticket with no lines — which was
+       enough when nothing read them and is not enough now: a bill rendered
+       from a header is a bill that looks empty. `buildLive()` carries the
+       whole slice, through the bootstrap's own row shapes, and the client
+       feeds it to the one merge path rather than growing a second.
+
+       A read that fails does not fail the poll. The ops half is what keeps a
+       device's clock moving and what tells it to re-read; losing the slice for
+       one tick costs five seconds, and answering 500 would stop the loop. */
+    try {
+      out.state = await buildLive(req.ctx, { since: since });
+    } catch (e) {
+      out.state = null;
+      out.stateError = 'the live slice could not be read';
+    }
     res.set('cache-control', 'no-store').json(out);
   } catch (e) { next(e); }
 });

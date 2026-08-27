@@ -202,6 +202,99 @@
     try { root.dispatchEvent(new Event("resize")); } catch (e) {}
   }
 
+  /* ── the five-second answer, and what it cannot answer ─────────────────
+     Every signed-in terminal has always asked its outlet what changed every
+     five seconds. The answer was dispatched as `kpos-tick` and NOTHING
+     LISTENED TO IT — grep the three app pages and there is no handler — so
+     the request was paid for twelve times a minute and thrown away, and the
+     only thing that ever re-read the outlet was a bootstrap. A bootstrap
+     happens on sign-in, after THIS device's own material push, and on an
+     explicit refresh; so a table opened on the handheld stayed invisible at
+     the counter until the counter wrote something of its own, and a bill
+     settled on one till never reached the other till's takings at all.
+
+     The tick now carries the floor (see buildLive) and is merged through the
+     SAME path a bootstrap uses — `KPOS_REAL.state` and the `kpos-live` event
+     — so the terminal grows no second code path for the same rows. */
+  function absorb(t) {
+    var slice = t && t.state;
+    if (!slice) return;
+    /* Only ONTO a bootstrap, never instead of one. A tick that landed before
+       the first bootstrap resolved would otherwise install a KPOS_REAL with
+       no session on it, and the session is what the terminal adopts to know
+       who is signed in. The bootstrap is moments away; five seconds later
+       there is another tick. */
+    if (!root.KPOS_REAL || !root.KPOS_REAL.state) return;
+    var prev = root.KPOS_REAL.state;
+    // MERGED, never replaced: the bootstrap's sixty days of settled sales,
+    // its journals and its stock moves are not in this answer, and a slice
+    // assigned over them would delete two months of history every five
+    // seconds. `settledToday` is a different key for exactly that reason.
+    root.KPOS_REAL = {
+      session: root.KPOS_REAL.session || null,
+      state: Object.assign({}, prev, slice),
+      at: t.now || Date.now()
+    };
+    try {
+      root.dispatchEvent(new CustomEvent("kpos-live", { detail: { state: slice } }));
+    } catch (e) {}
+    tellMe(t);
+  }
+
+  /* WHAT THE SLICE DOES NOT CARRY, A BOOTSTRAP RE-READS. A dish priced, a
+     section created, a customer taken, a rank changed, an ingredient
+     delivered: none of those are on the floor, so no tick will ever mention
+     them and this terminal would show yesterday's menu until somebody
+     reloaded it.
+
+     `TICK_COVERS` is the closed list of kinds whose whole consequence the
+     slice already carries. It FAILS OPEN: a kind nobody has classified falls
+     through to a re-read, so the list can cost an extra read and can never
+     cost staleness — which is the only direction it is safe to be wrong in.
+
+     A sale is covered because its takings, its ticket and its docket are all
+     in the slice. What it also did — to a member's points, to the credit
+     balance, to the stock ledger and to the journal — is not, and rides the
+     slow refresh above rather than making every terminal re-read the whole
+     outlet twelve times a minute during service. */
+  var TICK_COVERS = {
+    add_line: 1, void_line: 1, line_note: 1, close_ticket: 1, move_table: 1,
+    covers_update: 1, park_bill: 1, resume_bill: 1, table_status: 1,
+    ticket_status: 1, fulfil_stage: 1, fire_course: 1, split_payment: 1,
+    sale: 1, open_register: 1, close_register: 1,
+    kds_bump: 1, kds_bump_all: 1, kds_recall: 1, kds_station: 1,
+    qr_order: 1, guest_add: 1, guest_signal: 1, member_signal: 1,
+    discount_applied: 1, discount_cleared: 1
+  };
+  // A bootstrap is the expensive read, so it is not started twice at once and
+  // not started twice inside the throttle. Both are latency, not correctness:
+  // the next tick asks again.
+  var READ_GAP_MS = 10000;
+  var SLOW_MS = 300000;
+  var reading = false, lastRead = 0;
+  function reread() {
+    if (reading) return;
+    var now = Date.now();
+    if (now - lastRead < READ_GAP_MS) return;
+    reading = true; lastRead = now;
+    api.bootstrap().then(hydrate)
+      .catch(function () {})
+      .then(function () { reading = false; });
+  }
+  // An op this terminal has not accounted for, that the slice does not carry.
+  function tellMe(t) {
+    var ops = (t && t.ops) || [];
+    for (var i = 0; i < ops.length; i++) {
+      var o = ops[i];
+      // Audit-only ops changed nothing to re-read; the rest are judged by
+      // whether the slice already said what they did.
+      if (o.result && o.result.audited) continue;
+      if (TICK_COVERS[o.kind]) continue;
+      reread();
+      return;
+    }
+  }
+
   /* ── 4 · the tick ─────────────────────────────────────────────────────── */
   var started = false;
   function start() {
@@ -210,6 +303,7 @@
     api.flush();
     api.onTick(function (t) {
       try { root.dispatchEvent(new CustomEvent("kpos-tick", { detail: t })); } catch (e) {}
+      absorb(t);
     });
     // After a push lands, the masters may have moved — a dish was priced, a
     // delivery was received. Re-read rather than guess what changed.
@@ -218,8 +312,16 @@
       var material = results.some(function (x) {
         return x.result && !x.result.audited && !x.replay;
       });
-      if (material) api.bootstrap().then(hydrate);
+      if (material) reread();
     });
+    /* THE FLOOR OF THE GUARANTEE. Everything the tick does not carry — what a
+       sale did to a member's points, to the stock ledger and to the journal —
+       reaches this terminal on the next bootstrap, and a bootstrap it has to
+       WAIT for is a bootstrap that may never come on a till nobody is writing
+       at. So there is a slow one, and it is slow on purpose: five minutes is
+       far inside the window in which any of that matters, and twelve reads an
+       hour is a cost a shop will not notice. */
+    setInterval(function () { if (api.signedIn()) reread(); }, SLOW_MS);
   }
 
   root.KPOS_BRIDGE = {

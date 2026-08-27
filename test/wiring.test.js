@@ -1524,6 +1524,69 @@ test('the contract can see a kind that is chosen, not spelled', () => {
     '"' + k + '" is something being compared against, not an op'));
 });
 
+/* ═══ THE POLL IS PAID FOR, SO IT HAD BETTER BE READ ════════════════════════
+   Every signed-in terminal asks its outlet what changed every five seconds.
+   The bridge dispatched that answer as `kpos-tick` and NOTHING CONSUMED IT —
+   twelve requests a minute, per terminal, thrown away — so the only thing
+   that ever re-read the outlet was a bootstrap: on sign-in, after this
+   device's own material push, or on an explicit refresh. Measured in two real
+   browsers: over twenty seconds, the second terminal saw none of a table, a
+   dish, a section or a sale rung on the first.
+
+   This is the shape of the fix, pinned where a silent deletion would show. */
+test('the five-second answer is consumed, through the one merge path', () => {
+  const BR = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  const SYNC = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+
+  // The tick is absorbed, not merely announced.
+  assert.ok(/api\.onTick\(function \(t\) \{[\s\S]{0,300}absorb\(t\)/.test(BR),
+    'every tick is absorbed — this listener is the whole defect');
+  // ONE merge path: the tick re-uses the event a bootstrap already fires, so
+  // the terminal grows no second way to fold the same rows in.
+  assert.ok(/absorb\(t\) \{[\s\S]{0,1600}dispatchEvent\(new CustomEvent\("kpos-live"/.test(BR),
+    'the slice arrives on kpos-live, the path a bootstrap already uses');
+  assert.ok(/state: Object\.assign\(\{\}, prev, slice\)/.test(BR),
+    'MERGED onto what the bootstrap gave, never assigned over it');
+
+  // The server's half.
+  assert.ok(/async function buildLive\(ctx, opts\)/.test(BOOT), 'there is a bounded slice');
+  assert.ok(/out\.state = await buildLive\(req\.ctx, \{ since: since \}\)/.test(SYNC),
+    'and the poll carries it, bounded by what this device has already been told');
+  const live = BOOT.slice(BOOT.indexOf('async function buildLive'),
+    BOOT.indexOf('function ticketMap'));
+  assert.ok(/settledToday:/.test(live) && !/^\s+settled:/m.test(live),
+    'today\'s takings are their own key: a partial answer must never be able to '
+    + 'pass for the bootstrap\'s wholesale refill');
+  assert.ok(/business_date = current_date/.test(live),
+    'bounded by the OUTLET\'s trading day, not by an interval a container\'s UTC would shift');
+  assert.ok(!/FROM journal|FROM stock_move|FROM bank_line/.test(live),
+    'and it carries nothing that grows with trading history — this runs every five seconds');
+
+  // The terminal merges today's rows rather than replacing its cache.
+  assert.ok(/Array\.isArray\(live\.settledToday\)/.test(IDX),
+    'the terminal knows the difference between today and everything');
+  assert.ok(/patch\.settled = live\.settledToday\.concat\(kept\)/.test(IDX),
+    'and merges by id rather than assigning a day over two months');
+
+  /* WHAT THE SLICE DOES NOT CARRY, A BOOTSTRAP RE-READS — and the list of
+     kinds it does carry FAILS OPEN, so an unclassified kind costs a read and
+     can never cost staleness. */
+  assert.ok(/var TICK_COVERS = \{/.test(BR), 'the closed list exists');
+  const covers = BR.slice(BR.indexOf('var TICK_COVERS'), BR.indexOf('var READ_GAP_MS'));
+  ['add_line', 'close_ticket', 'sale', 'kds_bump', 'qr_order']
+    .forEach((k) => assert.ok(new RegExp('\\b' + k + ':').test(covers),
+      k + ' is on the floor, so the tick already said what it did'));
+  ['dish_upsert', 'menu_category_insert', 'member_upsert', 'employee_upsert', 'price_override']
+    .forEach((k) => assert.ok(!new RegExp('\\b' + k + ':').test(covers),
+      k + ' is not on the floor — it must force a re-read, or the menu goes stale'));
+  assert.ok(/if \(TICK_COVERS\[o\.kind\]\) continue;\s*\n\s*reread\(\);/.test(BR),
+    'an unknown kind falls THROUGH to a re-read, which is the safe direction');
+  assert.ok(/setInterval\(function \(\) \{ if \(api\.signedIn\(\)\) reread\(\); \}, SLOW_MS\)/.test(BR),
+    'and a slow floor, so a sale\'s points, credit and ledger cannot be stale for ever');
+});
+
 /* A FAULT FROM A BROWSER EXTENSION IS NOT THIS BUILD'S BUG. Found on a live
    till's own Diagnostics screen: two caught faults, both "Failed to connect to
    MetaMask" — a wallet extension injected into the page — reported under
