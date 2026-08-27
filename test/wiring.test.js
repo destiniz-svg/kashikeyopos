@@ -1689,6 +1689,93 @@ test('the outlet\'s settings displace the defaults, and the pen empties', () => 
     'while a device preference stays — it is never published, so it never lands');
 });
 
+/* ═══ A ROW THE OUTLET HAS NO RECORD OF HAS NOT BEEN DELIVERED ══════════════
+   Reported straight after the section fix landed: "I added three menu items,
+   two on one browser and one on another, and I still don't see them all".
+
+   A back-office row lives in TWO places until the outlet accepts it — the live
+   collection and `state.local` — and `applyLocal()` is what puts the held copy
+   back after a bootstrap replaces window.KPOS wholesale. It did ONLY that. So
+   a row whose op was refused (a dish whose section had never arrived), or
+   overwritten (two devices minting the same id), or recorded as unmodelled,
+   was re-drawn on the browser that made it on every bootstrap for ever, and
+   existed nowhere else. The screen said saved and the shop had no such dish.
+
+   Two halves, and the pen has to do both or it is a fork:
+     · a held row the outlet does NOT have is queued again, once per session;
+     · a held row the outlet DOES have is dropped, so the local copy can never
+       shadow an edit made on another terminal. */
+test('a held row the outlet never received is re-sent, and one it has is dropped', () => {
+  const kpos = FX.kpos();
+  const F = H.makeInstance({ kpos: kpos, raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const MENU = F.__win.KPOS.MENU;
+  const landed = MENU[0];
+  assert.ok(landed && landed.id, 'the fixture publishes a menu to compare against');
+
+  /* One row the outlet HAS and one it does not. The held copy is a separate
+     object, because that is what a pen restored from localStorage contains —
+     and it is what lets the pen tell the outlet's row apart from the one this
+     replay put there itself. */
+  const held = JSON.parse(JSON.stringify(landed));
+  const orphan = { id: 'm-never-arrived', name: 'Bajiya', cat: landed.cat,
+    price: 120, active: true, recipe: [] };
+  F.state.local = { menu: [held, orphan] };
+
+  F.applyLocal();
+
+  // ── the orphan is asked for again, carrying the row rather than a label.
+  const sent = queued.filter((q) => q.kind === 'dish_upsert');
+  assert.strictEqual(sent.length, 1, 'exactly the row the outlet does not have');
+  assert.strictEqual(sent[0].payload.id, 'm-never-arrived',
+    'and it is the orphan, not the one that landed');
+  assert.ok(sent[0].payload.name, 'with its payload, which is what was refused for want of');
+
+  // ── it is on the screen too, or the operator watches their own dish vanish
+  //    while it is being re-sent.
+  assert.ok(F.__win.KPOS.MENU.some((x) => x.id === 'm-never-arrived'),
+    'the held row still renders while it is in flight');
+
+  // ── and the row the outlet HAS is out of the pen. Kept, it shadows every
+  //    later edit made anywhere else — a private fork wearing the word
+  //    "offline".
+  assert.strictEqual((F.state.local.menu || []).map((r) => r.id).join(','),
+    'm-never-arrived',
+    'the delivered row is dropped and only the undelivered one is held');
+
+  // ── ONCE PER SESSION. The outbox owns retrying; queueing on every bootstrap
+  //    is how a hot outbox is made.
+  queued.length = 0;
+  F.applyLocal();
+  assert.strictEqual(queued.filter((q) => q.kind === 'dish_upsert').length, 0,
+    'a second bootstrap does not ask again');
+
+  /* AND NOT BEFORE THE OUTLET HAS ANSWERED. This is the fence, and without it
+     the whole lane is decoration: before a bootstrap the collections are still
+     the shipped list, so every held row reads as missing, and KPOS_SYNC — the
+     durable outbox — is not loaded, so `queue()` records the op locally and
+     enqueues nothing. The op evaporates, the row is marked as asked for, and
+     the terminal never asks again. Measured in a browser exactly that way. */
+  const G = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const late = [];
+  G.__win.KPOS_SYNC = null;
+  G.state.local = { menu: [{ id: 'm-too-early', name: 'Too early', cat: 'c1',
+    price: 10, active: true, recipe: [] }] };
+  G.applyLocal();
+  assert.strictEqual(G._rowSent['menu:m-too-early'], undefined,
+    'nothing is marked as sent while there is nothing to send it with');
+  assert.ok(G.__win.KPOS.MENU.some((x) => x.id === 'm-too-early'),
+    'and the row is still drawn — holding it back would lose it from the screen too');
+
+  // The bootstrap lands, and now it asks.
+  G.__win.KPOS_SYNC = { enqueue: (op) => { late.push(op); return op.opId; } };
+  G.applyLocal();
+  assert.strictEqual(late.filter((q) => q.kind === 'dish_upsert').length, 1,
+    'the first pass with an outbox and an outlet answer is the one that sends');
+});
+
 test('an op reaches the outlet with its payload, or is named as carrying none', () => {
   const { AUDIT_ONLY } = require('../src/apply');
   const named = new Set(AUDIT_ONLY.concat(BARE_BY_DESIGN));
@@ -2446,8 +2533,12 @@ test('an un-synced back-office row survives every bootstrap, not just the first'
   // applyLocal itself must stay idempotent, or replaying on every bootstrap
   // would duplicate rows instead of restoring them.
   const apply = page.slice(page.indexOf('applyLocal() {'), page.indexOf('/* ── master data, one seam'));
-  assert.match(apply, /if \(!arr\.some\(\(x\) => this\.rowKey\(x\) === this\.rowKey\(row\)\)\) arr\.unshift\(row\)/,
-    'a row the outlet has already accepted is skipped, not added twice');
+  assert.match(apply, /if \(there && there !== row\) \{ dropped\+\+; return; \}/,
+    'a row the outlet has already accepted is not added twice — it leaves the'
+    + ' pen, because a held copy that outlives delivery shadows every later edit');
+  assert.match(apply, /const there = arr\.filter\(\(x\) => this\.rowKey\(x\) === id\)\[0\];/,
+    'and the match is by identity, so this replay cannot read its own insertion'
+    + ' from the last pass as the outlet having accepted the row');
 });
 
 /* A DATABASE IS NOT A LOBBY. Postgres grants CONNECT on every database to

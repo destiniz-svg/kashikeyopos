@@ -12949,12 +12949,86 @@ class Component extends DCLogic {
   coll(k) { const f = this.COLLS[k]; return f ? (f() || null) : null; }
   // The item master is stored as arrays (id first), everything else as objects.
   rowKey(r) { return r ? (Array.isArray(r) ? r[0] : (r.no !== undefined ? r.no : r.id)) : null; }
+  /* A ROW THE OUTLET HAS NO RECORD OF HAS NOT BEEN DELIVERED, whatever the
+     toast said at the time. This is the same rule `reconcileCats()` applies to
+     a menu section, one level up and over every collection, and it is what
+     answers "I added three dishes and the other browser shows one".
+
+     A back-office row lives in TWO places until the outlet accepts it — the
+     live collection and `state.local` — and `applyLocal()` is what puts the
+     held copy back after a bootstrap replaces window.KPOS wholesale. It did
+     only that: it re-drew the row on the browser that made it, on every
+     bootstrap, for ever, which is precisely why the row looked saved on one
+     terminal and existed on no other.
+
+     Three of those rows have three different histories and none of them is
+     visible from the screen: an op the outlet REFUSED (a dish whose section
+     had never arrived — parked, and a person decides), an op whose row was
+     OVERWRITTEN by another device minting the same id, and an op that was
+     queued bare and recorded as unmodelled. All three end here, and the
+     answer to all three is the same: ask again.
+
+     Bounded the way the sections are. Once per session per row, because the
+     outbox owns retrying and queueing on every five-second poll is how a hot
+     outbox is made; and only where the collection HAS a real op, so a
+     collection that is audit-only stays audit-only rather than queueing a
+     bare `<entity>_insert` every time somebody signs in.
+
+     Sending one the outlet was already about to accept costs a duplicate op
+     and can never cost a duplicate ROW: every one of these is an upsert keyed
+     by the row's own id, which is the same property that makes the outbox
+     safe to replay at all. So the failure direction here is a wasted request,
+     never a second dish.
+
+     And the pen EMPTIES. A held row the outlet now publishes has landed, so
+     the local copy is dropped — on the KEY, never on the value, because if
+     the outlet's row differs somebody edited it elsewhere and theirs is the
+     later decision. Without this the first copy a browser made shadows every
+     later edit made anywhere else, which is a private fork wearing the word
+     "offline". */
+  /* WHAT THE OUTLET HOLDS IS NOT KNOWABLE BEFORE A BOOTSTRAP, and a re-send
+     that fires before one is worse than none: the collections are still the
+     shipped list, so every held row reads as missing, and `KPOS_SYNC` — the
+     durable outbox — is not loaded yet, so `queue()` records the op locally
+     and enqueues nothing. The op evaporates and the row is marked as asked
+     for, which is how a re-send lane can be wired, look right, and deliver
+     nothing at all. Measured exactly that way before this fence existed. */
+  outletAnswered() {
+    return !!(this.__win || window).KPOS_REAL && !!(this.__win || window).KPOS_SYNC;
+  }
   applyLocal() {
     const L = this.state.local || {}, P = this.state.patches || [];
+    this._rowSent = this._rowSent || {};
+    const kept = {};
+    let dropped = 0;
     Object.keys(L).forEach((k) => {
-      const arr = this.coll(k); if (!arr) return;
-      (L[k] || []).forEach((row) => { if (!arr.some((x) => this.rowKey(x) === this.rowKey(row))) arr.unshift(row); });
+      const arr = this.coll(k);
+      // A collection this build is not publishing yet is not evidence of
+      // anything, so its pen is left exactly as it is.
+      if (!arr) { kept[k] = L[k]; return; }
+      const mine = [];
+      (L[k] || []).forEach((row) => {
+        const id = this.rowKey(row);
+        /* Matched by IDENTITY, not by key. This function is what puts the held
+           row into the collection, so a later pass finds an id it inserted
+           itself — and reading that as "the outlet has it" would drop the row
+           from the pen on the strength of its own work. A bootstrap replaces
+           the collection wholesale, so the outlet's copy is always a different
+           object; ours is always the same one. */
+        const there = arr.filter((x) => this.rowKey(x) === id)[0];
+        if (there && there !== row) { dropped++; return; }
+        if (!there) arr.unshift(row);
+        mine.push(row);
+        const seen = k + ":" + id;
+        if (this._rowSent[seen] || !this.outletAnswered()) return;
+        const op = this.opFor(k, row);
+        if (!op) return;
+        this._rowSent[seen] = true;
+        this.queue(op.kind, "Re-sent \u00b7 " + (row.name || id), k, op.payload);
+      });
+      if (mine.length) kept[k] = mine;
     });
+    if (dropped && this.outletAnswered()) this.setState({ local: kept });
     P.forEach((p) => {
       const arr = this.coll(p.coll); if (!arr) return;
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
@@ -13026,7 +13100,7 @@ class Component extends DCLogic {
     this._catSent = this._catSent || {};
     ((this.state.local || {}).menucats || []).forEach((row) => {
       const id = row && row.id;
-      if (!id || this._catSent[id]) return;
+      if (!id || this._catSent[id] || !this.outletAnswered()) return;
       if (list.some((c) => c.id === id && c.icon != null)) return;
       this._catSent[id] = true;
       this.catWrite(id, this.catMeta(id), "Menu section re-sent \u00b7 " + (row.name || id));

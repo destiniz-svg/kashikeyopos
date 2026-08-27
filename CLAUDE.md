@@ -1451,6 +1451,63 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## A row the outlet has no record of has not been delivered
+
+Reported straight after the section fix landed: *"I added three menu items, two
+from one browser and one from another, and I still don't see them all."*
+
+A back-office row lives in TWO places until the outlet accepts it — the live
+collection and `state.local` — and `applyLocal()` is what puts the held copy
+back after a bootstrap replaces `window.KPOS` wholesale. **It did only that.**
+So a row whose op was refused (a dish whose section had never arrived),
+overwritten (two devices minting the same id), or recorded as `unmodelled` was
+re-drawn on the browser that made it on every bootstrap **for ever**, and
+existed nowhere else. The screen said saved and the shop had no such dish. That
+is why fixing the section and the id did not bring the earlier rows back: those
+fixes stop new rows being lost and say nothing about the ones already sitting
+in a pen.
+
+`applyLocal()` is both halves of the holding-pen rule now, over every
+collection rather than only the sections:
+
+- **a held row the outlet does NOT have is queued again**, carrying the row —
+  once per session per row, because the outbox owns retrying and queueing on
+  every five-second poll is how a hot outbox is made, and only where the
+  collection has a real op, so an audit-only collection stays audit-only;
+- **a held row the outlet DOES have is dropped**, or the local copy shadows
+  every later edit made anywhere else.
+
+**Matched by IDENTITY, not by key.** This function is what puts the held row
+into the collection, so a later pass finds an id it inserted itself — and
+reading that as "the outlet has it" drops the row from the pen on the strength
+of its own work. A bootstrap replaces the collection wholesale, so the outlet's
+copy is always a different object and ours is always the same one.
+
+**And nothing is asked for before the outlet has answered.** This is the fence,
+and without it the whole lane is decoration — measured in a browser exactly
+that way, on the first version: before a bootstrap the collections are still
+the SHIPPED list, so every held row reads as missing, and `KPOS_SYNC` — the
+durable outbox — is not loaded yet, so `queue()` records the op locally and
+enqueues nothing. The op evaporates, the row is marked as asked for, and the
+terminal never asks again. `outletAnswered()` is that fence, and
+`reconcileCats()` had the same defect and now shares it.
+
+Sending one the outlet was already about to accept costs a duplicate op and can
+never cost a duplicate ROW: every one of these is an upsert keyed by the row's
+own id, which is the same property that makes the outbox safe to replay at all.
+
+Measured in two real browsers: a dish held on one with nothing left in the
+outbox to deliver it — the state a live browser is actually in after the
+defects that shipped — reaches the other, untouched, in **1.0 s**, and the
+sender's pen empties on the same bootstrap.
+
+**What this does not recover.** A row destroyed by the id collision is gone from
+the outlet, and the browser that lost the race is the one still holding it — so
+that copy is what re-sends, under the id it minted. Where BOTH browsers still
+hold their copy, both re-send and both land, because `newId()` no longer lets
+two devices mint the same one. Where the losing browser's storage was cleared,
+there is nothing left to re-send and the row has to be typed again.
+
 ## A setting is the outlet's, unless it is named as this terminal's
 
 The owner sits at home and changes a policy — how long until a till locks,
@@ -3403,7 +3460,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 468 tests
+npm test                          # 469 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
