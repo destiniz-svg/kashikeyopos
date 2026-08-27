@@ -2301,6 +2301,52 @@ test('a receipt is shared as a link, and the link answers', opts, async () => {
   assert.strictEqual(junk.status, 404, 'a malformed token is refused');
 });
 
+/* ═══ A RECEIPT DOES NOT REQUIRE A CUSTOMER ════════════════════════════════
+   Reported: "every receipt expects a customer for sharing. it should not be
+   the case." Most bills in a café are rung on nobody, and WhatsApp was refused
+   on every one of them — "no usable mobile number on file" — with the till
+   telling the cashier to add one to a record that does not exist.
+
+   Neither handoff has ever needed a recipient: Viber's forward URL takes none
+   at all, and `wa.me/?text=` opens WhatsApp with the message composed and lets
+   the cashier pick the chat. The requirement was this build's invention. */
+test('a bill rung on nobody can still be sent', opts, async () => {
+  const walkIn = await one('SELECT id, receipt_no FROM sale'
+    + ' WHERE member_id IS NULL ORDER BY at DESC LIMIT 1');
+  if (!walkIn) return;
+
+  const w = await post('/api/outlet/' + outletId + '/sale/' + walkIn.id + '/share',
+    { via: 'whatsapp' }, token);
+  assert.strictEqual(w.status, 200, JSON.stringify(w.body));
+  assert.match(w.body.handoff, /^https:\/\/wa\.me\/\?text=/,
+    'WhatsApp opens on its own contact picker: ' + w.body.handoff);
+  assert.ok(w.body.link, 'and the document still has an address');
+
+  const v = await post('/api/outlet/' + outletId + '/sale/' + walkIn.id + '/share',
+    { via: 'viber' }, token);
+  assert.strictEqual(v.status, 200, JSON.stringify(v.body));
+  assert.match(v.body.handoff, /^viber:\/\/forward\?text=/, 'and Viber always could');
+
+  /* A NUMBER READ OUT AT THE COUNTER. The server has always honoured a typed
+     `to`; nothing in the till ever asked for one. A local mobile typed without
+     its country code reaches the same place as one with it. */
+  const bare = await post('/api/outlet/' + outletId + '/sale/' + walkIn.id + '/share',
+    { via: 'whatsapp', to: '7712345' }, token);
+  assert.match(bare.body.handoff, /^https:\/\/wa\.me\/9607712345\?text=/, bare.body.handoff);
+  const full = await post('/api/outlet/' + outletId + '/sale/' + walkIn.id + '/share',
+    { via: 'whatsapp', to: '+960 771 2345' }, token);
+  assert.strictEqual(full.body.handoff, bare.body.handoff,
+    'however the guest reads it out');
+
+  /* EMAIL IS STILL THE ONE THAT ASKS, because a message cannot be posted to an
+     inbox nobody named — and the till opens a field next to the asking. */
+  const e = await post('/api/outlet/' + outletId + '/sale/' + walkIn.id + '/share',
+    { via: 'email' }, token);
+  assert.strictEqual(e.status, 409, JSON.stringify(e.body));
+  assert.match(e.body.error, /no email address on file/, e.body.error);
+  assert.ok(e.body.link, 'with the document handed back regardless');
+});
+
 test('an emailed document refuses by name when there is no address', opts, async () => {
   const m = await one('SELECT id FROM chain.member ORDER BY joined_at LIMIT 1');
   if (!m) return;

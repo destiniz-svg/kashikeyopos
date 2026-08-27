@@ -107,8 +107,17 @@
     const text = bodyFor((o || {}).kind, o);
     const enc = encodeURIComponent(text);
     if (channel === "whatsapp") {
+      /* NO NUMBER IS A VALID ANSWER, and it is the ordinary one: most bills in
+         a café are rung on nobody. `wa.me/?text=` — with no recipient — opens
+         WhatsApp on the cashier's own phone with the message composed and lets
+         them pick the chat, which is fewer taps than typing a number into this
+         app and then watching it be typed again by WhatsApp.
+
+         Before this, a walk-in receipt was REFUSED on WhatsApp with "no usable
+         mobile number on file", and the till told the cashier to add one to a
+         customer record that does not exist. Reported exactly that way. */
       const to = msisdn((o || {}).phone);
-      return "https://wa.me/" + to + "?text=" + enc;
+      return "https://wa.me/" + (to || "") + "?text=" + enc;
     }
     if (channel === "viber") return "viber://forward?text=" + enc;
     if (channel === "email") {
@@ -126,8 +135,14 @@
   function why(channel, o) {
     const s = o || {};
     if (!s.link) return "this document has no address yet";
+    /* EMAIL IS THE ONLY CHANNEL THAT NEEDS AN ADDRESS. A message cannot be
+       posted to an inbox nobody named — so that one asks, and the till opens a
+       field next to the asking. WhatsApp and Viber are both handoffs to an app
+       the cashier already has open: Viber has never taken a recipient at all,
+       and WhatsApp picks one itself when none is given. Refusing those for
+       want of a number was this build inventing a requirement neither channel
+       has, on the ordinary case — a bill rung on a walk-in. */
     if (channel === "email" && !String(s.email || "").trim()) return "no email address on file";
-    if (channel === "whatsapp" && !msisdn(s.phone)) return "no usable mobile number on file";
     return "";
   }
 

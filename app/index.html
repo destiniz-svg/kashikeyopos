@@ -8277,7 +8277,28 @@ class Component extends DCLogic {
           : "display:none",
       doRefund: () => (this.state.refunds || {})[ord.no]
         ? this.toast("Already refunded — a second refund would need a new authorisation", "warn")
-        : this.openForm("refund", { no: ord.no, max: acc + svc + tax, tender: ord.tender || "cash", table: ord.table })
+        : this.openForm("refund", { no: ord.no, max: acc + svc + tax, tender: ord.tender || "cash", table: ord.table }),
+
+      /* A CLOSED TICKET IS SHAREABLE TOO. The Send control lived only on the
+         receipt that appears the instant a bill is settled — so a guest who
+         asked for it ten minutes later, or a house-account customer ringing
+         the next morning, could not be sent anything. Reported exactly that
+         way. This row came from the OUTLET, so it already carries the outlet's
+         own id; there is nothing to resolve and nothing to wait for.
+
+         Rank 2, like the other one: handing a guest their bill is a cashier's
+         job. */
+      shareLabel: ord.id ? "Send the receipt · email, WhatsApp or Viber"
+        : "This bill has not reached the outlet yet",
+      shareStyle: "margin-top:9px;width:100%;padding:11px;border-radius:999px;background:"
+        + (ord.id ? "var(--bg-3)" : "var(--bg-2)")
+        + ";border:1px solid var(--line);color:var(--text"
+        + (ord.id ? "" : "-muted") + ");font-size:12px;font-weight:600;text-align:center;font-family:inherit",
+      doShare: () => ord.id
+        ? this.shareDoc({ kind: "receipt", id: ord.id,
+          member: ord.memberId || ord.customer || null,
+          title: "Receipt " + (ord.no || "") + " \u00b7 " + MVRc(ord.total) })
+        : this.toast("This bill is still on its way to the outlet — it can be sent as soon as it lands", "warn")
     };
   }
 
@@ -13410,13 +13431,25 @@ class Component extends DCLogic {
        the receipt away and put the cashier back on the floor, one tap after
        taking the money and before printing anything. Stashed here, restored
        when the send is done. */
-    this._docBack = (this.state.modal && this.state.modal.kind === "settled")
-      ? this.state.modal : null;
+    this._docBack = (this.state.modal && (this.state.modal.kind === "settled"
+      || this.state.modal.kind === "receipt")) ? this.state.modal : null;
     const acts = this.SHARE_CHANNELS().map((ch) => ({
       label: ch[1], sub: ch[2],
       style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
       go: () => this.sendDoc(s, ch[0], null)
     }));
+    /* TYPE A NUMBER. WhatsApp picks its own recipient when none is given, so
+       this is not the walk-in's only road — it is for the guest who reads a
+       number out at the counter, and for a member who wants THIS bill on a
+       different phone from the one on their record. The server has always
+       honoured a typed `to`; nothing here ever asked for one. */
+    acts.push({
+      head: "Or send it to a number",
+      label: "Type a mobile number\u2026",
+      sub: "WhatsApp opens on that number, whether or not the bill was rung on a customer",
+      style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
+      go: () => this.askNumber(s)
+    });
     acts.push({
       head: "Or hand it over yourself",
       label: "Copy the link",
@@ -13481,9 +13514,11 @@ class Component extends DCLogic {
     }).catch((e) => {
       const msg = (e && e.message) || "";
       if (/no email address on file/i.test(msg)) return this.askEmail(s);
-      if (/no usable mobile/i.test(msg)) {
-        return this.toast("No mobile number on this customer — add one on their record first", "warn");
-      }
+      /* This refusal is gone from the composer — WhatsApp picks its own chat
+         when no number is given — but a device still holding an older build's
+         answer, or a channel that grows a requirement later, lands here. It
+         opens the field rather than naming a record that may not exist. */
+      if (/no usable mobile/i.test(msg)) return this.askNumber(s);
       return this.toast(msg || "The outlet refused the send", "err");
     });
   }
@@ -13550,6 +13585,13 @@ class Component extends DCLogic {
   askEmail(spec) {
     this._docPending = spec || {};
     this.openForm("docEmail", null);
+  }
+  /* AND THE ONE FOR A NUMBER. Same shape, and it needs no customer at all: a
+     receipt shared to a number the guest read out is the ordinary case in a
+     café, and the bill it belongs to was rung on nobody. */
+  askNumber(spec) {
+    this._docPending = spec || {};
+    this.openForm("docPhone", null);
   }
 
   /* ── the settings, after a bootstrap ─────────────────────────────────────
@@ -16871,6 +16913,43 @@ class Component extends DCLogic {
          that "the address is saved on the customer" for a bill that was rung
          on nobody. Nothing was saved and nothing could be; the screen said
          otherwise. Found by emailing a takeaway receipt in a browser. */
+      /* A NUMBER, FOR A BILL RUNG ON NOBODY. No customer is required and none
+         is invented: a walk-in receipt shared to a number the guest read out
+         is the ordinary case in a café. Where the bill DOES belong to a
+         customer the number is offered back to their record, because the next
+         receipt should not ask again — but that is an offer, not a condition. */
+      docPhone: (() => {
+        const spec = this._docPending || {};
+        const c = spec.member
+          ? (K().CUSTOMERS || []).find((x) => x.id === spec.member) : null;
+        return {
+          title: "Which number?",
+          sub: c ? "WhatsApp will open on this number for " + c.name
+            : "WhatsApp will open on this number \u2014 this bill is not on a customer's record",
+          save: "Open WhatsApp",
+          foot: c
+            ? "Saved on " + c.name + "\u2019s record if it is new, so the next receipt goes without asking. A Maldivian mobile can be typed with or without 960."
+            : "Nothing is saved \u2014 there is no customer record to keep it on. A Maldivian mobile can be typed with or without 960; add the guest in Guests & Credit if they are a regular.",
+          fields: [{ k: "phone", label: "Mobile number", v: c ? (c.phone || "") : "", full: 1 }],
+          onSave: (v) => {
+            const S = window.KASHIKEYO_SHARE;
+            const raw = String(v.phone || "").trim();
+            /* Held to the SAME definition the link is composed from, so a
+               number this screen accepts can never be one wa.me refuses. */
+            const num = S && S.msisdn ? S.msisdn(raw) : raw.replace(/\D/g, "");
+            if (!num) {
+              return this.toast("That is not a mobile number a messaging app can open \u2014 check it and try again", "warn");
+            }
+            // Offered back to the record, never demanded: a walk-in has none,
+            // and a member who wants THIS bill elsewhere keeps their own.
+            if (c && !String(c.phone || "").trim()) {
+              this.patchRows("custs", [c.id], { phone: raw }, c.name + " \u00b7 number saved", "customers");
+            }
+            this.setState({ modal: null });
+            this.sendDoc(spec, "whatsapp", raw);
+          }
+        };
+      })(),
       docEmail: (() => {
         const spec = this._docPending || {};
         const c = spec.member

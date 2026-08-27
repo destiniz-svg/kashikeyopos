@@ -2744,6 +2744,32 @@ answer `sent: false` with the composed URL — that is the only WhatsApp send
 this build can honestly make, exactly as the invitation already says. Email
 answers what the transport answered.
 
+**A RECEIPT DOES NOT REQUIRE A CUSTOMER, and requiring one was this build's
+own invention.** Most bills in a café are rung on nobody, and WhatsApp refused
+every one of them — *"no usable mobile number on file"* — with the till telling
+the cashier to add a number to a customer record that does not exist. Reported
+exactly that way. Neither handoff has ever needed a recipient: Viber's forward
+URL takes none at all, and **`wa.me/?text=` opens WhatsApp with the message
+composed and lets the cashier pick the chat**, which is fewer taps than typing
+a number into this app and then watching WhatsApp ask for it again. So `why()`
+gates EMAIL alone, because a message cannot be posted to an inbox nobody named.
+
+**A number read out at the counter has a field of its own.** The server has
+always honoured a typed `to`; nothing in the till ever asked for one. *Type a
+mobile number* sits in the sheet for the guest who reads one out, and for a
+member who wants THIS bill on a different phone from the one on their record.
+It needs no customer, holds the number to the same `msisdn()` the link is
+composed from — so a number the screen accepts can never be one `wa.me`
+refuses — and offers it back to the record only where there IS one.
+
+**And a bill settled earlier is shareable too.** The Send control lived only on
+the receipt that appears the instant a bill is closed, so a guest who asked ten
+minutes later, or a house-account customer ringing the next morning, could be
+sent nothing. The row reopened from Orders & Tickets came from the OUTLET, so
+it already carries the outlet's own id — there was nothing to resolve and
+nothing to wait for. A row this device settled but has not yet delivered has no
+id, and says so rather than offering a control that cannot work.
+
 **A refusal names the field and still hands back the link.** No email on file
 is a 409 saying so, with the address of the document attached — the document
 EXISTS; only the delivery could not be made. The till reads that one sentence
@@ -4030,7 +4056,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 494 tests
+npm test                          # 497 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

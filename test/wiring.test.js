@@ -4072,7 +4072,7 @@ test('the share sheet has a kind of its own, and comes back to the receipt', () 
   /* AND IT PUTS THE RECEIPT BACK. `state.modal` is one slot, so the sheet
      REPLACES the settled receipt — Print button and all — and sharing used to
      drop the cashier back on the floor one tap after taking the money. */
-  assert.match(SRC, /this\._docBack = \(this\.state\.modal && this\.state\.modal\.kind === "settled"\)/,
+  assert.match(SRC, /this\._docBack = \(this\.state\.modal && \(this\.state\.modal\.kind === "settled"/,
     'the receipt is stashed');
   assert.match(SRC, /const back = this\._docBack \|\| null;/, 'and restored after the send');
   assert.ok(!/if \(via === "copy"\) return this\.copyLink\(r\.link\);/.test(SRC),
@@ -4169,4 +4169,62 @@ test('the setup file says what it is, and the picker belongs to it', () => {
     'never opened on nothing — the second control needs a record to act on');
   assert.match(SRC, /k: "p_" \+ p\.key, label: p\.label, full: 1,\s*\n\s*v: "1"/,
     'and everything is included by default');
+});
+
+/* ═══ A RECEIPT DOES NOT REQUIRE A CUSTOMER ════════════════════════════════
+   Reported: "every receipt expects a customer for sharing. it should not be
+   the case." Most bills in a café are rung on nobody, and WhatsApp refused
+   every one of them — the till telling the cashier to add a number to a
+   record that does not exist. Neither handoff ever needed a recipient. */
+test('a bill rung on nobody is still shareable, on every channel', () => {
+  const S = require('../app/kashikeyo-share.js');
+  const doc = { kind: 'receipt', outlet: 'X', docNo: 'R1', total: 1, currency: 'MVR',
+    when: '2026-08-27', link: 'https://x/r/RC1' };
+
+  // WhatsApp with no number opens its OWN contact picker — fewer taps than
+  // typing one into this app and watching WhatsApp ask for it again.
+  assert.match(S.channelUrl('whatsapp', doc), /^https:\/\/wa\.me\/\?text=/,
+    'no recipient is a valid wa.me link');
+  assert.match(S.channelUrl('whatsapp', Object.assign({ phone: '7712345' }, doc)),
+    /^https:\/\/wa\.me\/9607712345\?text=/, 'and a number is still honoured');
+
+  /* EMAIL IS THE ONLY CHANNEL THAT MAY REFUSE, because a message cannot be
+     posted to an inbox nobody named. Refusing the other two for want of a
+     number was a requirement this build invented. */
+  assert.strictEqual(S.why('whatsapp', doc), '', 'WhatsApp needs nothing');
+  assert.strictEqual(S.why('viber', doc), '', 'nor does Viber');
+  assert.match(S.why('email', doc), /no email address on file/, 'email still asks');
+
+  // And the till offers a number rather than naming a record that may not
+  // exist — the refusal path opens the field, it does not scold.
+  assert.match(SRC, /if \(\/no usable mobile\/i\.test\(msg\)\) return this\.askNumber\(s\);/,
+    'a missing number opens the field');
+  assert.ok(!/add one on their record first/.test(SRC),
+    'and never tells a cashier to edit a customer that is not there');
+  assert.match(SRC, /askNumber\(spec\) \{/, 'the popup exists');
+  assert.match(SRC, /docPhone: \(\(\) => \{/, 'and has a spec built per render');
+  // It is held to the SAME definition the link is composed from, so a number
+  // this screen accepts can never be one wa.me refuses.
+  assert.match(SRC, /S && S\.msisdn \? S\.msisdn\(raw\) : /, 'one definition of a number');
+});
+
+/* ═══ AND A CLOSED TICKET IS SHAREABLE TOO ═════════════════════════════════
+   The Send control lived only on the receipt that appears the instant a bill
+   is settled, so a guest who asked ten minutes later could be sent nothing.
+   The row reopened from Orders & Tickets came from the OUTLET, so it already
+   carries the outlet's own id — there was nothing to resolve and nothing to
+   wait for. */
+test('a bill settled earlier can still be sent', () => {
+  assert.match(SRC, /shareLabel: ord\.id \? "Send the receipt/,
+    'the closed-ticket receipt has its own Send control');
+  assert.match(SRC, /doShare: \(\) => ord\.id[\s\S]{0,200}this\.shareDoc\(\{ kind: "receipt", id: ord\.id/,
+    'and shares the row the outlet published');
+  // A row this device settled but has not yet delivered has no outlet id, and
+  // says so rather than offering a control that cannot work.
+  assert.match(SRC, /"This bill has not reached the outlet yet"/,
+    'an undelivered bill says so plainly');
+  /* AND IT COMES BACK. `state.modal` is one slot, so the sheet replaces
+     whatever asked for it — on both receipts, not just the settle-time one. */
+  assert.match(SRC, /this\.state\.modal\.kind === "settled"\s*\n?\s*\|\| this\.state\.modal\.kind === "receipt"/,
+    'both receipts are restored after a send');
 });
