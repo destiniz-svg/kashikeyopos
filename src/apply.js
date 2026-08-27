@@ -164,15 +164,15 @@ async function applySale(c, p, ctx) {
   const cogsClaimed = r2(p.cogs);
 
   const sale = await one(c,
-    'INSERT INTO sale (receipt_no, ticket_id, at, business_date, channel, covers,'
+    'INSERT INTO sale (client_id, receipt_no, ticket_id, at, business_date, channel, covers,'
     + ' subtotal, discount, discount_code, discount_reason, discount_by, net,'
     + ' service, tax_code, tax_label, tax_rate, tax, rounding, total, pts,'
     + ' pts_value, tip, cogs,'
     + ' currency, fx_rate, fx_amount, member_id, customer_name, server_name,'
     + ' closed_by, device_id, client_total, server_audit)'
-    + ' VALUES ($1,$2,coalesce($3, now()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'
+    + ' VALUES ($34,$1,$2,coalesce($3, now()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'
     + ' $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)'
-    + ' RETURNING id, receipt_no',
+    + ' RETURNING id, receipt_no, client_id',
     [no.no, p.ticketId || null, p.at ? new Date(p.at) : null,
       p.bizDate || today(ctx), p.channel || 'dine_in', Math.max(1, num(p.covers) || 1),
       subtotal, discount, p.discCode || null, p.discReason || null,
@@ -186,7 +186,16 @@ async function applySale(c, p, ctx) {
       // there means the row is never briefly wrong in a way a trigger could see.
       cogsClaimed, p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
       p.member || null, p.customer || null, p.server || null,
-      ctx.actor, ctx.deviceId, claimed, null]);
+      ctx.actor, ctx.deviceId, claimed, null,
+      /* $34 — THE NAME THE TILL GAVE THIS BILL. The id and the receipt number
+         are both allocated here, correctly: a document number is a statutory
+         sequence and cannot be minted on a device that has been dark all
+         evening. So without this the till holds a settled bill and has no way
+         to say WHICH one to the outlet — which is what left the Send control
+         on the settled receipt disabled for ever. Same doctrine as
+         `ticket_line.client_id`. NULL is a real answer: a build older than
+         migration 043 sends none, and inventing one would be worse. */
+      String(p.cid || '').slice(0, 64) || null]);
 
   for (const l of arr(p.sold)) {
     await c.query('INSERT INTO sale_line (sale_id, item_id, name, qty, unit_price,'

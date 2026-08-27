@@ -1069,6 +1069,11 @@ function settledOf(s, lines, pays, outletId, table) {
     // unlabelled sale is a sale that belongs to nobody.
     outletId: outletId,
     id: s.id, no: s.receipt_no, time: iso(s.at), at: ms(s.at),
+    /* The name the TILL gave this bill, so the terminal that rang it can find
+       its own row coming back wearing the outlet's id and the outlet's
+       receipt number — neither of which it could have known. Null for a bill
+       rung before migration 043. */
+    cid: s.client_id || null,
     table: table || null,
     channel: s.channel, covers: s.covers,
     sub: num(s.subtotal), disc: num(s.discount), discCode: s.discount_code || '',

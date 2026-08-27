@@ -4020,3 +4020,96 @@ test('a statement link that aged out says so, and a forged one does not', () => 
   assert.match(page, /410[\s\S]{0,80}expired/i,
     'and the page has the sentence that 410 is for');
 });
+
+/* ═══ A SALE THE TILL CAN NAME ══════════════════════════════════════════════
+   The outlet allocates a sale's id AND its receipt number — a document number
+   is a statutory sequence and cannot be minted on a device that has been dark
+   all evening. Correct, and it left the till holding a settled bill it could
+   not point at: the Send control matched the outlet's row by receipt NUMBER,
+   the till mints `INV-<code>-<year>-0001` off its own persisted counter, and
+   the two allocators never produce the same string. So the control read "once
+   this bill reaches the outlet" for ever, on every real sale — measured in a
+   browser with the bill already at the outlet in under two seconds.
+
+   Same answer as `ticket_line.client_id` one row up: the device names the row,
+   the outlet keeps the name, the bootstrap publishes it back. */
+test('a settled bill carries the name the till gave it', () => {
+  // MINTED, not counted: two tills settling at once must not collide.
+  assert.match(SRC, /const cid = this\.newId\("R"\)/,
+    'the till mints a name for the bill');
+  assert.match(SRC, /const snapshot = \{\s*\n\s*cid: cid,/,
+    'the receipt snapshot carries it');
+  assert.match(SRC, /const settledRow = \{\s*\n\s*cid: cid,/,
+    'and so does the row that goes into state.settled');
+  assert.match(SRC, /cid: row\.cid \|\| null,/, 'the sale op sends it');
+  assert.match(SRC, /\(s\.settled \|\| \[\]\)\.find\(\(x\) => x && x\.cid && p\.cid && x\.cid === p\.cid\)/,
+    'and the settled receipt finds its own row by it');
+  assert.ok(!/x\.no && p\.no && x\.no === p\.no/.test(SRC),
+    'never by receipt number again — two allocators, never equal');
+
+  const APPLY = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  assert.match(APPLY, /INSERT INTO sale \(client_id, receipt_no/, 'the outlet keeps it');
+  assert.match(APPLY, /String\(p\.cid \|\| ''\)\.slice\(0, 64\) \|\| null/,
+    'bounded, and NULL where an older build sent none');
+
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(BOOT, /cid: s\.client_id \|\| null,/, 'and publishes it back');
+});
+
+/* ═══ A SHEET THAT SHOWS WHAT ITS CALLER COMPOSED ═══════════════════════════
+   `kind: "actions"` is the TABLE sheet: that branch builds its own title,
+   subtitle and list from the active table and ignores the modal state. The
+   share sheet reused it, so "Send the receipt" opened "Table actions · Tnull ·
+   free · Parked bills · Table QR · Mark reserved". Found by tapping it. */
+test('the share sheet has a kind of its own, and comes back to the receipt', () => {
+  assert.match(SRC, /if \(m\.kind === "share"\) \{/, 'its own branch');
+  assert.match(SRC, /modalTitle: m\.title \|\| "Send it", modalSub: m\.sub \|\| ""/,
+    'which renders what the caller composed');
+  assert.match(SRC, /modal: \{ kind: "share",/, 'and shareDoc opens that one');
+  assert.match(SRC, /m\.kind === "actions" \|\| m\.kind === "share"/,
+    'drawn as an action sheet');
+
+  /* AND IT PUTS THE RECEIPT BACK. `state.modal` is one slot, so the sheet
+     REPLACES the settled receipt — Print button and all — and sharing used to
+     drop the cashier back on the floor one tap after taking the money. */
+  assert.match(SRC, /this\._docBack = \(this\.state\.modal && this\.state\.modal\.kind === "settled"\)/,
+    'the receipt is stashed');
+  assert.match(SRC, /const back = this\._docBack \|\| null;/, 'and restored after the send');
+  assert.ok(!/if \(via === "copy"\) return this\.copyLink\(r\.link\);/.test(SRC),
+    'on every branch, the copy included');
+});
+
+/* ═══ COPYING IS NOT SENDING ════════════════════════════════════════════════
+   "Copy the link" asked the outlet for an EMAIL share and threw the answer
+   away, so copying a link for a customer with no address on file was refused
+   409 and opened a form demanding one — for a message nobody was going to
+   send. Giving a document an address and DELIVERING it are two acts. */
+test('a link is a channel of its own, and needs no address', () => {
+  assert.match(SRC, /const call = via === "copy" \? "link" : via;/,
+    'the till asks for a link, not an email');
+  const OUT = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(OUT, /SHARE_KINDS = \{ email: 1, whatsapp: 1, viber: 1, link: 1 \}/,
+    'and the outlet knows it');
+  assert.match(OUT, /if \(via === 'link'\) return \{ sent: false, reason: '' \};/,
+    'nothing is sent, so nothing is claimed and nothing is a failure');
+  assert.match(OUT, /\(via === 'email' \|\| via === 'link'\) \? '' : SHARE\.channelUrl/,
+    'and there is no app to hand off to');
+});
+
+/* ═══ A WALK-IN HAS NO RECORD TO KEEP AN ADDRESS ON ═════════════════════════
+   The address popup said "This customer has no email address on file yet" and
+   promised "the address is saved on the customer" — over a takeaway bill rung
+   on nobody. Nothing was saved and nothing could be. */
+test('the address popup says which of the two situations it is in', () => {
+  const spec = SRC.slice(SRC.indexOf('docEmail: (() => {'));
+  assert.ok(spec.indexOf('docEmail: (() => {') === 0,
+    'the spec is built per render, so it can read who the bill was rung on');
+  assert.match(spec.slice(0, 2600), /sub: c \? c\.name \+ " has no email address on file yet"/,
+    'a customer is named');
+  assert.match(spec.slice(0, 2600), /: "This bill was not rung on a customer's record"/,
+    'and a walk-in is not called one');
+  assert.match(spec.slice(0, 2600), /save: c \? "Save and send" : "Send it"/,
+    'the button says which it will do');
+  assert.match(spec.slice(0, 2600), /There is no customer record to keep it on/,
+    'and the foot promises no save it cannot make');
+});

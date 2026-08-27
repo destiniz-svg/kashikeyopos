@@ -165,6 +165,14 @@ BEGIN
       -- NULL until then: a live link on every transaction in the shop, wanted
       -- or not, is a surface nobody asked for. See migration 042.
       share_token   text UNIQUE,
+      -- THE NAME THE TILL GAVE THIS BILL. The id and the receipt number are
+      -- both the outlet's — a document number is a statutory sequence and
+      -- cannot be minted on a device that has been offline all evening — so
+      -- without this the till holds a settled bill it cannot point at. Same
+      -- doctrine as `ticket_line.client_id`. NULL for a bill rung by a build
+      -- older than migration 043; unique, because it is the till's way of
+      -- saying "that bill" and two rows under one name make that ambiguous.
+      client_id     text UNIQUE,
       ticket_id     uuid REFERENCES %1$I.ticket(id),
       at            timestamptz NOT NULL DEFAULT now(),
       business_date date NOT NULL,

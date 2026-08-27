@@ -33,7 +33,7 @@ test('empty database — every screen renders and no handler throws', () => {
   const r = report('EMPTY', F);
   assert.strictEqual(r.errs.length, 0, r.errs.join(' | '));
   assert.strictEqual(r.s.rendered, 34, 'all 34 screen generators render');
-  assert.strictEqual(r.m.rendered, 34, 'all 34 modal kinds open');
+  assert.strictEqual(r.m.rendered, 35, 'all 35 modal kinds open');
   assert.strictEqual(r.f.rendered, 60, 'all 60 forms have a spec');
   assert.ok(r.s.fired > 400, 'the handler sweep actually swept (' + r.s.fired + ' calls)');
 });
@@ -43,7 +43,7 @@ test('seeded outlet — every screen renders and no handler throws', () => {
   const r = report('SEEDED', F);
   assert.strictEqual(r.errs.length, 0, r.errs.join(' | '));
   assert.strictEqual(r.s.rendered, 34);
-  assert.strictEqual(r.m.rendered, 34);
+  assert.strictEqual(r.m.rendered, 35);
 });
 
 /* Every rank renders every module. A gated action must REFUSE with the

@@ -168,7 +168,7 @@ const MODAL_KINDS = [
   'move', 'zones', 'periodPick', 'bankRow', 'delorder', 'ticket', 'receipt',
   'z', 'settled', 'creditNote', 'count', 'form', 'guest', 'held', 'dishb',
   'menuio', 'outlet', 'recipeb', 'resv', 'catb', 'info', 'outletDetail',
-  'user', 'customer', 'dish'
+  'user', 'customer', 'dish', 'share'
 ];
 
 const FORMS = [

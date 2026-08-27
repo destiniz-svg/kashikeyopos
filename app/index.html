@@ -3190,6 +3190,8 @@ class Component extends DCLogic {
       ing: g.id, qty: g.used, cost: g.used ? g.cost / g.used : 0, value: r2(g.cost)
     }));
     this.queue("sale", "Sale " + row.no + " \u00b7 " + MVR(row.total) + " \u00b7 " + (row.tender || "cash"), "sales", {
+      // The name this till gave the bill, so it can find its own row again.
+      cid: row.cid || null,
       no: row.no, bizDate: row.bizDate, channel: row.channel, covers: row.covers,
       sub: r2((row.net || 0) + (row.disc || 0)), disc: row.disc, discCode: row.discCode,
       net: row.net, svc: row.svc, tax: row.tax, round: row.round, total: row.total,
@@ -6347,7 +6349,7 @@ class Component extends DCLogic {
       payGridStyle: (this.effBp() === "m" || this.shortVp()) ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
       mPay: m.kind === "pay", mNote: m.kind === "note", mQr: m.kind === "qr",
       mKot: m.kind === "kot",
-      mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "move" || m.kind === "zones" || m.kind === "periodPick" || m.kind === "bankRow" || m.kind === "delorder",
+      mActions: m.kind === "actions" || m.kind === "share" || m.kind === "switch" || m.kind === "perm" || m.kind === "move" || m.kind === "zones" || m.kind === "periodPick" || m.kind === "bankRow" || m.kind === "delorder",
       mLock: m.kind === "lock",
       mTicket: m.kind === "ticket",
       mDetail: ["outletDetail", "user", "customer", "dish", "item", "info"].indexOf(m.kind) >= 0,
@@ -6731,7 +6733,15 @@ class Component extends DCLogic {
              so a genuine retry still works. */
           if (this.state.modal && this.state.modal.kind === "settled") return;
           const gname = this.guestLabel(gAll[gIdx]);
+          /* THE NAME THIS TILL GIVES THE BILL. The outlet allocates the id and
+             the receipt number — a document number is a statutory sequence and
+             cannot be minted on a device that has been dark all evening — so
+             without a name of its own the terminal cannot say WHICH bill to
+             the outlet holding it. Same doctrine as a ticket line's client id,
+             one row up. Minted here, sent with the sale, published back. */
+          const cid = this.newId("R");
           const snapshot = {
+            cid: cid,
             no: this.docNext("INV").no,
             time: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()),
             table: this.slotName(s.activeTable), guest: gname, tender: m.tender, cust: cust,
@@ -6774,6 +6784,7 @@ class Component extends DCLogic {
           this.queue("consume_recipe", "Recipe consumption deducted from " + o.code, "stock_ledger");
           const trail = this.saleTrail(snapshot);
           const settledRow = {
+              cid: cid,
               outletId: s.outletId, no: snapshot.no, time: snapshot.time, table: snapshot.table,
               // What the guest actually handed over, not the arithmetic total: on a
               // rounded cash sale those differ, and the drawer reconciles against
@@ -7156,6 +7167,22 @@ class Component extends DCLogic {
         moreActions: acts.map((a) => Object.assign({}, a, {
           head: a.head || "",
           headStyle: a.head ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
+        }))
+      };
+    }
+
+    /* A CHANNEL SHEET, and it needs a kind of its own. The first version of
+       this reused `actions`, which is the TABLE sheet — that branch composes
+       its own title, subtitle and list from the active table and ignores
+       whatever the caller put in the modal state. So "Send the receipt" opened
+       "Table actions · Tnull · free · Parked bills · Table QR · Mark reserved".
+       Found by tapping it in a browser; nothing about the code said so. */
+    if (m.kind === "share") {
+      return {
+        modalTitle: m.title || "Send it", modalSub: m.sub || "",
+        moreActions: (m.acts || []).map((a) => ({
+          head: a.head, label: a.label, sub: a.sub, style: a.style,
+          go: () => { this.setState({ modal: null }); setTimeout(a.go, 0); }
         }))
       };
     }
@@ -8011,11 +8038,19 @@ class Component extends DCLogic {
       const p = m.snap, T = p.T;
       /* THE SALE'S ID AT THE OUTLET, which this snapshot cannot have: it is
          built the instant the bill is settled, and the outlet has not seen the
-         op yet. The settled row comes back with the outlet's own id within a
-         few seconds, and the receipt number is what ties the two together —
-         so the Send control lights up as soon as the document actually has an
-         address, and says so plainly until then. */
-      const srv = (s.settled || []).find((x) => x && x.no && p.no && x.no === p.no) || {};
+         op yet. The row comes back with the outlet's own id within a few
+         seconds, and `cid` — the name this till gave the bill — is what ties
+         the two together, so the Send control lights up as soon as the
+         document actually has an address and says so plainly until then.
+
+         NOT THE RECEIPT NUMBER, which was the first version of this and never
+         matched once: the till mints `INV-<code>-<year>-0001` off its own
+         persisted counter and the outlet allocates from `chain.doc_series`, so
+         the two strings are produced by different allocators and are never
+         equal. Measured by settling a real bill in a browser — the sale was at
+         the outlet in under two seconds and the control still read "once this
+         bill reaches the outlet", for ever. */
+      const srv = (s.settled || []).find((x) => x && x.cid && p.cid && x.cid === p.cid) || {};
       const srvId = srv.id || null;
       const tn = { cash: "Cash", card: "Card", wallet: "BML Pay", credit: "Customer credit" }[p.tender] || p.tender;
       const rows = [
@@ -13369,6 +13404,14 @@ class Component extends DCLogic {
   }
   shareDoc(spec) {
     const s = spec || {};
+    /* WHAT TO COME BACK TO. `state.modal` is one slot, so opening this sheet
+       REPLACES whatever asked for it — and on a settled bill that is the
+       receipt itself, with its Print button on it. So sharing a receipt threw
+       the receipt away and put the cashier back on the floor, one tap after
+       taking the money and before printing anything. Stashed here, restored
+       when the send is done. */
+    this._docBack = (this.state.modal && this.state.modal.kind === "settled")
+      ? this.state.modal : null;
     const acts = this.SHARE_CHANNELS().map((ch) => ({
       label: ch[1], sub: ch[2],
       style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
@@ -13381,13 +13424,14 @@ class Component extends DCLogic {
       style: "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px",
       go: () => this.sendDoc(s, "copy", null)
     });
-    this.setState({ modal: { kind: "actions",
+    this.setState({ modal: { kind: "share",
       title: s.kind === "statement" ? "Send the statement" : "Send the receipt",
       sub: s.title || "", acts: acts } });
   }
 
-  /* THE SEND. One path for all three channels and the copy: ask the outlet for
-     the document's address, then either it went or the cashier finishes it.
+  /* THE SEND. One path for every channel and the copy: ask the outlet for the
+     document's address, then either it went, or the cashier finishes it, or
+     there was nothing to send in the first place.
 
      AND THE ONE REFUSAL THAT IS AN INSTRUCTION. Email needs an address, and a
      customer taken at a counter has given a name and a number. The server
@@ -13397,7 +13441,12 @@ class Component extends DCLogic {
   sendDoc(spec, via, addr) {
     const s = spec || {};
     const B = window.KPOS_BRIDGE;
-    const call = via === "copy" ? "email" : via;
+    /* COPYING IS NOT SENDING. This asked the outlet for an EMAIL share and
+       threw the answer away, so copying a link for a customer with no address
+       on file was refused 409 and opened a form demanding one — for a message
+       nobody was going to send. `link` is the channel that gives the document
+       an address and delivers nothing. */
+    const call = via === "copy" ? "link" : via;
     if (!B || !B.shareSale || !B.shareStatement) {
       return this.toast("Sharing needs the outlet — this terminal is not connected to one", "warn");
     }
@@ -13405,8 +13454,14 @@ class Component extends DCLogic {
       ? B.shareStatement(s.id, call, addr, s.from, s.to)
       : B.shareSale(s.id, call, addr);
     return go.then((r) => {
-      if (via === "copy") return this.copyLink(r.link);
-      this.setState({ modal: null });
+      /* BACK TO THE RECEIPT. A cashier's sequence at the counter is settle,
+         hand it over, print, close — and sharing is one step inside that, not
+         the end of it. Restoring the settled receipt also means a second
+         channel is one tap away rather than a hunt through Orders. Null where
+         nothing was replaced, which closes the sheet exactly as before. */
+      const back = this._docBack || null;
+      if (via === "copy") { this.setState({ modal: back }); return this.copyLink(r.link); }
+      this.setState({ modal: back });
       if (r.handoff) {
         // The cashier's own app, with the message already composed. Opened
         // rather than navigated to, so the till keeps its place.
@@ -16663,29 +16718,42 @@ class Component extends DCLogic {
           this.toast(this.slotName(row.n) + " · " + p + " cover" + (p === 1 ? "" : "s"));
         }
       },
-      docEmail: {
-        title: "Where should it go?", sub: "This customer has no email address on file yet",
-        save: "Save and send",
-        foot: "The address is saved on the customer, so the next receipt or statement goes without asking. The phone number stays their identity \u2014 an email is a second way to reach them and a second way into their card.",
-        fields: [{ k: "email", label: "Email address", v: "", full: 1 }],
-        onSave: (v) => {
-          const mail = this.emailOn(v.email);
-          if (!mail) return this.toast("That is not an email address \u2014 check it and try again", "warn");
-          const spec = this._docPending || {};
-          const c = spec.member
-            ? (K().CUSTOMERS || []).find((x) => x.id === spec.member) : null;
-          const clash = this.emailTaken(mail, c ? c.id : null);
-          if (clash) {
-            return this.toast(mail + " is already on " + clash.name
-              + "\u2019s record \u2014 an address can only sign one customer in", "warn");
+      /* TWO SITUATIONS, AND ONLY ONE OF THEM HAS A CUSTOMER. A bill rung on a
+         member can have the address kept, so the next receipt asks nothing.
+         A walk-in has no record to keep it ON — and the first version of this
+         said "This customer has no email address on file yet" over a promise
+         that "the address is saved on the customer" for a bill that was rung
+         on nobody. Nothing was saved and nothing could be; the screen said
+         otherwise. Found by emailing a takeaway receipt in a browser. */
+      docEmail: (() => {
+        const spec = this._docPending || {};
+        const c = spec.member
+          ? (K().CUSTOMERS || []).find((x) => x.id === spec.member) : null;
+        return {
+          title: "Where should it go?",
+          sub: c ? c.name + " has no email address on file yet"
+            : "This bill was not rung on a customer's record",
+          save: c ? "Save and send" : "Send it",
+          foot: c
+            ? "The address is saved on " + c.name + "\u2019s record, so the next receipt or statement goes without asking. The phone number stays their identity \u2014 an email is a second way to reach them and a second way into their card."
+            : "Sent to this address only. There is no customer record to keep it on, so the next bill will ask again \u2014 add the guest in Guests & Credit if they are a regular.",
+          fields: [{ k: "email", label: "Email address", v: "", full: 1 }],
+          onSave: (v) => {
+            const mail = this.emailOn(v.email);
+            if (!mail) return this.toast("That is not an email address \u2014 check it and try again", "warn");
+            const clash = this.emailTaken(mail, c ? c.id : null);
+            if (clash) {
+              return this.toast(mail + " is already on " + clash.name
+                + "\u2019s record \u2014 an address can only sign one customer in", "warn");
+            }
+            // Saved through the one seam every customer edit goes through, so
+            // it reaches the outlet and every other terminal, not this screen.
+            if (c) this.patchRows("custs", [c.id], { email: mail }, c.name + " \u00b7 email saved", "customers");
+            this.setState({ modal: null });
+            this.sendDoc(spec, "email", mail);
           }
-          // Saved through the one seam every customer edit goes through, so it
-          // reaches the outlet and every other terminal rather than this screen.
-          if (c) this.patchRows("custs", [c.id], { email: mail }, c.name + " \u00b7 email saved", "customers");
-          else this.setState({ modal: null });
-          this.sendDoc(spec, "email", mail);
-        }
-      },
+        };
+      })(),
       cust: {
         /* THE EMAIL IS A FIELD, because the portal invitation offers to send on
            one and the refusal says "add one on the customer first" — which

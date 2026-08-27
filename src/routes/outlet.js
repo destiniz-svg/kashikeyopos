@@ -282,7 +282,14 @@ async function pointsWorth(c, points) {
 
    Rank 2 — whoever is standing with the guest — and the same per-outlet
    doorman the invitation has, because an email is billed to the business. */
-const SHARE_KINDS = { email: 1, whatsapp: 1, viber: 1 };
+/* `link` IS A CHANNEL, and it is the one that needs nothing. Giving a document
+   an address and DELIVERING it are two acts, and the till's "Copy the link" is
+   only the first — a cashier reading the address out, or pasting it into an
+   app this build has never heard of. It used to be sent as an `email` share
+   with the answer thrown away, so copying a link for a customer with no
+   address on file was refused 409 and opened a form asking for one. Nothing
+   was going to be emailed. */
+const SHARE_KINDS = { email: 1, whatsapp: 1, viber: 1, link: 1 };
 
 // Where a document would live, or nothing. Checked BEFORE anything is minted:
 // a message carrying `/r/RC…` reaches an inbox with nothing to resolve it, and
@@ -298,6 +305,8 @@ function docLinkOrRefuse(kind, slug, token) {
 }
 
 async function deliver(via, msg, to) {
+  // Nothing is being sent, so nothing is claimed and nothing is a failure.
+  if (via === 'link') return { sent: false, reason: '' };
   if (via === 'email') {
     try {
       const r0 = await email.send({ to: to, subject: msg.subject, text: msg.body });
@@ -379,7 +388,7 @@ r.post('/sale/:saleId/share', sameOutlet, atLeast('till'),
         link: link, docNo: out.sale.receipt_no, via: via, to: to,
         subject: msg.subject, body: msg.body,
         // Click-to-chat, for the two channels a person completes by hand.
-        handoff: via === 'email' ? '' : SHARE.channelUrl(via, doc),
+        handoff: (via === 'email' || via === 'link') ? '' : SHARE.channelUrl(via, doc),
         sent: sent.sent === true, reason: sent.reason || ''
       });
     } catch (e) {
@@ -451,7 +460,7 @@ r.post('/member/:memberId/statement', sameOutlet, atLeast('till'),
         link: link, via: via, to: to, from: out.from, until: out.to,
         expires: new Date(Date.now() + STATEMENT_DAYS * 86400e3).toISOString(),
         days: STATEMENT_DAYS, subject: msg.subject, body: msg.body,
-        handoff: via === 'email' ? '' : SHARE.channelUrl(via, doc),
+        handoff: (via === 'email' || via === 'link') ? '' : SHARE.channelUrl(via, doc),
         sent: sent.sent === true, reason: sent.reason || ''
       });
     } catch (e) {

@@ -2082,6 +2082,58 @@ test('a dish carries its tags, its heat and its add-ons', opts, async () => {
    honestly when there is no transport, a missing address is refused BY NAME
    so the till knows to ask for one, and the public page carries what a guest
    bought and paid — and not one thing more. */
+/* ═══ A SALE THE TILL CAN NAME ══════════════════════════════════════════════
+   The outlet allocates the id AND the receipt number — a document number is a
+   statutory sequence and cannot be minted on a device that has been dark all
+   evening. Correct, and it left the till holding a settled bill it could not
+   point at: the Send control matched the outlet's row by receipt NUMBER, and
+   the till's own `INV-<code>-<year>-0001` counter never produces the same
+   string as `chain.doc_series`. Measured in a browser — the bill was at the
+   outlet in under two seconds and the control still said it was not. */
+test('the name the till gave a bill survives the round trip', opts, async () => {
+  const cid = 'R-round-trip-' + Date.now().toString(36);
+  const r = await push([{
+    opId: uuid(), kind: 'sale', lamport: 900, at: Date.now(),
+    payload: {
+      cid: cid, bizDate: today(), channel: 'takeaway', covers: 1,
+      sub: 100, disc: 0, net: 100, svc: 0, tax: 8, round: 0, total: 108,
+      taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8, cogs: 0,
+      cur: 'MVR', rate: 1, fgn: 0, sold: [],
+      payments: [{ method: 'cash', amt: 108, tendered: 108, chg: 0 }]
+    }
+  }]);
+  assert.ok(r.body.results[0].result, JSON.stringify(r.body.results[0]));
+
+  const row = await one('SELECT client_id, receipt_no FROM sale WHERE client_id = $1', [cid]);
+  assert.ok(row, 'the outlet kept the name');
+  assert.notStrictEqual(row.receipt_no, cid,
+    'and allocated its own number, which is the whole reason the name is needed');
+
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const settled = (boot.body.kpos || {}).settled || (boot.body.state || {}).settled || [];
+  const back = settled.filter((x) => x && x.cid === cid)[0];
+  assert.ok(back, 'and publishes it back, so the terminal finds its own row');
+  assert.strictEqual(back.no, row.receipt_no, 'wearing the outlet\'s number');
+  assert.ok(back.id, 'and the outlet\'s id, which is what a share needs');
+
+  // NULL IS A REAL ANSWER: a build older than migration 043 sends no name, and
+  // inventing one would be worse than a Send control that honestly waits.
+  const bare = await push([{
+    opId: uuid(), kind: 'sale', lamport: 901, at: Date.now(),
+    payload: {
+      bizDate: today(), channel: 'takeaway', covers: 1,
+      sub: 50, disc: 0, net: 50, svc: 0, tax: 4, round: 0, total: 54,
+      taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8, cogs: 0,
+      cur: 'MVR', rate: 1, fgn: 0, sold: [],
+      payments: [{ method: 'cash', amt: 54, tendered: 54, chg: 0 }]
+    }
+  }]);
+  assert.ok(bare.body.results[0].result, 'a nameless sale still books');
+  const none = await one('SELECT client_id FROM sale WHERE receipt_no = $1',
+    [bare.body.results[0].result.receiptNo]);
+  assert.strictEqual(none.client_id, null, 'and is null rather than invented');
+});
+
 test('a receipt is shared as a link, and the link answers', opts, async () => {
   const saleRow = await one('SELECT id, receipt_no FROM sale ORDER BY at DESC LIMIT 1');
   assert.ok(saleRow, 'this outlet has rung a sale to share');
@@ -2131,6 +2183,19 @@ test('a receipt is shared as a link, and the link answers', opts, async () => {
     'a receipt must not carry ' + k));
   (doc.body.lines || []).forEach((l) => leaked.concat(['unit_cost', 'line_cost'])
     .forEach((k) => assert.strictEqual(l[k], undefined, 'nor may a line carry ' + k)));
+
+  /* COPYING IS NOT SENDING. The till's "Copy the link" used to ask for an
+     EMAIL share and throw the answer away, so copying a link for a walk-in was
+     refused 409 and opened a form demanding an address for a message nobody
+     was going to send. `link` gives the document an address and delivers
+     nothing — no address needed, nothing claimed, no app to hand off to. */
+  const linked = await post('/api/outlet/' + outletId + '/sale/' + saleRow.id
+    + '/share', { via: 'link' }, token);
+  assert.strictEqual(linked.status, 200, JSON.stringify(linked.body));
+  assert.strictEqual(linked.body.link, first.body.link, 'the same document');
+  assert.strictEqual(linked.body.sent, false, 'nothing was sent');
+  assert.strictEqual(linked.body.reason, '', 'so nothing failed either');
+  assert.strictEqual(linked.body.handoff, '', 'and there is no app to open');
 
   // Without a store to resolve against there is nothing to answer.
   const nowhere = await get('/api/doc/r/' + tok, null);

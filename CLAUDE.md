@@ -52,6 +52,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        040 a section is not one browser's opinion
                        041 heat is a property of the dish
                        042 a receipt has an address
+                       043 a sale the till can name
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -2659,6 +2660,63 @@ thing more.** No cost, no margin, no staff record, no device, no ticket, no
 other bill, no member id, and no outlet totals. The test names each of them, on
 the document and on every line.
 
+### A sale the till can name
+
+Every one of these was found by settling a bill in a browser and tapping the
+control. None of them is reachable by reading the code, because every half of
+each is individually correct.
+
+**The Send control on a settled receipt never lit up.** It looked for the
+outlet's copy of the bill by RECEIPT NUMBER — and there are two allocators.
+The till mints `INV-<code>-<year>-0001` from `docNext()`, a counter persisted
+in that browser; the outlet allocates from `chain.doc_series`. The two strings
+are never equal, so `srvId` was always null and the control read *"Send it once
+this bill reaches the outlet"* for ever, on every real sale. Measured: the bill
+was in `outlet_39.sale` under two seconds after Close ticket, and the control
+still said it was not.
+
+The outlet allocating both the id and the number is right — a document number
+is a statutory sequence and cannot be minted on a device that has been dark all
+evening. What was missing is the other direction, and this build already
+answers it one row up: **`ticket_line.client_id`**, because a line created
+offline has to be nameable before any server has seen it. A settled bill is
+exactly that. So `sale.client_id` (migration 043): the till mints it with
+`newId("R")`, it rides on the sale op as `cid`, `applySale()` keeps it, and
+`settledOf` publishes it back. **NULL is a real answer** and the column stays
+nullable — a build older than 043 sends none, and inventing one would be worse
+than a control that honestly waits. Unique, because it is the till's way of
+saying "that bill" and two rows under one name make that ambiguous.
+
+**The share sheet opened the TABLE sheet.** `shareDoc()` set
+`modal: { kind: "actions", title, sub, acts }` — and `actions` is the table
+sheet, whose branch composes its own title, subtitle and list from the active
+table and ignores the modal state entirely. So "Send the receipt" opened
+*"Table actions · Tnull · Loy Cafe · free · Parked bills · Table QR · Mark
+reserved"*. `kind: "share"` renders what its caller composed and nothing of its
+own.
+
+**And it threw the receipt away.** `state.modal` is one slot, so opening the
+sheet REPLACES the settled receipt — Print button and all — and after a send
+the cashier was back on the floor, one tap after taking the money and before
+printing anything. The receipt is stashed and restored, so a second channel is
+one tap away rather than a hunt through Orders.
+
+**"Copy the link" demanded an email address.** It asked the outlet for an
+`email` share and threw the answer away, so copying a link for a walk-in was
+refused 409 — for a message nobody was going to send — and opened a form
+asking for an address. Giving a document an address and DELIVERING it are two
+acts: `link` is the channel that does the first and only the first. Nothing is
+sent, so nothing is claimed, nothing is a failure and there is no app to hand
+off to.
+
+**And the address popup called a walk-in a customer.** It said *"This customer
+has no email address on file yet"* over a promise that *"the address is saved
+on the customer"* — for a takeaway bill rung on nobody. Nothing was saved and
+nothing could be. The spec is built per render now and reads off whether there
+IS a customer: a member is named and the address is kept; a walk-in is told the
+bill was not rung on a record, the button says **Send it**, and the foot
+promises no save it cannot make.
+
 ### Three channels, one message
 
 Same shape as the member invitation, and for the same reason: the channel
@@ -3888,7 +3946,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 486 tests
+npm test                          # 491 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
