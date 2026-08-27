@@ -2846,15 +2846,40 @@ class Component extends DCLogic {
       rungs[slot] = Math.max(0, Math.min(3, +t.stage || 0));
       mine[this.state.outletId + ":" + slot] = Object.assign({}, t, {
         status: t.status === "open" ? "occupied" : t.status,
-        openedAt: t.opened || Date.now()
+        openedAt: t.opened || Date.now(),
+        /* WHERE THIS BILL CAME FROM, which is the only thing that can tell a
+           table another terminal has since SETTLED from one this device opened
+           a moment ago and has not delivered yet. Both are "the outlet does
+           not list it"; only one of them may be dropped. */
+        src: "outlet"
       });
     });
     // A bill open on THIS device wins: it is a bill somebody is standing at,
     // and its un-replayed lines may not have reached the outlet yet.
     const cur = this.state.tickets || {};
+    const closed = [];
     Object.keys(cur).forEach((k) => {
       const here = cur[k], there = mine[k];
-      if (!there) { mine[k] = here; return; }
+      /* ── A BILL THE OUTLET NO LONGER LISTS HAS BEEN CLOSED ────────────────
+         `buildLive()` sends the floor WHOLE — every open and held ticket, on
+         every tick — precisely so that absence is an answer. This branch read
+         it as no answer at all and kept the local copy unconditionally, so a
+         table settled at the counter stayed on the tablet for ever: the money
+         was taken, the docket was gone from the pass, and the floor plan still
+         showed it occupied until somebody reloaded.
+
+         The two cases are indistinguishable by absence alone, and this is what
+         separates them: a ticket this device ADOPTED carries `src: "outlet"`,
+         so the outlet has seen it and has now stopped listing it — closed,
+         voided or moved, and it goes. A ticket this device OPENED carries no
+         such mark, because the outlet has never heard of it; its lines may
+         still be in the outbox, and dropping it would throw away a bill
+         somebody is standing at. */
+      if (!there) {
+        if (here && here.src === "outlet") { closed.push(k); return; }
+        mine[k] = here;
+        return;
+      }
       // Both sides have the table. Merge by line id: what this device wrote and
       // what another terminal wrote are both real, and neither may drop the
       // other's plate off the ticket.
@@ -2903,8 +2928,21 @@ class Component extends DCLogic {
       ? Object.assign({}, this.state.local, { yields: stillMine })
       : this.state.local;
 
-    this.setState({ tickets: mine, fulfil: fulfil, local: local },
-      () => this.writeSession());
+    /* AND SOMEBODY MAY BE STANDING AT THE ONE THAT WENT. Dropping a settled
+       table is right; dropping it out from under a waiter who has it open,
+       leaving them on a bill with no rows, is not. The panel closes and says
+       what happened — "settled at the counter" is a fact they need, and it is
+       the difference between a screen that moved and a screen that broke. */
+    const patch = { tickets: mine, fulfil: fulfil, local: local };
+    const active = this.state.outletId + ":" + this.state.activeTable;
+    if (this.state.activeTable && closed.indexOf(active) >= 0) {
+      patch.activeTable = null;
+      patch.activeSplit = 0;
+      if (this.state.modal && this.state.modal.kind === "pay") patch.modal = null;
+      this.toast(this.slotName(this.state.activeTable)
+        + " was settled on another terminal \u2014 the bill is closed", "warn");
+    }
+    this.setState(patch, () => this.writeSession());
   }
   rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 

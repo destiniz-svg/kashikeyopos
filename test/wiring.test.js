@@ -2227,6 +2227,78 @@ test('a menu imported from a spreadsheet reaches the outlet', () => {
     + ' pen would never have re-sent them');
 });
 
+/* ═══ A BILL THE OUTLET NO LONGER LISTS HAS BEEN CLOSED ════════════════════
+   Reported: "tickets do not disappear from the other device."
+
+   `buildLive()` sends the floor WHOLE — every open and held ticket, on every
+   tick — precisely so that absence is an answer. `seed()` read it as no answer
+   at all: `if (!there) { mine[k] = here; return; }` kept the local copy
+   unconditionally, so a table settled at the counter stayed on the tablet for
+   ever. The money was taken, the docket was gone from the pass, and the floor
+   plan still showed it occupied until somebody reloaded.
+
+   Two cases are indistinguishable by absence alone and only one may be
+   dropped: a bill this device ADOPTED from the outlet, which the outlet has
+   now stopped listing, and a bill this device OPENED whose lines may still be
+   in the outbox. `src: "outlet"` is what separates them. */
+test('a table settled elsewhere leaves this floor, and an un-pushed one stays', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const slot = (n) => F.state.outletId + ':' + n;
+  const live = (tickets) => { F.__win.KPOS_REAL = { session: null, at: Date.now(),
+    state: { tickets: tickets } }; };
+
+  // ── the outlet has T05 open. This terminal adopts it.
+  live({ 'T05:0': { id: 'srv-5', table: 'T05', split: 0, status: 'open',
+    stage: 1, lines: [{ lid: 'l1', id: 'd1', qty: 1 }] } });
+  F.seed();
+  const five = Object.keys(F.state.tickets).filter((k) => /:5$/.test(k))[0];
+  assert.ok(five, 'the outlet\'s table is adopted: ' + Object.keys(F.state.tickets));
+  assert.strictEqual(F.state.tickets[five].src, 'outlet',
+    'and it is marked as the outlet\'s, which is what makes it droppable');
+
+  // ── a bill THIS device opened, which the outlet has never heard of.
+  F.setState({ tickets: Object.assign({}, F.state.tickets,
+    { [slot(9)]: { table: 'T09', status: 'occupied', lines: [{ lid: 'x1' }] } }) });
+
+  // ── the counter settles T05. The outlet stops listing it; T09 is still not
+  //    at the outlet at all.
+  live({});
+  F.seed();
+
+  assert.ok(!Object.keys(F.state.tickets).some((k) => /:5$/.test(k)),
+    'the settled table LEAVES this floor — that is the whole report');
+  assert.ok(F.state.tickets[slot(9)],
+    'and the bill this device opened stays: its lines may still be in the'
+    + ' outbox, and dropping it would throw away a bill somebody is at');
+
+  /* AND SOMEBODY MAY BE STANDING AT THE ONE THAT WENT. Dropping a settled
+     table is right; dropping it out from under a waiter who has it open,
+     leaving them on a bill with no rows, is not. */
+  live({ 'T05:0': { id: 'srv-5', table: 'T05', split: 0, status: 'open',
+    stage: 1, lines: [{ lid: 'l1' }] } });
+  F.seed();
+  const five2 = Object.keys(F.state.tickets).filter((k) => /:5$/.test(k))[0];
+  F.setState({ activeTable: Number(five2.split(':')[1]),
+    modal: { kind: 'pay' } });
+  F.__toasts.length = 0;
+  live({});
+  F.seed();
+  assert.strictEqual(F.state.activeTable, null,
+    'the panel closes rather than showing a bill with no rows');
+  assert.strictEqual(F.state.modal, null, 'and the pay screen with it');
+  assert.match((F.__toasts[0] || {}).t || '', /settled on another terminal/,
+    'and the operator is told what happened rather than watching it vanish');
+
+  /* AND A TICK THAT CARRIES NOTHING CHANGES NOTHING. `buildLive` degrades to
+     `state: null` rather than failing the poll, and a floor emptied by a
+     failed read would be every table in the shop vanishing at once. */
+  F.__win.KPOS_REAL = { session: null, state: null, at: Date.now() };
+  const before = Object.keys(F.state.tickets).sort().join(',');
+  F.seed();
+  assert.strictEqual(Object.keys(F.state.tickets).sort().join(','), before,
+    'a slice that could not be read leaves the floor exactly as it was');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

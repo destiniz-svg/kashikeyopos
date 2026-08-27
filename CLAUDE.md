@@ -1452,6 +1452,49 @@ The clock-only ids went too — opex, assets, employees, modifiers and rewards
 were `"e" + Date.now()` and friends. Two devices in the same millisecond is
 unlikely and not impossible, and the cost is a row.
 
+## A bill the outlet no longer lists has been closed
+
+Reported: *"tickets do not disappear from the other device."*
+
+`buildLive()` sends the floor **whole** — every open and held ticket, on every
+tick — precisely so that absence is an answer. `seed()` read it as no answer at
+all: `if (!there) { mine[k] = here; return; }` kept the local copy
+unconditionally, so a table settled at the counter stayed on the tablet for
+ever. The money was taken, the docket was gone from the pass, and the floor
+plan still showed the table occupied until somebody reloaded.
+
+Two cases are indistinguishable by absence alone and only one may be dropped:
+
+- a bill this device **adopted** from the outlet, which the outlet has now
+  stopped listing — closed, voided or moved, and it goes;
+- a bill this device **opened**, which the outlet has never heard of, whose
+  lines may still be in the outbox — dropping it would throw away a bill
+  somebody is standing at.
+
+`src: "outlet"` is stamped on every ticket `seed()` adopts, and it is the only
+thing that separates them. A ticket this device opened acquires the mark the
+moment the outlet starts listing it, which is exactly when it becomes safe to
+drop later.
+
+**And somebody may be standing at the one that went.** Dropping a settled table
+out from under a waiter who has it open, leaving them on a bill with no rows,
+is a screen that reads as broken rather than as moved. The panel and the pay
+screen close and the operator is told the bill was settled on another terminal.
+
+**A tick that carries nothing changes nothing.** `buildLive()` degrades to
+`state: null` rather than failing the poll, and a floor emptied by a failed
+read would be every table in the shop vanishing at once.
+
+Measured in two real browsers on one outlet:
+
+| | |
+| --- | --- |
+| a table opened with a line on A | reached B in **4.0 s** |
+| that bill settled on A | left B's floor in **5.0 s** |
+
+Before the fix the raw slice cleared on B and B's own floor still held
+`39:5` — which is what a person sees.
+
 ## Everything the dish editor collects reaches the outlet
 
 Reported: *"an item added shows, and its tags and heat are not recorded and
@@ -3742,7 +3785,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 481 tests
+npm test                          # 482 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
