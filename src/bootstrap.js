@@ -635,7 +635,8 @@ async function buildState(ctx, opts) {
       })),
       guestOrders: guestOrders.rows.map((g) => ({
         id: g.id, table: g.table_no, lines: g.lines, promo: g.promo,
-        name: g.guest_name, phone: g.guest_phone, at: ms(g.at), note: g.note
+        name: g.guest_name, phone: g.guest_phone, at: ms(g.at), note: g.note,
+        member: g.member_id || null
       })),
       guestRequests: guestReqs.rows.map((g) => ({
         id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at)
@@ -1009,7 +1010,8 @@ async function buildLive(ctx, opts) {
       } : { open: false },
       guestOrders: q.guestOrders.rows.map((g) => ({
         id: g.id, table: g.table_no, lines: g.lines, promo: g.promo,
-        name: g.guest_name, phone: g.guest_phone, at: ms(g.at), note: g.note
+        name: g.guest_name, phone: g.guest_phone, at: ms(g.at), note: g.note,
+        member: g.member_id || null
       })),
       guestRequests: q.guestReqs.rows.map((g) => ({
         id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at)

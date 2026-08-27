@@ -4461,3 +4461,60 @@ test("the member card reads the outlet's published rate and skins its ladder", (
   assert.match(bridge, /if \(!K\.TIERS_SHIPPED\) K\.TIERS_SHIPPED = K\.TIERS;/,
     'the bridge stashes the shipped rows before the published ladder replaces them');
 });
+
+test('the table QR is a real code, and the print buttons print', () => {
+  /* What stood behind "scan to order" was a 13×13 grid of Math.random()
+     cells — a picture of a QR no camera could read — and both buttons under
+     it closed the modal. A QR that is subtly wrong looks exactly like one
+     that is right, which is why this pin is static: the fake could return
+     wearing any refactor. */
+  const till = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const qr = till.slice(till.indexOf('if (m.kind === "qr") {'),
+    till.indexOf('if (m.kind === "qr") {') + 2200);
+  assert.match(qr, /KPOS_QR\.dataUrl/, 'the modal draws the real matrix');
+  assert.ok(!/rnd\(\) > 0\.5/.test(qr), 'the random fake is gone');
+  assert.match(till, /<script src="\.\/kashikeyo-qr\.js"><\/script>/,
+    'the shared encoder is loaded');
+  assert.match(till, /printQrCards\(slots\)/, 'the print sheet exists');
+  assert.match(till, /qrPrintAll/, 'and every table can be printed in one act');
+  assert.ok(!/Rotate token/.test(till),
+    'no control offers a rotation this build cannot perform');
+  // The shared module is one file both runtimes load, like kashikeyo-rules.
+  const qrMod = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-qr.js'), 'utf8');
+  assert.match(qrMod, /module\.exports = API/, 'required by the server');
+  assert.match(qrMod, /root\.KPOS_QR = API/, 'and loaded by the browser');
+});
+
+test("a member's round carries its table and its membership", () => {
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  /* `Object.assign({ table: state.table }, { table: undefined })` clobbers
+     the bound table — every order from the member card went out table-less
+     and was refused 400 while the toast said "sent". */
+  assert.match(bridge, /table: e\.table \|\| state\.table/,
+    "the caller's table wins only where the caller names one");
+  assert.match(bridge, /bindTable: function \(t\)/,
+    'keying a table re-mints the token for it');
+  assert.match(bridge, /"x-member-token": state\.member/,
+    'the membership rides as a header, never a body field');
+  const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  assert.match(card, /table: s\.table \}/, 'sendOrder carries the keyed table');
+  assert.match(card, /KPOS_GUEST_API\.bindTable/, 'picking a table binds the bridge');
+  const guest = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  assert.match(guest, /x-member-token/, 'the order door reads the member token');
+  assert.ok(!/b\.member\b/.test(guest),
+    'and never a client-claimed member id from the body');
+});
+
+test('the member card draws the same plates as the guest portal', () => {
+  const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  /* This card fed raw data: URLs into background-image — `;base64` ends the
+     inline declaration and the photo paints NOTHING — and an unphotographed
+     dish was a blank grey box. The plate is one composition across the till,
+     the guest portal and this card. */
+  assert.match(card, /photoUrl\(src\)/, 'a data URL becomes a blob before CSS sees it');
+  assert.match(card, /artGlyphUrl\(catId, ink\)/, 'the section artifact is composed here too');
+  assert.ok((card.match(/this\.plate\(/g) || []).length >= 5,
+    'every dish image site goes through the one plate composition');
+  assert.ok(!/url\('" \+ d\.img \+ "'\)/.test(card),
+    'no site feeds a raw data URL into background-image any more');
+});

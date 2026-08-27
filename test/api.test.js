@@ -678,6 +678,79 @@ test('a member reaches their own card and nobody else\'s', opts, async () => {
     'a table token cannot read a membership');
 });
 
+/* ═══ A MEMBER'S ORDER REACHES THE FLOOR ════════════════════════════════════
+   The member card's round used to go out TABLE-LESS — `table: undefined`
+   clobbered the bound table in the bridge — so the outlet refused every one
+   with a 400 while the card said "sent". And the membership itself never
+   rode at all: guest_order.member_id existed from the first migration and
+   nothing wrote it. The membership comes FROM THE TOKEN, never a body field,
+   because a client-claimed member id on an anonymous door would let anybody
+   earn points on anybody's card.
+   ═══════════════════════════════════════════════════════════════════════ */
+test("a member's order carries their membership to the ticket", opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T03');
+  const table = { 'x-table-token': t.body.token };
+
+  process.env.MEMBER_CODE_ECHO = '1';
+  const issued = await postWith('/api/g/' + slug + '/member/start',
+    { id: '7770001' }, table);
+  const ok = await postWith('/api/g/' + slug + '/member/verify',
+    { id: '7770001', code: issued.body.code }, table);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  const m = await one("SELECT id FROM chain.member WHERE phone = '7770001'");
+
+  // With the member token riding as a header, the order is attributed.
+  const mine = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], name: 'Member One', opId: uuid() },
+    Object.assign({ 'x-member-token': ok.body.token }, table));
+  assert.strictEqual(mine.status, 201, JSON.stringify(mine.body));
+  const row = await one('SELECT table_no, member_id FROM guest_order WHERE id = $1',
+    [mine.body.id]);
+  assert.strictEqual(row.table_no, 'T03', 'the bound table reached the outlet');
+  assert.strictEqual(row.member_id, m.id, 'the membership rode with the round');
+
+  // A forged token attributes nobody — the order still lands, anonymous.
+  const forged = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() },
+    Object.assign({ 'x-member-token': 'not-a-token' }, table));
+  assert.strictEqual(forged.status, 201);
+  const anon = await one('SELECT member_id FROM guest_order WHERE id = $1',
+    [forged.body.id]);
+  assert.strictEqual(anon.member_id, null, 'a forged claim earns nobody points');
+
+  // The till accepts the round: the lines land, and qr_order attaches the
+  // MEMBER to the ticket — which is what the card's live tracker reads.
+  await push([
+    { opId: uuid(), kind: 'add_line', payload: {
+      table: 'T03', split: 0, item: 'm1', name: 'Test dish', qty: 1, price: 100,
+      lid: uuid(), channel: 'qr' } },
+    { opId: uuid(), kind: 'qr_order', payload: { id: mine.body.id } }
+  ]);
+  const go = await one('SELECT accepted_at, member_id FROM guest_order WHERE id = $1',
+    [mine.body.id]);
+  assert.ok(go.accepted_at, 'the round is closed at the outlet');
+  const tk = await one("SELECT member_id FROM ticket WHERE table_no = 'T03'"
+    + " AND status = 'open'");
+  assert.strictEqual(tk.member_id, m.id, 'the ticket knows whose round it is');
+
+  // And the card reads its own order back off the outlet.
+  const me = await getWith('/api/g/' + slug + '/member/me',
+    { 'x-member-token': ok.body.token });
+  assert.strictEqual(me.status, 200);
+  assert.ok(me.body.ticket, 'the open ticket reaches the card');
+  assert.strictEqual(me.body.ticket.table_no, 'T03');
+  assert.ok((me.body.ticket.lines || []).length, 'with its lines');
+
+  // The live slice tells the till WHO ordered, so the floor names the person.
+  const live = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  const mineLive = ((live.body.state || {}).guestOrders || [])
+    .filter((g) => g.id === forged.body.id)[0];
+  assert.ok(mineLive, 'the unaccepted round is on the poll');
+  assert.strictEqual(mineLive.member, null, 'anonymous where the claim was forged');
+});
+
 /* ═══ THE BUSINESS DATE IS THE OUTLET'S ═════════════════════════════════════
    `current_date` and `toISOString()` are both UTC, and Malé is UTC+5. So from
    19:00 local — most of a restaurant's trading — every business date, document

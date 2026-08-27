@@ -58,6 +58,9 @@
     var o = opts || {};
     var headers = { "content-type": "application/json" };
     if (state.token) headers["x-table-token"] = state.token;
+    if (o.headers) {
+      Object.keys(o.headers).forEach(function (k) { headers[k] = o.headers[k]; });
+    }
     return fetch(path, {
       method: o.method || "GET",
       headers: headers,
@@ -250,14 +253,39 @@
     // A round from the phone. The opId means a guest who taps twice on a bad
     // connection sends one order, not two.
     order: function (lines, extra) {
-      var b = Object.assign({ table: state.table, lines: lines, opId: uuid() }, extra || {});
+      /* Object.assign with `table: undefined` CLOBBERS the bound table — which
+         is how every order from the member card went out table-less and was
+         refused 400 while the screen said "sent". A caller's table wins only
+         where the caller actually names one. The membership rides as a
+         HEADER, never a body field: the server attributes the order from the
+         token, because a client-claimed member id on an anonymous door would
+         let anybody earn on anybody's card. */
+      var e = extra || {};
+      var b = { table: e.table || state.table, lines: lines, opId: uuid(),
+        promo: e.promo, name: e.name, phone: e.phone, note: e.note };
       return api("/api/g/" + encodeURIComponent(state.slug) + "/order",
-        { method: "POST", body: b });
+        { method: "POST", body: b,
+          headers: state.member ? { "x-member-token": state.member } : undefined });
+    },
+    /* Sitting down IS minting: the table token is scoped to one table, and the
+       menu projection filters the room to it — so keying a table number on the
+       member card re-mints the token for that table, which is what lets the
+       card read its own round back. token() already caches per (slug, table)
+       and the mint endpoint takes ?t=. */
+    bindTable: function (t) {
+      state.table = String(t == null ? "" : t);
+      state.token = null;
+      return token().then(refresh).catch(function () { return null; });
     },
     // A raised hand, the bill, water, help.
-    request: function (kind, detail) {
+    request: function (kind, detail, table) {
+      /* A signal with no table is still a signal — "at the counter" is where a
+         member scanning their card stands, and the floor board names the
+         person rather than the table for member traffic. 'card' is the same
+         placeholder the sign-in code lane already files under. */
       return api("/api/g/" + encodeURIComponent(state.slug) + "/request",
-        { method: "POST", body: { table: state.table, kind: kind, detail: detail || "" } });
+        { method: "POST", body: { table: table || state.table || "card",
+          kind: kind, detail: detail || "" } });
     },
     /* ── the member portal ──────────────────────────────────────────────────
        A member holds a card, not a table. Signing in is a code checked like a

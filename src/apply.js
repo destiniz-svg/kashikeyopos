@@ -574,16 +574,20 @@ async function deriveConsumption(c, sold) {
   /* The walk, in the database, because a batch drawing on a batch is a join
      and not a round trip. `mult` is how many of the component's own units one
      unit of the thing being sold needs; a batch divides by what it actually
-     YIELDS (its output net of reduction loss), which is why 4 litres of stock
-     that boils down to 3.28 makes a millilitre cost more than the inputs over
-     four. */
+     YIELDS — and `yield_qty` already IS the output net of reduction loss
+     (H.subrecipe_update stores `batch × (1 − loss)`), so the loss is divided
+     exactly once. This used to divide by `yield_qty * (1 - loss_pct)` — the
+     loss applied twice — so the server over-deducted every batch-drawing dish
+     by 1/(1−loss) against the till, and the drift test caught it the first
+     time it deterministically compared a batch dish. The till's own
+     `out = batch × (1 − loss)` is the same 2400, so the two agree again. */
   const walk = await c.query(
     'WITH RECURSIVE want(item_id, mult, depth) AS ('
     + '  SELECT s.id, s.q, 0'
     + '    FROM unnest($1::text[], $2::numeric[]) AS s(id, q)'
     + '  UNION ALL'
     + '  SELECT rl.sub_item_id,'
-    + '         w.mult * (rl.qty / (b.yield_qty * (1 - b.loss_pct))),'
+    + '         w.mult * (rl.qty / b.yield_qty),'
     + '         w.depth + 1'
     + '    FROM want w'
     + '    JOIN recipe_line rl ON rl.item_id = w.item_id'
@@ -591,7 +595,6 @@ async function deriveConsumption(c, sold) {
     + '    JOIN item b ON b.id = rl.sub_item_id'
     + '   WHERE w.depth < $3'
     + '     AND b.yield_qty IS NOT NULL AND b.yield_qty > 0'
-    + '     AND b.loss_pct < 1'
     + ') SELECT rl.ingredient_id AS ing, ing.name AS name,'
     + '         ing.yield_pct AS y, ing.waste_pct AS w,'
     + '         sum(w2.mult * rl.qty) AS net,'
@@ -2315,9 +2318,33 @@ H.seat_walkin = async (c, p, ctx) => {
 };
 
 H.qr_order = async (c, p, ctx) => {
-  await c.query('UPDATE guest_order SET accepted_at = now(), accepted_by = $2,'
-    + ' ticket_id = $3, rejected_reason = $4 WHERE id = $1 AND accepted_at IS NULL',
-    [p.id, ctx.actor, p.ticketId || null, p.reject || null]);
+  const row = await one(c, 'UPDATE guest_order SET accepted_at = now(), accepted_by = $2,'
+    + ' ticket_id = $3, rejected_reason = $4 WHERE id = $1 AND accepted_at IS NULL'
+    + ' RETURNING table_no, member_id', [p.id, ctx.actor, p.ticketId || null,
+    p.reject || null]);
+  /* A member's round attaches their membership to the TICKET — which is what
+     the card's live tracker reads (`/member/me` finds the open ticket by
+     member_id) and what puts the member on the sale when the table settles.
+     The till's add_line ops ride the same batch ahead of this op, so the
+     ticket exists by the time this runs; resolved by table because the till
+     may not yet hold the outlet's ticket id. Never overwrites a member a
+     server already attached: the first name on the bill keeps it. */
+  if (row && row.member_id && !p.reject) {
+    if (p.ticketId) {
+      await c.query('UPDATE ticket SET member_id = $2 WHERE id = $1'
+        + ' AND member_id IS NULL', [p.ticketId, row.member_id]);
+    } else {
+      /* By the DIGITS, not the spelling: the phone says "5" where the floor's
+         label is "T05" — the same normalisation tableSlot() already does on
+         the till when it seats the round. A label with no leading T/zeros
+         ("W1") compares as itself. */
+      await c.query("UPDATE ticket SET member_id = $2"
+        + " WHERE regexp_replace(upper(table_no), '^T0*', '')"
+        + "     = regexp_replace(upper($1), '^T0*', '')"
+        + " AND status = 'open' AND member_id IS NULL",
+      [String(row.table_no || ''), row.member_id]);
+    }
+  }
   return { ok: true };
 };
 H.qr_pay_intent = async (c, p, ctx) => {

@@ -74,6 +74,8 @@ app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
 app/kashikeyo-yield.js  what a kilo plates — the estimate BOTH runtimes read
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
 app/kashikeyo-share.js  what a shared bill says, and how a number reaches an app
+app/kashikeyo-qr.js     a real QR encoder (ISO 18004, byte mode, v1–10) — one
+                        composer, browser AND server, verified against jsQR
 app/doc.html           a receipt or a statement, on a phone that has no account here
 app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels,
                        the section glyphs both apps draw) — no trade
@@ -2189,6 +2191,16 @@ Saving one re-publishes the declaration of **every dish that draws on it**: the
 allergen walk already recursed through `sub_item_id`, it had never had a batch
 to recurse into.
 
+**And the server applied the reduction loss twice.** `yield_qty` already IS
+the output net of loss (`subrecipe_update` stores `batch × (1 − loss)`), and
+`deriveConsumption()` divided by `yield_qty × (1 − loss_pct)` — so the server
+over-deducted every batch-drawing dish by 1/(1−loss) against the till, which
+divides by the output once. Invisible while the drift test compared dishes
+with plain recipes; the moment a batch-drawing dish deterministically became
+the compared one, the vm test caught it — which is exactly the drift that
+test exists to catch. The server divides by `yield_qty` alone now, and the
+two runtimes agree to six places again.
+
 ## Six kinds were invisible to the sync contract
 
 `test/wiring.test.js` exists so that a queued op kind cannot go unhandled
@@ -2704,6 +2716,102 @@ One cosmetic finding stated rather than fixed: the two portal pages keep their
 template as real DOM, so the browser validates `d="{{ a.icon }}"` before the
 runtime compiles it and logs three SVG-path errors per load. The icons render
 correctly the moment data binds; the noise is parse-time only.
+
+### A member's round reaches the kitchen, and the kitchen's answer reaches the card
+
+Asked as *"customer portal order processing does not reach floor"*, and it did
+not — for three separate reasons, none visible from the phone:
+
+- **`table: undefined` clobbered the bound table.** The card collects a table
+  number, and the bridge composed the POST with
+  `Object.assign({ table: state.table }, { table: seat ? … : undefined })` —
+  so every round went out TABLE-LESS, the outlet refused it 400, and the toast
+  still said "Order sent to the kitchen". A caller's table wins only where the
+  caller names one now, and **sitting down IS minting**: picking a table chip
+  re-mints the bridge's table token for that table (`bindTable()`), which is
+  also what lets the card read its own round back — the menu projection
+  filters the room to the token's table.
+- **The membership never rode at all.** `guest_order.member_id` existed from
+  the first migration and nothing wrote it. It comes **from the member token,
+  never from a body field** — `x-member-token` on the order POST, verified for
+  this outlet — because a client-claimed member id on an anonymous door would
+  let anybody earn points on anybody's card. A forged token attributes nobody
+  and the order still lands, anonymous.
+- **Accepting the round now attaches the member to the TICKET.** `H.qr_order`
+  reads the guest_order's member and stamps `ticket.member_id` (by the till's
+  ticket id where the op carries one, else by the table — compared on the
+  DIGITS, because the phone says "5" where the floor's label is "T05", the
+  same normalisation `tableSlot()` does on the till). That is what the card's
+  live tracker reads: `/member/me` finds the open ticket by member, so the
+  round shows Received → In the kitchen → Ready → Served off the outlet's own
+  record.
+- **The table chips are the floor's own labels** where the outlet has
+  published a floor; the numbered twelve survive only where it has not.
+
+Measured in two real browsers — the card on a phone viewport, the till on a
+desktop one: signed in with bare digits, bound table 5, ordered one dish; the
+round landed 201 with the membership on it, the till ingested it onto ticket
+T05 with the member attached, the pass fired and bumped it, and the card read
+Served — every step off the database, none off a toast.
+
+### The sign-in code goes to the inbox on the membership
+
+The code was minted and put on the FLOOR BOARD for a server to read out —
+which works across a counter and nowhere else: a member signing in from home
+was asking a terminal nobody was standing at. Where the membership carries an
+email and the install has a transport, the code is **sent** (same
+`src/email.js` seam as every other send); the floor board stays as the
+fallback for a member with no address and for the night the transport is
+down. A DELIVERED code is deliberately not written to the board — a
+credential sent to an inbox and also posted where every till can read it is a
+second place to steal it from. The answer stays byte-identical for a stranger:
+`via` is the INSTALL's transport, the same doctrine as `delivered` on the
+account plane. The invitation landing's "Send my code" follows the same rule.
+
+### A QR code is bytes, or it is decoration
+
+*"This QR is not readable"* — correct: the Table QR modal drew a 13×13 grid
+of `Math.random()` cells under the words "scan to order", beside a URL that
+was real, and both buttons under it (**Print QR card**, **Rotate token**)
+closed the modal and did nothing. A picture of a QR code is the "control does
+what it says" defect wearing its most persuasive face, because a QR that is
+subtly wrong looks exactly like one that is right.
+
+`app/kashikeyo-qr.js` is a complete QR encoder — ISO 18004, byte mode,
+versions 1–10, all four EC levels, GF(256) Reed–Solomon, all eight masks with
+penalty selection — dependency-free, loaded by the browser and required by
+the server like `kashikeyo-rules.js`. It was verified against an independent
+decoder (jsQR, in a scratch harness, never a dependency) across fifty
+payloads before it shipped; `test/qr.test.js` pins known-answer matrices from
+that verified run, because a regression here cannot be seen by looking.
+Getting it right took two corrections worth recording: the format-info
+placement is NOT symmetric (the first draft transposed the two arms, which
+decodes as garbage), and an alignment pattern whose centre falls on a timing
+line (v7 up) is REQUIRED — "skip cells already painted" silently dropped
+exactly those, so everything decoded to v6 and nothing at v7.
+
+The modal draws the real matrix as one percent-encoded SVG data URL (never
+the `;utf8,` form — a semicolon ends an inline declaration, the dish-glyph
+trap). **Print this card** and **Print every table** open a print window —
+one crisp vector path per card, the floor's own labels — which is the answer
+to "how do I get table QR codes": Table actions → Table QR on any table, or
+Settings → Print table QR codes for the whole floor. "Rotate token" is gone:
+the QR encodes an address, not a credential, and a control offering a
+rotation this build cannot perform is the defect this file refuses by name.
+
+### One product, one plate — the member card too
+
+The member card fed raw `data:` URLs straight into `background-image` — where
+`image/jpeg;base64` truncates at its own semicolon and paints NOTHING — and
+had no section artifact at all, so an unphotographed dish was a blank grey
+box on the card while the guest portal and the till drew the section's plate.
+The card now carries the same composition (photo → blob URL; no photo → the
+section's hue and glyph from `kashikeyo-data.js`), through one `plate()`
+helper over every dish image site — the grid, the usuals rail, the search
+rows, the cart and the reward catalogue — and the grid's detail line falls
+back to the allergen/Vegetarian line the guest portal prints where a dish has
+no description. `test/wiring.test.js` pins all three: the real QR, the
+member round's table-and-token, and the one plate.
 
 ## A bill somebody can be handed
 

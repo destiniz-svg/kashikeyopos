@@ -965,10 +965,16 @@ class Component extends DCLogic {
       const seat = this.seatedAt();
       const body = Object.assign({ member: m ? m.id : "",
         memberName: m ? m.name : "" }, extra || {});
+      /* The table the MEMBER keyed wins over the seat the till may have
+         them at — `table: undefined` used to clobber it in the bridge, so
+         every order from this card posted table-less, was refused 400, and
+         the toast still said "sent". The membership itself rides on the
+         bridge's member token, never in this body. */
+      const at = body.table || (seat ? seat.table : undefined);
       const done = kind === "order"
-        ? G.order(body.lines || [], { table: seat ? seat.table : undefined,
+        ? G.order(body.lines || [], { table: at,
           name: m ? m.name : "", phone: m ? m.phone : "", note: detail })
-        : G.request(kind, detail);
+        : G.request(kind, detail, at);
       done.catch((e) => this.toast(e.message));
     }
     try {
@@ -1200,7 +1206,7 @@ class Component extends DCLogic {
     const n = s.cart.reduce((a, l) => a + l.qty, 0);
     const ok = this.bridgePush("order",
       m.name + " · " + n + " item" + (n === 1 ? "" : "s") + " · " + this.money(this.cartSub()),
-      { lines: lines, total: this.cartSub() });
+      { lines: lines, total: this.cartSub(), table: s.table });
     this.setState({
       sent: s.sent.concat([{ id: "r" + Date.now(), at: Date.now(), lines: s.cart.map((l) => ({ id: l.id, qty: l.qty, total: this.price(this.item(l.id)) * l.qty })) }]),
       cart: []
@@ -1211,13 +1217,78 @@ class Component extends DCLogic {
   // The reward catalogue is merchant data (KPOS.REWARDS); the image is borrowed
   // from a live menu item in the reward's own category so the card never shows
   // a picture of something the kitchen has stopped making.
+  /* ═══ THE SECTION ARTIFACT, MEMBER SIDE ══════════════════════════════════
+     THE SAME PLATE AS THE GUEST PORTAL AND THE TILL, from the same glyph set
+     in kashikeyo-data.js. This card used to feed raw data: URLs straight
+     into background-image — where `image/jpeg;base64` truncates at its own
+     semicolon and paints NOTHING — and had no artifact at all, so an
+     unphotographed dish was a blank grey box. One product, one plate. */
+  artHue(catId) {
+    const k = window.KPOS || {};
+    const pal = k.SECTION_HUES || ["#b8431d"];
+    const list = k.MENU_CATEGORIES || [];
+    const i = list.findIndex((c) => c.id === catId);
+    return pal[(i < 0 ? 0 : i) % pal.length];
+  }
+  artName(catId) {
+    const list = (window.KPOS || {}).MENU_CATEGORIES || [];
+    const c = list.find((x) => x.id === catId);
+    return c ? c.name : "";
+  }
+  photoUrl(src) {
+    const v = String(src || "");
+    if (!v) return "";
+    if (v.slice(0, 5) !== "data:") return v;
+    this._blob = this._blob || {};
+    if (this._blob[v]) return this._blob[v];
+    try {
+      const comma = v.indexOf(",");
+      const type = v.slice(5, comma).split(";")[0] || "image/jpeg";
+      const bin = atob(v.slice(comma + 1));
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([buf], { type: type }));
+      this._blob[v] = url;
+      return url;
+    } catch (e) { return ""; }
+  }
+  artGlyphUrl(catId, ink) {
+    const k = window.KPOS || {};
+    const g = k.SECTION_GLYPHS || {};
+    const key = k.glyphFor ? k.glyphFor(this.artName(catId)) : "main";
+    const d = g[key] || g.main || "";
+    const stroke = ink || this.artHue(catId);
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
+      + " stroke='" + stroke + "' stroke-opacity='0.5' stroke-width='1.1'"
+      + " stroke-linecap='round' stroke-linejoin='round'><path d='" + d + "'/></svg>";
+    return "data:image/svg+xml," + svg.replace(/#/g, "%23").replace(/"/g, "%22")
+      .replace(/</g, "%3C").replace(/>/g, "%3E");
+  }
+  artifact(catId, glyphSize, base, ink, tintAlpha) {
+    const hue = this.artHue(catId);
+    const url = this.artGlyphUrl(catId, ink);
+    const tint = hue + (tintAlpha || "");
+    return "background-image:url(\"" + url + "\")"
+      + (base ? ",linear-gradient(0deg," + tint + "," + tint + ")" : "")
+      + ";background-size:" + glyphSize + " auto" + (base ? ",cover" : "")
+      + ";background-position:center" + (base ? ",center" : "")
+      + ";background-repeat:no-repeat" + (base ? ",no-repeat" : "")
+      + ";background-color:" + (base || (hue + "12"));
+  }
+  // A photograph where there is one, the section's artifact where there is
+  // not — never a raw data URL and never a blank box.
+  plate(d, glyphSize) {
+    return d && d.img
+      ? "background:#f1f1f3 center/cover url('" + this.photoUrl(d.img) + "');"
+      : this.artifact(d ? d.cat : null, glyphSize || "36%") + ";";
+  }
   rewardCatalog() {
     const k = this.K(), menu = k.MENU || [];
     const tierName = (key) => (this.tiers().filter((t) => t.key === key)[0] || {}).name || "";
     return (k.REWARDS || []).map((r) => {
       const pic = menu.filter((m) => m.cat === r.cat)[0] || menu[0] || {};
       return {
-        id: r.id, name: r.name, cost: r.cost, img: pic.img || "",
+        id: r.id, name: r.name, cost: r.cost, img: pic.img || "", cat: r.cat,
         sub: r.kind === "money" && r.min ? "Off a bill of " + this.fmt(r.min) + " or more" : r.sub,
         tier: r.tier ? tierName(r.tier) : null
       };
@@ -1427,9 +1498,9 @@ class Component extends DCLogic {
       this.setState({ busy: true });
       return G.memberStart(this.idValue().trim()).then((r) => {
         this.setState({ busy: false, step: "otp", otp: "", otpErr: "" });
-        this.toast(r && r.via === "counter"
-          ? "Ask your server for the code — it is on their screen now"
-          : "Code sent to " + this.maskedTarget());
+        this.toast(r && r.via === "email"
+          ? "Check the inbox on your membership — no email on file? Ask at the counter"
+          : "Ask your server for the code — it is on their screen now");
       }).catch((e) => {
         this.setState({ busy: false });
         this.toast(e.message);
@@ -1773,11 +1844,10 @@ class Component extends DCLogic {
           ? "height:52px;border-radius:14px;background:#f7f7f8;font-size:20px;font-weight:600;color:#1a1a1a"
           : "height:52px;visibility:hidden"
       }));
-      // Not "Email me a code": there is no email or SMS transport in this
-      // build, and the note under this button already says so — the code is
-      // read out by whoever is serving you. A button naming a channel that
-      // does not exist is the same defect as a screen reporting a send that
-      // never happened.
+      // One button, whatever the transport: the code goes to the email on the
+      // membership where the install has one configured, and to the server's
+      // screen otherwise — the SERVER decides which, and the toast reads the
+      // answer back rather than promising a channel this install may not have.
       /* Arriving by invitation there is nothing to type, so the primary is
          never disabled: a button that cannot be pressed on a screen with no
          field to fill is a dead end wearing a label. */
@@ -1791,9 +1861,9 @@ class Component extends DCLogic {
         ? "The code goes to the address on your membership \u2014 never one typed on this "
           + "screen \u2014 so a link forwarded to somebody else cannot sign them in. "
           + "This invitation works once."
-        : "Your code is issued by the restaurant and lasts ten minutes. "
-          + "Ask whoever is serving you for it — they can see it on their screen the "
-          + "moment you tap below, and it is recorded against your card either way.";
+        : "Your code lasts ten minutes. It goes to the email on your membership "
+          + "where there is one \u2014 otherwise whoever is serving you can read it "
+          + "off their screen the moment you tap below.";
       V.tabBarStyle = "display:none";
       return V;
     }
@@ -1881,7 +1951,7 @@ class Component extends DCLogic {
       title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
       tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
-      imgStyle: "position:absolute;inset:0;display:block;background-image:url('" + (b.img || "img/hero.jpg") + "');background-size:cover;background-position:center",
+      imgStyle: "position:absolute;inset:0;display:block;background-image:url('" + (this.photoUrl(b.img) || "img/hero.jpg") + "');background-size:cover;background-position:center",
       tap: () => this.toast(b.code ? b.code + " — mention it at the till" : b.title)
     }));
 
@@ -1892,9 +1962,24 @@ class Component extends DCLogic {
     s.cart.forEach((l) => { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
     V.bindWrapStyle = bound ? "display:none" : "margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:18px";
     V.orderWrapStyle = bound ? "margin-top:16px;display:block" : "display:none";
-    V.tableChoices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({
+    /* THE ROOM AS IT REALLY IS, never a guessed twelve: the projection
+       carries the outlet's own floor, and the chips are its labels — a card
+       offering "Table 9" in a shop whose tables are W1–W6 sends an order the
+       floor cannot seat. Twelve numbered chips survive only for an outlet
+       that has published no floor at all. Picking one also re-mints the
+       bridge's table token for that table, which is what lets this card read
+       its own round back off the outlet. */
+    const floorTabs = ((this.outlet() || {}).floor || []).map((t) => t.label);
+    V.tableChoices = (floorTabs.length ? floorTabs
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).map((n) => ({
       label: "Table " + n,
-      pick: () => { this.setState({ table: n }); this.toast("Ordering at table " + n + " · " + o.name); },
+      pick: () => {
+        this.setState({ table: n });
+        if (window.KPOS_GUEST_API && window.KPOS_GUEST_API.bindTable) {
+          window.KPOS_GUEST_API.bindTable(n);
+        }
+        this.toast("Ordering at table " + n + " · " + o.name);
+      },
       style: "padding:10px 15px;border-radius:22px;font-size:13.5px;font-weight:600;border:1px solid #efefef;background:#fff;color:#2b2b2e;box-shadow:0 2px 7px rgba(0,0,0,.045)"
     }));
     V.bindHint = seat
@@ -1908,7 +1993,7 @@ class Component extends DCLogic {
       return {
         name: d.name, priceLabel: this.fmt(this.price(d)),
         add: () => this.addLine(id),
-        imgStyle: "display:block;width:100%;height:88px;border-radius:12px;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7"
+        imgStyle: this.plate(d, "34%") + "display:block;width:100%;height:88px;border-radius:12px"
       };
     });
     V.usualHeadStyle = bound && V.usuals.length ? "margin-top:20px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
@@ -1933,11 +2018,15 @@ class Component extends DCLogic {
     }).map((d) => {
       const sold = off.indexOf(d.id) >= 0;
       const n = inCart[d.id] || 0;
+      const k2 = window.KPOS || {};
+      const al = k2.dishAllergens ? k2.dishAllergens(d) : [];
+      const tagLine = al.length ? al.map((a) => a.label).join(" \u00b7 ")
+        : (k2.dishHasMeat && !k2.dishHasMeat(d) ? "Vegetarian" : "");
       return {
-        name: d.name, desc: d.desc, priceLabel: this.fmt(this.price(d)), off: sold, badge: n ? String(n) : "",
+        name: d.name, desc: d.desc || tagLine, priceLabel: this.fmt(this.price(d)), off: sold, badge: n ? String(n) : "",
         add: () => sold ? this.toast(d.name + " is off tonight") : this.addLine(d.id),
         cardStyle: "text-align:left;background:#fff;border:1px solid " + (n ? "#f7c8bd" : "#efefef") + ";border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:" + (sold ? ".55" : "1"),
-        imgStyle: "display:block;width:100%;height:118px;border-radius:12px;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7" + (sold ? ";filter:grayscale(1)" : ""),
+        imgStyle: this.plate(d, "36%") + "display:block;width:100%;height:118px;border-radius:12px" + (sold ? ";filter:grayscale(1)" : ""),
         badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#f4553c;color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
         offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
         plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60," + (sold ? "0" : ".35") + ")"
@@ -1949,7 +2038,7 @@ class Component extends DCLogic {
       const d = this.item(l.id);
       return {
         name: d.name, qty: l.qty, priceLabel: this.fmt(this.price(d) * l.qty),
-        imgStyle: "width:52px;height:52px;border-radius:11px;flex-shrink:0;display:block;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7",
+        imgStyle: this.plate(d, "55%") + "width:52px;height:52px;border-radius:11px;flex-shrink:0;display:block",
         inc: () => this.bumpLine(l.id, 1),
         dec: () => this.bumpLine(l.id, -1)
       };
@@ -2033,7 +2122,7 @@ class Component extends DCLogic {
         sum += l.total;
         return {
           name: d.name, qty: l.qty, priceLabel: this.fmt(l.total), status: NAME[st],
-          imgStyle: "width:44px;height:44px;border-radius:10px;flex-shrink:0;display:block;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7",
+          imgStyle: this.plate(d, "55%") + "width:44px;height:44px;border-radius:10px;flex-shrink:0;display:block",
           chipStyle: "display:inline-flex;align-items:center;margin-top:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:" + TINT[st][0] + ";color:" + TINT[st][1]
         };
       });
@@ -2069,7 +2158,7 @@ class Component extends DCLogic {
         locked: locked,
         redeem: () => this.redeem(r),
         rowStyle: "display:flex;align-items:center;gap:13px;padding:12px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);opacity:" + (locked ? ".62" : "1"),
-        imgStyle: "width:58px;height:58px;border-radius:12px;flex-shrink:0;display:block;background-image:url('" + r.img + "');background-size:cover;background-position:center;background-color:#eceae7" + (locked ? ";filter:grayscale(.7)" : ""),
+        imgStyle: this.plate({ img: r.img, cat: r.cat }, "55%") + "width:58px;height:58px;border-radius:12px;flex-shrink:0;display:block" + (locked ? ";filter:grayscale(.7)" : ""),
         costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#6a6a72" : "#f4553c") + ";margin-top:5px;font-family:'JetBrains Mono',monospace",
         btn: tierLocked ? "Locked" : poor ? (r.cost - pts) + " pts" : "Redeem",
         btnStyle: "flex-shrink:0;padding:10px 15px;border-radius:22px;font-size:13px;font-weight:600;white-space:nowrap;"

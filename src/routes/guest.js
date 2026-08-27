@@ -13,6 +13,7 @@ const { signTable, verifyTable, signMember, verifyMember,
 const { snapshot } = require('./outlet');
 const { hostHandle } = require('../handle');
 const INVITE = require('../../app/kashikeyo-invite.js');
+const email = require('../email');
 const { gate } = require('../limit');
 
 const r = express.Router();
@@ -139,6 +140,14 @@ r.post('/:slug/order', guest, async function (req, res, next) {
     return res.status(400).json({ error: 'table and at least one line required' });
   }
   if (b.lines.length > 60) return res.status(413).json({ error: 'too many lines' });
+  /* A member ordering from their own card is attributed — FROM THE TOKEN,
+     never from a body field. guest_order.member_id is what attaches the
+     membership to the ticket the till opens, and a sale's member is what
+     earns points, so an anonymous door that believed a client-claimed id
+     would let anybody earn on anybody's card. A token for another outlet is
+     simply not this outlet's member. */
+  const mt = verifyMember(String(req.get('x-member-token') || ''));
+  const memberId = (mt && mt.o === req.ctx.outletId && mt.m) ? mt.m : null;
   try {
     const out = await withOutlet(req.ctx, async function (c) {
       if (b.opId) {
@@ -146,10 +155,10 @@ r.post('/:slug/order', guest, async function (req, res, next) {
         if (seen.rows.length) return seen.rows[0].result;   // replay, not a second order
       }
       const ins = await c.query(
-        'INSERT INTO guest_order (table_no, lines, promo, guest_name, guest_phone, note)'
-        + ' VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, at',
+        'INSERT INTO guest_order (table_no, lines, promo, guest_name, guest_phone, note, member_id)'
+        + ' VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, at',
         [String(table), JSON.stringify(b.lines), b.promo || null,
-          b.name || null, b.phone || null, b.note || null]);
+          b.name || null, b.phone || null, b.note || null, memberId]);
       const result = { id: ins.rows[0].id, at: ins.rows[0].at, status: 'awaiting till' };
       if (b.opId) {
         await c.query('INSERT INTO op_log (op_id, kind, payload, client_at, result)'
@@ -212,7 +221,17 @@ r.post('/:slug/member/start', guest, gate('member-code', codeIssue, askedFor), a
   const phone = String((req.body || {}).id || (req.body || {}).phone || '').trim();
   if (phone.length < 6) return res.status(400).json({ error: 'phone or email required' });
   try {
-    const out = await withOutlet(req.ctx, async function (c) {
+    /* THE CODE GOES TO THE INBOX ON THE MEMBERSHIP. Reading a code off the
+       floor board works across a counter and nowhere else — a member signing
+       in from home was asking a terminal nobody was standing at. So where the
+       membership carries an email and the install has a transport, the code
+       is SENT; the floor board stays as the fallback for the member with no
+       address on file, and for the night the transport is down.
+
+       The send happens OUTSIDE the transaction: the hash is committed first,
+       so a slow mail provider holds no pooled connection, and a send that
+       fails leaves a code the counter can still read out. */
+    const staged = await withOutlet(req.ctx, async function (c) {
       // Four digits from the CSPRNG, hashed with a per-row salt exactly like a
       // staff PIN — and, like a PIN, it is the expiry and the try limit that
       // make it safe, never the entropy. What the database holds is never the
@@ -222,19 +241,41 @@ r.post('/:slug/member/start', guest, gate('member-code', codeIssue, askedFor), a
       const q = await c.query('SELECT chain.member_code_set($1,$2,$3,$4) AS id',
         [phone, h.hash, h.salt, CODE_MINS]);
       const id = q.rows[0].id;
-      if (id) {
-        await c.query('INSERT INTO guest_request (table_no, kind, detail)'
-          + " VALUES ($1,'member_code',$2)",
-        [req.guest.table || 'card', 'Sign-in code for ' + phone + ': ' + code]);
-        await c.query("SELECT chain.log_anon($1,'member_code','member',$2,$3)",
-          [req.ctx.outletId, id, JSON.stringify({ mins: CODE_MINS })]);
-      }
-      // The same answer either way: whether a phone number is a customer here
-      // is not a question a stranger gets to ask.
-      return { sent: true, via: 'counter', mins: CODE_MINS,
-        code: (process.env.MEMBER_CODE_ECHO === '1' && id) ? code : undefined };
+      if (!id) return { code: code };
+      const who = await c.query('SELECT email FROM chain.member WHERE id = $1', [id]);
+      const o = await c.query('SELECT name FROM chain.outlet WHERE id = $1',
+        [req.ctx.outletId]);
+      await c.query("SELECT chain.log_anon($1,'member_code','member',$2,$3)",
+        [req.ctx.outletId, id, JSON.stringify({ mins: CODE_MINS })]);
+      return { id: id, code: code, to: (who.rows[0] || {}).email || null,
+        outletName: (o.rows[0] || {}).name || '' };
     });
-    res.json(out);
+    let emailed = false;
+    if (staged.id && staged.to && email.configured()) {
+      try {
+        const r = await email.send(email.signInCode({ to: staged.to,
+          code: staged.code, mins: CODE_MINS,
+          brand: staged.outletName || 'KashikeyoPOS' }));
+        emailed = !!(r && r.sent !== false);
+      } catch (e) { emailed = false; }
+    }
+    /* A code that could not be sent is still a code — it goes to the floor
+       board for a server to read out, exactly as every code did before there
+       was a transport. A DELIVERED code is deliberately NOT written there: a
+       credential sent to an inbox and also posted to a board every till can
+       read is a second place to steal it from. */
+    if (staged.id && !emailed) {
+      await withOutlet(req.ctx, (c) => c.query(
+        'INSERT INTO guest_request (table_no, kind, detail)'
+        + " VALUES ($1,'member_code',$2)",
+      [req.guest.table || 'card', 'Sign-in code for ' + phone + ': ' + staged.code]));
+    }
+    /* The same answer whether or not the address is a customer here — `via`
+       is the INSTALL's transport, identical for every caller, the same
+       doctrine as `delivered` on the account plane. */
+    res.json({ sent: true, via: email.configured() ? 'email' : 'counter',
+      mins: CODE_MINS,
+      code: (process.env.MEMBER_CODE_ECHO === '1' && staged.id) ? staged.code : undefined });
   } catch (e) { next(e); }
 });
 
@@ -331,17 +372,34 @@ r.post('/:slug/member/join/code', guest, gate('member-code', codeIssue, askedTok
       // request body.
       await c.query('SELECT chain.member_code_set($1,$2,$3,$4)',
         [m.phone, h.hash, h.salt, CODE_MINS]);
-      await c.query('INSERT INTO guest_request (table_no, kind, detail)'
-        + " VALUES ($1,'member_code',$2)",
-      ['card', 'Sign-in code for ' + (m.name || m.phone) + ': ' + code]);
+      const o = await c.query('SELECT name FROM chain.outlet WHERE id = $1',
+        [req.ctx.outletId]);
       await c.query("SELECT chain.log_anon($1,'member_join','member',$2,$3)",
         [req.ctx.outletId, id, JSON.stringify({ mins: CODE_MINS })]);
-      return { m: m, code: code };
+      return { m: m, code: code, outletName: (o.rows[0] || {}).name || '' };
     });
     if (!out) {
       return res.status(410).json({
         error: 'That link has already been used or has expired'
       });
+    }
+    /* The invitation reached an inbox, so its code can too — same delivery
+       rule as /member/start: sent where there is an address and a transport,
+       on the floor board otherwise, never both. */
+    let emailed = false;
+    if (out.m.email && email.configured()) {
+      try {
+        const r = await email.send(email.signInCode({ to: out.m.email,
+          code: out.code, mins: CODE_MINS,
+          brand: out.outletName || 'KashikeyoPOS' }));
+        emailed = !!(r && r.sent !== false);
+      } catch (e) { emailed = false; }
+    }
+    if (!emailed) {
+      await withOutlet(req.ctx, (c) => c.query(
+        'INSERT INTO guest_request (table_no, kind, detail)'
+        + " VALUES ($1,'member_code',$2)",
+      ['card', 'Sign-in code for ' + (out.m.name || out.m.phone) + ': ' + out.code]));
     }
     res.set('cache-control', 'no-store').json({
       sent: true, mins: CODE_MINS,

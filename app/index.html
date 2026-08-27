@@ -28,6 +28,7 @@
      state that names the action which fills it. -->
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-qr.js"></script>
 <script src="./kashikeyo-yield.js"></script>
 <script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-share.js"></script>
@@ -1626,8 +1627,8 @@
                 <div style="font-size:12.5px;color:var(--text-dim);line-height:1.7">Guests scan this to open the table's own ordering session in their browser. No app, no login — the scan mints a short-lived anonymous token scoped to this one table, at this one outlet.</div>
                 <div style="margin-top:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn-bright);overflow-x:auto;white-space:nowrap">{{ qrUrl }}</div>
                 <div style="display:flex;gap:8px;margin-top:12px">
-                  <button onClick="{{ closeModal }}" style="padding:9px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Print QR card</button>
-                  <button onClick="{{ closeModal }}" style="padding:9px 16px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Rotate token</button>
+                  <button onClick="{{ qrPrint }}" style="padding:9px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Print this card</button>
+                  <button onClick="{{ qrPrintAll }}" style="padding:9px 16px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Print every table</button>
                 </div>
               </div>
             </div>
@@ -3361,6 +3362,52 @@ class Component extends DCLogic {
   // name the guest's order comes back under.
   tableUrl(slot, id) {
     return this.storeUrl("/?t=" + encodeURIComponent(this.slotName(slot)), id);
+  }
+  /* ── THE PRINTED CARD ─────────────────────────────────────────────────────
+     A sheet of table cards, in a window the browser can print. The QR is the
+     real matrix from kashikeyo-qr.js, inline as SVG so the print driver gets
+     one crisp vector per card rather than a rasterised background. The window
+     inherits this page's CSP, which allows inline styles and nothing foreign
+     — everything on the sheet is composed here. */
+  printQrCards(slots) {
+    const o = this.outlet(), brand = this.brandOf();
+    if (!window.KPOS_QR) return this.toast("The QR module did not load — reload this page", "warn");
+    const esc = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const cards = (slots || []).map((n) => {
+      const url = this.tableUrl(n);
+      if (!url) return "";
+      return '<div class="card">'
+        + '<div class="brand">' + esc(brand.name || o.name) + "</div>"
+        + '<div class="qr">' + window.KPOS_QR.svg(url, { ecl: "M" }) + "</div>"
+        + '<div class="tbl">Table ' + esc(this.slotName(n)) + "</div>"
+        + '<div class="scan">Scan to order</div>'
+        + '<div class="out">' + esc(o.name) + "</div>"
+        + (brand.poweredBy === false ? "" : '<div class="pow">Powered by KashikeyoPOS\u2122</div>')
+        + "</div>";
+    }).filter(Boolean).join("");
+    if (!cards) return this.toast("This outlet has no store address yet — set one in Settings", "warn");
+    const doc = "<!doctype html><html><head><title>" + esc(o.name) + " \u00b7 table QR cards</title>"
+      + "<style>"
+      + "*{box-sizing:border-box;margin:0;padding:0}"
+      + "body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f2f0ec;padding:18px}"
+      + ".sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}"
+      + ".card{background:#fff;border-radius:14px;padding:18px 16px 14px;text-align:center;"
+      + "box-shadow:0 1px 3px rgba(0,0,0,.08);break-inside:avoid;page-break-inside:avoid}"
+      + ".brand{font-size:12px;font-weight:800;letter-spacing:.11em;color:#1f1c17;text-transform:uppercase}"
+      + ".qr{margin:10px auto 8px;max-width:180px}.qr svg{width:100%;height:auto;display:block}"
+      + ".tbl{font-size:16px;font-weight:800;color:#1f1c17;letter-spacing:-.01em}"
+      + ".scan{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px}"
+      + ".out{font-size:9px;color:#a89f92;margin-top:4px}"
+      + ".pow{font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px}"
+      + "@media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #eee}}"
+      + "</style></head><body><div class=\"sheet\">" + cards + "</div>"
+      + "</body></html>";
+    const w = window.open("", "_blank");
+    if (!w) return this.toast("The browser blocked the print window — allow pop-ups for this terminal", "warn");
+    w.document.write(doc);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) { /* the sheet is still on screen */ } }, 300);
   }
   // The card. On the store's own subdomain it is /member; where there is no
   // base domain the path form is /m/<handle> — a DIFFERENT shape, not /g/<h>
@@ -7349,24 +7396,28 @@ class Component extends DCLogic {
     }
 
     if (m.kind === "qr") {
-      const rnd = this.rng(s.activeTable ? s.activeTable * 31 : 7);
-      const cells = [];
-      for (let i = 0; i < 169; i++) {
-        const r = Math.floor(i / 13), c = i % 13;
-        const finder = (r < 3 && c < 3) || (r < 3 && c > 9) || (r > 9 && c < 3);
-        const on = finder || rnd() > 0.52;
-        cells.push("background:" + (on ? "var(--qr-ink)" : "transparent") + ";border-radius:1px");
-      }
+      /* THE CODE IS REAL. What stood here was a 13×13 grid of Math.random()
+         cells — a picture of a QR that no camera could read, beside a URL
+         that was real, offered by a control captioned "scan to order". The
+         matrix is composed by kashikeyo-qr.js from the table's own URL now,
+         and the data URL is the percent-encoded form because a semicolon
+         ends an inline declaration (the dish-glyph defect, same trap). */
+      const qUrl = this.tableUrl(s.activeTable || 1);
+      const qBg = qUrl && window.KPOS_QR ? window.KPOS_QR.dataUrl(qUrl, { ecl: "M" }) : "";
       return Object.assign({}, this.brandVals(), {
         modalTitle: "Table QR · T" + pad(s.activeTable || 1), modalSub: o.name + " · scan-to-order session",
-        qrGrid: "display:grid;grid-template-columns:repeat(13,1fr);gap:2px;width:100%;aspect-ratio:1",
-        qrCells: cells,
+        qrGrid: qBg
+          ? "width:100%;aspect-ratio:1;background-image:url(" + qBg + ");background-size:contain;background-repeat:no-repeat;background-position:center"
+          : "width:100%;aspect-ratio:1;display:grid;place-items:center;border:1px dashed var(--line);border-radius:8px;font-size:9px;color:var(--text-dim);text-align:center;padding:8px",
+        qrCells: [],
         qrTable: "Table " + pad(s.activeTable || 1),
         qrOutlet: o.name,
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
           : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
         qrUrl: this.tableUrl(s.activeTable || 1)
-          || "This outlet has no store address yet — set one in Settings"
+          || "This outlet has no store address yet — set one in Settings",
+        qrPrint: () => this.printQrCards([s.activeTable || 1]),
+        qrPrintAll: () => this.printQrCards(this.floorTables().map((t) => t.n))
       });
     }
 
@@ -12948,7 +12999,7 @@ class Component extends DCLogic {
       return {
         tabs: tabs,
         actions: [
-          { label: "Print table QR codes", go: () => this.setState({ modal: { kind: "qr" } }) },
+          { label: "Print table QR codes", go: () => this.printQrCards(this.floorTables().map((t) => t.n)) },
           { label: "Kitchen display", primary: true, go: () => this.setState({ view: "kds" }) }
         ],
         cardMin: 270,
