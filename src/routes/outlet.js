@@ -754,7 +754,13 @@ async function snapshot(c, outletId) {
     // What a member's card is worth here. These three are customer-facing by
     // definition — a reward nobody can see is a reward nobody redeems.
     loyalty: ["SELECT key, value FROM chain.setting"
-      + " WHERE key IN ('tiers','rewards','loyalty','currencies')"],
+      + " WHERE key IN ('tiers','rewards','loyalty','currencies','processors')"],
+    /* Add-ons are MENU facts — name, price, which sections they dress — so a
+       guest may see them; nothing here carries a cost or a margin. Without
+       these the phone fell back to the SHIPPED demo modifiers, which offered
+       every store's guests somebody else's extra cheese. */
+    mods: ['SELECT id, name, price, group_id FROM modifier ORDER BY pos, name'],
+    itemMods: ['SELECT item_id, group_id FROM item_modifier'],
     // Who the guest is dealing with, as it is going to appear on their receipt.
     company: ['SELECT legal_name, brand, country, base_currency FROM chain.company'
       + ' LIMIT 1'],
@@ -763,6 +769,37 @@ async function snapshot(c, outletId) {
   q.zones.rows.forEach((z) => { zoneName[z.id] = z.name; });
   const loyalty = {};
   q.loyalty.rows.forEach((r) => { loyalty[r.key] = r.value; });
+
+  /* THE TENDERS ARE THE TILL'S OWN, not a guess on the phone. The portals
+     used to read a till's localStorage — present only when a till shares the
+     browser — and fall back to a hardcoded three, so a real guest's phone
+     never offered QR or Transfer however the store took money. Suspending a
+     contract takes its tender off the till, so it comes off the phone in the
+     same act; cash has no contract and is always offered; customer credit is
+     a MEMBER's tender and says so. */
+  const procOv = loyalty.processors || {};
+  const suspended = (procId) => !!(procOv[procId] || {}).suspended;
+  const tenders = [{ k: 'cash', label: 'Cash' }];
+  if (!suspended('term')) tenders.push({ k: 'card', label: 'Card' });
+  if (!suspended('wallet')) tenders.push({ k: 'wallet', label: 'BML Pay' });
+  if (!suspended('gw')) tenders.push({ k: 'qr', label: 'QR' });
+  if (!suspended('direct')) tenders.push({ k: 'transfer', label: 'Transfer' });
+  tenders.push({ k: 'credit', label: 'My account', memberOnly: true });
+
+  /* The same shape the bootstrap publishes to the till, so `addonsFor()` on
+     the phone is the same filter the till runs: which sections a group
+     dresses is derived from the dishes that carry it. */
+  const modsByGroup = {};
+  q.itemMods.rows.forEach((im) => {
+    (modsByGroup[im.group_id] = modsByGroup[im.group_id] || []).push(im.item_id);
+  });
+  const catOfItem = {};
+  q.items.rows.forEach((i) => { catOfItem[i.id] = i.category_id; });
+  const modifiers = q.mods.rows.map((m) => ({
+    id: m.id, name: m.name, price: Number(m.price) || 0, group: m.group_id,
+    cats: Array.from(new Set((modsByGroup[m.group_id] || [])
+      .map((itemId) => catOfItem[itemId]).filter(Boolean)))
+  }));
 
   return {
     v: 5, at: Date.now(),
@@ -786,7 +823,9 @@ async function snapshot(c, outletId) {
     currencies: loyalty.currencies || [],
     tiers: loyalty.tiers || null,
     rewards: loyalty.rewards || [],
-    loyalty: loyalty.loyalty || {}
+    loyalty: loyalty.loyalty || {},
+    tenders: tenders,
+    modifiers: modifiers
   };
 }
 

@@ -189,6 +189,12 @@
     }
     K.REWARDS = snap.rewards || [];
     K.LOYALTY = snap.loyalty || {};
+    /* The outlet's OWN tender set and add-ons. Without these the phone read a
+       till's localStorage — absent on any real guest's device — and fell back
+       to a hardcoded three tenders and the SHIPPED demo modifiers, which
+       offered every store's guests somebody else's extra cheese. */
+    if (snap.tenders && snap.tenders.length) K.TENDERS_PUBLISHED = snap.tenders;
+    K.MODIFIERS = snap.modifiers || [];
     K.PROMOS = (snap.promos || []).map(function (p) {
       return { id: p.id, name: p.name, kind: p.kind,
         pct: p.kind === "percent" ? Number(p.value) : 0,
@@ -278,14 +284,17 @@
       return token().then(refresh).catch(function () { return null; });
     },
     // A raised hand, the bill, water, help.
-    request: function (kind, detail, table) {
+    request: function (kind, detail, table, pay) {
       /* A signal with no table is still a signal — "at the counter" is where a
          member scanning their card stands, and the floor board names the
          person rather than the table for member traffic. 'card' is the same
-         placeholder the sign-in code lane already files under. */
+         placeholder the sign-in code lane already files under. `pay` is the
+         bill ask's whole decision — tender, tip, split, share — which used to
+         survive only in localStorage and so never reached a till on another
+         machine. */
       return api("/api/g/" + encodeURIComponent(state.slug) + "/request",
         { method: "POST", body: { table: table || state.table || "card",
-          kind: kind, detail: detail || "" } });
+          kind: kind, detail: detail || "", pay: pay || undefined } });
     },
     /* ── the member portal ──────────────────────────────────────────────────
        A member holds a card, not a table. Signing in is a code checked like a

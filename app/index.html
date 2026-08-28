@@ -8835,10 +8835,18 @@ class Component extends DCLogic {
     (live.guestRequests || []).forEach((r) => {
       const id = "gr_" + r.id;
       if (acked[id]) return;
-      out.push({
+      /* The pay INTENT rides the request row now (047): a bill ask from a
+         guest's own phone used to arrive as bare text, so ingestPayIntent —
+         which pre-selects the tender and keeps the tip — only ever worked
+         when the portal shared this browser's localStorage. The spread puts
+         tender, tip, due, split, parts, guestRef and promo on the signal in
+         the same fields the local bridge always used. */
+      const ing = this._ingSig || (this._ingSig = {});
+      out.push(Object.assign({}, r.pay || {}, {
         id: id, outlet: oid, table: this.tableSlot(r.table), kind: r.kind,
-        detail: r.detail || "", at: r.at, ack: 0, from: "portal"
-      });
+        detail: r.detail || "", at: r.at, ack: 0, from: "portal",
+        ing: ing[id] ? 1 : 0
+      }));
     });
     try {
       const raw = localStorage.getItem("kashikeyo.bridge.v1");
@@ -8923,6 +8931,10 @@ class Component extends DCLogic {
       const acked = this._ackedSig || (this._ackedSig = {});
       acked[id] = 1;
     }
+    if (patch && patch.ing) {
+      const ing = this._ingSig || (this._ingSig = {});
+      ing[id] = 1;
+    }
     try {
       const K = "kashikeyo.bridge.v1";
       const list = JSON.parse(localStorage.getItem(K) || "[]");
@@ -8979,11 +8991,16 @@ class Component extends DCLogic {
           fired: false, since: 0, firedAt: 0, sig: x.id });
         // The round becomes lines on the OUTLET's ticket, not just on this
         // screen: the counter has to be able to settle a table a phone opened.
+        // The line's price is the MENU's plus the add-ons the phone declared —
+        // the names ride the note for the kitchen, the money rides the price
+        // for the bill; before this a priced add-on reached the docket and
+        // never the total.
         const mi = (K().MENU || []).find((y) => y.id === ql.id) || {};
         this.queue("add_line", (mi.name || ql.id) + " × " + (ql.qty || 1)
           + " · QR · " + this.slotName(x.table), "order_lines", {
           table: this.slotName(x.table), split: 0, item: ql.id,
-          name: mi.name || ql.id, qty: ql.qty || 1, price: this.menuPrice(mi),
+          name: mi.name || ql.id, qty: ql.qty || 1,
+          price: this.menuPrice(mi) + (+ql.addons || 0),
           guest: 0, note: note, lid: lid, station: this.dishStation(mi),
           channel: "qr"
         });

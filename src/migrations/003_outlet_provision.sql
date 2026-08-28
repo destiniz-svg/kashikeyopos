@@ -942,6 +942,9 @@ BEGIN
       table_no text NOT NULL,
       kind     text NOT NULL,       -- server | bill | water | help
       detail   text,
+      -- The pay INTENT riding a bill ask — tender, tip, split, due — as a
+      -- message the till reads back (047). The board's text stays in detail.
+      pay      jsonb,
       at       timestamptz NOT NULL DEFAULT now(),
       ack_at   timestamptz, ack_by uuid
     );

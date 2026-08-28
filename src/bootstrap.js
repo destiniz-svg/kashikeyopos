@@ -639,7 +639,8 @@ async function buildState(ctx, opts) {
         member: g.member_id || null
       })),
       guestRequests: guestReqs.rows.map((g) => ({
-        id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at)
+        id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at),
+        pay: g.pay || null
       })),
       printJobs: prints.rows.map((p) => ({
         id: p.id, kind: p.kind, target: p.target, label: p.label,
@@ -1014,7 +1015,8 @@ async function buildLive(ctx, opts) {
         member: g.member_id || null
       })),
       guestRequests: q.guestReqs.rows.map((g) => ({
-        id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at)
+        id: g.id, table: g.table_no, kind: g.kind, detail: g.detail, at: ms(g.at),
+        pay: g.pay || null
       }))
     };
   });

@@ -751,6 +751,55 @@ test("a member's order carries their membership to the ticket", opts, async () =
   assert.strictEqual(mineLive.member, null, 'anonymous where the claim was forged');
 });
 
+/* ═══ THE ASK CARRIES THE ANSWER ════════════════════════════════════════════
+   "Ask for the bill" composes tender, tip, due and split on the phone, and
+   the request door took a kind and a line of text — so the decision survived
+   only in localStorage, which reaches a till only when the till shares the
+   browser. The intent rides the row now (047), whitelisted field by field,
+   and the poll hands it to the till, which pre-selects the pay screen. */
+test('the bill ask carries the pay intent, and the projection sells with', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T04');
+  const table = { 'x-table-token': t.body.token };
+
+  const ask = await postWith('/api/g/' + slug + '/request',
+    { kind: 'bill', detail: 'Table T04 is ready to pay',
+      pay: { tender: 'qr', tip: 10, due: 123.45, split: 'even', parts: 3,
+        guestRef: 'G1234', promo: 'HELLO', junk: 'dropped',
+        points: -5, ref: 'x'.repeat(200) } }, table);
+  assert.strictEqual(ask.status, 201, JSON.stringify(ask.body));
+  const row = await one("SELECT pay FROM guest_request WHERE kind = 'bill'"
+    + " AND table_no = 'T04' ORDER BY at DESC LIMIT 1");
+  assert.strictEqual(row.pay.tender, 'qr');
+  assert.strictEqual(row.pay.tip, 10);
+  assert.strictEqual(row.pay.due, 123.45);
+  assert.strictEqual(row.pay.parts, 3);
+  assert.strictEqual(row.pay.junk, undefined, 'an open door stores only the whitelist');
+  assert.strictEqual(row.pay.points, 0, 'a negative figure is clamped, not stored');
+  assert.strictEqual(row.pay.ref.length, 48, 'and a novel is truncated');
+
+  // The poll hands the intent to the till in the same fields the local bridge
+  // always used.
+  const live = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  const mine = ((live.body.state || {}).guestRequests || [])
+    .filter((g) => g.kind === 'bill' && g.table === 'T04')[0];
+  assert.ok(mine && mine.pay && mine.pay.tender === 'qr', 'the intent rides the poll');
+
+  /* And the projection carries the till's own tender set and the outlet's
+     add-ons — the phone used to fall back to a hardcoded three tenders and
+     the SHIPPED demo modifiers. */
+  const menu = await getWith('/api/g/' + slug + '/menu', table);
+  assert.deepStrictEqual((menu.body.tenders || []).map((x) => x.k),
+    ['cash', 'card', 'wallet', 'qr', 'transfer', 'credit']);
+  assert.strictEqual(menu.body.tenders.filter((x) => x.memberOnly).length, 1,
+    'customer credit is named a member tender');
+  assert.ok(Array.isArray(menu.body.modifiers), 'the add-ons are published');
+  menu.body.modifiers.forEach((m) => {
+    assert.strictEqual(m.cost, undefined, 'an add-on price is a menu fact; a cost never travels');
+  });
+});
+
 /* ═══ THE BUSINESS DATE IS THE OUTLET'S ═════════════════════════════════════
    `current_date` and `toISOString()` are both UTC, and Malé is UTC+5. So from
    19:00 local — most of a restaurant's trading — every business date, document

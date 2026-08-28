@@ -703,6 +703,50 @@ a:hover{color:#d63f27}
 
       <div style="{{ scrimStyle }}" onClick="{{ closeAll }}"></div>
 
+      <div style="{{ dishSheetStyle }}">
+        <div style="display:flex;align-items:center;gap:13px">
+          <span style="{{ dsImgStyle }}"></span>
+          <span style="flex:1;min-width:0;display:block">
+            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ dsName }}</span>
+            <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:3px">{{ dsPrice }}</span>
+          </span>
+          <button onClick="{{ dsClose }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+        </div>
+        <div style="{{ dsDescStyle }}">{{ dsDesc }}</div>
+        <div style="{{ dsTagStyle }}">{{ dsTags }}</div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:min(34dvh,270px);overflow-y:auto">
+          <sc-for list="{{ dsAddons }}" as="a" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;border:1px solid #efefef;background:#fff">
+              <span style="flex:1;min-width:0;display:block">
+                <span style="display:block;font-size:13.5px;font-weight:600;color:#1a1a1a">{{ a.name }}</span>
+                <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px">{{ a.price }}</span>
+              </span>
+              <button onClick="{{ a.dec }}" style="{{ a.decStyle }}">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+              </button>
+              <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+              <button onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+          <span style="display:flex;align-items:center;gap:11px;flex-shrink:0;border:1.4px solid #ececef;border-radius:999px;padding:6px 8px">
+            <button onClick="{{ dsQtyDec }}" style="width:30px;height:30px;border-radius:50%;background:#f5f5f6;color:#f4553c;display:grid;place-items:center">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+            </button>
+            <span style="font-size:15px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dsQty }}</span>
+            <button onClick="{{ dsQtyInc }}" style="width:30px;height:30px;border-radius:50%;background:#f4553c;display:grid;place-items:center">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+          </span>
+          <button onClick="{{ dsAdd }}" style="flex:1;min-height:52px;padding:14px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ dsAddLabel }}</button>
+        </div>
+      </div>
+
       <div style="{{ scanStyle }}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <span style="display:block">
@@ -812,6 +856,7 @@ class Component extends DCLogic {
     tab: "card", step: "phone", chan: "email", phone: "", email: "", otp: "", otpErr: "",
     join: null, joinOff: false, joinBusy: false, joinAsked: false, joinFilled: false,
     memberId: null, sheet: false, scan: false, toast: null, busy: false,
+    dishSheet: null, dishAddons: {}, dishSheetQty: 1,
     split: "all", splitN: 2, picked: {}, customAmt: "", tip: 0, tender: "card", usePoints: false, asked: 0,
     table: 0, cart: [], q: "", cat: "all", sent: [],
     redeemed: [], announced: 0, actTab: "all",
@@ -971,10 +1016,18 @@ class Component extends DCLogic {
          the toast still said "sent". The membership itself rides on the
          bridge's member token, never in this body. */
       const at = body.table || (seat ? seat.table : undefined);
+      /* A bill ask is a DECISION — tender, tip, due, split, the points the
+         member wants applied — and it rides the request now, so the till's
+         pay screen pre-selects it from any device, not just a browser this
+         card happens to share with a till. */
+      const pay = kind === "bill" ? {
+        tender: body.tender, tip: body.tip, due: body.due, split: body.split,
+        parts: body.parts, points: body.points, ref: body.ref
+      } : undefined;
       const done = kind === "order"
         ? G.order(body.lines || [], { table: at,
           name: m ? m.name : "", phone: m ? m.phone : "", note: detail })
-        : G.request(kind, detail, at);
+        : G.request(kind, detail, at, pay);
       done.catch((e) => this.toast(e.message));
     }
     try {
@@ -1180,35 +1233,66 @@ class Component extends DCLogic {
     this.menu().forEach((m) => { if (seen.length < 6 && seen.indexOf(m.id) < 0 && off.indexOf(m.id) < 0) seen.push(m.id); });
     return seen.filter((id) => off.indexOf(id) < 0).slice(0, 6);
   }
+  /* THE SAME ADD-ONS THE GUEST PORTAL OFFERS, from the outlet's own
+     published modifiers — a dish that has them opens the sheet, a dish that
+     does not adds in one tap exactly as before. */
+  addonsForDish(m) {
+    const k = window.KPOS || {};
+    if (!k || !m) return [];
+    return (k.MODIFIERS || []).filter((x) => !x.cats || !x.cats.length
+      || x.cats.indexOf(m.cat) >= 0);
+  }
   addLine(id) {
+    const m = this.item(id);
+    if (this.addonsForDish(m).length) {
+      return this.setState({ dishSheet: id, dishAddons: {}, dishSheetQty: 1 });
+    }
     const cart = this.state.cart.slice();
-    const ex = cart.filter((l) => l.id === id)[0];
+    const ex = cart.filter((l) => l.id === id && !l.opt)[0];
     if (ex) cart[cart.indexOf(ex)] = Object.assign({}, ex, { qty: ex.qty + 1 });
     else cart.push({ id: id, qty: 1 });
-    const m = this.item(id);
     this.setState({ cart: cart });
     this.toast(m.name + " added · " + this.fmt(this.price(m)));
   }
-  bumpLine(id, d) {
-    this.setState({ cart: this.state.cart.map((l) => l.id === id ? Object.assign({}, l, { qty: l.qty + d }) : l).filter((l) => l.qty > 0) });
+  confirmDishSheet() {
+    const s = this.state, d = this.item(s.dishSheet);
+    if (!d) return this.setState({ dishSheet: null });
+    const mods = this.addonsForDish(d);
+    const extra = mods.reduce((a, m2) => a + (s.dishAddons[m2.id] || 0) * m2.price, 0);
+    const opt = mods.filter((m2) => s.dishAddons[m2.id])
+      .map((m2) => (s.dishAddons[m2.id] > 1 ? s.dishAddons[m2.id] + "\u00d7 " : "") + m2.name)
+      .join(", ");
+    this.setState({
+      cart: s.cart.concat([{ id: d.id, qty: s.dishSheetQty, opt: opt, extra: extra }]),
+      dishSheet: null, dishAddons: {}, dishSheetQty: 1
+    });
+    this.toast(d.name + " added \u00b7 " + this.fmt((this.price(d) + extra) * s.dishSheetQty));
+  }
+  /* By INDEX, not id: two configurations of one dish — plain, and with extra
+     cheese — are two cart lines under one id, and a bump by id moved both. */
+  bumpLine(i, d) {
+    this.setState({ cart: this.state.cart
+      .map((l, j) => j === i ? Object.assign({}, l, { qty: l.qty + d }) : l)
+      .filter((l) => l.qty > 0) });
   }
   cartSub() {
     return this.state.cart.reduce((a, l) => {
       const m = this.item(l.id);
-      return a + (m ? this.price(m) * l.qty : 0);
+      return a + ((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty;
     }, 0);
   }
   sendOrder() {
     const s = this.state, m = this.member();
     if (!s.table) return this.setState({ tab: "order" }, () => this.toast("Pick your table first"));
     if (!s.cart.length) return this.toast("Add a dish first");
-    const lines = s.cart.map((l) => ({ id: l.id, qty: l.qty, note: "QR · " + m.name }));
+    const lines = s.cart.map((l) => ({ id: l.id, qty: l.qty, addons: l.extra || 0,
+      note: [l.opt, "QR \u00b7 " + m.name].filter(Boolean).join(" \u00b7 ") }));
     const n = s.cart.reduce((a, l) => a + l.qty, 0);
     const ok = this.bridgePush("order",
       m.name + " · " + n + " item" + (n === 1 ? "" : "s") + " · " + this.money(this.cartSub()),
       { lines: lines, total: this.cartSub(), table: s.table });
     this.setState({
-      sent: s.sent.concat([{ id: "r" + Date.now(), at: Date.now(), lines: s.cart.map((l) => ({ id: l.id, qty: l.qty, total: this.price(this.item(l.id)) * l.qty })) }]),
+      sent: s.sent.concat([{ id: "r" + Date.now(), at: Date.now(), lines: s.cart.map((l) => ({ id: l.id, qty: l.qty, total: (this.price(this.item(l.id)) + (l.extra || 0)) * l.qty })) }]),
       cart: []
     });
     this.toast(ok ? "Order sent to the kitchen · " + Math.floor(this.cartSub() / this.pointsPer()) + " pts pending" : "Saved on this phone — it will send when you are back online");
@@ -1680,7 +1764,7 @@ class Component extends DCLogic {
       setId: (e) => this.setState({ email: e.target.value }),
       openSheet: () => this.setState({ sheet: true }),
       openScan: () => this.setState({ scan: true }),
-      closeAll: () => this.setState({ sheet: false, scan: false }),
+      closeAll: () => this.setState({ sheet: false, scan: false, dishSheet: null }),
       signOut: () => this.signOut(),
       signInNext: () => this.signInNext(),
       /* "Not you?" steps AROUND the invitation without clearing it: the token
@@ -1693,7 +1777,8 @@ class Component extends DCLogic {
           ? this.setState({ joinOff: true, email: "" })
           : this.setState({ email: "" }),
       announce: () => this.announce(),
-      tabs: [], rewards: [], vouchers: [], activity: [], accRows: [], toggles: [], sheetRows: [], offers: [], bars: [], keys: [], otpBoxes: [], actTabs: [],
+      tabs: [], rewards: [], vouchers: [], activity: [], accRows: [], toggles: [], sheetRows: [], offers: [], bars: [], keys: [], otpBoxes: [], actTabs: [], dsAddons: [],
+      dishSheetStyle: "display:none", dsName: "", dsPrice: "", dsDesc: "", dsDescStyle: "display:none", dsTags: "", dsTagStyle: "display:none", dsImgStyle: "display:none", dsQty: "1", dsAddLabel: "", dsClose: () => {}, dsAdd: () => {}, dsQtyInc: () => {}, dsQtyDec: () => {},
       cats: [], dishes: [], cart: [], usuals: [], tableChoices: [], sentLines: [],
       q: s.q,
       setQ: (e) => this.setState({ q: e.target.value }),
@@ -1729,7 +1814,7 @@ class Component extends DCLogic {
     V.sRewards = signedIn && s.tab === "rewards";
     V.sActivity = signedIn && s.tab === "activity";
     V.sAccount = signedIn && s.tab === "account";
-    V.scrimStyle = (s.sheet || s.scan) ? "position:absolute;inset:0;background:rgba(15,10,9,.42);z-index:14;animation:qup .16s" : "display:none";
+    V.scrimStyle = (s.sheet || s.scan || s.dishSheet) ? "position:absolute;inset:0;background:rgba(15,10,9,.42);z-index:14;animation:qup .16s" : "display:none";
     const sheetBase = "position:absolute;left:0;right:0;bottom:0;z-index:15;background:#fff;border-radius:26px 26px " + (M.bare ? "0 0" : "46px 46px") + ";padding:20px 22px 30px;box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1)";
     V.sheetStyle = s.sheet ? sheetBase : "display:none";
     V.scanStyle = s.scan ? sheetBase : "display:none";
@@ -2000,13 +2085,25 @@ class Component extends DCLogic {
     V.usualWrapStyle = bound && V.usuals.length ? "margin:12px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:11px;overflow-x:auto" : "display:none";
 
     V.catRowStyle = "margin:14px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:9px;overflow-x:auto";
+    /* THE TILL'S OWN RAIL: the selected tab fills with its section's hue —
+       its whole field is already that colour — an unselected one leads with
+       the section's dot, and the count is a bare numeral. The same design at
+       the counter, on the guest's phone and on this card. */
+    const railMenu = this.menu();
     V.cats = [{ id: "all", name: "All dishes" }].concat(k.MENU_CATEGORIES || []).map((c) => {
       const on = s.cat === c.id;
+      const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
+      const cn = c.id === "all" ? railMenu.length
+        : railMenu.filter((m2) => m2.cat === c.id).length;
       return {
-        name: c.name,
+        name: c.name + (cn ? "\u2002" + cn : ""),
         pick: () => this.setState({ cat: c.id }),
-        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;white-space:nowrap;font-size:13.5px;font-weight:500;border:1px solid "
-          + (on ? "#f4553c" : "#efefef") + ";background:" + (on ? "#fff5f2" : "#fff") + ";color:" + (on ? "#f4553c" : "#2b2b2e")
+        // An unselected chip LEADS with its section's hue — a tinted leading
+        // edge, since this row is text-only — and the selected one fills with
+        // it, dropping the edge because its whole field is already that colour.
+        style: "flex-shrink:0;border-radius:22px;white-space:nowrap;font-size:13.5px;font-weight:600;"
+          + (on ? "padding:9px 15px;border:1px solid " + hue + ";background:" + hue + ";color:#fff"
+            : "padding:9px 15px 9px 12px;border:1px solid #efefef;border-left:4px solid " + hue + ";background:#fff;color:#2b2b2e")
       };
     });
     const q = s.q.trim().toLowerCase();
@@ -2034,15 +2131,53 @@ class Component extends DCLogic {
     });
 
     const nCart = s.cart.reduce((a, l) => a + l.qty, 0);
-    V.cart = s.cart.map((l) => {
+    V.cart = s.cart.map((l, i) => {
       const d = this.item(l.id);
       return {
-        name: d.name, qty: l.qty, priceLabel: this.fmt(this.price(d) * l.qty),
+        name: d.name + (l.opt ? " \u00b7 " + l.opt : ""), qty: l.qty,
+        priceLabel: this.fmt((this.price(d) + (l.extra || 0)) * l.qty),
         imgStyle: this.plate(d, "55%") + "width:52px;height:52px;border-radius:11px;flex-shrink:0;display:block",
-        inc: () => this.bumpLine(l.id, 1),
-        dec: () => this.bumpLine(l.id, -1)
+        inc: () => this.bumpLine(i, 1),
+        dec: () => this.bumpLine(i, -1)
       };
     });
+    /* THE DISH SHEET — the guest portal's add-on chooser, on the member card.
+       Opens only for a dish the outlet dresses with add-ons; everything else
+       stays one tap. Same sheetBase as every other sheet, so it rises rather
+       than fades. */
+    const ds = s.dishSheet ? this.item(s.dishSheet) : null;
+    if (ds) {
+      const dsMods = this.addonsForDish(ds);
+      const dsExtra = dsMods.reduce((a, m2) => a + (s.dishAddons[m2.id] || 0) * m2.price, 0);
+      const k2b = window.KPOS || {};
+      const dsAl = k2b.dishAllergens ? k2b.dishAllergens(ds) : [];
+      V.dishSheetStyle = sheetBase;
+      V.dsImgStyle = this.plate(ds, "55%") + "width:56px;height:56px;border-radius:13px;flex-shrink:0;display:block";
+      V.dsName = ds.name;
+      V.dsPrice = this.fmt(this.price(ds));
+      V.dsDesc = ds.desc || "";
+      V.dsDescStyle = ds.desc ? "margin-top:12px;font-size:13px;color:#4a4a4f;line-height:1.55;text-wrap:pretty" : "display:none";
+      V.dsTags = dsAl.length ? "Contains " + dsAl.map((a) => a.label).join(", ")
+        : (k2b.dishHasMeat && !k2b.dishHasMeat(ds) ? "Vegetarian" : "");
+      V.dsTagStyle = V.dsTags ? "margin-top:8px;font-size:12px;color:#6a6a72" : "display:none";
+      V.dsAddons = dsMods.map((a) => {
+        const n = s.dishAddons[a.id] || 0;
+        return {
+          name: a.name, price: "+" + this.fmt(a.price), qty: String(n),
+          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
+          decStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+            + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+          inc: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: n + 1 }) }),
+          dec: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: Math.max(0, n - 1) }) })
+        };
+      });
+      V.dsQty = String(s.dishSheetQty);
+      V.dsQtyInc = () => this.setState({ dishSheetQty: s.dishSheetQty + 1 });
+      V.dsQtyDec = () => this.setState({ dishSheetQty: Math.max(1, s.dishSheetQty - 1) });
+      V.dsAddLabel = "Add \u00b7 " + this.fmt((this.price(ds) + dsExtra) * s.dishSheetQty);
+      V.dsAdd = () => this.confirmDishSheet();
+      V.dsClose = () => this.setState({ dishSheet: null });
+    }
     V.cartHeadStyle = nCart ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
     V.cartWrapStyle = nCart ? "margin-top:13px;display:flex;flex-direction:column;gap:15px" : "display:none";
     V.cartSubLabel = this.money(this.cartSub());
@@ -2347,12 +2482,18 @@ class Component extends DCLogic {
       ? "Adding " + this.money(this.tipAmount()) + ". Held apart from the service charge and paid to the team in full."
       : "The service charge on your bill is already shared with the team. Anything here is on top of it.";
     const canCredit = (m.credit || 0) - (m.used || 0) >= this.payDue() && this.payDue() > 0;
-    V.tenders = [
+    /* The outlet's OWN tender set — the same list the till sells with, minus
+       any suspended contract; a hardcoded four offered Wallet at a store that
+       had suspended it and never offered QR or Transfer at one that takes
+       both. Customer credit is the member's tender, gated on their headroom. */
+    const pubT = (window.KPOS || {}).TENDERS_PUBLISHED;
+    V.tenders = (pubT && pubT.length ? pubT.map((x) => ({ k: x.k,
+      label: x.k === "credit" ? "Account" : x.label })) : [
       { k: "card", label: "Card" },
       { k: "cash", label: "Cash" },
       { k: "wallet", label: "Wallet" },
       { k: "credit", label: "Account" }
-    ].map((x) => ({
+    ]).map((x) => ({
       label: x.label,
       style: "padding:12px 4px;border-radius:13px;font-size:13px;font-weight:700;text-align:center;min-height:46px;"
         + (x.k === "credit" && !canCredit ? "background:#fafafb;color:#6e6e77"

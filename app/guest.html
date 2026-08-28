@@ -296,6 +296,9 @@ a:hover{color:#d33d26}
               </div>
               <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
             </div>
+
+            <button onClick="{{ askPay }}" style="{{ askPayStyle }}">{{ askPayLabel }}</button>
+            <div style="{{ askedNoteStyle }}">{{ askedNote }}</div>
           </div>
 
           <div style="{{ billEmptyStyle }}">{{ billEmpty }}</div>
@@ -923,12 +926,21 @@ class Component extends DCLogic {
     } catch (e) { /* a full quota is not a reason to stop ordering */ }
 
     if (!G || !G.ready()) return false;
+    /* The bill ask's whole decision — tender, tip, due, split, promo — used
+       to ride only the localStorage half above, which reaches a till only
+       when the till shares this browser. The one path a real restaurant uses
+       delivered "ready to pay" and nothing else, and the till's pay screen
+       pre-selected nothing. */
+    const pay = kind === "bill" ? {
+      tender: body.tender, tip: body.tip, due: body.due, split: body.split,
+      parts: body.parts, guestRef: body.guestRef, promo: body.promo
+    } : undefined;
     const done = kind === "order"
       ? G.order(body.lines || [], {
         promo: body.promo || "", name: (this.state.ident || {}).name || "",
         phone: (this.state.ident || {}).phone || "", note: detail
       })
-      : G.request(kind, detail);
+      : G.request(kind, detail, undefined, pay);
     done.then(() => { this.setState({ tick: this.state.tick + 1 }); })
       .catch((e) => { this.toast(e.message); });
     return true;
@@ -945,8 +957,11 @@ class Component extends DCLogic {
     if (!this.state.cart.length) return;
     const lines = this.state.cart.map((l) => ({
       id: l.id, qty: l.qty,
-      // The note carries the add-ons, because the kitchen reads one line and
-      // has to see the whole instruction on it.
+      // The note carries the add-ons BY NAME, because the kitchen reads one
+      // line and has to see the whole instruction on it — and the MONEY rides
+      // beside it, because a note is not a price: "extra cheese +5" reached
+      // the docket and never the bill, so every priced add-on was given away.
+      addons: l.extra || 0,
       note: [l.opt, l.note].filter(Boolean).join(" · ") || "QR"
     }));
     const n = this.state.cart.reduce((a, l) => a + l.qty, 0);
@@ -1225,16 +1240,25 @@ class Component extends DCLogic {
       };
     });
 
+    /* THE TILL'S OWN RAIL, in the guest palette: the selected tab FILLS with
+       its section's hue and drops its plate — its whole field is already that
+       colour — while an unselected tab leads with the plate; the count is a
+       bare numeral, because "19 dishes" on every tab says nothing on any of
+       them. One design across the counter and the phone. */
+    const allMenu = this.menu();
     V.cats = [{ id: "all", name: "Everything" }].concat(k.MENU_CATEGORIES || []).map((c) => {
       const on = s.cat === c.id;
+      const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
+      const n = c.id === "all" ? allMenu.length
+        : allMenu.filter((m2) => m2.cat === c.id).length;
       return {
-        name: c.name,
-        // The section's own glyph, so the chip row reads as the menu's shape
-        // rather than as a row of words. "Everything" borrows the all glyph.
-        thumb: "width:30px;height:30px;border-radius:50%;flex-shrink:0;display:block;"
+        name: c.name + (n ? "\u2002" + n : ""),
+        thumb: on ? "display:none"
+          : "width:30px;height:30px;border-radius:50%;flex-shrink:0;display:block;"
           + this.artifact(c.id === "all" ? "__all" : c.id, "56%"),
-        style: "flex-shrink:0;gap:9px;padding:7px 15px 7px 7px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
-          + (on ? "background:#fff;color:#f4553c;border:1px solid #f4553c" : "background:#fff;color:#6a6a70;border:1px solid #ececee"),
+        style: "flex-shrink:0;gap:9px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
+          + (on ? "padding:7px 16px;background:" + hue + ";color:#fff;border:1px solid " + hue
+            : "padding:7px 15px 7px 7px;background:#fff;color:#6a6a70;border:1px solid #ececee"),
         tap: () => self.setState({ cat: c.id })
       };
     });
@@ -1519,7 +1543,8 @@ class Component extends DCLogic {
        and transfer and QR, which the till does take, were never offered at
        all. Customer credit is excluded: a table with no membership has no
        account to charge. */
-    V.tenders = ((this.pos() || {}).tenders
+    V.tenders = ((this.K() || {}).TENDERS_PUBLISHED
+      || (this.pos() || {}).tenders
       || [{ k: "card", label: "Card" }, { k: "cash", label: "Cash" }, { k: "wallet", label: "Wallet" }])
       .filter((x) => !x.memberOnly)
       .map((x) => ({
@@ -1529,6 +1554,24 @@ class Component extends DCLogic {
       tap: () => self.setState({ tender: x.k })
     }));
 
+    /* THE ASK ITSELF. requestBill() had existed since the tab was written
+       and NOTHING CALLED IT — a guest chose a split, a tip and a tender, was
+       told what they were paying, and the screen offered no way to say so.
+       "Ask for the bill isn't reaching the floor" was reported exactly right:
+       there was no control to press. Accent while the ask is still in the
+       guest's hands, near-black once it is on its way — the same two
+       temperatures the member card's bar keeps. */
+    const asked = s.asked && Date.now() - s.asked < 15 * 60e3;
+    V.askPay = () => asked ? null : this.requestBill();
+    V.askPayLabel = asked ? "Asked \u00b7 your server is on the way"
+      : "I\u2019m ready to pay \u00b7 " + this.money(this.payDue());
+    V.askPayStyle = "margin-top:14px;width:100%;min-height:52px;padding:15px 8px;border-radius:999px;font-size:14.5px;font-weight:700;text-align:center;color:#fff;"
+      + (asked ? "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)"
+        : "background:#f4553c;box-shadow:0 6px 20px rgba(244,85,60,.32)");
+    V.askedNote = asked
+      ? "Your choice of tender and tip went with the call, so the till has it ready."
+      : "Nothing is charged from this phone \u2014 your server brings the machine.";
+    V.askedNoteStyle = "margin-top:9px;font-size:12px;color:#6a6a72;line-height:1.55;text-align:center;text-wrap:pretty";
     V.payAmount = this.money(this.payDue());
     V.payBreak = b
       ? (s.split === "all" ? "The whole table" : s.split === "even" ? "One of " + s.splitN + " shares" : s.split === "items" ? "The dishes you picked, with their share of service and tax" : "The amount you entered")

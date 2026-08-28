@@ -178,11 +178,37 @@ r.post('/:slug/request', guest, async function (req, res, next) {
   const b = req.body || {};
   const table = req.guest.table || b.table;
   if (!table || !b.kind) return res.status(400).json({ error: 'table and kind required' });
+  /* THE ASK CARRIES THE ANSWER. "Ask for the bill" composes a whole decision
+     on the phone — tender, tip, split, share, promo — and this door used to
+     take a kind and a line of text, so the intent survived only in the
+     localStorage bridge, which reaches a till only when the till shares the
+     browser. Whitelisted field by field: an open door does not store whatever
+     shape it is handed. Numbers are clamped, strings truncated, and only a
+     bill-shaped ask carries one. */
+  let pay = null;
+  if (b.pay && typeof b.pay === 'object' && !Array.isArray(b.pay)) {
+    const q2 = (n, cap) => {
+      const x = Number(n);
+      return Number.isFinite(x) ? Math.max(0, Math.min(cap, Math.round(x * 100) / 100)) : 0;
+    };
+    pay = {
+      tender: String(b.pay.tender || '').slice(0, 16),
+      tip: q2(b.pay.tip, 100),
+      due: q2(b.pay.due, 9e7),
+      split: String(b.pay.split || 'all').slice(0, 12),
+      parts: Math.max(0, Math.min(24, Number(b.pay.parts) || 0)),
+      guestRef: String(b.pay.guestRef || '').slice(0, 24),
+      promo: String(b.pay.promo || '').slice(0, 24),
+      points: Math.max(0, Math.min(9e7, Number(b.pay.points) || 0)),
+      ref: String(b.pay.ref || '').slice(0, 48)
+    };
+  }
   try {
     const row = await withOutlet(req.ctx, (c) => c.query(
-      'INSERT INTO guest_request (table_no, kind, detail) VALUES ($1,$2,$3)'
+      'INSERT INTO guest_request (table_no, kind, detail, pay) VALUES ($1,$2,$3,$4)'
       + ' RETURNING id, at', [String(table), String(b.kind).slice(0, 24),
-        (b.detail || '').slice(0, 400)]).then((q) => q.rows[0]));
+        (b.detail || '').slice(0, 400), pay ? JSON.stringify(pay) : null])
+      .then((q) => q.rows[0]));
     res.status(201).json(row);
   } catch (e) { next(e); }
 });

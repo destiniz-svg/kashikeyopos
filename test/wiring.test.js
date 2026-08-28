@@ -4505,6 +4505,49 @@ test("a member's round carries its table and its membership", () => {
     'and never a client-claimed member id from the body');
 });
 
+test('the bill ask carries its decision, and the ask has a control', () => {
+  /* requestBill() existed on the guest portal since the tab was written and
+     NOTHING CALLED IT — a guest chose a split, a tip and a tender, was told
+     what they were paying, and the screen offered no way to say so. And the
+     network path sent kind+text only, so the decision survived solely in
+     localStorage, which reaches a till only when the till shares the browser. */
+  const guest = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(guest, /V\.askPay = \(\) => asked \? null : this\.requestBill\(\);/,
+    'the guest bill tab has the ask itself');
+  assert.match(guest, /const pay = kind === "bill" \? \{/,
+    'and the ask carries tender, tip, due and split over the wire');
+  const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  assert.match(card, /const pay = kind === "bill" \? \{/, 'the member card sends the same');
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.match(bridge, /pay: pay \|\| undefined/, 'the bridge forwards it');
+  const till = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.match(till, /Object\.assign\(\{\}, r\.pay \|\| \{\}/,
+    'the till folds the intent onto the signal ingestPayIntent reads');
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  assert.match(sync, /tender: String\(b\.pay\.tender \|\| ''\)\.slice\(0, 16\)/,
+    'the open door whitelists the shape field by field');
+});
+
+test("the portals sell with the till's tenders and the outlet's add-ons", () => {
+  const outlet = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(outlet, /tenders: tenders,\n    modifiers: modifiers/,
+    'the guest projection publishes both');
+  assert.match(outlet, /memberOnly: true/, 'customer credit says it is a member tender');
+  const guest = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(guest, /TENDERS_PUBLISHED/, 'the guest pay sheet reads the published set');
+  /* The add-on's NAME feeds the kitchen and its MONEY feeds the bill — the
+     note alone reached the docket and never the total, so every priced
+     add-on was given away. */
+  assert.match(guest, /addons: l\.extra \|\| 0,/, 'the guest round carries the add-on money');
+  const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  assert.match(card, /TENDERS_PUBLISHED/, 'the member pay sheet reads the published set');
+  assert.match(card, /addons: l\.extra \|\| 0,/, 'the member round carries it too');
+  assert.match(card, /confirmDishSheet\(\)/, 'and the member card has the add-on sheet');
+  const till = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.match(till, /this\.menuPrice\(mi\) \+ \(\+ql\.addons \|\| 0\)/,
+    'the till prices the line menu + declared add-ons');
+});
+
 test('the member card draws the same plates as the guest portal', () => {
   const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
   /* This card fed raw data: URLs into background-image — `;base64` ends the

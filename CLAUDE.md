@@ -2813,6 +2813,62 @@ back to the allergen/Vegetarian line the guest portal prints where a dish has
 no description. `test/wiring.test.js` pins all three: the real QR, the
 member round's table-and-token, and the one plate.
 
+### The ask carries the answer, and the shop sells with its own tenders
+
+*"Ask for the bill isn't reaching the floor"* — reported exactly right, twice
+over. `requestBill()` had existed on the guest portal since the bill tab was
+written and **nothing called it**: a guest chose a split, a tip and a tender,
+was told what they were paying, and the screen offered no way to say so. And
+where the member card DID ask, the network path sent a kind and a line of
+text — the whole decision survived only in the localStorage bridge, which
+reaches a till only when the till shares the browser. The one path a real
+restaurant uses delivered "ready to pay" and nothing else.
+
+- **The CTA exists now** — accent while the ask is in the guest's hands,
+  near-black once it is on its way, the member bar's own two temperatures.
+- **`guest_request.pay` (migration 047)** carries the decision — tender, tip,
+  due, split, parts, guestRef, promo, points — whitelisted **field by field**
+  at the door, clamped and truncated, because an open door does not store
+  whatever shape it is handed. The board's text stays in `detail`: a board is
+  read by a person.
+- **The poll hands it to the till** in the same fields the local bridge always
+  used, so `ingestPayIntent()` pre-selects the tender and keeps the tip from
+  any device — and exactly once: a server-sourced signal has no localStorage
+  row for its ingest mark, so the mark is held in memory beside the acked map,
+  or the intent op re-queued every five seconds for ever.
+- **The tenders are the till's own.** The portals used to read a co-located
+  till's localStorage and fall back to a hardcoded three, so a real guest's
+  phone never offered QR or Transfer however the store took money. The guest
+  projection publishes the till's tender set — suspending a contract takes its
+  tender off the phone in the same act it comes off the till, and customer
+  credit is named `memberOnly` so only the member card offers it, gated on the
+  member's own headroom.
+
+### An add-on's name feeds the kitchen; its money feeds the bill
+
+The projection never carried the outlet's modifiers, so the guest dish sheet
+fell back to the SHIPPED demo list — every store's guests offered somebody
+else's extra cheese — and the member card had no add-on sheet at all. Worse,
+the money: an add-on rode the line NOTE only ("Extra cheese +5" reached the
+docket and never the total), so **every priced add-on was given away** — the
+cart said 13, the ticket billed 8.
+
+The projection publishes `modifiers` in the bootstrap's own shape (an add-on
+price is a menu fact; no cost travels), both portals offer them — the member
+card gained the same dish sheet, opening only for a dish the outlet actually
+dresses — and the round's lines carry `addons` (the money) beside the note
+(the names). The till's ingest prices the line `menu + addons`, measured:
+Kalhu Sai 8 + extra cheese 5 landed on the ticket at 13.00. Two configurations
+of one dish are two cart lines, so the member cart bumps by INDEX — a bump by
+id moved the plain one and the dressed one together.
+
+Both section rails wear the till's design now — the selected tab fills with
+its section's hue, an unselected one leads with it (the guest's chips carry
+the section plate, the member's a tinted leading edge), and the count is a
+bare numeral. Driven at 320/390/430/768/1024 on both portals: no page scrolls
+sideways at any width. `test/wiring.test.js` pins the ask, the whitelist, the
+published tenders and the add-on money; `test/api.test.js` walks the door.
+
 ## A bill somebody can be handed
 
 A guest asks for the bill on WhatsApp, a house-account customer wants last
