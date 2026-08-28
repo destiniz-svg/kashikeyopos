@@ -4233,6 +4233,38 @@ and a measured uptime under 100%); `test/watch.test.js` catches the webhook
 payload on a real local listener. The Chromium drive enrols 2FA through the
 shipped sheet, QR and all.
 
+### One stop: the platform's logs are a tab, and the page fits every screen
+
+The dashboard is two views under one bar — **Overview** and **Logs** — because
+the tab a developer otherwise keeps open beside this panel is Railway's own
+deploy log. The panel runs ON Railway next to the services it watches, so the
+platform injects its own project and environment ids; with the API token the
+provisioner already holds, `panel/railway.js` lists the environment's services
+and reads each latest deployment's log over the same GraphQL transport
+(`logServices` / `deploymentLogs` — read-only, nothing here mutates anything).
+The Logs view is one chip per service with its deploy status as a coloured
+pip, the log underneath severity-coloured with a client-side line filter, and
+it is honest when it cannot: no `RAILWAY_API_TOKEN`, or a panel not running on
+Railway, refuses BY NAME rather than showing an empty pane somebody debugs.
+Admin-gated like everything else; the live Railway call path is exercised in
+`test/panel.test.js` against a local stub speaking the same GraphQL shapes —
+composition and decision, never connectivity, the provisioning tests' rule.
+
+The Overview gained the two things a fleet page needs at 63 businesses: a
+**search box and status filter chips** (All · Needs attention · Live ·
+Archived — "needs attention" is one predicate shared by the chip and the
+sort: unreachable, behind schema head, or a failed last backup, and whatever
+matches floats to the top). The filter bar lives OUTSIDE the repainted body,
+so typing survives the 60-second refresh with focus and text intact — a
+rebuilt input under a typing hand is the sort of defect a feature test never
+sees. Archived businesses are hidden unless asked for.
+
+And the page fits the screen it is read on, because a developer checks it
+from wherever the alert found them: the top bar wraps, the tabs stretch
+full-width on a phone, the KPI tiles and cards collapse to narrow columns,
+the sheets keep their bottom-edge rise, and the Chromium drive asserts no
+sideways scroll at 390 and 768 px.
+
 ### Provisioning is one button, and it never handles the password
 
 Standing a store up was six manual acts before the panel was even opened —

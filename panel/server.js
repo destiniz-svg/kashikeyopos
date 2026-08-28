@@ -653,6 +653,48 @@ function asCard(b) {
   };
 }
 
+/* ── THE FLEET'S LOGS, IN THE PANEL ─────────────────────────────────────────
+   "One-stop dashboard" means the tab a developer keeps open beside this one —
+   the platform's deploy logs — comes here instead. The panel runs on Railway
+   next to the services it watches, so the platform injects its own project
+   and environment ids; with the API token the provisioner already holds it
+   can list the environment's services and read each latest deployment's log.
+   Read-only, admin-gated, and honest when it cannot: a missing token or a
+   panel not running on Railway refuses BY NAME rather than showing an empty
+   pane somebody debugs. */
+function logsWhy() {
+  if (!String(process.env.RAILWAY_API_TOKEN || '').trim()) {
+    return 'RAILWAY_API_TOKEN is not set on this panel — set it to read the'
+      + ' fleet\'s logs here';
+  }
+  if (!String(process.env.RAILWAY_ENVIRONMENT_ID || '').trim()) {
+    return 'this panel is not running on Railway (no RAILWAY_ENVIRONMENT_ID),'
+      + ' so there are no platform logs to read';
+  }
+  return null;
+}
+
+app.get('/api/logs/services', authed, async (req, res, next) => {
+  const why = logsWhy();
+  if (why) return res.status(409).json({ error: why });
+  try {
+    const rows = await RAILWAY.logServices(process.env.RAILWAY_ENVIRONMENT_ID);
+    res.set('cache-control', 'no-store').json({ services: rows });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/logs/deploy/:id', authed, async (req, res, next) => {
+  const why = logsWhy();
+  if (why) return res.status(409).json({ error: why });
+  if (!/^[0-9a-f-]{16,}$/i.test(String(req.params.id))) {
+    return res.status(400).json({ error: 'that is not a deployment id' });
+  }
+  try {
+    const lines = await RAILWAY.deploymentLogs(req.params.id, req.query.limit);
+    res.set('cache-control', 'no-store').json({ lines: lines });
+  } catch (e) { next(e); }
+});
+
 /* ── HEALTH HISTORY — a probe is point-in-time, an incident is not ──────────
    The /readyz probe on each dashboard load answers "is it up NOW", which is
    the right question during an incident and the wrong one the morning after.

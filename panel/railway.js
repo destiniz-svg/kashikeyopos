@@ -542,8 +542,44 @@ async function provision(opts) {
   }
 }
 
+/* ── THE FLEET'S OWN LOGS ───────────────────────────────────────────────────
+   The panel runs ON Railway beside the services it watches, so Railway
+   injects RAILWAY_PROJECT_ID and RAILWAY_ENVIRONMENT_ID into its environment
+   — nothing to configure. With the same API token the provisioner already
+   holds, the panel can list the environment's services and read each one's
+   latest deployment log, which is the tab a developer otherwise keeps open
+   in a second dashboard. Read-only: nothing here mutates anything. */
+async function logServices(environmentId) {
+  const d = await gql(
+    'query env($id: String!) { environment(id: $id) { serviceInstances { edges { node {'
+    + ' serviceId serviceName latestDeployment { id status createdAt } } } } } }',
+    { id: environmentId }, { timeoutMs: 15000 });
+  return ((d.environment || {}).serviceInstances || { edges: [] }).edges
+    .map((e) => e.node)
+    .filter((n) => n && n.latestDeployment)
+    .map((n) => ({
+      serviceId: n.serviceId, name: n.serviceName,
+      deploymentId: n.latestDeployment.id,
+      status: n.latestDeployment.status,
+      deployedAt: n.latestDeployment.createdAt
+    }));
+}
+
+async function deploymentLogs(deploymentId, limit) {
+  const d = await gql(
+    'query logs($id: String!, $limit: Int!) {'
+    + ' deploymentLogs(deploymentId: $id, limit: $limit) {'
+    + ' timestamp severity message } }',
+    { id: deploymentId, limit: Math.min(1000, Math.max(1, Number(limit) || 300)) },
+    { timeoutMs: 15000 });
+  return (d.deploymentLogs || []).map((l) => ({
+    ts: l.timestamp, severity: l.severity || 'info', message: l.message
+  }));
+}
+
 module.exports = {
   ready, provision, mintSecrets, appVariables, pgVariables, slug,
+  logServices, deploymentLogs,
   // exported for the tests, which exercise composition rather than the network
   _internal: { gql, until, createProject, createService, createVolume,
     setVariables, readVariables, updateInstance, createDomain, deploy,

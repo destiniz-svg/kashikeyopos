@@ -1014,39 +1014,155 @@
     render();
   }
 
-  /* ── dashboard shell + refresh loop ───────────────────────────────────── */
+  /* ── dashboard shell: two views, one truth ──────────────────────────────
+     The dashboard is the ONE STOP: Overview (fleet, health, requests) and
+     Logs (the platform's own deploy logs, read server-side). The overview's
+     latest answer is kept and the filter bar repaints from it, so typing in
+     the search box never refetches and never loses focus to the 60-second
+     refresh. */
+  var VIEW = "overview";
+  var FILTER = { q: "", mode: "all" };
+
+  /* What "needs attention" means, in one place: unreachable or refused,
+     behind schema head, or a failed last backup. The sort and the filter
+     chip read the same predicate or two controls disagree about one fleet. */
+  function attention(i) {
+    var c = statusOf(i).cls;
+    if (c === "bad" || c === "warn") return true;
+    var s = (i.live || {}).summary;
+    return !!(s && ((s.schema && s.schema.behind) || (s.backup && s.backup.lastOk === false)));
+  }
+
   function showDash() {
     if (timer) clearInterval(timer);
     var body = el("div", {});
     var updated = el("div", { class: "updated" });
-    /* Filled after the first load, because whether a seller can add anything
-       is the server's answer and not this page's assumption. Beside a registry
-       the customer creates their own business by signing up, and a button
-       whose only outcome is a refusal is the control this panel exists to stop
-       shipping. */
     var addSlot = el("span", {});
+    var last = null;
+
+    var tabO = el("button", { class: "tab on", text: "Overview" });
+    var tabL = el("button", { class: "tab", text: "Logs" });
+    tabO.onclick = function () { setView("overview"); };
+    tabL.onclick = function () { setView("logs"); };
+
+    /* The filter bar is built ONCE and lives outside the repainted body, so
+       the search box keeps its focus and its text across every refresh. */
+    var q = el("input", { placeholder: "Find a business\u2026", type: "search" });
+    q.addEventListener("input", function () { FILTER.q = q.value; paint(); });
+    var chips = {};
+    var fbar = el("div", { class: "filters" }, [q].concat(
+      [["all", "All"], ["attention", "Needs attention"], ["live", "Live"], ["archived", "Archived"]]
+        .map(function (m) {
+          chips[m[0]] = el("button", { class: "fchip" + (FILTER.mode === m[0] ? " on" : ""), text: m[1] });
+          chips[m[0]].onclick = function () { FILTER.mode = m[0]; syncChips(); paint(); };
+          return chips[m[0]];
+        })));
+    function syncChips() {
+      Object.keys(chips).forEach(function (k) {
+        chips[k].className = "fchip" + (FILTER.mode === k ? " on" : "");
+      });
+    }
+
     var page = el("div", { class: "wrap" }, [
       el("div", { class: "top" }, [
         el("div", { class: "brand" }, [el("span", { class: "dot" }),
           el("b", { text: "Mission Control" }), el("span", { text: "KashikeyoPOS" })]),
+        el("div", { class: "tabs" }, [tabO, tabL]),
         el("span", { class: "grow" }),
-        /* Only where a seller can actually add one. Beside a registry the
-           customer creates their own business by signing up, and a button
-           whose only outcome is a refusal is the control this panel exists to
-           stop shipping. */
         addSlot,
         el("button", { class: "ghost", text: "Security", onclick: securitySheet }),
         el("button", { class: "ghost", text: "Sign out", onclick: function () {
           setToken(null); if (timer) clearInterval(timer); showSignin();
         } })]),
-      body, updated]);
+      fbar, body, updated]);
     mount({ cls: "", node: page });
+
+    function setView(v) {
+      VIEW = v;
+      tabO.className = "tab" + (v === "overview" ? " on" : "");
+      tabL.className = "tab" + (v === "logs" ? " on" : "");
+      fbar.style.display = v === "overview" ? "" : "none";
+      if (timer) clearInterval(timer);
+      timer = null;
+      if (v === "overview") {
+        if (last) paint(); else body.replaceChildren(el("div", { class: "sub", text: "Loading\u2026" }));
+        load();
+        timer = setInterval(load, 60e3);
+      } else {
+        updated.textContent = "";
+        logsView();
+      }
+    }
+
+    function paint() {
+      if (VIEW !== "overview" || !last) return;
+      var installs = last.installs;
+      var signups = last.signups;
+      var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
+
+      var ql = FILTER.q.trim().toLowerCase();
+      var shown = installs.filter(function (i) {
+        if (ql && String(i.name || "").toLowerCase().indexOf(ql) < 0
+          && String(i.db || "").toLowerCase().indexOf(ql) < 0) return false;
+        var c = statusOf(i).cls;
+        if (FILTER.mode === "archived") return !!i.archived;
+        if (i.archived) return false;
+        if (FILTER.mode === "live") return c === "live" || c === "onb";
+        if (FILTER.mode === "attention") return attention(i);
+        return true;
+      });
+      // Whatever is wrong floats to the top; within each half the registry's
+      // own newest-first order stands.
+      shown = shown.slice().sort(function (a, b) {
+        return (attention(b) ? 1 : 0) - (attention(a) ? 1 : 0);
+      });
+
+      var out = [];
+      if (installs.length || openReqs.length) {
+        out.push(kpis(installs, signups, last.appHealth, last.uptime));
+      }
+      if ((last.events || []).length) {
+        out.push(el("div", { class: "sechead", text: "System events" }));
+        out.push(el("div", { class: "card" }, last.events.map(function (ev) {
+          return el("div", { style: "display:flex;gap:12px;align-items:baseline;padding:3px 0;flex-wrap:wrap" }, [
+            el("span", { class: "mono", style: "font-size:10.5px;color:var(--text-faint)",
+              text: new Date(ev.at).toLocaleString() }),
+            el("span", { class: ev.kind === "app_down" ? "warn-t" : "",
+              style: "font-weight:600;font-size:11.5px",
+              text: ev.kind === "app_down" ? "app DOWN" : "app recovered" }),
+            el("span", { class: "sub", text: ev.detail || "" })]);
+        })));
+      }
+      if (openReqs.length) {
+        out.push(el("div", { class: "sechead", text: "Store requests" }));
+        out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));
+      }
+      if (shown.length) {
+        if (openReqs.length) out.push(el("div", { class: "sechead", text: WORD.Many }));
+        out.push(el("div", { class: "cards" }, shown.map(function (i) { return installCard(i, load); })));
+      } else if (installs.length) {
+        out.push(el("div", { class: "empty" }, [
+          el("b", { text: "Nothing matches" }),
+          document.createTextNode(ql
+            ? "No " + WORD.one + " matches \u201c" + FILTER.q.trim() + "\u201d under this filter."
+            : "Nothing is in this state right now \u2014 which is usually good news.")]));
+      } else if (!openReqs.length) {
+        out.push(el("div", { class: "empty" }, [
+          el("b", { text: DEDICATED ? "No installs registered yet" : "No businesses yet" }),
+          document.createTextNode(DEDICATED
+            ? "Add your first customer's install \u2014 or wait for a store request from the website."
+            : "A customer creates their own the moment they sign up on the website and confirm their email. Nothing here to press.")]));
+      }
+      body.replaceChildren(frag(out));
+      updated.textContent = "Updated " + new Date(last.at).toLocaleTimeString();
+    }
 
     function load() {
       Promise.all([api("GET", "/api/overview"), api("GET", "/api/signups")]).then(function (rs) {
         var r = rs[0], rq = rs[1];
         if (r.status === 401) { setToken(null); if (timer) clearInterval(timer); return showSignin(); }
         if (r.status !== 200) {
+          if (VIEW !== "overview") return;
           body.replaceChildren(el("div", { class: "empty" }, [
             el("b", { text: "The panel could not read its registry" }),
             document.createTextNode((r.body && r.body.error) || "try again in a moment")]));
@@ -1057,47 +1173,111 @@
         addSlot.replaceChildren(DEDICATED
           ? el("button", { class: "primary", text: "Add install",
             onclick: function () { sheet(null, load); } })
-          : el("span", { class: "hint", text: "customers sign themselves up" }));
-        var installs = r.body.installs || [];
-        var signups = (rq.status === 200 && rq.body.signups) || [];
-        var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
-        var out = [];
-        if (installs.length || openReqs.length) out.push(kpis(installs, signups, r.body.appHealth, r.body.uptime));
-        /* THE TIMELINE: every up→down and down→up transition the pulse saw.
-           Shown only when there is one — a panel with no incidents has no
-           section, not an empty box. */
-        if ((r.body.events || []).length) {
-          out.push(el("div", { class: "sechead", text: "System events" }));
-          out.push(el("div", { class: "card" }, r.body.events.map(function (ev) {
-            return el("div", { style: "display:flex;gap:12px;align-items:baseline;padding:3px 0" }, [
-              el("span", { class: "mono", style: "font-size:10.5px;color:var(--text-faint)",
-                text: new Date(ev.at).toLocaleString() }),
-              el("span", { class: ev.kind === "app_down" ? "warn-t" : "",
-                style: "font-weight:600;font-size:11.5px",
-                text: ev.kind === "app_down" ? "app DOWN" : "app recovered" }),
-              el("span", { class: "sub", text: ev.detail || "" })]);
-          })));
-        }
-        if (openReqs.length) {
-          out.push(el("div", { class: "sechead", text: "Store requests" }));
-          out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));
-        }
-        if (installs.length) {
-          if (openReqs.length) out.push(el("div", { class: "sechead", text: WORD.Many }));
-          out.push(el("div", { class: "cards" }, installs.map(function (i) { return installCard(i, load); })));
-        } else if (!openReqs.length) {
-          out.push(el("div", { class: "empty" }, [
-            el("b", { text: DEDICATED ? "No installs registered yet" : "No businesses yet" }),
-            document.createTextNode(DEDICATED
-              ? "Add your first customer's install — or wait for a store request from the website."
-              : "A customer creates their own the moment they sign up on the website and confirm their email. Nothing here to press.")]));
-        }
-        body.replaceChildren(frag(out));
-        updated.textContent = "Updated " + new Date(r.body.at).toLocaleTimeString();
+          : el("span", {}));
+        last = {
+          installs: r.body.installs || [],
+          signups: (rq.status === 200 && rq.body.signups) || [],
+          appHealth: r.body.appHealth, uptime: r.body.uptime,
+          events: r.body.events || [], at: r.body.at
+        };
+        paint();
       });
     }
-    load();
-    timer = setInterval(load, 60e3);
+
+    /* ── THE LOGS VIEW — the platform's own deploy logs, in the panel ───────
+       One chip per service (status as a coloured pip), the latest
+       deployment's log underneath, severity-coloured, newest at the bottom,
+       with a client-side line filter. Read-only, server-side, and honest
+       when it cannot: no token or not on Railway says so BY NAME. */
+    function logsView() {
+      body.replaceChildren(el("div", { class: "sub", text: "Reading the fleet\u2026" }));
+      api("GET", "/api/logs/services").then(function (r) {
+        if (VIEW !== "logs") return;
+        if (r.status === 401) { setToken(null); return showSignin(); }
+        if (r.status !== 200) {
+          body.replaceChildren(el("div", { class: "empty" }, [
+            el("b", { text: "No platform logs here" }),
+            document.createTextNode((r.body && r.body.error) || "could not list the services")]));
+          return;
+        }
+        var services = r.body.services || [];
+        if (!services.length) {
+          body.replaceChildren(el("div", { class: "empty" }, [
+            el("b", { text: "No services answered" }),
+            document.createTextNode("Railway listed nothing in this environment.")]));
+          return;
+        }
+        var current = services.find(function (s) { return /kashikeyopos$/i.test(s.name); }) || services[0];
+        var lines = [];
+        var pane = el("div", { class: "logpane", role: "log", "aria-label": "Deployment log" });
+        var grep = el("input", { placeholder: "Filter lines\u2026", type: "search",
+          style: "max-width:220px;min-width:140px;flex:1 1 140px;padding:8px 12px" });
+        grep.addEventListener("input", paintLines);
+        var refresh = el("button", { class: "mini", text: "Refresh" });
+        var note = el("div", { class: "updated", style: "text-align:left" });
+
+        var svcChips = {};
+        function pipColor(st) {
+          return st === "SUCCESS" ? "var(--go)"
+            : (st === "FAILED" || st === "CRASHED") ? "var(--danger)" : "var(--warn)";
+        }
+        var bar = el("div", { class: "logbar" }, services.map(function (s) {
+          var c = el("button", { class: "fchip" }, [
+            el("span", { style: "display:inline-block;width:7px;height:7px;border-radius:50%;"
+              + "margin-right:7px;background:" + pipColor(s.status) }),
+            document.createTextNode(s.name)]);
+          c.title = s.status + " \u00b7 deployed " + new Date(s.deployedAt).toLocaleString();
+          c.onclick = function () { pick(s); };
+          svcChips[s.serviceId] = c;
+          return c;
+        }).concat([grep, refresh]));
+        refresh.onclick = function () { logsView(); };
+
+        function syncSvc() {
+          services.forEach(function (s) {
+            svcChips[s.serviceId].className = "fchip" + (s.serviceId === current.serviceId ? " on" : "");
+          });
+        }
+        function paintLines() {
+          var gq = grep.value.trim().toLowerCase();
+          var shown = gq
+            ? lines.filter(function (l) { return String(l.message || "").toLowerCase().indexOf(gq) >= 0; })
+            : lines;
+          pane.replaceChildren(frag(shown.slice(-600).map(function (l) {
+            var sev = /err/i.test(l.severity) ? " err" : /warn/i.test(l.severity) ? " warn" : "";
+            return el("div", { class: "logline" + sev }, [
+              el("span", { class: "lt", text: new Date(l.ts).toLocaleTimeString() }),
+              el("span", { class: "lm", text: l.message })]);
+          })));
+          if (!shown.length) {
+            pane.replaceChildren(el("div", { class: "sub", text: gq
+              ? "No line matches \u201c" + grep.value.trim() + "\u201d." : "The log is empty." }));
+          }
+          pane.scrollTop = pane.scrollHeight;
+        }
+        function pick(s) {
+          current = s;
+          syncSvc();
+          pane.replaceChildren(el("div", { class: "sub", text: "Reading " + s.name + "\u2026" }));
+          note.textContent = s.name + " \u00b7 " + s.status + " \u00b7 deployed "
+            + new Date(s.deployedAt).toLocaleString();
+          api("GET", "/api/logs/deploy/" + s.deploymentId + "?limit=400").then(function (lr) {
+            if (VIEW !== "logs" || current.serviceId !== s.serviceId) return;
+            if (lr.status !== 200) {
+              pane.replaceChildren(el("div", { class: "sub",
+                text: (lr.body && lr.body.error) || "could not read that log" }));
+              return;
+            }
+            lines = lr.body.lines || [];
+            paintLines();
+          });
+        }
+        body.replaceChildren(frag([bar, pane, note]));
+        pick(current);
+      });
+    }
+
+    setView("overview");
   }
 
   /* ── boot ─────────────────────────────────────────────────────────────── */

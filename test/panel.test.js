@@ -427,6 +427,91 @@ test('the dedicated-install path is off unless a seller means it', opts, async (
   }
 });
 
+/* ═══ THE FLEET'S LOGS, IN THE PANEL ════════════════════════════════════════
+   The Logs tab reads Railway's own deployment logs through the same GraphQL
+   transport the provisioner holds — read-only, admin-gated, and honest when
+   it cannot: no token, or a panel not running on Railway, refuses BY NAME
+   rather than showing an empty pane somebody debugs. The live Railway call
+   path is exercised against a local stub speaking the same GraphQL shapes —
+   composition and decision, never connectivity, the provision tests' rule. */
+test('the Logs tab reads the platform, and refuses by name when it cannot', opts, async () => {
+  const keepTok = process.env.RAILWAY_API_TOKEN;
+  const keepEnv = process.env.RAILWAY_ENVIRONMENT_ID;
+  const keepUrl = process.env.RAILWAY_API_URL;
+  const http = require('http');
+  let stub;
+  try {
+    delete process.env.RAILWAY_API_TOKEN;
+    let r = await call(panelBase, 'GET', '/api/logs/services', undefined, token);
+    assert.strictEqual(r.status, 409);
+    assert.match(r.body.error, /RAILWAY_API_TOKEN/, 'no token is named, not blank');
+
+    process.env.RAILWAY_API_TOKEN = 'a-token-for-the-stub';
+    delete process.env.RAILWAY_ENVIRONMENT_ID;
+    r = await call(panelBase, 'GET', '/api/logs/services', undefined, token);
+    assert.strictEqual(r.status, 409);
+    assert.match(r.body.error, /not running on Railway/,
+      'a panel off the platform says so rather than timing out');
+
+    // A stub that speaks the two GraphQL shapes the panel asks for.
+    stub = http.createServer((req, res) => {
+      let b = '';
+      req.on('data', (c) => { b += c; });
+      req.on('end', () => {
+        const q = (JSON.parse(b).query || '');
+        res.setHeader('content-type', 'application/json');
+        if (/serviceInstances/.test(q)) {
+          res.end(JSON.stringify({ data: { environment: { serviceInstances: { edges: [
+            { node: { serviceId: 'svc-1', serviceName: 'kashikeyopos',
+              latestDeployment: { id: '11111111-1111-1111-1111-111111111111', status: 'SUCCESS',
+                createdAt: '2026-08-28T10:00:00Z' } } },
+            { node: { serviceId: 'svc-2', serviceName: 'website',
+              latestDeployment: { id: '22222222-2222-2222-2222-222222222222', status: 'FAILED',
+                createdAt: '2026-08-28T09:00:00Z' } } }
+          ] } } } }));
+        } else if (/deploymentLogs/.test(q)) {
+          res.end(JSON.stringify({ data: { deploymentLogs: [
+            { timestamp: '2026-08-28T10:00:01Z', severity: 'info', message: '[app] listening on 8080' },
+            { timestamp: '2026-08-28T10:00:02Z', severity: 'error', message: '[db] something failed' }
+          ] } }));
+        } else {
+          res.end(JSON.stringify({ errors: [{ message: 'unknown query' }] }));
+        }
+      });
+    });
+    await new Promise((ok) => stub.listen(0, '127.0.0.1', ok));
+    process.env.RAILWAY_API_URL = 'http://127.0.0.1:' + stub.address().port + '/graphql';
+    process.env.RAILWAY_ENVIRONMENT_ID = 'env-test';
+
+    r = await call(panelBase, 'GET', '/api/logs/services', undefined, token);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.services.length, 2);
+    assert.deepStrictEqual(r.body.services[0],
+      { serviceId: 'svc-1', name: 'kashikeyopos', deploymentId: '11111111-1111-1111-1111-111111111111',
+        status: 'SUCCESS', deployedAt: '2026-08-28T10:00:00Z' });
+
+    r = await call(panelBase, 'GET', '/api/logs/deploy/11111111-1111-1111-1111-111111111111', undefined, token);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.lines.length, 2);
+    assert.strictEqual(r.body.lines[1].severity, 'error', 'severity survives for the colouring');
+
+    r = await call(panelBase, 'GET', '/api/logs/deploy/zzzz-not-a-deployment', undefined, token);
+    assert.strictEqual(r.status, 400, 'a deployment id has a shape, and it is held to it');
+
+    // And never without a session: the fleet's logs are the operator's alone.
+    r = await call(panelBase, 'GET', '/api/logs/services');
+    assert.strictEqual(r.status, 401);
+  } finally {
+    if (keepTok === undefined) delete process.env.RAILWAY_API_TOKEN;
+    else process.env.RAILWAY_API_TOKEN = keepTok;
+    if (keepEnv === undefined) delete process.env.RAILWAY_ENVIRONMENT_ID;
+    else process.env.RAILWAY_ENVIRONMENT_ID = keepEnv;
+    if (keepUrl === undefined) delete process.env.RAILWAY_API_URL;
+    else process.env.RAILWAY_API_URL = keepUrl;
+    if (stub) await new Promise((ok) => stub.close(ok));
+  }
+});
+
 test('a business is read from the registry, and its licence written to it', opts, async () => {
   const DB = require('./db');
   if (!DB.configured()) return;

@@ -56,13 +56,41 @@ input:focus,select:focus,textarea:focus{border-color:var(--fwd-line)}
 .err{font-size:12.5px;color:var(--danger-bright);background:var(--danger-dim);
   border:1px solid var(--danger-line);border-radius:9px;padding:10px 12px;margin-bottom:12px}
 
-/* top bar */
-.top{display:flex;align-items:center;gap:14px;padding:20px 0 24px}
+/* top bar — wraps on narrow screens rather than overflowing */
+.top{display:flex;align-items:center;gap:10px 14px;padding:20px 0 18px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
 .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--accent)}
 .brand b{font-size:15px;font-weight:700;letter-spacing:-.01em}
 .brand span{font-size:11px;color:var(--text-faint);font-weight:600;text-transform:uppercase;letter-spacing:.09em}
 .top .grow{flex:1}
+
+/* the view tabs — one recessed track, one raised chip, the back-office rule */
+.tabs{display:flex;gap:4px;background:var(--bg-0);border:1px solid var(--line);
+  border-radius:999px;padding:4px}
+.tab{padding:7px 16px;border-radius:999px;font-size:12.5px;font-weight:600;
+  color:var(--text-muted);min-height:36px}
+.tab:hover{color:var(--text)}
+.tab.on{background:var(--bg-3);color:var(--text)}
+
+/* the filter bar over the business grid */
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.filters input{max-width:280px;padding:9px 13px;min-width:160px;flex:1 1 160px}
+.fchip{padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);
+  color:var(--text-muted);font-size:12px;font-weight:600;min-height:36px;white-space:nowrap}
+.fchip:hover{color:var(--text)}
+.fchip.on{background:var(--bg-3);border-color:var(--line-2);color:var(--text)}
+
+/* the log pane */
+.logbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.logpane{background:var(--bg-0);border:1px solid var(--line);border-radius:14px;
+  padding:14px 16px;font-family:var(--mono);font-size:11px;line-height:1.7;
+  letter-spacing:.01em;overflow:auto;max-height:min(62dvh,640px);
+  overscroll-behavior:contain}
+.logline{display:flex;gap:10px;white-space:pre-wrap;word-break:break-word}
+.logline .lt{color:var(--text-faint);flex-shrink:0}
+.logline .lm{color:var(--text-dim);min-width:0}
+.logline.err .lm{color:var(--danger-bright)}
+.logline.warn .lm{color:var(--warn-bright)}
 .ghost{padding:9px 15px;border-radius:999px;border:1px solid var(--line-2);color:var(--text-dim);
   font-size:12.5px;font-weight:600;min-height:40px}
 .ghost:hover{background:var(--bg-2)}
@@ -144,6 +172,27 @@ input:focus,select:focus,textarea:focus{border-color:var(--fwd-line)}
 .sheet .acts{display:flex;gap:10px;margin-top:16px}
 .sheet .acts .cta{margin-top:0}
 @media (max-width:560px){.sheet .row2{grid-template-columns:1fr}}
+
+/* ── the phone ──────────────────────────────────────────────────────────────
+   A developer checks this panel from wherever the alert found them, which is
+   as likely a phone as a desk. Nothing may scroll sideways; the tiles and
+   cards collapse to one column; the sheets keep their bottom-edge rise but
+   spend less chrome; every control keeps a 36px+ touch target. */
+@media (max-width:720px){
+  .wrap{padding:0 14px 40px}
+  .top{padding-top:14px}
+  .tabs{order:3;width:100%;justify-content:stretch}
+  .tab{flex:1;text-align:center}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px}
+  .kpi{padding:12px 14px;border-radius:12px}
+  .kpi .v{font-size:20px}
+  .cards{grid-template-columns:1fr;gap:11px}
+  .card{padding:15px;border-radius:14px}
+  .card .foot{flex-wrap:wrap}
+  .filters input{max-width:none}
+  .sheet{padding:18px 16px 26px;max-height:92dvh}
+  .logpane{max-height:70dvh;border-radius:12px;padding:11px 12px}
+}
 
 /* WHERE THE KEYBOARD IS. Every field here carries outline:none for the sake of
    the bordered pill it sits in, so a seller signing in by keyboard had no idea
