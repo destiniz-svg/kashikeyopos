@@ -1618,6 +1618,35 @@ section with its tags and heat, the existing dish's price was updated in
 place, and the unknown-section row was refused on screen.
 `test/wiring.test.js` pins the door, the picker and the one road.
 
+**And ONE FILE carries the whole menu — sections and add-ons ride it too.**
+The CSV leads with a `type` column (`section` · `addon` · `dish`; a file from
+before the column has none and every row is a dish). A section row carries
+its name, station and visibility; an addon row its price and the sections it
+publishes to; matching is by NAME for all three, and three sweeps — sections,
+then add-ons, then dishes — mean a dish may sit in a section defined
+anywhere in the same file. **The queue order is the apply order**, and it is
+not negotiable: sections first (a dish naming one that has not landed is
+refused by `item_category_id_fkey` — the reconcileCats() lesson), add-on
+GROUPS before the dishes (a dish naming a new add-on writes an
+`item_modifier` row whose group must already exist), dishes, then the
+section LINKS last, once every dish in the file exists to be linked. A new
+section's id is a stable slug of its name, so two devices importing one file
+converge; the import adds and updates and never removes.
+
+Building it found the next bare op: **`setMods()` queued `modifier_update`
+with a label and NO PAYLOAD**, so every add-on created, repriced or
+republished on the till lived in one browser's session and reached the
+outlet never — the section defect one collection over. `modWrite()` is the
+seam now: the group (one per till-made add-on, under the add-on's own id,
+and an outlet group holding several options keeps its own record), the
+option, and the item links the bootstrap derives `cats` back out of.
+Removing one queues `modifier_remove`, which the server honours (the group
+goes with its last option). `state.modifiers` follows the pen rule —
+`reconcileMods()` drops it once the outlet publishes every held id.
+`test/wiring.test.js` drives the plan and the apply in a vm and pins the
+queue order; the Chromium drive reads the section, the group, the option,
+the dish and the link back out of the outlet's own tables.
+
 Measured by driving the real editor — tick Chef's pick and Signature, set the
 heat to Hot, Create dish:
 

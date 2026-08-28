@@ -2090,6 +2090,21 @@ H.modifier_update = async (c, p) => {
   return { ok: true };
 };
 
+/* Removing an add-on. The group goes with its last option, and the
+   item_modifier links cascade with the group. An id that is already gone is a
+   replay, and a no-op — the same property every upsert here has. */
+H.modifier_remove = async (c, p) => {
+  if (p.id) await c.query('DELETE FROM modifier WHERE id = $1', [p.id]);
+  if (p.group) {
+    const left = await c.query(
+      'SELECT count(*)::int AS n FROM modifier WHERE group_id = $1', [p.group]);
+    if (!left.rows[0].n) {
+      await c.query('DELETE FROM modifier_group WHERE id = $1', [p.group]);
+    }
+  }
+  return { ok: true };
+};
+
 H.promo_upsert = async (c, p) => {
   await c.query('INSERT INTO promo (id, name, kind, value, code, max_pct, channels,'
     + ' starts_on, ends_on, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10,true))'

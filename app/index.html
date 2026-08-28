@@ -5131,9 +5131,42 @@ class Component extends DCLogic {
   // Unset falls through to the seed data, so an untouched build behaves
   // exactly as before.
   modList() { return this.state.modifiers || (K().MODIFIERS || []); }
+  /* One add-on, out WHOLE: the group (one per till-made add-on, under the
+     add-on's own id), the option, and — where the caller passes them — the
+     item links for the sections it publishes to, which is what the bootstrap
+     derives `cats` back out of. The group's own record wins where the outlet
+     already holds one carrying several options, or repricing one option would
+     rename the shared group. */
+  modWrite(a, label, items) {
+    const gid = a.group || a.id;
+    const g = ((K() || {}).MODIFIER_GROUPS || []).find((x) => x.id === gid);
+    this.queue("modifier_update", label, "menu", {
+      group: gid, groupName: g ? g.name : a.name,
+      min: g ? g.min : 0, max: g ? g.max : 1, required: g ? !!g.required : false,
+      id: a.id, name: a.name, price: Math.max(0, +a.price || 0),
+      pos: Math.max(0, this.modList().findIndex((x) => x.id === a.id)),
+      items: items || []
+    });
+  }
   setMods(list, line) {
+    /* This used to queue `modifier_update` with a label and NO PAYLOAD, so
+       every add-on created, repriced or republished on the till lived in this
+       browser's session and reached the outlet never — the same class as the
+       section ops. Each changed row now goes out whole, and a removed one is
+       removed at the outlet too rather than resurrected by the next
+       bootstrap. */
+    const prev = this.modList();
     this.setState({ modifiers: list, modal: null });
-    this.queue("modifier_update", line + " · by " + this.me(), "menu");
+    list.forEach((a) => {
+      const was = prev.find((x) => x.id === a.id);
+      if (was && was.name === a.name && (+was.price || 0) === (+a.price || 0)
+        && String(was.cats || []) === String(a.cats || [])) return;
+      this.modWrite(a, (was ? "Add-on · " : "Add-on created · ") + a.name + " · by " + this.me(),
+        (K().MENU || []).filter((m) => (a.cats || []).indexOf(m.cat) >= 0).map((m) => m.id));
+    });
+    prev.filter((x) => !list.some((a) => a.id === x.id)).forEach((x) =>
+      this.queue("modifier_remove", "Add-on removed · " + x.name + " · by " + this.me(), "menu",
+        { id: x.id, group: x.group || x.id }));
     this.toast(line);
   }
   addonsFor(m) {
@@ -7696,7 +7729,7 @@ class Component extends DCLogic {
       const pill = (on) => "padding:7px 14px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid "
         + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)");
       return {
-        modalTitle: "Import & export the menu", modalSub: "One row per dish \u00b7 the same columns both ways",
+        modalTitle: "Import & export the menu", modalSub: "Sections, add-ons and dishes \u00b7 one file, the same columns both ways",
         mMenuIO: true,
         ioTabs: [
           { label: "Export", style: pill(!isImp), go: () => put({ tab: "export" }) },
@@ -7705,7 +7738,7 @@ class Component extends DCLogic {
         ioExportStyle: isImp ? "display:none" : "display:flex;flex-direction:column;gap:11px",
         ioImportStyle: isImp ? "display:flex;flex-direction:column;gap:11px" : "display:none",
         ioCsv: csv,
-        ioCount: (K0.MENU || []).length + " dishes across " + this.sortedCats(true).length + " sections",
+        ioCount: (K0.MENU || []).length + " dishes · " + this.sortedCats(true).length + " sections · " + this.modList().length + " add-ons",
         ioDownload: () => this.downloadText("kashikeyo-menu.csv", csv),
         ioCopy: () => { try { navigator.clipboard.writeText(csv); this.toast("Menu CSV copied"); } catch (e) { this.toast("Select the text and copy it manually", "warn"); } },
         ioTemplate: () => this.downloadText("kashikeyo-menu-template.csv", this.menuTemplateCsv()),
@@ -7732,18 +7765,36 @@ class Component extends DCLogic {
           ? m.file + " loaded — check the plan below, then press import"
           : "…or paste the rows below — the template's columns, header row included",
         ioPlanStyle: (m.text || "").trim() ? "display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
-        ioPlanRows: plan ? [
-          { k: "New dishes", v: String(plan.add.length), vs: "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (plan.add.length ? "var(--green)" : "var(--text-dim)") },
-          { k: "Updated in place", v: String(plan.upd.length), vs: "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (plan.upd.length ? "var(--warn-bright)" : "var(--text-dim)") },
-          { k: "Rows rejected", v: String(plan.err.length), vs: "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (plan.err.length ? "var(--red-bright)" : "var(--text-dim)") }
-        ] : [],
+        ioPlanRows: plan ? (() => {
+          const mono = (c) => "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + c;
+          const nSec = plan.secAdd.length + plan.secUpd.length;
+          const nMod = plan.modAdd.length + plan.modUpd.length;
+          // The section and add-on rows appear only when the file carries any,
+          // so a dishes-only file reads exactly as it always did.
+          return (nSec || nMod ? [
+            { k: "Sections · new / updated", v: plan.secAdd.length + " / " + plan.secUpd.length, vs: mono(nSec ? "var(--green)" : "var(--text-dim)") },
+            { k: "Add-ons · new / updated", v: plan.modAdd.length + " / " + plan.modUpd.length, vs: mono(nMod ? "var(--green)" : "var(--text-dim)") }
+          ] : []).concat([
+            { k: "New dishes", v: String(plan.add.length), vs: mono(plan.add.length ? "var(--green)" : "var(--text-dim)") },
+            { k: "Updated in place", v: String(plan.upd.length), vs: mono(plan.upd.length ? "var(--warn-bright)" : "var(--text-dim)") },
+            { k: "Rows rejected", v: String(plan.err.length), vs: mono(plan.err.length ? "var(--red-bright)" : "var(--text-dim)") }
+          ]);
+        })() : [],
         ioErrs: plan ? plan.err.slice(0, 6).map((e) => ({ k: e[0], v: e[1] })) : [],
         ioErrStyle: plan && plan.err.length ? "display:flex;flex-direction:column;gap:4px;margin-top:4px;padding-top:8px;border-top:1px solid var(--line)" : "display:none",
-        ioApplyLabel: plan && plan.ok ? "Import \u00b7 " + plan.add.length + " new, " + plan.upd.length + " updated" : "Nothing to import yet",
+        ioApplyLabel: plan && plan.ok ? (() => {
+          const bits = [];
+          if (plan.add.length || plan.upd.length) bits.push(plan.add.length + " new, " + plan.upd.length + " updated");
+          const nSec = plan.secAdd.length + plan.secUpd.length;
+          if (nSec) bits.push(nSec + " section" + (nSec === 1 ? "" : "s"));
+          const nMod = plan.modAdd.length + plan.modUpd.length;
+          if (nMod) bits.push(nMod + " add-on" + (nMod === 1 ? "" : "s"));
+          return "Import \u00b7 " + bits.join(" \u00b7 ");
+        })() : "Nothing to import yet",
         ioApplyStyle: "flex:1;padding:11px;border-radius:999px;font-size:12.5px;font-weight:700;text-align:center;"
           + (plan && plan.ok ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
         ioApply: () => (plan && plan.ok ? this.applyMenuImport(plan) : this.toast("Paste rows that match the template first", "warn")),
-        ioFoot: "Dishes are matched on name: a name already on the menu is updated in place, anything else is created. Sections must already exist \u2014 create them first, then import. Nothing is written until you press import."
+        ioFoot: "Every row is matched on name: a name already there is updated in place, anything else is created. A row whose type column says section or addon carries that section or add-on, so one file holds the whole menu \u2014 a dish may sit in a section defined anywhere in the same file. The import adds and updates; it never removes. Nothing is written until you press import."
       };
     }
     if (m.kind === "recipeb") {
@@ -13481,6 +13532,7 @@ class Component extends DCLogic {
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
     this.reconcilePrefs();
+    this.reconcileMods();
   }
 
   /* ── WHAT THIS DEVICE IS HOLDING THAT THE OUTLET HAS NEVER SEEN ──────────
@@ -13772,6 +13824,22 @@ class Component extends DCLogic {
       kept[k] = held[k];
     });
     if (dropped) this.setState({ prefs: kept });
+  }
+
+  /* ── the add-on list, after a bootstrap ──────────────────────────────────
+     The same pen rule. `state.modifiers` exists so an edit repaints at once,
+     including offline; the moment the outlet publishes every add-on this
+     terminal is holding — matched on the ID — the local list is dropped and
+     this till reads the same catalogue, at the same prices, as every other
+     one. Kept while ANY held row is missing, because dropping early would
+     throw away the one that has not landed yet. */
+  reconcileMods() {
+    const held = this.state.modifiers;
+    if (!held) return;
+    const pub = (K() || {}).MODIFIERS || [];
+    if (!pub.length) return;
+    if (held.every((a) => pub.some((p) => p.id === a.id)))
+      this.setState({ modifiers: null });
   }
 
   /* ── the sections, after a bootstrap ─────────────────────────────────────
@@ -14470,18 +14538,33 @@ class Component extends DCLogic {
   }
 
   // ── Menu interchange ─────────────────────────────────────────────────────
-  // One flat CSV, one row per dish, semicolons inside a cell so a merchant can
-  // open it in Excel and hand it back without quoting anything. Import matches
-  // on dish name within a section: a known name is an update, a new one is an
-  // insert, and nothing is written until the preview has been read.
-  MENUCSV() { return ["name", "section", "price", "description", "station", "tags", "spice", "addons", "visible"]; }
+  // One flat CSV, semicolons inside a cell so a merchant can open it in Excel
+  // and hand it back without quoting anything. The `type` column says what a
+  // row is — section, addon or dish — so ONE file carries the whole menu:
+  // sections with their station and visibility, add-ons with their price and
+  // the sections they publish to, dishes with everything the editor collects.
+  // Import matches every kind on NAME: a known name is an update, a new one is
+  // an insert, and nothing is written until the preview has been read. A file
+  // exported before the type column existed has none, and every row is a dish.
+  MENUCSV() { return ["type", "name", "section", "price", "description", "station", "tags", "spice", "addons", "visible"]; }
   csvCell(v) { const t = String(v === undefined || v === null ? "" : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }
   menuCsv() {
     const K0 = K();
     const out = [this.MENUCSV().join(",")];
+    // Sections lead and add-ons follow, dishes last — the same order the
+    // import applies them, so a file handed straight back needs no sorting.
+    this.sortedCats(true).forEach((c) => {
+      const meta = this.catMeta(c.id);
+      out.push(["section", meta.name, "", "", "", this.stationName(meta.station), "", "", "", meta.hidden ? "no" : "yes"]
+        .map((x) => this.csvCell(x)).join(","));
+    });
+    this.modList().forEach((a) => {
+      out.push(["addon", a.name, (a.cats || []).map((cid) => this.catMeta(cid).name).join("; "), a.price || 0, "", "", "", "", "", "yes"]
+        .map((x) => this.csvCell(x)).join(","));
+    });
     this.sortedCats(true).forEach((c) => {
       K0.MENU.filter((m) => m.cat === c.id).forEach((m) => {
-        out.push([
+        out.push(["dish",
           m.name, this.catMeta(m.cat).name, m.price, m.desc || "", this.stationName(this.dishStation(m)),
           this.dishTags(m).map((t) => { const e = this.TAGSET().find((x) => x[0] === t); return e ? e[1] : t; }).join("; "),
           this.SPICE()[this.dishSpice(m)], this.addonsFor(m).map((a) => a.name).join("; "), m.hidden ? "no" : "yes"
@@ -14492,8 +14575,13 @@ class Component extends DCLogic {
   }
   menuTemplateCsv() {
     return [this.MENUCSV().join(","),
-      this.csvCell("Reef Fish Curry") + ",Mains,145," + this.csvCell("Line-caught fish, coconut, curry leaf") + ",Hot pass,Gluten free,Medium," + this.csvCell("Extra sambol; Double portion") + ",yes",
-      this.csvCell("Lime & Mint Cooler") + ",Drinks,45," + this.csvCell("Fresh lime, mint, soda") + ",Bar,Vegan,Not spicy," + this.csvCell("No ice") + ",yes"
+      "section,Mains,,,,Hot pass,,,,yes",
+      "section,Drinks,,,,Bar,,,,yes",
+      "addon,Extra sambol,Mains,15,,,,,,yes",
+      "addon,Double portion,Mains,45,,,,,,yes",
+      "addon,No ice,Drinks,0,,,,,,yes",
+      "dish," + this.csvCell("Reef Fish Curry") + ",Mains,145," + this.csvCell("Line-caught fish, coconut, curry leaf") + ",Hot pass,Gluten free,Medium," + this.csvCell("Extra sambol; Double portion") + ",yes",
+      "dish," + this.csvCell("Lime & Mint Cooler") + ",Drinks,45," + this.csvCell("Fresh lime, mint, soda") + ",Bar,Vegan,Not spicy," + this.csvCell("No ice") + ",yes"
     ].join("\n");
   }
   parseCsv(text) {
@@ -14512,7 +14600,7 @@ class Component extends DCLogic {
   }
   menuImportPlan(text) {
     const K0 = K(), rows = this.parseCsv(text);
-    const plan = { add: [], upd: [], err: [], ok: false };
+    const plan = { add: [], upd: [], secAdd: [], secUpd: [], modAdd: [], modUpd: [], err: [], ok: false };
     if (!rows.length) return plan;
     const head = rows[0].map((h) => String(h).trim().toLowerCase());
     const need = this.MENUCSV();
@@ -14522,13 +14610,77 @@ class Component extends DCLogic {
     this.sortedCats(true).forEach((c) => { const meta = this.catMeta(c.id); secs[meta.name.toLowerCase()] = c.id; secs[c.id.toLowerCase()] = c.id; });
     const stations = {}; this.STATIONS().forEach((st) => { stations[st[1].toLowerCase()] = st[0]; stations[st[0]] = st[0]; });
     const tagBy = {}; this.TAGSET().forEach((t) => { tagBy[t[1].toLowerCase()] = t[0]; tagBy[t[0]] = t[0]; });
-    const addBy = {}; (K0.MODIFIERS || []).forEach((a) => { addBy[a.name.toLowerCase()] = a.id; });
+    const addBy = {}; this.modList().forEach((a) => { addBy[a.name.toLowerCase()] = a.id; });
     const cell = (r, k) => (at[k] >= 0 ? String(r[at[k]] === undefined ? "" : r[at[k]]).trim() : "");
-    rows.slice(1).forEach((r, i) => {
+    /* A file from before the type column has none, and every row is a dish. */
+    const kindOf = (r) => {
+      const t = at.type >= 0 ? cell(r, "type").toLowerCase() : "";
+      if (!t || t === "dish" || t === "item") return "dish";
+      if (t === "section" || t === "category") return "section";
+      if (t === "addon" || t === "add-on" || t === "modifier" || t === "extra") return "addon";
+      return t;
+    };
+    const slugOf = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+    const body = rows.slice(1);
+    /* THREE SWEEPS, NOT ONE: sections, then add-ons, then dishes \u2014 so a dish
+       may sit in a section defined anywhere in the same file and an add-on may
+       publish to one, whatever order the spreadsheet saved its rows in. A new
+       section's id is a stable slug of its name, the ensureSection() rule: the
+       write is an upsert keyed by it, and two devices importing the same file
+       must converge on one row. */
+    body.forEach((r, i) => {
+      if (kindOf(r) !== "section") return;
+      const n = i + 2, name = cell(r, "name");
+      if (!name) return plan.err.push(["Row " + n, "No section name"]);
+      const stRaw = cell(r, "station").toLowerCase();
+      const hidden = /^(no|false|hidden|0)$/i.test(cell(r, "visible") || "yes");
+      const id = secs[name.toLowerCase()] || secs[slugOf(name)];
+      if (id) {
+        const meta = this.catMeta(id);
+        const station = stRaw ? (stations[stRaw] || meta.station) : meta.station;
+        secs[name.toLowerCase()] = id;
+        if (name !== meta.name || station !== meta.station || hidden !== !!meta.hidden)
+          plan.secUpd.push({ id: id, name: name, station: station, hidden: hidden });
+      } else {
+        const sid = slugOf(name) || "section";
+        if (plan.secAdd.some((s) => s.id === sid)) return;
+        plan.secAdd.push({ id: sid, name: name,
+          station: stations[stRaw] || this.defaultStation(sid), hidden: hidden });
+        secs[name.toLowerCase()] = sid; secs[sid] = sid;
+      }
+    });
+    body.forEach((r, i) => {
+      if (kindOf(r) !== "addon") return;
+      const n = i + 2, name = cell(r, "name");
+      if (!name) return plan.err.push(["Row " + n, "No add-on name"]);
+      const price = cell(r, "price") === "" ? 0 : +cell(r, "price");
+      if (!(price >= 0)) return plan.err.push(["Row " + n + " \u00b7 " + name, "Price must be zero or more \u2014 zero is a free add-on"]);
+      const catNames = cell(r, "section").split(";").map((x) => x.trim()).filter(Boolean);
+      const cats = [];
+      const missing = catNames.find((cn) => { const cid = secs[cn.toLowerCase()]; if (cid) cats.push(cid); return !cid; });
+      if (missing) return plan.err.push(["Row " + n + " \u00b7 " + name, "Unknown section \u201c" + missing + "\u201d"]);
+      const hit = this.modList().find((a) => a.name.toLowerCase() === name.toLowerCase());
+      if (hit) {
+        // An empty section cell keeps where it is published \u2014 silence preserves.
+        const rec = { id: hit.id, group: hit.group || hit.id, name: hit.name,
+          price: price, cats: catNames.length ? cats : (hit.cats || []).slice() };
+        if (rec.price !== (+hit.price || 0) || String(rec.cats) !== String(hit.cats || []))
+          plan.modUpd.push(rec);
+      } else {
+        if (plan.modAdd.some((a) => a.name.toLowerCase() === name.toLowerCase())) return;
+        const rec = { id: this.newId("mod"), name: name, price: price, cats: cats };
+        plan.modAdd.push(rec);
+        addBy[name.toLowerCase()] = rec.id;
+      }
+    });
+    body.forEach((r, i) => {
+      const kind = kindOf(r);
+      if (kind === "section" || kind === "addon") return;
       const n = i + 2;
+      if (kind !== "dish") return plan.err.push(["Row " + n, "Unknown row type \u201c" + kind + "\u201d \u2014 section, addon or dish"]);
       const name = cell(r, "name"), sec = cell(r, "section").toLowerCase(), price = +cell(r, "price");
       if (!name) return plan.err.push(["Row " + n, "No dish name"]);
-      if (!secs[sec]) return plan.err.push(["Row " + n + " \u00b7 " + name, sec ? "Unknown section \u201c" + cell(r, "section") + "\u201d" : "No section given"]);
+      if (!secs[sec]) return plan.err.push(["Row " + n + " \u00b7 " + name, sec ? "Unknown section \u201c" + cell(r, "section") + "\u201d \u2014 add a section row for it in this file" : "No section given"]);
       if (!(price > 0)) return plan.err.push(["Row " + n + " \u00b7 " + name, "Price must be a number greater than zero"]);
       const spRaw = cell(r, "spice").toLowerCase();
       const spIdx = this.SPICE().findIndex((x) => x.toLowerCase() === spRaw);
@@ -14544,13 +14696,41 @@ class Component extends DCLogic {
       const hit = (K0.MENU || []).find((m) => m.name.toLowerCase() === name.toLowerCase());
       if (hit) plan.upd.push([hit, rec]); else plan.add.push(rec);
     });
-    plan.ok = !!(plan.add.length || plan.upd.length);
+    plan.ok = !!(plan.add.length || plan.upd.length || plan.secAdd.length
+      || plan.secUpd.length || plan.modAdd.length || plan.modUpd.length);
     return plan;
   }
   applyMenuImport(plan) {
     const K0 = K();
     const local = Object.assign({}, this.state.local || {});
     const patches = (this.state.patches || []).slice();
+    const st = { local: local, patches: patches, modal: null };
+    /* The file's sections go into the same pen a typed one does, so the rail
+       draws them at once and reconcileCats() re-sends any that fail to land. */
+    plan.secAdd.forEach((s) => {
+      const meta = { id: s.id, name: s.name, icon: s.id, color: this.catHue(s.id),
+        station: s.station, hidden: !!s.hidden, pos: null };
+      local.menucats = (local.menucats || []).concat([meta]);
+      const list = K0.MENU_CATEGORIES;
+      if (list && !list.some((c) => c.id === s.id)) list.push(meta);
+    });
+    if (plan.secUpd.length) {
+      st.catMeta = Object.assign({}, this.state.catMeta || {});
+      plan.secUpd.forEach((s) => {
+        st.catMeta[s.id] = Object.assign({}, st.catMeta[s.id] || {},
+          { name: s.name, station: s.station, hidden: !!s.hidden });
+      });
+    }
+    // The add-ons land in the local list reconcileMods() empties once the
+    // outlet publishes them back — a pen, not a fork, like everything else.
+    const modRows = plan.modAdd.concat(plan.modUpd);
+    if (modRows.length) {
+      const mods = this.modList().slice();
+      plan.modAdd.forEach((a) => mods.push({ id: a.id, name: a.name, price: a.price, cats: a.cats.slice() }));
+      plan.modUpd.forEach((a) => { const i = mods.findIndex((x) => x.id === a.id);
+        if (i >= 0) mods[i] = Object.assign({}, mods[i], { name: a.name, price: a.price, cats: a.cats.slice() }); });
+      st.modifiers = mods;
+    }
     plan.upd.forEach((p) => {
       const set = Object.assign({}, p[1]); delete set.name;
       Object.assign(p[0], set);
@@ -14559,8 +14739,28 @@ class Component extends DCLogic {
     const made = plan.add.map((rec) => Object.assign({ id: this.newId("m"), veg: rec.tags.indexOf("veg") >= 0, img: "", recipe: [] }, rec));
     made.forEach((row) => { (K0.MENU || []).unshift(row); });
     local.menu = (local.menu || []).concat(made);
-    this.setState({ local: local, patches: patches, modal: null });
-    const label = plan.add.length + " dish" + (plan.add.length === 1 ? "" : "es") + " added \u00b7 " + plan.upd.length + " updated";
+    this.setState(st);
+    const bits = [];
+    if (plan.add.length || plan.upd.length)
+      bits.push(plan.add.length + " dish" + (plan.add.length === 1 ? "" : "es") + " added \u00b7 " + plan.upd.length + " updated");
+    const nSec = plan.secAdd.length + plan.secUpd.length;
+    if (nSec) bits.push(nSec + " section" + (nSec === 1 ? "" : "s"));
+    const nMod = plan.modAdd.length + plan.modUpd.length;
+    if (nMod) bits.push(nMod + " add-on" + (nMod === 1 ? "" : "s"));
+    const label = bits.join(" \u00b7 ") || "nothing new";
+    /* THE QUEUE ORDER IS THE APPLY ORDER \u2014 a push applies in lamport
+       order, which is the order things are queued in here. So the SECTIONS go
+       first (a dish naming one that has not landed is refused by the foreign
+       key \u2014 the reconcileCats() lesson), the ADD-ON GROUPS go before the
+       dishes (a dish naming a new add-on writes an item_modifier row whose
+       group must already exist), the DISHES follow, and the section LINKS go
+       last, once every dish in the file exists to be linked. */
+    plan.secAdd.forEach((s) => this.catWrite(s.id,
+      (local.menucats || []).find((c) => c.id === s.id) || s,
+      "Menu section created \u00b7 " + s.name));
+    plan.secUpd.forEach((s) => this.catWrite(s.id,
+      Object.assign({}, this.catMeta(s.id)), "Menu section \u00b7 " + s.name));
+    modRows.forEach((a) => this.modWrite(a, "Add-on imported \u00b7 " + a.name, []));
     /* THE IMPORT CARRIES THE DISHES. `H.menu_import` has always existed and
        loops `dish_upsert` over what it is given — and this call site sent a
        label and nothing else, so a menu imported from a spreadsheet was
@@ -14575,6 +14775,10 @@ class Component extends DCLogic {
       .map((o) => o.payload);
     this.queue("menu_import", "Menu imported \u00b7 " + label, "menu_items",
       { dishes: dishes });
+    modRows.filter((a) => (a.cats || []).length).forEach((a) => {
+      const items = (K0.MENU || []).filter((m) => a.cats.indexOf(m.cat) >= 0).map((m) => m.id);
+      if (items.length) this.modWrite(a, "Add-on published \u00b7 " + a.name, items);
+    });
     this.toast("Menu imported \u00b7 " + label);
   }
   downloadText(name, text, mime) {

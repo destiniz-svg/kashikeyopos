@@ -40,7 +40,7 @@ const CONTRACT = [
   'maintenance_log', 'mdr_set', 'member_upsert', 'menu_category_insert',
   'menu_category_reorder', 'menu_category_update', 'menu_import',
   'menu_section_insert', 'menu_section_reorder', 'menu_section_update',
-  'modifier_update', 'move_table', 'open_register', 'opex_insert',
+  'modifier_remove', 'modifier_update', 'move_table', 'open_register', 'opex_insert',
   'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
   'payment_run', 'period_close', 'period_reopen', 'permission_change',
   'permission_reset', 'pin_failed', 'pin_lockout', 'pin_reset', 'plan_request', 'post_journal',
@@ -104,7 +104,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 119, 'the contract is 119 kinds');
+  assert.strictEqual(CONTRACT.length, 120, 'the contract is 120 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -4631,4 +4631,107 @@ test('the menu import takes a file, and Menu Master opens straight into it', () 
   // The op still carries the dishes — the fix that made import real at all.
   assert.match(SRC, /this\.queue\("menu_import", "Menu imported \\u00b7 " \+ label, "menu_items",\s*\n\s*\{ dishes: dishes \}\)/,
     'and the import op still carries the dishes');
+});
+
+/* ═══ SECTIONS AND ADD-ONS RIDE THE SAME FILE ══════════════════════════════
+   "add sections as well to be included in the csv file. addons everything."
+   One file carries the whole menu, and the QUEUE ORDER IS THE APPLY ORDER —
+   a push applies in lamport order, which is the order things are queued in.
+   So the section goes first (a dish naming one that has not landed is refused
+   by the foreign key), the add-on GROUP goes before the dishes (a dish naming
+   a new add-on writes an item_modifier row whose group must already exist),
+   the dishes follow, and the section LINKS go last, once every dish in the
+   file exists to be linked. */
+test('one CSV carries a section, an add-on and a dish, queued in the order the outlet can accept', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const csv = [
+    'type,name,section,price,description,station,tags,spice,addons,visible',
+    'section,Night Grill,,,,Hot pass,,,,yes',
+    'addon,Garlic butter,Night Grill,12,,,,,,yes',
+    'dish,Grilled Job Fish,Night Grill,180,Whole fish over coals,,,2,Garlic butter,yes'
+  ].join('\n');
+  const plan = F.menuImportPlan(csv);
+  // vm-created arrays fail deepStrictEqual's cross-realm prototype check,
+  // so everything here compares by value.
+  assert.strictEqual(plan.err.length, 0, 'nothing is rejected: ' + JSON.stringify(plan.err));
+  assert.strictEqual(plan.secAdd.length, 1, 'the section is planned');
+  assert.strictEqual(plan.secAdd[0].id, 'night-grill',
+    'under a stable slug id, so two devices importing the same file converge');
+  assert.strictEqual(plan.modAdd.length, 1, 'the add-on is planned');
+  assert.strictEqual(JSON.stringify(plan.modAdd[0].cats), '["night-grill"]',
+    'published to the section defined in the same file');
+  assert.strictEqual(plan.add.length, 1, 'the dish is planned');
+  assert.strictEqual(plan.add[0].cat, 'night-grill',
+    'and it resolves the section defined higher up the same file');
+  assert.strictEqual(plan.add[0].addons.length, 1);
+  assert.strictEqual(plan.add[0].addons[0], plan.modAdd[0].id,
+    'wearing the add-on the same file defined');
+
+  F.applyMenuImport(plan);
+  const kinds = queued.map((q) => q.kind);
+  const iSec = kinds.indexOf('menu_category_insert');
+  const iGrp = kinds.indexOf('modifier_update');
+  const iDish = kinds.indexOf('menu_import');
+  const iLink = kinds.lastIndexOf('modifier_update');
+  assert.ok(iSec >= 0 && iGrp > iSec && iDish > iGrp && iLink > iDish,
+    'section → add-on group → dishes → section links: ' + kinds.join(', '));
+  assert.strictEqual(queued[iSec].payload.id, 'night-grill');
+  const grp = queued[iGrp].payload;
+  assert.strictEqual(grp.groupName, 'Garlic butter');
+  assert.strictEqual(grp.price, 12);
+  assert.strictEqual(grp.items.length, 0,
+    'no links before the dishes exist — item_modifier references item(id)');
+  const imp = queued[iDish].payload;
+  assert.strictEqual(imp.dishes.length, 1);
+  assert.strictEqual(imp.dishes[0].addons.length, 1);
+  assert.strictEqual(imp.dishes[0].addons[0], grp.id,
+    'the dish op names the add-on group the file defined');
+  const link = queued[iLink].payload;
+  assert.strictEqual(link.items.length, 1, 'the link rides once the dish exists');
+  assert.strictEqual(link.items[0], imp.dishes[0].id);
+
+  // A file from before the type column existed still imports whole.
+  const old = F.menuImportPlan('name,section,price\nOld Dish,Night Grill,90');
+  assert.strictEqual(old.err.length, 0, 'an old header is still a dish list');
+  assert.strictEqual(old.add.length, 1);
+
+  // And the export carries all three kinds, so a round trip loses nothing.
+  const out = F.menuCsv();
+  assert.match(out, /^type,name,section,price/, 'the header names the type column');
+  assert.match(out, /\nsection,/, 'the sections are in the file');
+  assert.match(out, /\ndish,/, 'and the dishes');
+});
+
+/* AND THE ADD-ON EDITOR'S OWN WRITES REACH THE OUTLET. `setMods()` queued
+   `modifier_update` with a label and NO PAYLOAD — the same class as the
+   section ops — so every add-on created, repriced or republished on the till
+   lived in one browser's session and reached the outlet never, while the
+   toast said it was saved. */
+test('an add-on edited on the till goes out whole, and a removed one is removed', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  F.setMods(F.modList().concat([{ id: 'mod_x', name: 'Extra cheese', price: 5, cats: ['mains'] }]),
+    'Extra cheese added');
+  const op = queued.filter((q) => q.kind === 'modifier_update').pop();
+  assert.ok(op, 'the op is queued at all');
+  ['group', 'groupName', 'id', 'name', 'price', 'items'].forEach((k) => {
+    assert.ok(op.payload[k] !== undefined, 'the op carries ' + k + ': ' + JSON.stringify(op.payload));
+  });
+  assert.strictEqual(op.payload.group, 'mod_x',
+    'one group per till-made add-on, under the add-on\'s own id');
+  assert.ok(Array.isArray(op.payload.items), 'the section links ride as items');
+
+  F.setMods(F.modList().filter((x) => x.id !== 'mod_x'), 'Extra cheese removed');
+  const rm = queued.filter((q) => q.kind === 'modifier_remove').pop();
+  assert.ok(rm && rm.payload.id === 'mod_x' && rm.payload.group === 'mod_x',
+    'the removal reaches the outlet instead of being resurrected by the next bootstrap');
+
+  // The bare call this replaced must never come back.
+  assert.ok(!/this\.queue\("modifier_update", line/.test(SRC),
+    'no modifier_update is queued without its payload');
 });
