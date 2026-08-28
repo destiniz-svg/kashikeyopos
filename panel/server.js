@@ -399,7 +399,10 @@ function asCard(b) {
   const summary = b.state === 'live' ? {
     company: b.company, outlets: b.outlets || [], devices: b.devices || {},
     days: b.days || [], licence: b.licence || null, planRequest: b.planRequest || null,
-    install: b.db
+    install: b.db,
+    backup: b.backup || null,
+    schema: { version: b.schemaVersion, head: b.schemaHead || null,
+      behind: b.behind === true }
   } : null;
   return {
     id: b.id,
@@ -483,6 +486,43 @@ app.get('/api/signups', authed, async (req, res, next) => {
       + ' install_id, created_at, decided_at FROM panel.signup'
       + " ORDER BY (status IN ('new','contacted')) DESC, created_at DESC LIMIT 200");
     res.set('cache-control', 'no-store').json({ signups: q.rows });
+  } catch (e) { next(e); }
+});
+
+/* ── THE USAGE REPORT, OUTLET BY OUTLET ─────────────────────────────────────
+   The card is a glance; this is the report a seller actually talks a customer
+   through: each outlet's trading windows, daily series, device health and QR
+   uptake. Registry mode only — on a dedicated deployment the seller has no
+   way into the customer's database, which is the whole design of that mode,
+   and the platform door serves the summary it always served.
+
+   `?format=csv` hands back the daily series as a file — one row per outlet
+   per day — because the next thing a seller does with a usage report is put
+   it in a spreadsheet. */
+app.get('/api/installs/:id/usage', authed, async (req, res, next) => {
+  if (!REGISTRY.registryMode()) {
+    return res.status(409).json({ error: 'usage reports read the registry'
+      + ' directly — on a dedicated deployment use the install\'s own reports' });
+  }
+  try {
+    const u = await REGISTRY.usage(req.params.id);
+    if (!u) return res.status(404).json({ error: 'no such business' });
+    if (String(req.query.format || '') === 'csv') {
+      const esc = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+      const lines = ['business,outlet,date,net,tickets,covers'];
+      for (const ot of (u.outlets || [])) {
+        for (const d of (ot.days || [])) {
+          lines.push([esc(u.company || u.name), esc(ot.name), d.date,
+            d.net, d.tickets, d.covers].join(','));
+        }
+      }
+      res.set('content-type', 'text/csv; charset=utf-8');
+      res.set('content-disposition', 'attachment; filename="usage-'
+        + String(u.name || u.id).replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40)
+        + '-' + new Date().toISOString().slice(0, 10) + '.csv"');
+      return res.send(lines.join('\n') + '\n');
+    }
+    res.set('cache-control', 'no-store').json(u);
   } catch (e) { next(e); }
 });
 

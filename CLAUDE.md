@@ -4138,6 +4138,44 @@ seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.
 Trial enforcement is a person's decision, not automated — the panel monitors.
 
+### The usage report is outlet-wise, and the edit sheet fits the world it is in
+
+The dashboard card sums a business into one line, which is right for a glance
+and useless for the conversation a seller actually has — "your Malé store is
+carrying the whole chain" is an OUTLET sentence. **Usage** on a live business
+opens the drill-in: for each active outlet, the windows a vendor report
+normally carries (today, last 7, last 30, this month, last month — net, bills,
+covers, average ticket, every one derived server-side), a 30-day daily series,
+the device health (writers, quiet-over-an-hour, last push), and how much the
+QR portal is being used. **Still aggregates only** — sums, counts and averages
+per outlet per day, never a member, never a staff row, never a line item — and
+every read lands on the business's own trail as `platform_read`, exactly like
+the card. `?format=csv` hands the daily series back as a file, one row per
+outlet per day, because the next thing a seller does with a usage report is
+put it in a spreadsheet.
+
+**Registry mode's Edit is the LICENCE sheet**, not the dedicated-install form
+it used to open — base URL, platform key and setup code are fields that mean
+nothing for a business whose database this panel opens directly, and they
+stood around the four that do: kind, trial end, extending it (+7/+14/+30,
+server-side "from today or where it stood, whichever is later"), and the note
+the customer reads on their own Settings screen. The card also carries the two
+fleet facts the registry can answer and one business cannot: **the backup
+shelf** (`chain.backup` in the registry — last good copy and its age, a FAILED
+last run named; no rows at all reads as fact, not alarm, because an install
+with no destination is a stated choice) and **schema state** (version against
+head, "behind head" as a warning, because a business behind head is one whose
+requests `requireAtHead()` is refusing).
+
+**And the card's fourteen days used to cost fourteen queries each.** `takings()`
+asked each outlet one question per day, so a dashboard over this dev cluster's
+63 businesses took 19 seconds to load; the database groups by day in one pass
+now — one query per outlet — and the same load measures 0.2 s. The usage
+report was written on the grouped shape from the start. `test/panel.test.js`
+drives the whole road: a provisioned outlet, a rung bill, a paired till and a
+shelf row, read back through `usage()`, over HTTP, and as CSV — and the drive
+in Chromium proves an extension lands in the business's own `chain.licence`.
+
 ### Provisioning is one button, and it never handles the password
 
 Standing a store up was six manual acts before the panel was even opened —

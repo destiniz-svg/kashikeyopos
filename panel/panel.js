@@ -148,8 +148,10 @@
      reason this file changed. Set from the overview's own answer, never
      guessed. */
   var WORD = { one: "install", many: "installs", One: "Install", Many: "Installs" };
+  var REGMODE = false;
   function setWord(mode) {
-    WORD = mode === "registry"
+    REGMODE = mode === "registry";
+    WORD = REGMODE
       ? { one: "business", many: "businesses", One: "Business", Many: "Businesses" }
       : { one: "install", many: "installs", One: "Install", Many: "Installs" };
   }
@@ -243,6 +245,161 @@
       pr.note ? el("div", { text: pr.note }) : null]);
   }
 
+  /* ── THE LICENCE SHEET, for a business beside a registry ────────────────────
+     Registry mode used to open the dedicated-install sheet here — base URL,
+     platform key, setup code — three fields that mean nothing for a business
+     whose database this panel opens directly, around the four that do. This is
+     those four: what they are on, when the trial ends, extending it, and the
+     note the customer reads on their own Settings screen. */
+  function licenceSheet(inst, reload) {
+    var err = el("div", { class: "err", style: "display:none" });
+    function fail(m) { err.textContent = m; err.style.display = "block"; }
+    var f = {
+      kind: el("select", {}, ["trial", "paid", "internal"].map(function (k) {
+        var opt = el("option", { value: k, text: k[0].toUpperCase() + k.slice(1) });
+        if (inst.kind === k) opt.setAttribute("selected", "");
+        return opt;
+      })),
+      trialEnds: el("input", { type: "date",
+        value: inst.trial_ends ? String(inst.trial_ends).slice(0, 10) : "" }),
+      customerNote: el("input", {
+        placeholder: "shown to the customer on their own Settings screen — optional",
+        value: inst.customer_note || "" })
+    };
+    function field(label, input) {
+      return el("div", { class: "field" }, [el("label", { text: label }), input]);
+    }
+    /* Extending by DAYS, not by typing a date: the server moves the deadline
+       forward from today or from where it stood, whichever is later, so an
+       expired trial gets the days rather than a date in the past. */
+    function extendBtn(days) {
+      var b = el("button", { class: "mini", text: "+" + days + " days" });
+      b.onclick = function () {
+        b.disabled = true; b.textContent = "Extending…";
+        api("PATCH", "/api/installs/" + inst.id, { extendDays: days }).then(function (r) {
+          if (r.status !== 200) { b.disabled = false; b.textContent = "+" + days + " days";
+            return fail((r.body && r.body.error) || "could not extend"); }
+          close(); reload();
+        });
+      };
+      return b;
+    }
+    var save = el("button", { class: "cta", text: "Save", onclick: function () {
+      api("PATCH", "/api/installs/" + inst.id, {
+        kind: f.kind.value, trialEnds: f.trialEnds.value || null,
+        customerNote: f.customerNote.value
+      }).then(function (r) {
+        if (r.status !== 200) return fail((r.body && r.body.error) || "save failed");
+        close(); reload();
+      });
+    } });
+    var scrim = el("div", { class: "scrim" }, [
+      el("div", { class: "sheet" }, [
+        el("h2", { text: inst.name }),
+        el("div", { class: "sub", text: "The licence is written into the business's"
+          + " own database, where the till reads its countdown. Paid and internal"
+          + " carry no end date." }),
+        err,
+        el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
+        inst.kind === "trial"
+          ? el("div", { class: "field" }, [el("label", { text: "Extend the trial" }),
+            el("div", { style: "display:flex;gap:8px" },
+              [extendBtn(7), extendBtn(14), extendBtn(30)])])
+          : null,
+        field("Note to the customer", f.customerNote),
+        el("div", { class: "acts" }, [save])])]);
+    scrim.addEventListener("click", function (ev) { if (ev.target === scrim) close(); });
+    function close() { scrim.remove(); }
+    document.body.appendChild(scrim);
+  }
+
+  /* ── THE USAGE REPORT, OUTLET BY OUTLET ─────────────────────────────────────
+     The card sums a business into one line; this is the conversation — each
+     outlet's windows, its daily trend, its devices, its QR uptake. Every
+     figure is the server's; an outlet with nothing traded says so. */
+  function fmtAge(ts) {
+    if (!ts) return "never";
+    var h = Math.floor((Date.now() - new Date(ts).getTime()) / 3600e3);
+    if (h < 1) return "under an hour ago";
+    if (h < 48) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  }
+  function usageSheet(inst) {
+    var body = el("div", { class: "sub", text: "Reading…" });
+    var head = el("h2", { text: "Usage · " + inst.name });
+    var dl = el("button", { class: "mini", text: "Download CSV", onclick: function () {
+      dl.disabled = true; dl.textContent = "Preparing…";
+      fetch("/api/installs/" + inst.id + "/usage?format=csv", {
+        headers: { authorization: "Bearer " + TOKEN } })
+        .then(function (r) { return r.blob(); })
+        .then(function (b) {
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(b);
+          a.download = "usage-" + String(inst.name).replace(/[^A-Za-z0-9._-]+/g, "-") + ".csv";
+          document.body.appendChild(a); a.click(); a.remove();
+          dl.disabled = false; dl.textContent = "Download CSV";
+        })
+        .catch(function () { dl.disabled = false; dl.textContent = "Could not download"; });
+    } });
+    var scrim = el("div", { class: "scrim" }, [
+      el("div", { class: "sheet", style: "max-width:640px" }, [head,
+        el("div", { class: "sub", text: "30 days per outlet — aggregates only,"
+          + " and the read is on the business's own audit trail." }),
+        body,
+        el("div", { class: "acts" }, [dl])])]);
+    scrim.addEventListener("click", function (ev) { if (ev.target === scrim) scrim.remove(); });
+    document.body.appendChild(scrim);
+
+    function stat(k, v, s) {
+      return el("div", { class: "kpi", style: "min-width:96px;padding:10px 12px" }, [
+        el("div", { class: "k", text: k }),
+        el("div", { class: "v mono", text: v, style: "font-size:15px" }),
+        s ? el("div", { class: "s", text: s }) : null]);
+    }
+    api("GET", "/api/installs/" + inst.id + "/usage").then(function (r) {
+      if (r.status !== 200 || !r.body) {
+        body.textContent = (r.body && r.body.error) || "could not read the report";
+        return;
+      }
+      var u = r.body;
+      if (u.state !== "live") { body.textContent = "That business is " + u.state + "."; return; }
+      var cur = u.currency || "";
+      var kids = [];
+      (u.outlets || []).forEach(function (ot) {
+        var w30 = ot.last30 || {};
+        kids.push(el("div", { style: "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)" }, [
+          el("div", { style: "display:flex;align-items:baseline;gap:10px" }, [
+            el("b", { text: ot.name }),
+            el("span", { class: "sub", text: ot.slug + " · " + ot.tz })]),
+          el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" }, [
+            stat("Today", fmtMoney((ot.today || {}).net, cur), ((ot.today || {}).tickets || 0) + " bills"),
+            stat("Last 7d", fmtMoney((ot.last7 || {}).net, cur), ((ot.last7 || {}).tickets || 0) + " bills"),
+            stat("Last 30d", fmtMoney(w30.net, cur),
+              (w30.tickets || 0) + " bills · avg " + fmtMoney(w30.avgTicket, "")),
+            stat("This month", fmtMoney((ot.thisMonth || {}).net, cur),
+              ((ot.thisMonth || {}).covers || 0) + " covers"),
+            stat("Last month", fmtMoney((ot.lastMonth || {}).net, cur),
+              ((ot.lastMonth || {}).tickets || 0) + " bills")]),
+          (function () {
+            var s = sparkline((ot.days || []).slice(-14));
+            return s ? el("div", { style: "margin-top:6px" }, [s]) : null;
+          })(),
+          /* `.meta` is styled under `.card` only, and this sits in a sheet —
+             without its own flex the spans run together into one word. */
+          el("div", { style: "display:flex;flex-wrap:wrap;gap:6px 14px;"
+            + "font-size:11.5px;color:var(--text-muted);margin-top:6px" }, [
+            el("span", { text: (ot.devices || {}).writers
+              ? ot.devices.writers + " till" + (ot.devices.writers === 1 ? "" : "s")
+                + (ot.devices.quiet ? " · " + ot.devices.quiet + " quiet >1h" : " · all pushing")
+              : "no tills paired" }),
+            el("span", { text: "last push " + fmtAge((ot.devices || {}).lastPush) }),
+            el("span", { text: (ot.qrOrders30 || 0) + " QR orders in 30d" })])]));
+      });
+      if (!kids.length) kids.push(el("div", { class: "sub", text: "No outlets yet." }));
+      body.className = ""; body.replaceChildren(frag(kids));
+    });
+  }
+
   function installCard(inst, reload) {
     var st = statusOf(inst);
     var s = (inst.live || {}).summary || null;
@@ -260,6 +417,29 @@
       } else meta.push(el("span", { text: "no tills paired yet" }));
       if (today) meta.push(el("span", { text: today.covers + " covers today" }));
       if (s.commit) meta.push(el("span", { class: "mono", text: String(s.commit).slice(0, 7) }));
+      /* A business behind schema head is one whose requests are being refused
+         by name until the fleet runner catches it up — a warning, not trivia. */
+      if (s.schema && s.schema.behind) {
+        meta.push(el("span", { class: "warn-t", text: "schema " + s.schema.version
+          + " of " + s.schema.head + " — behind head" }));
+      }
+      /* The backup shelf, from the registry. No rows is a stated state — an
+         install with no destination takes no copies and says so at boot — so
+         it reads as fact, not alarm. */
+      if (s.backup) {
+        if (!s.backup.lastOk) {
+          meta.push(el("span", { class: "warn-t",
+            text: "last backup FAILED" + (s.backup.lastGoodAt
+              ? " · last good " + fmtAge(s.backup.lastGoodAt) : "") }));
+        } else if (s.backup.ageHours !== null && s.backup.ageHours > 48) {
+          meta.push(el("span", { class: "warn-t",
+            text: "backup " + fmtAge(s.backup.lastGoodAt) }));
+        } else if (s.backup.lastGoodAt) {
+          meta.push(el("span", { text: "backup " + fmtAge(s.backup.lastGoodAt) }));
+        }
+      } else if (REGMODE) {
+        meta.push(el("span", { text: "no backup recorded" }));
+      }
     } else if (st.note) {
       meta.push(el("span", { class: "warn-t", text: st.note }));
     }
@@ -313,7 +493,14 @@
             return b;
           })()
           : null,
-        el("button", { class: "mini", text: "Edit", onclick: function () { sheet(inst, reload); } })])]);
+        REGMODE && s
+          ? el("button", { class: "mini", text: "Usage",
+            onclick: function () { usageSheet(inst); } })
+          : null,
+        el("button", { class: "mini", text: "Edit", onclick: function () {
+          if (REGMODE) licenceSheet(inst, reload);
+          else sheet(inst, reload);
+        } })])]);
   }
 
   /* ── store requests from the website ──────────────────────────────────── */

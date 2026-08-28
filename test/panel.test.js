@@ -393,6 +393,81 @@ test('a business is read from the registry, and its licence written to it', opts
     const trail = await db.ownerFor(made.db_name).query(
       "SELECT count(*)::int AS n FROM chain.audit WHERE action = 'licence_set'");
     assert.strictEqual(trail.rows[0].n, 1, 'one change, one trail row');
+
+    /* ═══ THE USAGE REPORT, OUTLET BY OUTLET ═══════════════════════════════
+       The dashboard card sums a business into one line; the usage report is
+       the drill-in a seller talks a customer through. Provision a real
+       outlet, ring one bill directly (constraint-satisfying — this test is
+       about the report, not about how a bill is rung), pair a till, and put
+       a good copy on the registry's backup shelf — then read all of it back
+       the way the panel does. */
+    const { provisionOutlet } = require('../src/provision');
+    const made2 = await provisionOutlet({
+      db: made.db_name, code: 'PNL', name: 'Panel Outlet',
+      slug: 'panelusage' + String(Date.now()).slice(-6), tz: 'Indian/Maldives' });
+    const own = db.ownerFor(made.db_name);
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Indian/Maldives' })
+      .format(new Date());
+    await own.query(
+      'INSERT INTO outlet_' + made2.id + '.sale'
+      + ' (receipt_no, business_date, covers, subtotal, discount, net, service,'
+      + '  tax_code, tax_label, tax_rate, tax, rounding, total, closed_by)'
+      + " VALUES ('PNL-USAGE-1', $1, 3, 100, 0, 100, 10, 'GGST', 'GGST 8%', 8,"
+      + '  8.80, 0.20, 119, gen_random_uuid())', [day]);
+    await own.query(
+      'INSERT INTO chain.device (outlet_id, label, kind, paired_at, last_push_at)'
+      + " VALUES ($1, 'Panel Till', 'till', now(), now())", [made2.id]);
+    const bizRow = await db.control().query(
+      'SELECT id FROM chain.business WHERE db_name = $1', [made.db_name]);
+    const bizId = Number(bizRow.rows[0].id);
+    await db.control().query(
+      'INSERT INTO chain.backup (business_id, db_name, ok, finished_at, bytes)'
+      + ' VALUES ($1, $2, true, now(), 12345)', [bizId, made.db_name]);
+
+    const u = await REG.usage(bizId);
+    assert.strictEqual(u.state, 'live');
+    assert.strictEqual(u.outlets.length, 1, 'one outlet, reported by itself');
+    const ot = u.outlets[0];
+    assert.strictEqual(ot.name, 'Panel Outlet');
+    assert.strictEqual(ot.today.net, 100, 'today carries the bill\'s net');
+    assert.strictEqual(ot.today.tickets, 1);
+    assert.strictEqual(ot.last30.net, 100);
+    assert.strictEqual(ot.last30.avgTicket, 100, 'the average is derived, never sent');
+    assert.strictEqual(ot.thisMonth.covers, 3);
+    assert.strictEqual(ot.devices.writers, 1, 'the till is counted');
+    assert.strictEqual(ot.devices.quiet, 0, 'and it is pushing');
+    assert.strictEqual(ot.days.length, 30, 'a 30-day series, zero-filled');
+
+    // The read is on the business's own trail — a seller looking in is never
+    // invisible, on the drill-in exactly as on the card.
+    const seen = await own.query(
+      "SELECT count(*)::int AS n FROM chain.audit"
+      + " WHERE action = 'platform_read' AND entity = 'usage'");
+    assert.strictEqual(seen.rows[0].n, 1);
+
+    // And the card carries the shelf and the schema state.
+    const card = await REG.readBusiness((await db.control().query(
+      'SELECT * FROM chain.business WHERE id = $1', [bizId])).rows[0]);
+    assert.strictEqual(card.backup.lastOk, true, 'the last run was good');
+    assert.ok(card.backup.ageHours <= 1, 'and it just finished');
+    assert.strictEqual(card.behind, false,
+      'a business createBusiness just migrated is at head');
+
+    /* Over HTTP, with the seller's own session — and as CSV, because the next
+       thing a seller does with a usage report is put it in a spreadsheet. */
+    const viaHttp = await call(panelBase, 'GET', '/api/installs/' + bizId + '/usage',
+      undefined, token);
+    assert.strictEqual(viaHttp.status, 200, JSON.stringify(viaHttp.body));
+    assert.strictEqual(viaHttp.body.outlets[0].today.net, 100);
+    const csv = await fetch(panelBase + '/api/installs/' + bizId + '/usage?format=csv',
+      { headers: { authorization: 'Bearer ' + token } });
+    assert.strictEqual(csv.status, 200);
+    assert.match(csv.headers.get('content-type'), /text\/csv/);
+    const lines = (await csv.text()).trim().split('\n');
+    assert.strictEqual(lines[0], 'business,outlet,date,net,tickets,covers');
+    assert.strictEqual(lines.length, 31, 'a header and thirty days');
+    assert.ok(lines.some((l) => l.indexOf('"Panel Outlet",' + day + ',100,1,3') >= 0),
+      'the traded day is in the file: ' + lines[lines.length - 1]);
   } finally {
     await db.shutdown().catch(() => {});
     await DB.dropBusinessDatabases().catch(() => {});
