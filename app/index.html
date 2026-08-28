@@ -1526,7 +1526,10 @@
               </div>
 
               <div style="{{ ioImportStyle }}">
-                <div style="font-size:11.5px;color:var(--text-dim);line-height:1.6">Paste the rows here — the template's columns, header row included.</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                  <button onClick="{{ ioPick }}" style="padding:10px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Choose a CSV file…</button>
+                  <span style="font-size:11.5px;color:var(--text-dim);line-height:1.6">{{ ioFileNote }}</span>
+                </div>
                 <textarea value="{{ ioText }}" onChange="{{ onIoText }}" placeholder="name,section,price,description,station,tags,spice,addons,visible" style="width:100%;height:150px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--text);outline:none;white-space:pre"></textarea>
                 <div style="{{ ioPlanStyle }}">
                   <sc-for list="{{ ioPlanRows }}" as="r" hint-placeholder-count="3">
@@ -7706,7 +7709,28 @@ class Component extends DCLogic {
         ioDownload: () => this.downloadText("kashikeyo-menu.csv", csv),
         ioCopy: () => { try { navigator.clipboard.writeText(csv); this.toast("Menu CSV copied"); } catch (e) { this.toast("Select the text and copy it manually", "warn"); } },
         ioTemplate: () => this.downloadText("kashikeyo-menu-template.csv", this.menuTemplateCsv()),
-        ioText: m.text || "", onIoText: (e) => put({ text: e.target.value }),
+        ioText: m.text || "", onIoText: (e) => put({ text: e.target.value, file: null }),
+        /* A CSV IS A FILE, so the import takes one. The picker is minted the
+           way the setup file's is — an input the template never holds — and
+           what it reads lands in the SAME text the paste box feeds: one road
+           to the plan, however the rows arrive. */
+        ioPick: () => {
+          const inp = document.createElement("input");
+          inp.type = "file";
+          inp.accept = ".csv,text/csv,text/plain";
+          inp.onchange = () => {
+            const f = (inp.files || [])[0];
+            if (!f) return;
+            const rd = new FileReader();
+            rd.onerror = () => this.toast("That file could not be read", "warn");
+            rd.onload = () => put({ text: String(rd.result || ""), file: f.name });
+            rd.readAsText(f);
+          };
+          inp.click();
+        },
+        ioFileNote: m.file
+          ? m.file + " loaded — check the plan below, then press import"
+          : "…or paste the rows below — the template's columns, header row included",
         ioPlanStyle: (m.text || "").trim() ? "display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
         ioPlanRows: plan ? [
           { k: "New dishes", v: String(plan.add.length), vs: "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (plan.add.length ? "var(--green)" : "var(--text-dim)") },
@@ -10825,7 +10849,9 @@ class Component extends DCLogic {
         { label: "Sort \u00b7 " + sortNow[1], go: () => { const i = sorts.findIndex((x) => x[0] === sortKey); this.setState({ menuSort: sorts[(i + 1) % sorts.length][0] }); } },
         { label: "Sections \u00b7 " + cats.length, go: () => this.setState({ menuMode: "sections" }) },
         { label: "Add-ons \u00b7 " + this.modList().length, go: () => this.setState({ menuMode: "addons" }) },
-        { label: "Import / export", go: () => this.openMenuIO() },
+        /* "Import CSV" opens the import TAB, not the export one a spreadsheet
+           in hand has no use for; the export stays one tap away inside. */
+        { label: "Import CSV", go: () => this.openMenuIO("import") },
         { label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) },
         { label: "New dish", primary: true, go: () => this.openDish(null) }
       ],
@@ -14438,7 +14464,10 @@ class Component extends DCLogic {
       }
     });
   }
-  openMenuIO() { this.setState({ modal: { kind: "menuio", tab: "export", text: "" } }); }
+  openMenuIO(tab) {
+    this.setState({ modal: { kind: "menuio",
+      tab: tab === "import" ? "import" : "export", text: "" } });
+  }
 
   // ── Menu interchange ─────────────────────────────────────────────────────
   // One flat CSV, one row per dish, semicolons inside a cell so a merchant can

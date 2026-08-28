@@ -4610,3 +4610,25 @@ test('a discounted receipt shows its discount on every surface', () => {
   assert.match(SRC, /discReason: row\.discWhy \|\| null, discBy: row\.discBy \|\| null,/,
     'and the sale op sends them under the names the server reads');
 });
+
+/* ═══ THE MENU IMPORT TAKES A FILE ══════════════════════════════════════════
+   The Import & export modal had a paste box and a dry-run plan, and no way to
+   hand it the .csv the spreadsheet actually saved — and Menu Master's one
+   button opened on the EXPORT tab, so "import a CSV" began with a download
+   screen. The dishes screen opens straight into import now, and the picker's
+   file lands in the SAME text the paste box feeds: one road to the plan,
+   however the rows arrive. */
+test('the menu import takes a file, and Menu Master opens straight into it', () => {
+  assert.match(SRC, /\{ label: "Import CSV", go: \(\) => this\.openMenuIO\("import"\) \}/,
+    'the dishes screen has the direct door');
+  assert.match(SRC, /tab: tab === "import" \? "import" : "export"/,
+    'and openMenuIO lands on the tab it was asked for');
+  assert.match(SRC, /inp\.accept = "\.csv,text\/csv,text\/plain";/,
+    'the picker takes a .csv file');
+  assert.match(SRC, /rd\.onload = \(\) => put\(\{ text: String\(rd\.result \|\| ""\), file: f\.name \}\);/,
+    'and what it reads feeds the same plan the paste box does');
+  assert.match(SRC, /onClick="\{\{ ioPick \}\}"/, 'the button is in the template');
+  // The op still carries the dishes — the fix that made import real at all.
+  assert.match(SRC, /this\.queue\("menu_import", "Menu imported \\u00b7 " \+ label, "menu_items",\s*\n\s*\{ dishes: dishes \}\)/,
+    'and the import op still carries the dishes');
+});

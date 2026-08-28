@@ -1604,6 +1604,20 @@ gone at all. It composes its payload through `opFor("menu", …)`, the one
 mapping every dish write goes through, so an imported dish and a typed one
 arrive in the same shape.
 
+**And the import takes a FILE now, not only a paste.** The Import & export
+modal had a paste box and a dry-run plan, and no way to hand it the `.csv`
+the spreadsheet actually saved — and Menu Master's one button opened on the
+EXPORT tab, so "import a CSV" began with a download screen. Menu Master
+carries **Import CSV**, opening straight onto the import tab; *Choose a CSV
+file…* reads the file into the SAME text the paste box feeds, so there is one
+road to the plan however the rows arrive, and the plan still dry-runs first:
+new dishes counted, updates counted, a bad row rejected BY NAME (row number,
+dish, reason) before anything is written. Driven end to end in Chromium
+through the real file chooser: the new dish landed at the outlet in its
+section with its tags and heat, the existing dish's price was updated in
+place, and the unknown-section row was refused on screen.
+`test/wiring.test.js` pins the door, the picker and the one road.
+
 Measured by driving the real editor — tick Chef's pick and Signature, set the
 heat to Hot, Create dish:
 
