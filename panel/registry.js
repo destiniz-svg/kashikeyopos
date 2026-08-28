@@ -15,11 +15,11 @@
 
    So: read the registry, and each business's own database, directly.
 
-   THE PANEL STILL TOUCHES NOTHING IT DOES NOT NEED. It reads company name,
-   outlet list, device staleness, fourteen days of takings and the licence —
-   the same aggregates the platform door served and no more. Never a member,
-   never a staff row, never a line item. What changed is the transport, not
-   the promise.
+   THE PANEL IS THE DEVELOPER'S, AND IT READS SYSTEM DATA ONLY. Company name,
+   outlet list, device sync health, sync-op traffic, database size, schema
+   state, the backup shelf and the licence — never a sales figure, never a
+   member, never a staff row, never a line item. A customer's takings are
+   reported by their own back office to the people entitled to read them.
 
    AND EVERY READ IS ON THAT BUSINESS'S OWN TRAIL, exactly as the platform
    door's were: a seller looking in is never invisible.
@@ -27,8 +27,6 @@
 
 const { control, ownerFor, CONTROL_DB } = require('../src/db');
 const { headCount } = require('../src/scripts/migrate');
-
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /* Is this panel beside a registry, or is it the old remote-install panel? The
    answer decides which half of this service is real, so it is asked once and
@@ -90,7 +88,14 @@ async function readBusiness(b) {
     out.devices = dev.rows[0];
     out.licence = await readLicence(o);
     out.planRequest = await readPlanRequest(o);
-    out.days = await takings(o, outlets.rows);
+    /* SYSTEM DATA, NEVER TRADE. This panel is the developer's, and a
+       customer's takings are the customer's — their own back office reports
+       them to the people entitled to read them. What an operator needs is
+       TRAFFIC and HEALTH: how many writes the sync lane carried, how big the
+       database is, whether anybody is signed in. */
+    out.days = await syncTraffic(o, outlets.rows);
+    out.dbBytes = await dbSize(o);
+    out.sessions = await sessionsActive(o);
     /* A business BEHIND SCHEMA HEAD is one whose requests requireAtHead() is
        refusing by name — a customer down that nobody outside the shop would
        otherwise see. The head is the count of business migration files, the
@@ -115,42 +120,71 @@ async function readBusiness(b) {
   return out;
 }
 
-/* Fourteen days, in the outlet's OWN timezone. A business date is the outlet's
-   local date — that is the whole point of migration 016 — so a seller's
-   dashboard computing days in UTC would disagree with the owner's own Today
-   screen by a third of every day's takings. */
-async function takings(o, outlets) {
+/* THE TRAFFIC SERIES IS SYNC OPS, NOT SALES. Every write a till makes goes
+   through one seam and lands in op_log, so ops-per-day is the honest measure
+   of how hard a business is using the system — and it says nothing about
+   money, which is not this panel's to read. Bucketed by day in the outlet's
+   own timezone; one grouped query per outlet, never one per day (the money
+   version of this loop once cost 19 s across 63 businesses). op_log is a
+   90-day replay window, which more than covers a 14-day series. */
+async function syncTraffic(o, outlets) {
   if (!outlets.length) return [];
   const tz = outlets[0].tz || 'Indian/Maldives';
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz });
-  const today = fmt.format(new Date());
-  /* ONE GROUPED QUERY PER OUTLET, never one per day. The first version asked
-     each outlet fourteen separate questions, so a dashboard over a real fleet
-     paid 14 × outlets × businesses round-trips on every load — measured at
-     19 s across this dev cluster's 63 businesses. The database groups by day
-     in one pass. */
   const byDate = {};
   for (const out of outlets) {
     try {
       const q = await o.query(
-        'SELECT business_date::text AS date, coalesce(sum(net),0)::numeric AS net,'
-        + ' coalesce(sum(covers),0)::int AS covers, count(*)::int AS tickets'
-        + ' FROM outlet_' + Number(out.id) + '.sale'
-        + ' WHERE business_date >= $1::date - 13 AND voided_at IS NULL'
-        + ' GROUP BY business_date', [today]);
-      for (const r of q.rows) {
-        const d = byDate[r.date] || (byDate[r.date] = { net: 0, covers: 0, tickets: 0 });
-        d.net += Number(r.net); d.covers += r.covers; d.tickets += r.tickets;
-      }
+        'SELECT (applied_at AT TIME ZONE $1)::date::text AS date, count(*)::int AS ops'
+        + ' FROM outlet_' + Number(out.id) + '.op_log'
+        + " WHERE applied_at > now() - interval '15 days'"
+        + ' GROUP BY 1', [tz]);
+      for (const r of q.rows) byDate[r.date] = (byDate[r.date] || 0) + r.ops;
     } catch (e) { /* an outlet whose schema is mid-migration contributes 0 */ }
   }
   const days = [];
   for (let i = 13; i >= 0; i--) {
     const d = fmt.format(new Date(Date.now() - i * 86400e3));
-    const r = byDate[d] || { net: 0, covers: 0, tickets: 0 };
-    days.push({ date: d, net: r2(r.net), covers: r.covers, tickets: r.tickets });
+    days.push({ date: d, ops: byDate[d] || 0 });
   }
   return days;
+}
+
+async function dbSize(o) {
+  try {
+    const q = await o.query('SELECT pg_database_size(current_database())::bigint AS b');
+    return Number(q.rows[0].b);
+  } catch (e) { return null; }
+}
+
+async function sessionsActive(o) {
+  try {
+    const q = await o.query('SELECT count(*)::int AS n FROM chain.session'
+      + ' WHERE revoked_at IS NULL AND expires_at > now()');
+    return q.rows[0].n;
+  } catch (e) { return null; }
+}
+
+/* THE APP'S OWN HEALTH, asked the way the platform asks it. /readyz checks
+   out every outlet's login role against its own schema, so its answer — and
+   how long it took — is the one line an operator wants at the top of the
+   page. A failure carries the endpoint's own body, which names the failing
+   outlet and the remedy. */
+async function appHealth(baseUrl) {
+  const url = String(baseUrl || '').replace(/\/+$/, '');
+  if (!url) return { ok: false, reason: 'APP_URL is not set on this panel' };
+  const t0 = Date.now();
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    const r = await fetch(url + '/readyz', { signal: ctl.signal });
+    clearTimeout(timer);
+    const body = await r.text().catch(() => '');
+    return { ok: r.status === 200, status: r.status, ms: Date.now() - t0,
+      detail: r.status === 200 ? null : body.slice(0, 400) };
+  } catch (e) {
+    return { ok: false, ms: Date.now() - t0, reason: e.message };
+  }
 }
 
 /* ── the backup shelf, read from the REGISTRY ───────────────────────────────
@@ -240,38 +274,18 @@ async function writeLicence(dbName, want) {
   return { pushed: true };
 }
 
-/* ── THE USAGE REPORT, OUTLET BY OUTLET ─────────────────────────────────────
-   The dashboard card sums a business into one line, which is right for a
-   glance and useless for the conversation a seller actually has — "your Malé
-   store is carrying the whole chain" is an OUTLET sentence. This is the
-   drill-in: for each active outlet, the trading windows a vendor report
-   normally carries (today, last 7, last 30, this month, last month), a daily
-   series, the device health, and how much the QR portal is being used.
+/* ── THE SYSTEM REPORT, OUTLET BY OUTLET ────────────────────────────────────
+   This panel is the DEVELOPER'S, and a customer's takings are the customer's:
+   their own back office reports money to the people entitled to read it, and
+   this report deliberately reads none. What an operator drills into is the
+   SYSTEM: how many writes the sync lane carried and when (op_log — every
+   till write goes through that one seam), how much of it arrived through the
+   QR portal, whether the devices that owe pushes are pushing, how big the
+   database has grown, and whether anybody is signed in.
 
-   STILL AGGREGATES ONLY. Sums, counts and averages per outlet per day — never
-   a member, never a staff row, never a line item — and the read lands on the
-   business's own trail like every other look the seller takes.
-
-   Every window is computed in the OUTLET'S OWN timezone from its own
-   `business_date`, the same figure the owner's Today screen reads; a seller's
-   report computed in UTC would disagree with the customer it is about by a
-   third of every day's takings. */
-function monthKey(dateStr) { return String(dateStr).slice(0, 7); }
-function prevMonthKey(dateStr) {
-  const y = Number(dateStr.slice(0, 4)); const m = Number(dateStr.slice(5, 7));
-  return m === 1 ? (y - 1) + '-12' : y + '-' + String(m - 1).padStart(2, '0');
-}
-function windowOf(rows, from, to) {
-  const w = { net: 0, tickets: 0, covers: 0 };
-  for (const r of rows) {
-    if (r.date < from || r.date > to) continue;
-    w.net += Number(r.net); w.tickets += r.tickets; w.covers += r.covers;
-  }
-  w.net = r2(w.net);
-  w.avgTicket = w.tickets ? r2(w.net / w.tickets) : 0;
-  return w;
-}
-
+   Counts of system events only — never a sale figure, never a member, never
+   a staff row, never a line item — and the read still lands on the
+   business's own trail: a developer looking in is never invisible either. */
 async function usage(businessId) {
   const q = await control().query(
     'SELECT id, name, db_name, status FROM chain.business WHERE id = $1', [businessId]);
@@ -283,9 +297,10 @@ async function usage(businessId) {
   try { o = ownerFor(b.db_name); await o.query('SELECT 1'); }
   catch (e) { out.state = 'unreachable'; out.note = e.message; return out; }
 
-  const co = await o.query('SELECT legal_name, base_currency FROM chain.company LIMIT 1');
+  const co = await o.query('SELECT legal_name FROM chain.company LIMIT 1');
   out.company = co.rows.length ? co.rows[0].legal_name : null;
-  out.currency = co.rows.length ? co.rows[0].base_currency : '';
+  out.dbBytes = await dbSize(o);
+  out.sessions = await sessionsActive(o);
   const outlets = await o.query(
     'SELECT id, name, slug, tz FROM chain.outlet WHERE active ORDER BY id');
 
@@ -302,44 +317,45 @@ async function usage(businessId) {
   for (const ot of outlets.rows) {
     const tz = ot.tz || 'Indian/Maldives';
     const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz });
-    const today = fmt.format(new Date());
     const dayAgo = (n) => fmt.format(new Date(Date.now() - n * 86400e3));
-    let rows = []; let qr30 = 0;
+    let opsByDate = {}; let qrByDate = {}; let ops24 = 0; let qr24 = 0;
     try {
-      /* Two months of daily aggregates in one grouped query — never a row per
-         sale — so last month is complete however long it was. */
+      /* One grouped query per table — 30 days of op traffic bucketed on the
+         outlet's own clock, and the last 24 hours as its own figure because
+         "today so far" and "yesterday's total" answer different questions. */
       const d = await o.query(
-        'SELECT business_date::text AS date, coalesce(sum(net),0)::numeric AS net,'
-        + ' count(*)::int AS tickets, coalesce(sum(covers),0)::int AS covers'
-        + ' FROM outlet_' + Number(ot.id) + '.sale'
-        + ' WHERE voided_at IS NULL AND business_date >= $1::date - 62'
-        + ' GROUP BY business_date ORDER BY business_date', [today]);
-      rows = d.rows.map((r) => ({ date: r.date, net: r2(r.net),
-        tickets: r.tickets, covers: r.covers }));
+        'SELECT (applied_at AT TIME ZONE $1)::date::text AS date, count(*)::int AS n'
+        + ' FROM outlet_' + Number(ot.id) + '.op_log'
+        + " WHERE applied_at > now() - interval '31 days' GROUP BY 1", [tz]);
+      d.rows.forEach((r) => { opsByDate[r.date] = r.n; });
+      const h = await o.query(
+        'SELECT count(*)::int AS n FROM outlet_' + Number(ot.id) + '.op_log'
+        + " WHERE applied_at > now() - interval '24 hours'");
+      ops24 = h.rows[0].n;
       const g = await o.query(
+        'SELECT (at AT TIME ZONE $1)::date::text AS date, count(*)::int AS n'
+        + ' FROM outlet_' + Number(ot.id) + '.guest_order'
+        + " WHERE at > now() - interval '31 days' GROUP BY 1", [tz]);
+      g.rows.forEach((r) => { qrByDate[r.date] = r.n; });
+      const gh = await o.query(
         'SELECT count(*)::int AS n FROM outlet_' + Number(ot.id) + '.guest_order'
-        + " WHERE at > now() - interval '30 days'");
-      qr30 = g.rows[0].n;
+        + " WHERE at > now() - interval '24 hours'");
+      qr24 = gh.rows[0].n;
     } catch (e) { /* an outlet whose schema is mid-migration reports zeros */ }
 
-    const byDate = Object.fromEntries(rows.map((r) => [r.date, r]));
-    const days = [];
+    const days = []; let ops7 = 0; let ops30 = 0; let qr30 = 0;
     for (let i = 29; i >= 0; i--) {
       const dte = dayAgo(i);
-      const r = byDate[dte];
-      days.push({ date: dte, net: r ? r.net : 0, tickets: r ? r.tickets : 0,
-        covers: r ? r.covers : 0 });
+      const ops = opsByDate[dte] || 0; const qr = qrByDate[dte] || 0;
+      days.push({ date: dte, ops: ops, qr: qr });
+      ops30 += ops; qr30 += qr;
+      if (i <= 6) ops7 += ops;
     }
-    const mk = monthKey(today); const pk = prevMonthKey(today);
     out.outlets.push({
       id: Number(ot.id), name: ot.name, slug: ot.slug, tz: tz,
-      today: windowOf(rows, today, today),
-      last7: windowOf(rows, dayAgo(6), today),
-      last30: windowOf(rows, dayAgo(29), today),
-      thisMonth: windowOf(rows, mk + '-01', mk + '-31'),
-      lastMonth: windowOf(rows, pk + '-01', pk + '-31'),
+      ops24h: ops24, ops7d: ops7, ops30d: ops30,
+      qr24h: qr24, qrOrders30: qr30,
       days: days,
-      qrOrders30: qr30,
       devices: devOf[Number(ot.id)]
         ? { writers: devOf[Number(ot.id)].writers, quiet: devOf[Number(ot.id)].quiet,
           lastPush: devOf[Number(ot.id)].last_push }
@@ -348,7 +364,7 @@ async function usage(businessId) {
   }
 
   if (outlets.rows.length) {
-    // A seller looking in is never invisible — same trail as the card read.
+    // A developer looking in is never invisible — same trail as the card read.
     await o.query(
       'INSERT INTO chain.audit (outlet_id, action, entity, after, scope)'
       + " VALUES ($1,'platform_read','usage',$2,'group')",
@@ -370,4 +386,4 @@ async function overview() {
 }
 
 module.exports = { registryMode, overview, readBusiness, writeLicence,
-  readLicence, differs, usage, readBackupShelf };
+  readLicence, differs, usage, readBackupShelf, appHealth };

@@ -50,10 +50,9 @@
     try { t ? localStorage.setItem("panel.token", t) : localStorage.removeItem("panel.token"); } catch (e) {}
   }
 
-  function fmtMoney(n, cur) {
-    var v = Number(n) || 0;
-    return (cur || "") + " " + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
+  /* There is deliberately NO money formatter in this file. This is the
+     developer's panel: it reads and renders system data — traffic, health,
+     size — and never a customer's sales figure. */
   /* CALENDAR DAYS, counted the same way the install counts them. It used to
      measure to the end of the last day and round up, so a trial the customer's
      own till called "2 days left" this panel called three — the same trial,
@@ -192,10 +191,11 @@
       document.createTextNode("Trial · ends " + String(inst.trial_ends).slice(0, 10))]);
   }
 
-  /* One hue, 2px, honest about zero — the standard stat-tile trend mark. */
+  /* One hue, 2px, honest about zero — the standard stat-tile trend mark.
+     The series is SYNC-OP TRAFFIC per day: system data, never a sale figure. */
   function sparkline(days) {
     var W = 100, H = 34, PAD = 3;
-    var nets = (days || []).map(function (d) { return Number(d.net) || 0; });
+    var nets = (days || []).map(function (d) { return Number(d.ops) || 0; });
     if (!nets.length) return null;
     var max = Math.max.apply(null, nets), min = 0;
     var span = (max - min) || 1;
@@ -209,7 +209,7 @@
     svg.setAttribute("height", "44");
     svg.setAttribute("preserveAspectRatio", "none");
     svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "Last 14 days of net takings");
+    svg.setAttribute("aria-label", "Last 14 days of sync traffic");
     var pl = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
     pl.setAttribute("points", pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" "));
     pl.setAttribute("fill", "none");
@@ -313,10 +313,11 @@
     document.body.appendChild(scrim);
   }
 
-  /* ── THE USAGE REPORT, OUTLET BY OUTLET ─────────────────────────────────────
-     The card sums a business into one line; this is the conversation — each
-     outlet's windows, its daily trend, its devices, its QR uptake. Every
-     figure is the server's; an outlet with nothing traded says so. */
+  /* ── THE SYSTEM REPORT, OUTLET BY OUTLET ────────────────────────────────────
+     The card sums a business into one line; this is the drill-in — each
+     outlet's sync traffic, QR traffic, device health. SYSTEM DATA ONLY: a
+     developer panel reads no sale figure, ever; a customer's takings are
+     their own back office's to report. */
   function fmtAge(ts) {
     if (!ts) return "never";
     var h = Math.floor((Date.now() - new Date(ts).getTime()) / 3600e3);
@@ -326,7 +327,7 @@
   }
   function usageSheet(inst) {
     var body = el("div", { class: "sub", text: "Reading…" });
-    var head = el("h2", { text: "Usage · " + inst.name });
+    var head = el("h2", { text: "System · " + inst.name });
     var dl = el("button", { class: "mini", text: "Download CSV", onclick: function () {
       dl.disabled = true; dl.textContent = "Preparing…";
       fetch("/api/installs/" + inst.id + "/usage?format=csv", {
@@ -343,8 +344,9 @@
     } });
     var scrim = el("div", { class: "scrim" }, [
       el("div", { class: "sheet", style: "max-width:640px" }, [head,
-        el("div", { class: "sub", text: "30 days per outlet — aggregates only,"
-          + " and the read is on the business's own audit trail." }),
+        el("div", { class: "sub", text: "30 days of system traffic per outlet —"
+          + " no sales data ever leaves the business, and the read is on its"
+          + " own audit trail." }),
         body,
         el("div", { class: "acts" }, [dl])])]);
     scrim.addEventListener("click", function (ev) { if (ev.target === scrim) scrim.remove(); });
@@ -363,23 +365,23 @@
       }
       var u = r.body;
       if (u.state !== "live") { body.textContent = "That business is " + u.state + "."; return; }
-      var cur = u.currency || "";
       var kids = [];
+      var fleet = [];
+      if (fmtBytes(u.dbBytes)) fleet.push(el("span", { text: "database " + fmtBytes(u.dbBytes) }));
+      if (u.sessions != null) fleet.push(el("span", { text: u.sessions + " live session" + (u.sessions === 1 ? "" : "s") }));
+      if (fleet.length) kids.push(el("div", { style: "display:flex;flex-wrap:wrap;gap:6px 14px;"
+        + "font-size:11.5px;color:var(--text-muted);margin-top:8px" }, fleet));
       (u.outlets || []).forEach(function (ot) {
-        var w30 = ot.last30 || {};
         kids.push(el("div", { style: "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)" }, [
           el("div", { style: "display:flex;align-items:baseline;gap:10px" }, [
             el("b", { text: ot.name }),
             el("span", { class: "sub", text: ot.slug + " · " + ot.tz })]),
           el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" }, [
-            stat("Today", fmtMoney((ot.today || {}).net, cur), ((ot.today || {}).tickets || 0) + " bills"),
-            stat("Last 7d", fmtMoney((ot.last7 || {}).net, cur), ((ot.last7 || {}).tickets || 0) + " bills"),
-            stat("Last 30d", fmtMoney(w30.net, cur),
-              (w30.tickets || 0) + " bills · avg " + fmtMoney(w30.avgTicket, "")),
-            stat("This month", fmtMoney((ot.thisMonth || {}).net, cur),
-              ((ot.thisMonth || {}).covers || 0) + " covers"),
-            stat("Last month", fmtMoney((ot.lastMonth || {}).net, cur),
-              ((ot.lastMonth || {}).tickets || 0) + " bills")]),
+            stat("Ops · 24h", String(ot.ops24h || 0), "writes through the sync lane"),
+            stat("Ops · 7d", String(ot.ops7d || 0), null),
+            stat("Ops · 30d", String(ot.ops30d || 0), null),
+            stat("QR · 24h", String(ot.qr24h || 0), "guest portal orders"),
+            stat("QR · 30d", String(ot.qrOrders30 || 0), null)]),
           (function () {
             var s = sparkline((ot.days || []).slice(-14));
             return s ? el("div", { style: "margin-top:6px" }, [s]) : null;
@@ -392,19 +394,27 @@
               ? ot.devices.writers + " till" + (ot.devices.writers === 1 ? "" : "s")
                 + (ot.devices.quiet ? " · " + ot.devices.quiet + " quiet >1h" : " · all pushing")
               : "no tills paired" }),
-            el("span", { text: "last push " + fmtAge((ot.devices || {}).lastPush) }),
-            el("span", { text: (ot.qrOrders30 || 0) + " QR orders in 30d" })])]));
+            el("span", { text: "last push " + fmtAge((ot.devices || {}).lastPush) })])]));
       });
       if (!kids.length) kids.push(el("div", { class: "sub", text: "No outlets yet." }));
       body.className = ""; body.replaceChildren(frag(kids));
     });
   }
 
+  function fmtBytes(b) {
+    if (b == null) return null;
+    var n = Number(b);
+    if (n >= 1073741824) return (n / 1073741824).toFixed(1) + " GB";
+    if (n >= 1048576) return (n / 1048576).toFixed(0) + " MB";
+    return Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+
   function installCard(inst, reload) {
     var st = statusOf(inst);
     var s = (inst.live || {}).summary || null;
+    // The trailing entry of the SYNC-TRAFFIC series — ops the lane carried
+    // today. This card reads no sale figure: system data only.
     var today = s && s.days && s.days.length ? s.days[s.days.length - 1] : null;
-    var cur = s && s.company ? s.company.currency : "";
 
     var meta = [];
     if (s) {
@@ -415,7 +425,8 @@
         meta.push(dv.quiet ? el("span", { class: "warn-t", text: t + " · " + dv.quiet + " quiet >1h" })
           : el("span", { text: t + " · all pushing" }));
       } else meta.push(el("span", { text: "no tills paired yet" }));
-      if (today) meta.push(el("span", { text: today.covers + " covers today" }));
+      if (s.sessions != null) meta.push(el("span", { text: s.sessions + " live session" + (s.sessions === 1 ? "" : "s") }));
+      if (fmtBytes(s.dbBytes)) meta.push(el("span", { text: "db " + fmtBytes(s.dbBytes) }));
       if (s.commit) meta.push(el("span", { class: "mono", text: String(s.commit).slice(0, 7) }));
       /* A business behind schema head is one whose requests are being refused
          by name until the fleet runner catches it up — a warning, not trivia. */
@@ -450,8 +461,8 @@
     if (s) {
       figs = el("div", { class: "figs" }, [
         el("div", { class: "today" }, [
-          el("div", { class: "k", text: "Today, net" }),
-          el("div", { class: "v mono", text: today ? fmtMoney(today.net, cur) : "—" })]),
+          el("div", { class: "k", text: "Sync ops · today" }),
+          el("div", { class: "v mono", text: today ? String(today.ops) : "—" })]),
         sparkline(s.days)]);
     }
 
@@ -494,7 +505,7 @@
           })()
           : null,
         REGMODE && s
-          ? el("button", { class: "mini", text: "Usage",
+          ? el("button", { class: "mini", text: "System",
             onclick: function () { usageSheet(inst); } })
           : null,
         el("button", { class: "mini", text: "Edit", onclick: function () {
@@ -572,7 +583,7 @@
       foot]);
   }
 
-  function kpis(installs, signups) {
+  function kpis(installs, signups, appHealth) {
     var act = installs.filter(function (i) { return !i.archived; });
     var live = act.filter(function (i) { var c = statusOf(i).cls; return c === "live" || c === "onb"; });
     var unreachable = act.filter(function (i) { var c = statusOf(i).cls; return c === "bad" || c === "warn"; });
@@ -581,24 +592,35 @@
       var d = daysUntil(i.trial_ends);
       return d !== null && d <= 7;
     });
-    var byCur = {};
+    /* SYSTEM TILES, NEVER MONEY. The tile that summed every live business's
+       takings is gone on purpose: a developer panel has no business reading a
+       customer's till. What replaced it is what an operator acts on — the
+       app's own /readyz, the day's sync traffic, quiet tills, and businesses
+       behind schema head. */
+    var opsToday = 0; var quiet = 0; var behind = 0;
     live.forEach(function (i) {
       var s = (i.live || {}).summary;
-      if (!s || !s.company || !s.days || !s.days.length) return;
-      var last = s.days[s.days.length - 1];
-      byCur[s.company.currency] = (byCur[s.company.currency] || 0) + (Number(last.net) || 0);
+      if (!s) return;
+      if (s.days && s.days.length) opsToday += Number(s.days[s.days.length - 1].ops) || 0;
+      quiet += Number((s.devices || {}).quiet) || 0;
+      if (s.schema && s.schema.behind) behind += 1;
     });
-    var curKeys = Object.keys(byCur);
     var tiles = [
       { k: WORD.Many, v: String(act.length), s: installs.length > act.length ? (installs.length - act.length) + " archived" : "every one on this page" },
       { k: "Live now", v: String(live.length), s: act.length ? "of " + act.length + " " + WORD.many : "nothing to reach yet" },
       { k: "Trials ending ≤7d", v: String(trialsSoon.length), s: trialsSoon.length ? trialsSoon.map(function (i) { return i.name; }).join(", ") : "no deadlines this week" },
-      { k: "Unreachable", v: String(unreachable.length), s: unreachable.length ? unreachable.map(function (i) { return i.name; }).join(", ") : "every " + WORD.one + " answered" }
+      { k: "Unreachable", v: String(unreachable.length), s: unreachable.length ? unreachable.map(function (i) { return i.name; }).join(", ") : "every " + WORD.one + " answered" },
+      { k: "Sync ops today", v: String(opsToday), s: "across every live " + WORD.one },
+      { k: "Quiet tills >1h", v: String(quiet), s: quiet ? "a signed-in till not delivering its writes" : "every writer is pushing" }
     ];
-    if (curKeys.length) tiles.push({
-      k: "Today, all live " + WORD.many,
-      v: curKeys.map(function (c) { return fmtMoney(byCur[c], c); }).join("  ·  "),
-      s: "net of " + live.length + " live " + (live.length === 1 ? WORD.one : WORD.many), small: true });
+    if (behind) tiles.push({ k: "Behind schema head", v: String(behind),
+      s: "requests refused until the fleet runner catches them up" });
+    if (appHealth) {
+      tiles.unshift(appHealth.ok
+        ? { k: "App /readyz", v: "OK", s: appHealth.ms + " ms" }
+        : { k: "App /readyz", v: appHealth.status ? "HTTP " + appHealth.status : "DOWN",
+          s: (appHealth.detail || appHealth.reason || "").slice(0, 80) || "no answer" });
+    }
     var fresh = (signups || []).filter(function (s) { return s.status === "new"; });
     if (fresh.length) tiles.unshift({
       k: "New store requests", v: String(fresh.length),
@@ -878,7 +900,7 @@
         var signups = (rq.status === 200 && rq.body.signups) || [];
         var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
         var out = [];
-        if (installs.length || openReqs.length) out.push(kpis(installs, signups));
+        if (installs.length || openReqs.length) out.push(kpis(installs, signups, r.body.appHealth));
         if (openReqs.length) {
           out.push(el("div", { class: "sechead", text: "Store requests" }));
           out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));

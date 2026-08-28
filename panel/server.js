@@ -398,8 +398,13 @@ function asCard(b) {
   const lic = b.licence || {};
   const summary = b.state === 'live' ? {
     company: b.company, outlets: b.outlets || [], devices: b.devices || {},
+    /* `days` is SYNC-OP TRAFFIC per day — system data. This panel carries no
+       sales figure anywhere: a customer's takings are their own back
+       office's to report. */
     days: b.days || [], licence: b.licence || null, planRequest: b.planRequest || null,
     install: b.db,
+    dbBytes: b.dbBytes == null ? null : b.dbBytes,
+    sessions: b.sessions == null ? null : b.sessions,
     backup: b.backup || null,
     schema: { version: b.schemaVersion, head: b.schemaHead || null,
       behind: b.behind === true }
@@ -424,11 +429,20 @@ function asCard(b) {
 app.get('/api/overview', authed, async (req, res, next) => {
   if (REGISTRY.registryMode()) {
     try {
-      const rows = await REGISTRY.overview();
+      /* The app's own /readyz rides at the top of every load: it is the one
+         health fact the registry cannot answer (it checks out every outlet's
+         login role against its own schema), and its latency is the traffic
+         figure an operator feels first. Probed beside the registry read, not
+         instead of it — an app that is down must not blank the dashboard. */
+      const [rows, appH] = await Promise.all([
+        REGISTRY.overview(),
+        REGISTRY.appHealth(process.env.APP_URL)
+      ]);
       return res.set('cache-control', 'no-store').json({
         mode: 'registry',
         dedicated: dedicatedOn(),
         installs: rows.map(asCard),
+        appHealth: appH,
         at: new Date().toISOString()
       });
     } catch (e) { return next(e); }
@@ -489,35 +503,35 @@ app.get('/api/signups', authed, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/* ── THE USAGE REPORT, OUTLET BY OUTLET ─────────────────────────────────────
-   The card is a glance; this is the report a seller actually talks a customer
-   through: each outlet's trading windows, daily series, device health and QR
-   uptake. Registry mode only — on a dedicated deployment the seller has no
-   way into the customer's database, which is the whole design of that mode,
-   and the platform door serves the summary it always served.
+/* ── THE SYSTEM REPORT, OUTLET BY OUTLET ────────────────────────────────────
+   This panel is the developer's, so the drill-in is SYSTEM data — sync-op
+   traffic, QR traffic, device sync health, database size, live sessions —
+   and never a sale figure: a customer's takings are reported by their own
+   back office to the people entitled to read them. Registry mode only — on a
+   dedicated deployment the seller has no way into the customer's database.
 
-   `?format=csv` hands back the daily series as a file — one row per outlet
-   per day — because the next thing a seller does with a usage report is put
-   it in a spreadsheet. */
+   `?format=csv` hands back the daily traffic series as a file — one row per
+   outlet per day — because the next thing an operator does with a traffic
+   report is graph it. */
 app.get('/api/installs/:id/usage', authed, async (req, res, next) => {
   if (!REGISTRY.registryMode()) {
-    return res.status(409).json({ error: 'usage reports read the registry'
-      + ' directly — on a dedicated deployment use the install\'s own reports' });
+    return res.status(409).json({ error: 'system reports read the registry'
+      + ' directly — on a dedicated deployment use the install\'s own /metrics' });
   }
   try {
     const u = await REGISTRY.usage(req.params.id);
     if (!u) return res.status(404).json({ error: 'no such business' });
     if (String(req.query.format || '') === 'csv') {
       const esc = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
-      const lines = ['business,outlet,date,net,tickets,covers'];
+      const lines = ['business,outlet,date,ops,qrOrders'];
       for (const ot of (u.outlets || [])) {
         for (const d of (ot.days || [])) {
           lines.push([esc(u.company || u.name), esc(ot.name), d.date,
-            d.net, d.tickets, d.covers].join(','));
+            d.ops, d.qr].join(','));
         }
       }
       res.set('content-type', 'text/csv; charset=utf-8');
-      res.set('content-disposition', 'attachment; filename="usage-'
+      res.set('content-disposition', 'attachment; filename="system-'
         + String(u.name || u.id).replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40)
         + '-' + new Date().toISOString().slice(0, 10) + '.csv"');
       return res.send(lines.join('\n') + '\n');

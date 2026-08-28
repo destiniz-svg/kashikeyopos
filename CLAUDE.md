@@ -4138,21 +4138,31 @@ seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.
 Trial enforcement is a person's decision, not automated — the panel monitors.
 
-### The usage report is outlet-wise, and the edit sheet fits the world it is in
+### The panel is the developer's, so it reads system data and never trade
 
-The dashboard card sums a business into one line, which is right for a glance
-and useless for the conversation a seller actually has — "your Malé store is
-carrying the whole chain" is an OUTLET sentence. **Usage** on a live business
-opens the drill-in: for each active outlet, the windows a vendor report
-normally carries (today, last 7, last 30, this month, last month — net, bills,
-covers, average ticket, every one derived server-side), a 30-day daily series,
-the device health (writers, quiet-over-an-hour, last push), and how much the
-QR portal is being used. **Still aggregates only** — sums, counts and averages
-per outlet per day, never a member, never a staff row, never a line item — and
-every read lands on the business's own trail as `platform_read`, exactly like
-the card. `?format=csv` hands the daily series back as a file, one row per
-outlet per day, because the next thing a seller does with a usage report is
-put it in a spreadsheet.
+The first cut of the outlet-wise report carried the businesses' MONEY — net,
+bills, covers, average ticket — and that was the wrong report for this panel
+to hold: a customer's takings are reported by their own back office to the
+people entitled to read them, and an operator's panel has no business reading
+a till. Every sales figure is gone from Mission Control — there is
+deliberately no money formatter left in `panel.js`, and the panel test walks
+the whole system report asserting no trade field (`net`, `total`, `covers`,
+`avgTicket`, `tickets`, `currency`) ever appears in it.
+
+What a developer actually needs is what replaced it. The overview leads with
+**the app's own `/readyz`**, probed with its latency on every load (a failure
+carries the endpoint's own body, which names the failing outlet and the
+remedy). Each business card carries **sync-op traffic** (today's count and a
+14-day sparkline out of `op_log` — every till write goes through that one
+seam, so ops-per-day is the honest measure of how hard a business uses the
+system, bucketed on the outlet's own clock), **live sessions**, **database
+size**, device sync health, schema state and the backup shelf. **System** on
+a live business opens the drill-in: per outlet, ops over 24h/7d/30d, QR-portal
+orders over 24h/30d, a 30-day daily series, devices and last push; per
+business, database size and live sessions. `?format=csv` hands the daily
+traffic series back one row per outlet per day. Every read still lands on the
+business's own trail as `platform_read` — a developer looking in is never
+invisible either.
 
 **Registry mode's Edit is the LICENCE sheet**, not the dedicated-install form
 it used to open — base URL, platform key and setup code are fields that mean

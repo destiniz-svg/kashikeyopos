@@ -394,13 +394,13 @@ test('a business is read from the registry, and its licence written to it', opts
       "SELECT count(*)::int AS n FROM chain.audit WHERE action = 'licence_set'");
     assert.strictEqual(trail.rows[0].n, 1, 'one change, one trail row');
 
-    /* ═══ THE USAGE REPORT, OUTLET BY OUTLET ═══════════════════════════════
-       The dashboard card sums a business into one line; the usage report is
-       the drill-in a seller talks a customer through. Provision a real
-       outlet, ring one bill directly (constraint-satisfying — this test is
-       about the report, not about how a bill is rung), pair a till, and put
-       a good copy on the registry's backup shelf — then read all of it back
-       the way the panel does. */
+    /* ═══ THE SYSTEM REPORT, OUTLET BY OUTLET — AND NEVER A SALE FIGURE ════
+       This is the DEVELOPER'S panel: it reads traffic, health and size, and
+       a customer's takings are their own back office's to report. Provision
+       a real outlet, land two sync ops and one guest order (system events),
+       pair a till, put a good copy on the registry's backup shelf — then
+       read it all back the way the panel does, and assert no money field
+       ever appears in the answer. */
     const { provisionOutlet } = require('../src/provision');
     const made2 = await provisionOutlet({
       db: made.db_name, code: 'PNL', name: 'Panel Outlet',
@@ -409,11 +409,12 @@ test('a business is read from the registry, and its licence written to it', opts
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Indian/Maldives' })
       .format(new Date());
     await own.query(
-      'INSERT INTO outlet_' + made2.id + '.sale'
-      + ' (receipt_no, business_date, covers, subtotal, discount, net, service,'
-      + '  tax_code, tax_label, tax_rate, tax, rounding, total, closed_by)'
-      + " VALUES ('PNL-USAGE-1', $1, 3, 100, 0, 100, 10, 'GGST', 'GGST 8%', 8,"
-      + '  8.80, 0.20, 119, gen_random_uuid())', [day]);
+      'INSERT INTO outlet_' + made2.id + '.op_log (op_id, kind, client_at)'
+      + " VALUES (gen_random_uuid(), 'sale', now()),"
+      + " (gen_random_uuid(), 'ticket_open', now())");
+    await own.query(
+      'INSERT INTO outlet_' + made2.id + '.guest_order (table_no, lines)'
+      + " VALUES ('T01', '[]'::jsonb)");
     await own.query(
       'INSERT INTO chain.device (outlet_id, label, kind, paired_at, last_push_at)'
       + " VALUES ($1, 'Panel Till', 'till', now(), now())", [made2.id]);
@@ -429,45 +430,66 @@ test('a business is read from the registry, and its licence written to it', opts
     assert.strictEqual(u.outlets.length, 1, 'one outlet, reported by itself');
     const ot = u.outlets[0];
     assert.strictEqual(ot.name, 'Panel Outlet');
-    assert.strictEqual(ot.today.net, 100, 'today carries the bill\'s net');
-    assert.strictEqual(ot.today.tickets, 1);
-    assert.strictEqual(ot.last30.net, 100);
-    assert.strictEqual(ot.last30.avgTicket, 100, 'the average is derived, never sent');
-    assert.strictEqual(ot.thisMonth.covers, 3);
+    assert.strictEqual(ot.ops24h, 2, 'the sync lane carried two ops today');
+    assert.strictEqual(ot.ops30d, 2);
+    assert.strictEqual(ot.qr24h, 1, 'and one order came through the QR portal');
+    assert.strictEqual(ot.qrOrders30, 1);
     assert.strictEqual(ot.devices.writers, 1, 'the till is counted');
     assert.strictEqual(ot.devices.quiet, 0, 'and it is pushing');
     assert.strictEqual(ot.days.length, 30, 'a 30-day series, zero-filled');
+    assert.strictEqual(ot.days[29].ops, 2, 'today\'s bucket carries the ops');
+    assert.ok(Number(u.dbBytes) > 0, 'the database size is measured');
+    assert.strictEqual(u.sessions, 0, 'nobody is signed in, and it says so');
+    /* THE FENCE: no money field anywhere in the system report. A developer
+       panel that grows a `net` again should fail here by name. */
+    const flat = JSON.stringify(u);
+    ['"net"', '"total"', '"covers"', '"avgTicket"', '"tickets"', 'currency']
+      .forEach((w) => assert.ok(flat.indexOf(w) < 0,
+        'the system report carries no trade field: found ' + w));
 
-    // The read is on the business's own trail — a seller looking in is never
-    // invisible, on the drill-in exactly as on the card.
+    // The read is on the business's own trail — a developer looking in is
+    // never invisible, on the drill-in exactly as on the card.
     const seen = await own.query(
       "SELECT count(*)::int AS n FROM chain.audit"
       + " WHERE action = 'platform_read' AND entity = 'usage'");
     assert.strictEqual(seen.rows[0].n, 1);
 
-    // And the card carries the shelf and the schema state.
+    // And the card: backup shelf, schema state, traffic series — no money.
     const card = await REG.readBusiness((await db.control().query(
       'SELECT * FROM chain.business WHERE id = $1', [bizId])).rows[0]);
     assert.strictEqual(card.backup.lastOk, true, 'the last run was good');
     assert.ok(card.backup.ageHours <= 1, 'and it just finished');
     assert.strictEqual(card.behind, false,
       'a business createBusiness just migrated is at head');
+    assert.strictEqual(card.days[card.days.length - 1].ops, 2,
+      'the card\'s series is sync traffic');
+    assert.ok(card.days.every((d) => d.net === undefined),
+      'and carries no takings');
 
-    /* Over HTTP, with the seller's own session — and as CSV, because the next
-       thing a seller does with a usage report is put it in a spreadsheet. */
+    /* Over HTTP, with the admin's own session — and as CSV, one row per
+       outlet per day of TRAFFIC. */
     const viaHttp = await call(panelBase, 'GET', '/api/installs/' + bizId + '/usage',
       undefined, token);
     assert.strictEqual(viaHttp.status, 200, JSON.stringify(viaHttp.body));
-    assert.strictEqual(viaHttp.body.outlets[0].today.net, 100);
+    assert.strictEqual(viaHttp.body.outlets[0].ops24h, 2);
     const csv = await fetch(panelBase + '/api/installs/' + bizId + '/usage?format=csv',
       { headers: { authorization: 'Bearer ' + token } });
     assert.strictEqual(csv.status, 200);
     assert.match(csv.headers.get('content-type'), /text\/csv/);
     const lines = (await csv.text()).trim().split('\n');
-    assert.strictEqual(lines[0], 'business,outlet,date,net,tickets,covers');
+    assert.strictEqual(lines[0], 'business,outlet,date,ops,qrOrders');
     assert.strictEqual(lines.length, 31, 'a header and thirty days');
-    assert.ok(lines.some((l) => l.indexOf('"Panel Outlet",' + day + ',100,1,3') >= 0),
-      'the traded day is in the file: ' + lines[lines.length - 1]);
+    assert.ok(lines.some((l) => l.indexOf('"Panel Outlet",' + day + ',2,1') >= 0),
+      'today\'s traffic is in the file: ' + lines[lines.length - 1]);
+
+    /* The overview carries the app's own /readyz probe — here APP_URL points
+       at a host that does not exist, and the probe says so rather than
+       blanking the dashboard. */
+    const ov = await call(panelBase, 'GET', '/api/overview', undefined, token);
+    assert.strictEqual(ov.status, 200);
+    assert.ok(ov.body.appHealth, 'the overview carries the app health probe');
+    assert.strictEqual(ov.body.appHealth.ok, false,
+      'an unreachable app reads as down, never as silence');
   } finally {
     await db.shutdown().catch(() => {});
     await DB.dropBusinessDatabases().catch(() => {});
