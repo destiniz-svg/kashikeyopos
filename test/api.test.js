@@ -1805,8 +1805,15 @@ test('a full shift ties: gross to net to tax to cash to COGS', opts, async () =>
      because that is the note that enters the drawer and the figure the count
      reconciles against. The server stores the bare bill on sale.total and the
      tip beside it. 297 + 20. */
+  /* The discount carries its IDENTITY as well as its money: the code, the
+     reason the form made mandatory, and the staff uuid who authorised it.
+     sale.discount_reason and discount_by existed since the schema was written
+     and the sale op never sent them, so the columns a support call reads were
+     NULL for every discount ever given. */
+  const discAuth = uuid();
   const b2 = { sub: 300, disc: 50, net: 250, svc: 25, tax: 22, round: 0,
     total: 317, tip: 20, cogs: COGS,
+    discCode: 'WELCOME', discReason: 'regular guest', discBy: discAuth,
     payments: [{ method: 'cash', amt: 317, tendered: 320, chg: 3, tip: 20 }] };
   // 3 · card bill — money the drawer never sees
   const b3 = { sub: 400, disc: 0, net: 400, svc: 40, tax: 35.2, round: 0,
@@ -1835,6 +1842,34 @@ test('a full shift ties: gross to net to tax to cash to COGS', opts, async () =>
   assert.strictEqual(sale.flagged, 0,
     'and none needed repairing — nothing was quietly corrected under this shift: '
     + JSON.stringify(why && why.server_audit));
+
+  // The discounted bill keeps the discount's whole identity, not just its money.
+  const dRow = await one('SELECT discount, discount_code, discount_reason,'
+    + ' discount_by FROM sale WHERE id = $1', [ids[1]]);
+  assert.strictEqual(R(dRow.discount), 50, 'the discount money is on the row');
+  assert.strictEqual(dRow.discount_code, 'WELCOME', 'with its code');
+  assert.strictEqual(dRow.discount_reason, 'regular guest',
+    'the reason the form made mandatory reaches the outlet');
+  assert.strictEqual(dRow.discount_by, discAuth,
+    'and the staff uuid who authorised it');
+
+  /* A malformed authoriser claim is DROPPED, never a refusal: discount_by is a
+     uuid column and a sale is never rejected — the money is already taken — so
+     a till sending a display name where the uuid belongs must cost the
+     attribution, not the sale. Card-tendered so the drawer count below is
+     untouched. */
+  const bBad = await push([bill({ sub: 100, disc: 10, net: 90, svc: 9,
+    tax: 7.92, round: 0, total: 106.92, tip: 0, cogs: COGS,
+    discCode: 'STAFF', discReason: 'shift meal', discBy: 'Loy Owner',
+    payments: [{ method: 'card', amt: 106.92, ref: 'AUTH-9007' }] })]);
+  assert.ok(!bBad.body.results[0].error,
+    'the sale with the malformed claim still lands: '
+    + JSON.stringify(bBad.body.results[0]));
+  const dBad = await one('SELECT discount_reason, discount_by FROM sale'
+    + ' WHERE id = $1', [bBad.body.results[0].result.saleId]);
+  assert.strictEqual(dBad.discount_reason, 'shift meal', 'its reason stored');
+  assert.strictEqual(dBad.discount_by, null,
+    'and the non-uuid claim dropped rather than refusing the sale');
 
   // The bill's own identity, summed across the shift.
   assert.strictEqual(

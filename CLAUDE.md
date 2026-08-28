@@ -2869,6 +2869,54 @@ bare numeral. Driven at 320/390/430/768/1024 on both portals: no page scrolls
 sideways at any width. `test/wiring.test.js` pins the ask, the whitelist, the
 published tenders and the add-on money; `test/api.test.js` walks the door.
 
+## A discount is on the receipt, or the receipt does not add up
+
+Asked directly — *do discounts work, and do receipts reflect them?* — and the
+first half held everywhere it was driven: the manager gate, the 25% cap, the
+mandatory reason, service and tax following the DISCOUNTED goods, the sale row
+carrying subtotal/discount/net apart, revenue booked GROSS on 4000 with the
+discount as its own contra leg on 4200, the journal balanced, no tax flag. The
+second half did not. Service and tax follow the discounted goods, so a receipt
+printing Subtotal · Service · Tax · TOTAL without the discount row is a paper
+whose own arithmetic overshoots its TOTAL by exactly the discount — and the
+guest is never told one was given. Four surfaces had the gap, each differently:
+
+- **the settled receipt modal** (and the paper "Print & close" maps from its
+  rows) simply skipped the row;
+- **the auto-printed receipt** carried the dish lines and NO TOTALS AT ALL —
+  items with no figure to pay. It prints what the settled screen shows now:
+  subtotal, the discount where one was given, service, tax, TOTAL, the tender
+  and the change;
+- **the Orders-reopened copy RECOMPUTED its total from the pre-discount
+  subtotal**, so every discounted bill was overstated by exactly its discount
+  on the one screen a guest asks to see again — and the refund figure with it.
+  The STORED total is what prints;
+- **the ticket panel's totals** listed Subtotal · Service · Tax · Total and
+  nothing between.
+
+The shared `/r/<token>` page was already right — `doc.html` had its Discount
+row from the day it was written, fed from `sale.discount`.
+
+**And the reason and the authoriser never left the till.** The form made the
+reason mandatory and the applier passed a rank gate — then the sale op carried
+neither, so `sale.discount_reason` and `discount_by` (there since the schema
+was written) were NULL for every discount ever given, and the audit op that
+did carry the reason lived only on the trail. The promo now stores the session
+actor's uuid beside the display name, `saleTrail()` carries both, and the op
+sends them under the names the server reads. `discount_by` is a uuid column
+and a sale is NEVER refused, so `applySale()` drops a malformed claim rather
+than failing the insert on a cast — the attribution is what a bad till build
+costs, never the sale.
+
+Driven in the real till: 10% WELCOME with reason "regular guest" on a 248.00
+bill — bill panel `less 24.80 · Svc 22.32 · GGST 19.64`, cash settle, sale row
+complete with code, reason and authoriser, Cr 4000 = 248.00, Dr 4200 = 24.80,
+journal balanced, and the Discount row on the settled receipt, the reopened
+copy, the ticket panel and the shared page. `test/wiring.test.js` pins the
+four surfaces and the op's fields; `test/api.test.js` rings a discounted bill
+carrying all three and one with a malformed authoriser, and asserts the
+columns and the drop.
+
 ## A bill somebody can be handed
 
 A guest asks for the bill on WhatsApp, a house-account customer wants last

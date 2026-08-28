@@ -36,6 +36,11 @@ async function applySale(c, p, ctx) {
   const subtotal = r2(p.sub);
   const discount = r2(p.disc);
   const net = r2(subtotal - discount);
+  /* Who authorised the discount is a uuid column, and the till sends the
+     session actor's id — but a sale is NEVER refused, so a malformed claim is
+     dropped rather than failing the insert on a cast. */
+  const discBy = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    .test(String(p.discBy || '')) ? p.discBy : null;
   const service = r2(p.svc);
   let tax = r2(p.tax);
   let rounding = r2(p.round);
@@ -178,7 +183,7 @@ async function applySale(c, p, ctx) {
       subtotal, discount, p.discCode || null, p.discReason || null,
       // An unregistered outlet must not have a tax LABEL invented for it: the
       // receipt would name a registration the business does not hold.
-      p.discBy || null, net, service, taxCode,
+      discBy, net, service, taxCode,
       registered ? (p.taxLabel || 'GST') : '', taxRate, tax, rounding, total,
       Math.max(0, Math.trunc(num(p.pts))), redeemed, r2(p.tip),
       // Repaired below, once the stock has actually moved and the server knows

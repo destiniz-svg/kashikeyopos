@@ -3231,6 +3231,7 @@ class Component extends DCLogic {
       cid: row.cid || null,
       no: row.no, bizDate: row.bizDate, channel: row.channel, covers: row.covers,
       sub: r2((row.net || 0) + (row.disc || 0)), disc: row.disc, discCode: row.discCode,
+      discReason: row.discWhy || null, discBy: row.discBy || null,
       net: row.net, svc: row.svc, tax: row.tax, round: row.round, total: row.total,
       tip: row.tip, cogs: row.cogs, taxCode: (row.taxLabel || "").split(" ")[0] || "GGST",
       taxLabel: row.taxLabel, taxRate: row.taxRate,
@@ -3441,7 +3442,8 @@ class Component extends DCLogic {
     const slot = this.slotName(this.state.activeTable);
     this.mutate(undefined, (t) => {
       if (!pct) delete t.promo;
-      else t.promo = { code: String(v.code || "").trim().toUpperCase(), pct: pct, from: "till", by: this.me(), why: v.why };
+      else t.promo = { code: String(v.code || "").trim().toUpperCase(), pct: pct, from: "till", by: this.me(),
+        byId: (this.state.session || {}).id || null, why: v.why };
     });
     this.setState({ modal: null });
     this.queue(pct ? "discount_applied" : "discount_cleared",
@@ -3692,6 +3694,11 @@ class Component extends DCLogic {
     const tax = (net + svc) * ((V.rate || 0) / 100);
     return {
       sub: sub, disc: disc, discPct: pct, discCode: pr ? (pr.code || "") : "", discFrom: pr ? (pr.from || "till") : "",
+      // The reason and the authoriser ride to the OUTLET, not just the local
+      // audit op: sale.discount_reason and discount_by have existed since the
+      // schema was written and the sale op never carried them, so the columns
+      // a support call reads were NULL for every discount ever given.
+      discWhy: pr ? (pr.why || "") : "", discBy: pr ? (pr.byId || "") : "",
       net: net, svc: svc, tax: tax, total: net + svc + tax,
       taxLabel: V.tax, taxRate: V.rate, scRate: V.sc || 0
     };
@@ -6893,7 +6900,7 @@ class Component extends DCLogic {
               // receipt in the portal can say WHY the number changed.
               net: T.net, pts: ptsSpent, ptsValue: ptsValue,
               customerName: payMember ? payMember.name : "",
-              disc: T.disc, discCode: T.discCode,
+              disc: T.disc, discCode: T.discCode, discWhy: T.discWhy, discBy: T.discBy,
               svc: ptsValue ? svcAfter : T.svc, tax: ptsValue ? taxAfter : T.tax,
               cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn, chg: change,
               // Which tax version this sale was charged under. Without it a
@@ -6940,9 +6947,20 @@ class Component extends DCLogic {
              honoured here, which is where "automatically" means something: at
              settle, before anybody reaches for a button. */
           if (this.prefs().autoPrint) {
+            /* The auto-printed paper used to carry the dish lines and NO
+               TOTALS AT ALL — items with no figure to pay. It prints what the
+               settled screen shows: subtotal, the discount where one was
+               given, service, tax, TOTAL, the tender and the change. */
+            const oA = this.outlet() || {};
+            const totalRows = [["Subtotal", MVRc(T.sub)]]
+              .concat(T.disc ? [["Discount" + (T.discCode ? " " + T.discCode : ""), "\u2212 " + MVRc(T.disc)]] : [])
+              .concat(oA.sc ? [["Service " + oA.sc + "%", MVRc(T.svc)]] : [])
+              .concat(this.taxRegistered(oA) ? [[this.taxLine(oA), MVRc(T.tax)]] : [])
+              .concat([[ "TOTAL", MVRc(T.total) ], [this.tenderName(snapshot.tender), MVRc(snapshot.given || T.total)]])
+              .concat(snapshot.tender === "cash" && snapshot.change > 0 ? [["Change", MVRc(snapshot.change)]] : []);
             this.printJob("Receipt", "receipt", "Receipt " + (snapshot.no || "") + " \u00b7 " + MVRc(T.total), { no: snapshot.no,
-              doc: { title: (this.outlet() || {}).name || "", sub: "Receipt " + (snapshot.no || "") + " \u00b7 " + snapshot.time + " \u00b7 " + snapshot.table,
-                rows: (snapshot.lines || []).map((l) => [l.n, l.v]),
+              doc: { title: oA.name || "", sub: "Receipt " + (snapshot.no || "") + " \u00b7 " + snapshot.time + " \u00b7 " + snapshot.table,
+                rows: (snapshot.lines || []).map((l) => [l.n, l.v]).concat([{ rule: 1 }], totalRows),
                 foot: (this.brandOf().receiptFoot || "Thank you"),
                 kick: snapshot.tender === "cash" } });
           }
@@ -8131,6 +8149,13 @@ class Component extends DCLogic {
       const tn = { cash: "Cash", card: "Card", wallet: "BML Pay", credit: "Customer credit" }[p.tender] || p.tender;
       const rows = [
         { n: "Subtotal", v: MVRc(T.sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
+        /* A discounted receipt without its discount row is a paper whose own
+           arithmetic does not reconcile: service and tax follow the DISCOUNTED
+           goods, so Subtotal + Service + Tax overshoots TOTAL by exactly the
+           discount, and the guest is never told a discount was given. */
+        { n: "Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""),
+          v: "\u2212 " + MVRc(T.disc),
+          style: T.disc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
         { n: "Service " + (o.sc || 0) + "%", v: MVRc(T.svc), style: o.sc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
         { n: this.taxLine(o), v: MVRc(T.tax),
           style: this.taxRegistered(o) ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
@@ -8327,8 +8352,13 @@ class Component extends DCLogic {
     const acc = ord.net === undefined
       ? lines.reduce((a, l) => a + 0, 0)
       : (ord.net || 0) + (ord.disc || 0);
-    const svc = ord.svc === undefined ? acc * ((o.sc || 0) / 100) : ord.svc;
-    const tax = ord.tax === undefined ? (acc + svc) * ((o.rate || 0) / 100) : ord.tax;
+    const ordDisc = ord.disc || 0;
+    const svc = ord.svc === undefined ? (acc - ordDisc) * ((o.sc || 0) / 100) : ord.svc;
+    const tax = ord.tax === undefined ? ((acc - ordDisc) + svc) * ((o.rate || 0) / 100) : ord.tax;
+    /* The STORED total, never a recomputation from the pre-discount subtotal:
+       recomputing `acc + svc + tax` overstated every discounted bill by
+       exactly its discount, on the one screen a guest asks to see again. */
+    const ordTotal = ord.total !== undefined ? ord.total : (acc - ordDisc) + svc + tax;
     return {
       modalTitle: "Receipt " + ord.no, modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
       rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin, rcpHasTin: !!this.chainOf().tin,
@@ -8336,14 +8366,16 @@ class Component extends DCLogic {
       rcpLines: lines,
       rcpTotals: [
         { n: "Subtotal", v: MVRc(acc), style: "display:flex;justify-content:space-between;padding:2px 0" },
+        { n: "Discount" + (ord.discCode ? " " + ord.discCode : ""), v: "\u2212 " + MVRc(ordDisc),
+          style: ordDisc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
         { n: "Service " + (o.sc || 0) + "%", v: MVRc(svc), style: (o.sc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none") },
         { n: this.taxLine(o), v: MVRc(tax),
           style: this.taxRegistered(o) ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
-        { n: "TOTAL", v: MVRc(acc + svc + tax), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
-        { n: this.tenderName(ord.tender), v: MVRc(acc + svc + tax), style: "display:flex;justify-content:space-between;padding:4px 0 0" }
+        { n: "TOTAL", v: MVRc(ordTotal), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
+        { n: this.tenderName(ord.tender), v: MVRc(ordTotal), style: "display:flex;justify-content:space-between;padding:4px 0 0" }
       ],
       rcpFoot: "Served by " + (ord.server || "—") + " · Table " + (ord.table || "—") + "\nThank you — Shukuriyyaa",
-      refundTotal: acc + svc + tax,
+      refundTotal: ordTotal,
       canRefund: this.can("orders", "e") && !(this.state.refunds || {})[ord.no],
       refundLabel: (this.state.refunds || {})[ord.no] ? "Refunded · " + MVRc((this.state.refunds || {})[ord.no].amt) : "Refund this ticket",
       refundStyle: (this.state.refunds || {})[ord.no]
@@ -12602,12 +12634,14 @@ class Component extends DCLogic {
       // outlet's own cash step once a cashier has said cash. This panel used to
       // print it from a hardcoded half-rufiyaa, which is wrong for a dollar.
       tkTotals: [
-        { k: "Subtotal", v: MVRc(T.sub), s: "font-size:11.5px;color:var(--text-dim)" },
+        { k: "Subtotal", v: MVRc(T.sub), s: "font-size:11.5px;color:var(--text-dim)" }
+      ].concat(T.disc ? [{ k: "Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""),
+        v: "\u2212 " + MVRc(T.disc), s: "font-size:11.5px;color:var(--warn-bright)" }] : []).concat([
         { k: "Service charge " + (o.sc || 0) + "%", v: MVRc(T.svc || 0), s: "font-size:11.5px;color:var(--text-dim)" },
         { k: this.taxLine(o) || "GST", v: this.taxRegistered(o) ? MVRc(T.tax || 0) : "not registered",
           s: "font-size:11.5px;color:var(--text-dim)" },
         { k: "Total", v: MVRc(T.total), s: "font-size:13px;font-weight:800;color:var(--text);padding-top:7px;border-top:1px solid var(--line)" }
-      ],
+      ]),
       tkFlows: this.TICKET_FLOW().map((x, i) => ({
         label: x[1], style: "flex:1;min-width:84px;padding:9px 10px;border-radius:999px;font-size:11px;font-weight:700;text-align:center;border:1px solid "
           + (flow === i ? "var(--text)" : "var(--line)") + ";background:" + (flow === i ? "var(--text)" : "var(--bg-2)")

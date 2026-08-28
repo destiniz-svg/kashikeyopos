@@ -4561,3 +4561,52 @@ test('the member card draws the same plates as the guest portal', () => {
   assert.ok(!/url\('" \+ d\.img \+ "'\)/.test(card),
     'no site feeds a raw data URL into background-image any more');
 });
+
+/* ═══ A DISCOUNTED RECEIPT SHOWS ITS DISCOUNT, EVERYWHERE A RECEIPT IS ══════
+   Service and tax follow the DISCOUNTED goods, so a receipt that prints
+   Subtotal, Service, Tax and TOTAL without the discount row is a paper whose
+   own arithmetic overshoots its TOTAL by exactly the discount — and the guest
+   is never told one was given. Four surfaces had the gap, each differently:
+   the settled receipt modal (and the paper "Print & close" maps from it), the
+   auto-printed receipt (which carried NO totals at all), the Orders-reopened
+   copy (which RECOMPUTED the total from the pre-discount subtotal, so every
+   discounted bill was overstated on the one screen a guest asks to see
+   again), and the ticket panel's own totals. And the reason the form makes
+   mandatory, plus who authorised it, never rode the sale op at all —
+   sale.discount_reason and discount_by were NULL for every discount ever
+   given. */
+test('a discounted receipt shows its discount on every surface', () => {
+  // 1 · the settled receipt modal (its rows are also what the print maps)
+  assert.match(SRC, /\{ n: "Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\),\s*\n\s*v: "\\u2212 " \+ MVRc\(T\.disc\)/,
+    'the settled receipt carries a Discount row between Subtotal and Service');
+
+  // 2 · the auto-printed paper carries totals, discount included
+  assert.match(SRC, /const totalRows = \[\["Subtotal", MVRc\(T\.sub\)\]\]/,
+    'the auto-printed receipt composes its totals');
+  assert.match(SRC, /\.concat\(T\.disc \? \[\["Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\), "\\u2212 " \+ MVRc\(T\.disc\)\]\] : \[\]\)/,
+    'with the discount where one was given');
+  assert.match(SRC, /rows: \(snapshot\.lines \|\| \[\]\)\.map\(\(l\) => \[l\.n, l\.v\]\)\.concat\(\[\{ rule: 1 \}\], totalRows\)/,
+    'and they reach the paper after the rule');
+
+  // 3 · Orders-reopened prints the STORED total, never a recomputation
+  assert.match(SRC, /const ordTotal = ord\.total !== undefined \? ord\.total : \(acc - ordDisc\) \+ svc \+ tax;/,
+    'the reopened receipt reads the stored total');
+  assert.match(SRC, /\{ n: "Discount" \+ \(ord\.discCode \? " " \+ ord\.discCode : ""\), v: "\\u2212 " \+ MVRc\(ordDisc\)/,
+    'and shows the discount row');
+  assert.match(SRC, /refundTotal: ordTotal,/,
+    'the refund figure is the stored total too');
+  assert.ok(!/TOTAL", v: MVRc\(acc \+ svc \+ tax\)/.test(SRC),
+    'no reopened TOTAL is recomputed from the pre-discount subtotal');
+
+  // 4 · the ticket panel totals
+  assert.match(SRC, /\.concat\(T\.disc \? \[\{ k: "Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\),/,
+    'the ticket panel lists the discount between Subtotal and Service');
+
+  // 5 · the reason and the authoriser ride the sale op to the outlet
+  assert.match(SRC, /byId: \(this\.state\.session \|\| \{\}\)\.id \|\| null, why: v\.why/,
+    'applying a discount records the session actor uuid beside the name');
+  assert.match(SRC, /discWhy: pr \? \(pr\.why \|\| ""\) : "", discBy: pr \? \(pr\.byId \|\| ""\) : ""/,
+    'the trail carries both');
+  assert.match(SRC, /discReason: row\.discWhy \|\| null, discBy: row\.discBy \|\| null,/,
+    'and the sale op sends them under the names the server reads');
+});
