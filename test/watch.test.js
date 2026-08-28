@@ -95,6 +95,48 @@ test('each condition fires once, with the remedy in the message', async () => {
     ['backups', 'devices', 'readyz', 'schema']);
 });
 
+/* ═══ THE WEBHOOK IS A SECOND CHANNEL, NOT A REPLACEMENT ════════════════════
+   ALERT_WEBHOOK takes a URL and receives {"text": "..."} — the shape Slack,
+   Discord and most chat webhooks accept — fired beside the email and the log,
+   never instead of them, so an operator who lives in chat hears about a
+   condition without opening an inbox. A dangling ${{reference}} is no
+   webhook, the same trap ALERT_EMAIL already refuses. */
+test('an alert also reaches the webhook, in chat-webhook shape', async () => {
+  reset();
+  const http = require('http');
+  const got = [];
+  const srv = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => { b += c; });
+    req.on('end', () => { got.push({ ct: req.headers['content-type'], body: b });
+      res.end('ok'); });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const keep = process.env.ALERT_WEBHOOK;
+  process.env.ALERT_WEBHOOK = 'http://127.0.0.1:' + srv.address().port + '/hook';
+  try {
+    await capture(() => watch.sweep(broken));
+    assert.ok(got.length >= 1, 'the webhook was called');
+    assert.match(got[0].ct, /application\/json/);
+    const payload = JSON.parse(got[0].body);
+    assert.match(payload.text, /^\[KashikeyoPOS\] /, 'named sender, chat shape');
+    assert.ok(got.some((g) => /provision:outlet/.test(JSON.parse(g.body).text)),
+      'and the remedy rides the message, exactly as it rides the email');
+
+    // A dangling reference is refused as an address, not dialled as one.
+    reset();
+    got.length = 0;
+    process.env.ALERT_WEBHOOK = '${{kashikeyopos.ALERT_WEBHOOK}}';
+    await capture(() => watch.sweep(broken));
+    assert.strictEqual(got.length, 0, 'a dangling ${{reference}} is no webhook');
+  } finally {
+    if (keep === undefined) delete process.env.ALERT_WEBHOOK;
+    else process.env.ALERT_WEBHOOK = keep;
+    await new Promise((r) => srv.close(r));
+    reset();
+  }
+});
+
 test('a second tick inside the window repeats nothing', async () => {
   reset();
   await capture(() => watch.sweep(broken));

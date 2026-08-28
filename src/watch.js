@@ -256,6 +256,28 @@ async function say(key, bad, subject, body, clearLine) {
 async function deliver(key, subject, body, kind) {
   console.error('[alert] ' + kind + ' · ' + key + ' · ' + subject + '\n'
     + body.split('\n').map((l) => '        ' + l).join('\n'));
+  /* A WEBHOOK IS A SECOND CHANNEL, NOT A REPLACEMENT. `ALERT_WEBHOOK` takes a
+     URL and receives {"text": "..."} — the shape Slack, Discord
+     (/slack-compatible endpoints) and most chat webhooks accept — so an
+     operator who lives in chat hears about a condition without opening an
+     inbox. Fired beside the email, never instead of it; a failure is logged
+     and never fails the alert, because the log line above has already said
+     everything. The same dangling-`${{reference}}` trap as ALERT_EMAIL
+     applies, so the same guard reads it. */
+  const hook = (() => {
+    const v = String(process.env.ALERT_WEBHOOK || '').trim();
+    return v && !/\$\{\{[^}]*\}\}/.test(v) && /^https?:\/\//.test(v) ? v : '';
+  })();
+  if (hook) {
+    try {
+      await fetch(hook, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: '[KashikeyoPOS] ' + subject + '\n' + body }),
+        signal: AbortSignal.timeout(5000)
+      });
+    } catch (e) { console.error('[alert] webhook not delivered: ' + e.message); }
+  }
   if (!configured()) return { sent: false, reason: why() };
   try {
     const out = await email.send({

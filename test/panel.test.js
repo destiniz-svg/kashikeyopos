@@ -149,6 +149,89 @@ test('sign-in never says whether an address is an admin', opts, async () => {
   assert.strictEqual(good.status, 200);
 });
 
+/* ═══ THE ADMIN ACCOUNT, HARDENED ════════════════════════════════════════════
+   One password between the internet and every licence and provision button
+   was the panel's weakest wall. Three closures, each proven end to end:
+   TOTP 2FA (RFC 6238 over node crypto — enrolment is two steps so an
+   unscanned secret can never lock the only admin out), a second admin, and
+   an epoch-based sign-out that orphans every other token. */
+test('the admin account hardens: 2FA, a second admin, sign out everywhere', opts, async () => {
+  // The account starts plain, and says so.
+  let r = await call(panelBase, 'GET', '/api/account', undefined, token);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.totpEnabled, false);
+  assert.strictEqual(r.body.admins.length, 1, 'one admin, from setup');
+  const meId = r.body.admins[0].id;
+
+  // Enrolment starts: a secret is PENDING, and gates nothing yet — it was
+  // never scanned, and enabling it now could lock the only admin out.
+  r = await call(panelBase, 'POST', '/api/account/totp/start', {}, token);
+  assert.strictEqual(r.status, 200);
+  assert.match(r.body.otpauth, /^otpauth:\/\/totp\//, 'the app-scannable URL');
+  assert.match(r.body.base32, /^[A-Z2-7]+$/, 'the hand-typable secret');
+  let s = await call(panelBase, 'POST', '/api/signin',
+    { email: 'seller@example.com', password: 'a-long-password-12' });
+  assert.strictEqual(s.status, 200, 'a pending secret does not gate sign-in');
+
+  // Confirm with the authenticator's own arithmetic; a wrong code is refused.
+  const pend = (await panel.pool.query(
+    'SELECT totp_pending FROM panel.admin WHERE id = $1', [meId])).rows[0].totp_pending;
+  const good = () => panel._totpAt(pend, Date.now());
+  const bad = String((Number(good()) + 1) % 1e6).padStart(6, '0');
+  r = await call(panelBase, 'POST', '/api/account/totp/confirm', { code: bad }, token);
+  assert.strictEqual(r.status, 401, 'a wrong code does not confirm');
+  r = await call(panelBase, 'POST', '/api/account/totp/confirm', { code: good() }, token);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+
+  // Sign-in now demands the second factor, names the need, and honours it.
+  s = await call(panelBase, 'POST', '/api/signin',
+    { email: 'seller@example.com', password: 'a-long-password-12' });
+  assert.strictEqual(s.status, 401);
+  assert.strictEqual(s.body.need, 'totp', 'the page is told which step is missing');
+  s = await call(panelBase, 'POST', '/api/signin',
+    { email: 'seller@example.com', password: 'a-long-password-12', code: bad });
+  assert.strictEqual(s.status, 401, 'a wrong code is a refusal');
+  s = await call(panelBase, 'POST', '/api/signin',
+    { email: 'seller@example.com', password: 'a-long-password-12', code: good() });
+  assert.strictEqual(s.status, 200, 'password + code opens the panel');
+
+  // A second admin — added by a signed-in admin, signing in on their own.
+  r = await call(panelBase, 'POST', '/api/admins',
+    { email: 'second@example.com', password: 'another-long-pass-12' }, token);
+  assert.strictEqual(r.status, 200);
+  const secondId = r.body.id;
+  s = await call(panelBase, 'POST', '/api/signin',
+    { email: 'second@example.com', password: 'another-long-pass-12' });
+  assert.strictEqual(s.status, 200, 'the second admin has no 2FA yet and gets in');
+
+  // The two removals that end in a locked panel are refused by name.
+  r = await call(panelBase, 'DELETE', '/api/admins/' + meId, undefined, token);
+  assert.strictEqual(r.status, 400, 'you cannot remove yourself');
+  r = await call(panelBase, 'DELETE', '/api/admins/' + secondId, undefined, token);
+  assert.strictEqual(r.status, 200, 'another admin can be removed');
+  r = await call(panelBase, 'DELETE', '/api/admins/' + secondId, undefined, token);
+  assert.strictEqual(r.status, 400, 'and the last admin standing cannot be');
+
+  /* Sign out everywhere: the epoch bumps, every token signed before it is
+     orphaned — including the one that asked — and the answer carries a fresh
+     token so the session doing the signing-out survives. */
+  r = await call(panelBase, 'POST', '/api/account/signout-everywhere', {}, token);
+  assert.strictEqual(r.status, 200);
+  const fresh = r.body.token;
+  assert.ok(fresh, 'a fresh token rides the answer');
+  const oldT = await call(panelBase, 'GET', '/api/account', undefined, token);
+  assert.strictEqual(oldT.status, 401, 'the old token is dead');
+  const newT = await call(panelBase, 'GET', '/api/account', undefined, fresh);
+  assert.strictEqual(newT.status, 200, 'the fresh one lives');
+  token = fresh;
+
+  // Turning 2FA off needs a current code — a signed-in tab alone is not enough.
+  r = await call(panelBase, 'POST', '/api/account/totp/disable', { code: bad }, token);
+  assert.strictEqual(r.status, 401);
+  r = await call(panelBase, 'POST', '/api/account/totp/disable', { code: good() }, token);
+  assert.strictEqual(r.status, 200, 'off again, so the rest of this file signs in plain');
+});
+
 test('the overview needs a session, and never carries a platform key', opts, async () => {
   assert.strictEqual((await call(panelBase, 'GET', '/api/overview')).status, 401);
 
@@ -490,6 +573,38 @@ test('a business is read from the registry, and its licence written to it', opts
     assert.ok(ov.body.appHealth, 'the overview carries the app health probe');
     assert.strictEqual(ov.body.appHealth.ok, false,
       'an unreachable app reads as down, never as silence');
+
+    /* ═══ THE PULSE — health history, not a point-in-time probe ═══════════
+       Three sweeps: up (the panel's own /readyz), down (a port nothing
+       listens on), up again. The first observation records state and no
+       event — a fresh process re-observes before it says anything changed —
+       and each TRANSITION is one event on the timeline. Uptime in the
+       overview is computed from the rows: measured, never asserted. */
+    const keepApp = process.env.APP_URL;
+    try {
+      process.env.APP_URL = panelBase;
+      await panel._sweepPulse();
+      process.env.APP_URL = 'http://127.0.0.1:9';
+      await panel._sweepPulse();
+      process.env.APP_URL = panelBase;
+      await panel._sweepPulse();
+      const pu = await panel.pool.query(
+        'SELECT count(*)::int AS n, count(*) FILTER (WHERE ok)::int AS up FROM panel.pulse');
+      assert.ok(pu.rows[0].n >= 3, 'every sweep is a row');
+      assert.strictEqual(pu.rows[0].n - pu.rows[0].up, 1, 'one of them saw it down');
+      const ev = await panel.pool.query('SELECT kind FROM panel.event ORDER BY at');
+      assert.deepStrictEqual(ev.rows.map((x) => x.kind), ['app_down', 'app_recovered'],
+        'transitions are events; steady states are not');
+      const ov2 = await call(panelBase, 'GET', '/api/overview', undefined, token);
+      assert.ok(ov2.body.uptime && ov2.body.uptime.samples >= 3,
+        'uptime is measured from the pulse rows');
+      assert.ok(ov2.body.uptime.d7 > 0 && ov2.body.uptime.d7 < 100,
+        'and an outage shows in the figure: ' + ov2.body.uptime.d7 + '%');
+      assert.strictEqual(ov2.body.events.length, 2, 'the timeline rides the overview');
+    } finally {
+      if (keepApp === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = keepApp;
+    }
   } finally {
     await db.shutdown().catch(() => {});
     await DB.dropBusinessDatabases().catch(() => {});

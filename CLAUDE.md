@@ -3844,6 +3844,7 @@ after it, a true recovery, and the log-only path.
 | --- | --- |
 | `METRICS_KEY` | ≥16 chars. Unset, `/metrics` is a 404. |
 | `ALERT_EMAIL` | Where alerts go. Falls back to `PLATFORM_ADMIN_EMAIL` — an install that named the person who runs it has named who to wake, and a second variable nobody set is a fence somebody believes in and does not have. Unset both, or a dangling `${{reference}}` (the third place that trap has been laid), and alerts are logged; the boot line says which variable it read, or which of the two states it is in. **Do not write `ALERT_EMAIL=${{PLATFORM_ADMIN_EMAIL}}`** — a platform resolves an unknown same-service reference to an EMPTY STRING rather than leaving the literal, so the copy silently vanishes and the watchdog boots off. Measured on the live install, twice. |
+| `ALERT_WEBHOOK` | A URL that receives `{"text": "..."}` (Slack/Discord-compatible) beside every email and log line — never instead of them. A dangling `${{reference}}` is refused as an address. |
 | `ALERT_REPEAT_HOURS` | Reminder interval while a condition holds (6). |
 | `DEVICE_QUIET_MINUTES` | How long a writing device may go without delivering (60). |
 | `WATCH_INTERVAL_SECONDS` | Sweep interval (60, floor 15). First sweep is delayed 20 s so a deploy does not alert on pools that have not opened. |
@@ -4185,6 +4186,52 @@ report was written on the grouped shape from the start. `test/panel.test.js`
 drives the whole road: a provisioned outlet, a rung bill, a paired till and a
 shelf row, read back through `usage()`, over HTTP, and as CSV — and the drive
 in Chromium proves an extension lands in the business's own `chain.licence`.
+
+### The panel's own door is hardened, and its health has a memory
+
+Compared against the operator panels behind comparable multi-tenant products,
+Mission Control's two real deficits were its own front door — one password
+between the internet and every licence and provision button — and a health
+probe that was point-in-time: right during an incident, useless the morning
+after. Both are closed, inside the two-runtime-dependency rule:
+
+- **TOTP two-factor** (RFC 6238 over node's own crypto — thirty lines beat a
+  dependency). Enrolment is TWO steps on purpose: the secret sits in
+  `totp_pending` until a code from the authenticator proves it was actually
+  scanned, because enabling 2FA on an unscanned secret locks the only admin
+  out of their own panel. The otpauth secret is drawn as a real scannable QR
+  by `app/kashikeyo-qr.js` — the app's own jsQR-verified encoder, served to
+  the panel page. Turning it off requires a current code: a signed-in tab
+  alone must not be able to strip the second factor. Codes allow one 30-second
+  step of drift and every compare is `timingSafeEqual`; guesses ride the same
+  doorman as passwords.
+- **A second admin** (added by a signed-in admin; the two removals that end in
+  a locked panel — yourself, and the last admin standing — are refused by
+  name) and **sign out everywhere**: every token is signed under the admin's
+  `token_epoch`, the check costs one indexed read per request, and bumping the
+  epoch orphans every token signed before it — a stolen one included. The
+  answer carries a fresh token so the session doing the signing-out survives.
+- **The pulse** (`panel.pulse` / `panel.event`): one `/readyz` probe a minute,
+  written down, 14 days kept. Uptime on the App tile is COMPUTED from the
+  rows — measured, never asserted, and "no pulse history yet" is said rather
+  than shown as a suspicious 100%. A TRANSITION (up→down, down→up) is an
+  event on a timeline the dashboard renders; steady states are not, and a
+  fresh process re-observes before it says anything changed. The first sweep
+  is delayed 15 s so a deploy does not stamp its own boot window as an outage.
+- **`ALERT_WEBHOOK`** on the app's watchdog (`src/watch.js`): a URL that
+  receives `{"text": "..."}` — the shape Slack, Discord and most chat
+  webhooks accept — fired beside the email and the log, never instead of
+  them. A failure to deliver is logged and never fails the alert; a dangling
+  `${{reference}}` is refused as an address, the same trap `ALERT_EMAIL`
+  already refuses.
+
+`test/panel.test.js` proves the whole ladder (a pending secret gates nothing;
+wrong codes refused at confirm, sign-in and disable; the second admin; both
+lock-out removals refused; the old token dead and the fresh one alive after
+the epoch bump; three pulse sweeps yielding exactly the two transition events
+and a measured uptime under 100%); `test/watch.test.js` catches the webhook
+payload on a real local listener. The Chromium drive enrols 2FA through the
+shipped sheet, QR and all.
 
 ### Provisioning is one button, and it never handles the password
 

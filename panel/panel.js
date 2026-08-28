@@ -83,6 +83,7 @@
       var id = "mc-" + f.name + "-" + i;
       inputs[f.name] = el("input", { id: id, type: f.type || "text",
         placeholder: f.ph || "", autocomplete: f.auto || "off", required: "" });
+      if (f.value) inputs[f.name].value = f.value;
       return el("div", { class: "field" },
         [el("label", { for: id, text: f.label }), inputs[f.name]]);
     })).concat([el("button", { class: "cta", type: "submit", text: ctaLabel })]));
@@ -112,13 +113,26 @@
       }));
   }
 
-  function showSignin() {
-    mount(gateCard("Sign in", "The seller's view across every install.",
-      [{ name: "email", label: "Email", type: "email", auto: "username" },
-       { name: "password", label: "Password", type: "password", auto: "current-password" }],
-      "Sign in", function (v, fail) {
+  /* Sign-in grows a second step the moment the server says the account has
+     one: the code field appears only after the password has been proven, with
+     the typed values carried over — retyping a correct password to satisfy a
+     second factor is friction that teaches nothing. */
+  function showSignin(pre) {
+    pre = pre || {};
+    var fields = [
+      { name: "email", label: "Email", type: "email", auto: "username", value: pre.email },
+      { name: "password", label: "Password", type: "password", auto: "current-password", value: pre.password }];
+    if (pre.needCode) fields.push({ name: "code",
+      label: "Six-digit code from your authenticator", auto: "one-time-code" });
+    mount(gateCard("Sign in", "The developer's view across every business.",
+      fields, "Sign in", function (v, fail) {
         api("POST", "/api/signin", v).then(function (r) {
-          if (r.status !== 200) return fail((r.body && r.body.error) || "sign-in failed");
+          if (r.status !== 200) {
+            if (r.body && r.body.need === "totp" && !pre.needCode) {
+              return showSignin({ email: v.email, password: v.password, needCode: true });
+            }
+            return fail((r.body && r.body.error) || "sign-in failed");
+          }
           setToken(r.body.token); showDash();
         });
       }));
@@ -583,7 +597,7 @@
       foot]);
   }
 
-  function kpis(installs, signups, appHealth) {
+  function kpis(installs, signups, appHealth, uptime) {
     var act = installs.filter(function (i) { return !i.archived; });
     var live = act.filter(function (i) { var c = statusOf(i).cls; return c === "live" || c === "onb"; });
     var unreachable = act.filter(function (i) { var c = statusOf(i).cls; return c === "bad" || c === "warn"; });
@@ -616,10 +630,15 @@
     if (behind) tiles.push({ k: "Behind schema head", v: String(behind),
       s: "requests refused until the fleet runner catches them up" });
     if (appHealth) {
+      /* Uptime is MEASURED — the pulse rows, not a promise. No samples yet is
+         said as such rather than shown as a suspicious 100%. */
+      var up = uptime && uptime.samples
+        ? " · " + (uptime.d7 == null ? "" : uptime.d7 + "% over 7d")
+        : " · no pulse history yet";
       tiles.unshift(appHealth.ok
-        ? { k: "App /readyz", v: "OK", s: appHealth.ms + " ms" }
+        ? { k: "App /readyz", v: "OK", s: appHealth.ms + " ms" + up }
         : { k: "App /readyz", v: appHealth.status ? "HTTP " + appHealth.status : "DOWN",
-          s: (appHealth.detail || appHealth.reason || "").slice(0, 80) || "no answer" });
+          s: ((appHealth.detail || appHealth.reason || "").slice(0, 60) || "no answer") + up });
     }
     var fresh = (signups || []).filter(function (s) { return s.status === "new"; });
     if (fresh.length) tiles.unshift({
@@ -853,6 +872,148 @@
     document.body.appendChild(scrim);
   }
 
+  /* ── THE SECURITY SHEET — the account, hardened ─────────────────────────
+     Two-factor enrolment (the otpauth secret drawn as a REAL QR by the
+     app's own encoder), a second admin, and a sign-out that orphans every
+     other session. All server state; this sheet only asks. */
+  function securitySheet() {
+    var body = el("div", { class: "sub", text: "Reading…" });
+    var scrim = el("div", { class: "scrim" }, [
+      el("div", { class: "sheet" }, [
+        el("h2", { text: "Security" }),
+        el("div", { class: "sub", text: "Who can open this panel, and with what." }),
+        body])]);
+    scrim.addEventListener("click", function (ev) { if (ev.target === scrim) scrim.remove(); });
+    document.body.appendChild(scrim);
+
+    function note(parent, msg, isErr) {
+      var n = el("div", { class: isErr ? "err" : "sub",
+        style: "display:block;margin-top:8px", text: msg });
+      parent.appendChild(n);
+      return n;
+    }
+    function render() {
+      api("GET", "/api/account").then(function (r) {
+        if (r.status !== 200) { body.textContent = "could not read the account"; return; }
+        var a = r.body;
+        var kids = [];
+
+        // ── two-factor ────────────────────────────────────────────────────
+        var tf = el("div", { style: "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)" });
+        tf.appendChild(el("b", { text: "Two-factor · " + (a.totpEnabled ? "on" : "off") }));
+        if (!a.totpEnabled) {
+          var enrol = el("button", { class: "mini", style: "margin-left:10px", text: "Turn it on" });
+          enrol.onclick = function () {
+            enrol.disabled = true;
+            api("POST", "/api/account/totp/start").then(function (s) {
+              if (s.status !== 200) { note(tf, (s.body && s.body.error) || "could not start", true); return; }
+              var box = el("div", { style: "margin-top:10px" });
+              if (window.KPOS_QR) {
+                var img = document.createElement("img");
+                img.src = window.KPOS_QR.dataUrl(s.body.otpauth);
+                img.alt = "Scan this in your authenticator app";
+                img.style.cssText = "width:168px;height:168px;background:#fff;padding:8px;border-radius:10px";
+                box.appendChild(img);
+              }
+              box.appendChild(el("div", { class: "sub", style: "margin-top:6px",
+                text: "Scan it, or type the secret by hand:" }));
+              box.appendChild(el("div", { class: "mono", style: "font-size:11px;user-select:all",
+                text: s.body.base32 }));
+              var code = el("input", { placeholder: "the six digits it shows",
+                inputmode: "numeric", autocomplete: "one-time-code",
+                style: "margin-top:8px" });
+              var ok = el("button", { class: "mini", style: "margin-top:8px", text: "Confirm and turn on" });
+              ok.onclick = function () {
+                api("POST", "/api/account/totp/confirm", { code: code.value }).then(function (c) {
+                  if (c.status !== 200) { note(box, (c.body && c.body.error) || "not confirmed", true); return; }
+                  render();
+                });
+              };
+              box.appendChild(el("div", { class: "field" },
+                [el("label", { text: "Code" }), code]));
+              box.appendChild(ok);
+              tf.appendChild(box);
+            });
+          };
+          tf.appendChild(enrol);
+          tf.appendChild(el("div", { class: "sub", style: "margin-top:4px",
+            text: "One password between the internet and this panel is one too few." }));
+        } else {
+          var offCode = el("input", { placeholder: "current six-digit code",
+            inputmode: "numeric", style: "max-width:200px" });
+          var off = el("button", { class: "mini", style: "margin-left:8px", text: "Turn it off" });
+          off.onclick = function () {
+            api("POST", "/api/account/totp/disable", { code: offCode.value }).then(function (c) {
+              if (c.status !== 200) { note(tf, (c.body && c.body.error) || "not turned off", true); return; }
+              render();
+            });
+          };
+          tf.appendChild(el("div", { style: "margin-top:8px;display:flex;align-items:center" },
+            [offCode, off]));
+        }
+        kids.push(tf);
+
+        // ── sessions ──────────────────────────────────────────────────────
+        var ss = el("div", { style: "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)" });
+        ss.appendChild(el("b", { text: "Sessions" }));
+        var everywhere = el("button", { class: "mini", style: "margin-left:10px",
+          text: "Sign out everywhere else" });
+        everywhere.onclick = function () {
+          everywhere.disabled = true;
+          api("POST", "/api/account/signout-everywhere").then(function (c) {
+            if (c.status !== 200) { note(ss, "failed — try again", true); everywhere.disabled = false; return; }
+            setToken(c.body.token);
+            note(ss, "Done. Every other signed-in tab and device is out; this one stays.");
+          });
+        };
+        ss.appendChild(everywhere);
+        kids.push(ss);
+
+        // ── admins ────────────────────────────────────────────────────────
+        var ad = el("div", { style: "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)" });
+        ad.appendChild(el("b", { text: "Admins" }));
+        (a.admins || []).forEach(function (row) {
+          var line = el("div", { style: "display:flex;align-items:center;gap:10px;margin-top:8px" }, [
+            el("span", { class: "mono", text: row.email }),
+            el("span", { class: "sub", text: (row.me ? "you · " : "") + (row.totp ? "2FA on" : "2FA off") })]);
+          if (!row.me) {
+            var rm = el("button", { class: "mini", text: "Remove" });
+            rm.onclick = function () {
+              if (!rm.dataset.armed) {
+                rm.dataset.armed = "1"; rm.textContent = "Really remove?";
+                rm.style.color = "var(--danger-bright)"; return;
+              }
+              api("DELETE", "/api/admins/" + row.id).then(function (c) {
+                if (c.status !== 200) { note(ad, (c.body && c.body.error) || "failed", true); return; }
+                render();
+              });
+            };
+            line.appendChild(rm);
+          }
+          ad.appendChild(line);
+        });
+        var nEmail = el("input", { type: "email", placeholder: "their email" });
+        var nPass = el("input", { type: "password", placeholder: "a first password (12+) — they change it" });
+        var add = el("button", { class: "mini", text: "Add admin" });
+        add.onclick = function () {
+          api("POST", "/api/admins", { email: nEmail.value, password: nPass.value })
+            .then(function (c) {
+              if (c.status !== 200) { note(ad, (c.body && c.body.error) || "failed", true); return; }
+              nEmail.value = ""; nPass.value = ""; render();
+            });
+        };
+        ad.appendChild(el("div", { class: "field", style: "margin-top:10px" },
+          [el("label", { text: "Add another admin" }), nEmail]));
+        ad.appendChild(el("div", { class: "field" }, [el("label", { text: "First password" }), nPass]));
+        ad.appendChild(add);
+        kids.push(ad);
+
+        body.className = ""; body.replaceChildren(frag(kids));
+      });
+    }
+    render();
+  }
+
   /* ── dashboard shell + refresh loop ───────────────────────────────────── */
   function showDash() {
     if (timer) clearInterval(timer);
@@ -874,6 +1035,7 @@
            whose only outcome is a refusal is the control this panel exists to
            stop shipping. */
         addSlot,
+        el("button", { class: "ghost", text: "Security", onclick: securitySheet }),
         el("button", { class: "ghost", text: "Sign out", onclick: function () {
           setToken(null); if (timer) clearInterval(timer); showSignin();
         } })]),
@@ -900,7 +1062,22 @@
         var signups = (rq.status === 200 && rq.body.signups) || [];
         var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
         var out = [];
-        if (installs.length || openReqs.length) out.push(kpis(installs, signups, r.body.appHealth));
+        if (installs.length || openReqs.length) out.push(kpis(installs, signups, r.body.appHealth, r.body.uptime));
+        /* THE TIMELINE: every up→down and down→up transition the pulse saw.
+           Shown only when there is one — a panel with no incidents has no
+           section, not an empty box. */
+        if ((r.body.events || []).length) {
+          out.push(el("div", { class: "sechead", text: "System events" }));
+          out.push(el("div", { class: "card" }, r.body.events.map(function (ev) {
+            return el("div", { style: "display:flex;gap:12px;align-items:baseline;padding:3px 0" }, [
+              el("span", { class: "mono", style: "font-size:10.5px;color:var(--text-faint)",
+                text: new Date(ev.at).toLocaleString() }),
+              el("span", { class: ev.kind === "app_down" ? "warn-t" : "",
+                style: "font-weight:600;font-size:11.5px",
+                text: ev.kind === "app_down" ? "app DOWN" : "app recovered" }),
+              el("span", { class: "sub", text: ev.detail || "" })]);
+          })));
+        }
         if (openReqs.length) {
           out.push(el("div", { class: "sechead", text: "Store requests" }));
           out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));

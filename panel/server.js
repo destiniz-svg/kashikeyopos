@@ -143,6 +143,36 @@ async function migrate() {
       created_at timestamptz NOT NULL DEFAULT now(),
       decided_at timestamptz
     );
+    -- ── the admin account, hardened ────────────────────────────────────────
+    -- One password standing between the internet and every licence and
+    -- provision button is the panel's weakest wall. totp_secret is the second
+    -- factor once CONFIRMED; totp_pending holds a freshly minted secret until
+    -- the admin proves their authenticator has it, because enabling 2FA on a
+    -- secret nobody scanned locks the only admin out of their own panel.
+    ALTER TABLE panel.admin ADD COLUMN IF NOT EXISTS totp_secret text;
+    ALTER TABLE panel.admin ADD COLUMN IF NOT EXISTS totp_pending text;
+    -- Every issued token carries the epoch it was signed under; bumping it is
+    -- "sign out everywhere" — stateless tokens, one integer of server state.
+    ALTER TABLE panel.admin ADD COLUMN IF NOT EXISTS token_epoch int NOT NULL DEFAULT 0;
+    -- ── health history ─────────────────────────────────────────────────────
+    -- The /readyz probe used to be point-in-time: right during an incident,
+    -- useless the morning after. Every sweep is a row; 14 days are kept; a
+    -- TRANSITION (ok→down, down→ok) is an event — the timeline an operator
+    -- actually reads.
+    CREATE TABLE IF NOT EXISTS panel.pulse (
+      at timestamptz NOT NULL DEFAULT now(),
+      ok boolean NOT NULL,
+      ms int,
+      status int,
+      detail text
+    );
+    CREATE INDEX IF NOT EXISTS pulse_at ON panel.pulse(at DESC);
+    CREATE TABLE IF NOT EXISTS panel.event (
+      at timestamptz NOT NULL DEFAULT now(),
+      kind text NOT NULL,
+      detail text NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS event_at ON panel.event(at DESC);
   `);
   } finally {
     await c.query('SELECT pg_advisory_unlock(881234)').catch(() => {});
@@ -162,9 +192,49 @@ function checkPass(pw, stored) {
   const b = Buffer.from(hex, 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-function sign(adminId) {
-  const body = Buffer.from(JSON.stringify({ a: adminId, exp: Date.now() + 12 * 3600e3 }))
-    .toString('base64url');
+/* ── TOTP, RFC 6238 over node's own crypto ──────────────────────────────────
+   SHA-1, 30-second step, six digits — what every authenticator app speaks.
+   Thirty lines beat a dependency: the two-runtime-dependency rule holds, and
+   there is nothing here to go stale. The secret is stored as hex; the
+   otpauth: URL carries it base32, because that is the only encoding the apps
+   accept. */
+function totpAt(secretHex, tMs) {
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(Math.floor(tMs / 30000)));
+  const h = crypto.createHmac('sha1', Buffer.from(secretHex, 'hex')).update(msg).digest();
+  const o = h[h.length - 1] & 0xf;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0');
+}
+/* One step of drift either side: a phone's clock is not this server's clock,
+   and refusing a code that was right twenty seconds ago teaches an operator
+   to type faster rather than trust the panel. */
+function totpOk(secretHex, code) {
+  const given = Buffer.from(String(code || '').trim().padStart(6, '0'));
+  if (given.length !== 6) return false;
+  for (const d of [-30000, 0, 30000]) {
+    const want = Buffer.from(totpAt(secretHex, Date.now() + d));
+    if (crypto.timingSafeEqual(given, want)) return true;
+  }
+  return false;
+}
+function b32(buf) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0; let val = 0; let out = '';
+  for (const byte of buf) {
+    val = (val << 8) | byte; bits += 8;
+    while (bits >= 5) { out += A[(val >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += A[(val << (5 - bits)) & 31];
+  return out;
+}
+
+/* THE TOKEN CARRIES ITS EPOCH. Tokens are signed blobs with no session table,
+   so "sign out everywhere" needs exactly one integer of server state: every
+   token is signed under the admin's current token_epoch, and bumping it
+   orphans every token signed before — including a stolen one. */
+function sign(adminId, epoch) {
+  const body = Buffer.from(JSON.stringify({ a: adminId, e: Number(epoch) || 0,
+    exp: Date.now() + 12 * 3600e3 })).toString('base64url');
   return body + '.' + crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
 }
 function verify(token) {
@@ -178,11 +248,21 @@ function verify(token) {
     return p.exp > Date.now() ? p : null;
   } catch (e) { return null; }
 }
+/* The epoch check costs one indexed read per request, which is what makes the
+   sign-out real rather than recorded. express 4 does not catch a rejected
+   async middleware, so the promise is caught by hand. */
 function authed(req, res, next) {
   const p = verify(String(req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
   if (!p) return res.status(401).json({ error: 'sign in again' });
-  req.adminId = p.a;
-  next();
+  pool.query('SELECT token_epoch FROM panel.admin WHERE id = $1', [p.a])
+    .then((q) => {
+      if (!q.rows.length || Number(q.rows[0].token_epoch) !== (Number(p.e) || 0)) {
+        return res.status(401).json({ error: 'sign in again' });
+      }
+      req.adminId = p.a;
+      next();
+    })
+    .catch(next);
 }
 
 /* ── probing an install ─────────────────────────────────────────────────────
@@ -362,7 +442,7 @@ app.post('/api/setup', gate('panel-setup', { ip: [10, 3600e3] }), async (req, re
     if (String(password || '').length < 12) return res.status(400).json({ error: 'the password needs at least 12 characters' });
     const ins = await pool.query('INSERT INTO panel.admin (email, pass) VALUES ($1, $2) RETURNING id',
       [String(email).toLowerCase(), hashPass(password)]);
-    res.json({ token: sign(ins.rows[0].id) });
+    res.json({ token: sign(ins.rows[0].id, 0) });
   } catch (e) { next(e); }
 });
 
@@ -370,17 +450,164 @@ app.post('/api/signin',
   gate('panel-signin', { ip: [30, 3600e3], id: [8, 3600e3] }, (req) => (req.body || {}).email),
   async (req, res, next) => {
     try {
-      const { email, password } = req.body || {};
-      const q = await pool.query('SELECT id, pass FROM panel.admin WHERE email = $1',
+      const { email, password, code } = req.body || {};
+      const q = await pool.query(
+        'SELECT id, pass, totp_secret, token_epoch FROM panel.admin WHERE email = $1',
         [String(email || '').toLowerCase()]);
       // One sentence either way: whether an address is an admin here is not a
       // question a stranger gets to ask.
       if (!q.rows.length || !checkPass(password, q.rows[0].pass)) {
         return res.status(401).json({ error: 'that email and password do not match' });
       }
-      res.json({ token: sign(q.rows[0].id) });
+      /* The second factor, where one is enrolled. `need: 'totp'` after a
+         correct password is the standard shape — the password has already
+         been proven, so it reveals nothing a stranger could not learn by
+         succeeding — and the guesses ride the same doorman as the password. */
+      if (q.rows[0].totp_secret) {
+        if (!code) {
+          return res.status(401).json({ need: 'totp',
+            error: 'this account has two-factor on — add the six-digit code'
+              + ' from your authenticator app' });
+        }
+        if (!totpOk(q.rows[0].totp_secret, code)) {
+          return res.status(401).json({ need: 'totp',
+            error: 'that code is not right — codes rotate every 30 seconds' });
+        }
+      }
+      res.json({ token: sign(q.rows[0].id, q.rows[0].token_epoch) });
     } catch (e) { next(e); }
   });
+
+/* ── THE ADMIN'S OWN ACCOUNT — the panel's weakest wall, hardened ──────────
+   One password between the internet and every licence and provision button
+   was the gap a comparison against any serious operator panel names first.
+   Three answers: a second factor, a second admin, and a sign-out that means
+   it. All of it server-side state this file already owns. */
+app.get('/api/account', authed, async (req, res, next) => {
+  try {
+    const me = await pool.query(
+      'SELECT email, totp_secret IS NOT NULL AS totp FROM panel.admin WHERE id = $1',
+      [req.adminId]);
+    const all = await pool.query(
+      'SELECT id, email, totp_secret IS NOT NULL AS totp, created_at'
+      + ' FROM panel.admin ORDER BY created_at');
+    res.json({
+      email: me.rows[0].email,
+      totpEnabled: me.rows[0].totp === true,
+      admins: all.rows.map((r) => ({ id: r.id, email: r.email,
+        totp: r.totp === true, createdAt: r.created_at, me: r.id === req.adminId }))
+    });
+  } catch (e) { next(e); }
+});
+
+/* Enrolling is two steps ON PURPOSE: the secret sits in totp_pending until a
+   code from the authenticator proves it was actually scanned. Enabling on an
+   unscanned secret locks the only admin out of their own panel — the worst
+   possible outcome of a security control. */
+app.post('/api/account/totp/start', authed, async (req, res, next) => {
+  try {
+    const cur = await pool.query(
+      'SELECT email, totp_secret FROM panel.admin WHERE id = $1', [req.adminId]);
+    if (cur.rows[0].totp_secret) {
+      return res.status(409).json({ error: 'two-factor is already on — turn it'
+        + ' off first to re-enrol' });
+    }
+    const secret = crypto.randomBytes(20).toString('hex');
+    await pool.query('UPDATE panel.admin SET totp_pending = $1 WHERE id = $2',
+      [secret, req.adminId]);
+    const label = encodeURIComponent('Mission Control:' + cur.rows[0].email);
+    res.json({
+      base32: b32(Buffer.from(secret, 'hex')),
+      otpauth: 'otpauth://totp/' + label + '?secret=' + b32(Buffer.from(secret, 'hex'))
+        + '&issuer=' + encodeURIComponent('KashikeyoPOS')
+    });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/account/totp/confirm', authed,
+  gate('panel-totp', { ip: [30, 3600e3] }),
+  async (req, res, next) => {
+    try {
+      const cur = await pool.query(
+        'SELECT totp_pending FROM panel.admin WHERE id = $1', [req.adminId]);
+      if (!cur.rows[0].totp_pending) {
+        return res.status(409).json({ error: 'nothing is pending — start enrolment first' });
+      }
+      if (!totpOk(cur.rows[0].totp_pending, (req.body || {}).code)) {
+        return res.status(401).json({ error: 'that code does not match the secret'
+          + ' you just scanned — codes rotate every 30 seconds' });
+      }
+      await pool.query('UPDATE panel.admin SET totp_secret = totp_pending,'
+        + ' totp_pending = NULL WHERE id = $1', [req.adminId]);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+/* Turning it off asks for a current code: possession of a signed-in browser
+   tab must not be enough to strip the account's second factor. */
+app.post('/api/account/totp/disable', authed,
+  gate('panel-totp', { ip: [30, 3600e3] }),
+  async (req, res, next) => {
+    try {
+      const cur = await pool.query(
+        'SELECT totp_secret FROM panel.admin WHERE id = $1', [req.adminId]);
+      if (!cur.rows[0].totp_secret) return res.status(409).json({ error: 'two-factor is not on' });
+      if (!totpOk(cur.rows[0].totp_secret, (req.body || {}).code)) {
+        return res.status(401).json({ error: 'the current six-digit code is needed to turn it off' });
+      }
+      await pool.query('UPDATE panel.admin SET totp_secret = NULL WHERE id = $1',
+        [req.adminId]);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+/* Bumping the epoch orphans every token signed before it — a stolen one
+   included. The answer carries a FRESH token so the session doing the
+   signing-out is the one that survives. */
+app.post('/api/account/signout-everywhere', authed, async (req, res, next) => {
+  try {
+    const q = await pool.query('UPDATE panel.admin SET token_epoch = token_epoch + 1'
+      + ' WHERE id = $1 RETURNING token_epoch', [req.adminId]);
+    res.json({ ok: true, token: sign(req.adminId, q.rows[0].token_epoch) });
+  } catch (e) { next(e); }
+});
+
+/* A SECOND ADMIN, because one account is a bus factor as well as a target.
+   Only a signed-in admin may add one; the new admin changes their own
+   password and enrols their own 2FA once in. */
+app.post('/api/admins', authed, async (req, res, next) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!/^\S+@\S+\.\S+$/.test(String(email || ''))) {
+      return res.status(400).json({ error: 'a real email address is required' });
+    }
+    if (String(password || '').length < 12) {
+      return res.status(400).json({ error: 'the password needs at least 12 characters' });
+    }
+    const ins = await pool.query(
+      'INSERT INTO panel.admin (email, pass) VALUES ($1, $2)'
+      + ' ON CONFLICT (email) DO NOTHING RETURNING id',
+      [String(email).toLowerCase(), hashPass(password)]);
+    if (!ins.rows.length) return res.status(409).json({ error: 'that address is already an admin' });
+    res.json({ ok: true, id: ins.rows[0].id });
+  } catch (e) { next(e); }
+});
+
+/* Removing one refuses the two removals that end in a locked panel: yourself
+   (sign out is over there), and the last admin standing. */
+app.delete('/api/admins/:id', authed, async (req, res, next) => {
+  try {
+    if (String(req.params.id) === String(req.adminId)) {
+      return res.status(400).json({ error: 'you cannot remove yourself — another admin does that' });
+    }
+    const n = await pool.query('SELECT count(*)::int AS n FROM panel.admin');
+    if (n.rows[0].n <= 1) return res.status(400).json({ error: 'the last admin cannot be removed' });
+    const del = await pool.query('DELETE FROM panel.admin WHERE id = $1 RETURNING id',
+      [req.params.id]);
+    if (!del.rows.length) return res.status(404).json({ error: 'no such admin' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
 /* The whole dashboard in one answer: the registry rows (keys withheld) with
    each install's live probe beside them. */
@@ -426,6 +653,51 @@ function asCard(b) {
   };
 }
 
+/* ── HEALTH HISTORY — a probe is point-in-time, an incident is not ──────────
+   The /readyz probe on each dashboard load answers "is it up NOW", which is
+   the right question during an incident and the wrong one the morning after.
+   Every minute the panel writes one pulse row (14 days kept), and a
+   TRANSITION — up→down, down→up — is an event. Uptime is computed from the
+   rows, so the figure is measured, never asserted. State starts unknown on a
+   restart, which is the correct failure: a fresh process re-observes before
+   it says anything changed. */
+let lastPulseOk = null;
+async function sweepPulse() {
+  const url = process.env.APP_URL;
+  if (!url || !REGISTRY.registryMode()) return null;
+  const h = await REGISTRY.appHealth(url);
+  try {
+    await pool.query('INSERT INTO panel.pulse (ok, ms, status, detail)'
+      + ' VALUES ($1, $2, $3, $4)',
+      [h.ok === true, h.ms || null, h.status || null,
+        (h.detail || h.reason || '').slice(0, 400) || null]);
+    await pool.query("DELETE FROM panel.pulse WHERE at < now() - interval '14 days'");
+    if (lastPulseOk !== null && lastPulseOk !== h.ok) {
+      await pool.query('INSERT INTO panel.event (kind, detail) VALUES ($1, $2)',
+        [h.ok ? 'app_recovered' : 'app_down',
+          h.ok ? 'up again after ' + (h.ms || '?') + ' ms probe'
+            : (h.detail || h.reason || 'no answer').slice(0, 400)]);
+      console.error('[panel] ' + (h.ok ? 'app RECOVERED' : 'app DOWN: '
+        + (h.reason || h.status || '')));
+    }
+    lastPulseOk = h.ok;
+  } catch (e) { console.error('[panel] pulse not written: ' + e.message); }
+  return h;
+}
+
+async function uptime() {
+  try {
+    const q = await pool.query(
+      "SELECT count(*) FILTER (WHERE at > now() - interval '24 hours')::int AS n24,"
+      + " count(*) FILTER (WHERE ok AND at > now() - interval '24 hours')::int AS ok24,"
+      + ' count(*)::int AS n7, count(*) FILTER (WHERE ok)::int AS ok7'
+      + " FROM panel.pulse WHERE at > now() - interval '7 days'");
+    const r = q.rows[0];
+    const pct = (ok, n) => (n ? Math.round((ok / n) * 10000) / 100 : null);
+    return { h24: pct(r.ok24, r.n24), d7: pct(r.ok7, r.n7), samples: r.n7 };
+  } catch (e) { return null; }
+}
+
 app.get('/api/overview', authed, async (req, res, next) => {
   if (REGISTRY.registryMode()) {
     try {
@@ -434,15 +706,19 @@ app.get('/api/overview', authed, async (req, res, next) => {
          login role against its own schema), and its latency is the traffic
          figure an operator feels first. Probed beside the registry read, not
          instead of it — an app that is down must not blank the dashboard. */
-      const [rows, appH] = await Promise.all([
+      const [rows, appH, up, ev] = await Promise.all([
         REGISTRY.overview(),
-        REGISTRY.appHealth(process.env.APP_URL)
+        REGISTRY.appHealth(process.env.APP_URL),
+        uptime(),
+        pool.query('SELECT at, kind, detail FROM panel.event ORDER BY at DESC LIMIT 12')
       ]);
       return res.set('cache-control', 'no-store').json({
         mode: 'registry',
         dedicated: dedicatedOn(),
         installs: rows.map(asCard),
         appHealth: appH,
+        uptime: up,
+        events: ev.rows,
         at: new Date().toISOString()
       });
     } catch (e) { return next(e); }
@@ -938,7 +1214,12 @@ app.patch('/api/installs/:id', authed, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/* Static last: the page, its script, and the same fonts the terminal wears. */
+/* Static last: the page, its script, and the same fonts the terminal wears.
+   The QR encoder is the app's own (ISO 18004, jsQR-verified) — the 2FA sheet
+   draws the otpauth: secret as a scannable code with it, one file, no
+   dependency. */
+app.get('/kashikeyo-qr.js', (req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'app', 'kashikeyo-qr.js')));
 app.use('/fonts', express.static(path.join(__dirname, '..', 'app', 'fonts'), { maxAge: '30d' }));
 app.use(express.static(__dirname, { index: false }));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'panel.html')));
@@ -953,6 +1234,16 @@ if (require.main === module) {
     const port = Number(process.env.PORT) || 4095;
     app.listen(port, () => {
       console.log('[panel] listening on ' + port);
+      /* The pulse: one probe a minute, written down, so uptime is a measured
+         figure and a transition is an event on the timeline. Delayed 15 s so
+         a deploy does not stamp its own boot window as an outage. */
+      if (process.env.APP_URL && REGISTRY.registryMode()) {
+        setTimeout(() => { sweepPulse(); setInterval(sweepPulse, 60e3); }, 15e3);
+        console.log('[panel] pulsing ' + process.env.APP_URL + '/readyz every 60s');
+      } else {
+        console.log('[panel] no pulse — '
+          + (REGISTRY.registryMode() ? 'APP_URL is not set' : 'not in registry mode'));
+      }
       /* WHICH WORLD THIS PANEL IS IN, in one line, because the two behave
          differently and a screen that looks the same either way is how
          somebody spends an afternoon wondering why Provision refuses. */
@@ -969,4 +1260,5 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, migrate, pool, _sign: sign, _verify: verify };
+module.exports = { app, migrate, pool, _sign: sign, _verify: verify,
+  _totpAt: totpAt, _sweepPulse: sweepPulse };
