@@ -5067,8 +5067,8 @@ test('the store logo reaches every receipt, and 58/80mm decides the columns', ()
     'and never rasterises — one bitmap, both runtimes, identical bytes');
 
   // On screen: the uploaded logo leads; the free-text path is only a fallback.
-  assert.ok(/const mark = \(b\.logo \? this\.photoUrl\(b\.logo\) : ""\)\s*\n?\s*\|\| b\.mark \|\| "brand\/kashikeyo-mark\.png"/.test(SRC),
-    'the receipt papers wear the uploaded logo first');
+  assert.ok(/const mark = \(b\.logo \? this\.photoUrl\(b\.logo\) : ""\)\s*\n?\s*\|\| \(b\.mark \? this\.photoUrl\(b\.mark\) : ""\)\s*\n?\s*\|\| "brand\/kashikeyo-mark\.png"/.test(SRC),
+    'the receipt papers wear the uploaded logo first, the mark through the blob seam behind it');
   assert.ok(/lockLogoStyle/.test(SRC), 'and the sign-in screen leads with it');
 
   // The shared /r/ page: vetted server-side, rendered as an <img>.
@@ -5077,4 +5077,39 @@ test('the store logo reaches every receipt, and 58/80mm decides the columns', ()
   const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'doc.html'), 'utf8');
   assert.ok(/d\.logo && \/\^data:image\\\/\/\.test\(d\.logo\)/.test(page),
     'and the page checks again before rendering it');
+});
+
+/* ═══ AN UPLOAD, NEVER A TYPED PATH ═════════════════════════════════════════
+   Two controls asked for an address nobody has: Merchant branding's "Logo
+   file" path (a customer cannot put a file on this server) and the employee
+   "Photo URL" (the page's own CSP refuses a foreign address, and a pasted
+   data URL dies on the inline-style semicolon). Both are image slots now,
+   both render through the blob seam — and the photograph actually TRAVELS:
+   it had no column, no place in the op, and the bootstrap published a
+   literal '' that wiped a browser's copy on every hydrate. */
+test('no control asks for a typed file path or URL, and the photo travels', () => {
+  assert.ok(SRC.indexOf('Photo URL') < 0, 'the employee photograph is an upload');
+  assert.ok(SRC.indexOf('Logo file path') < 0, 'and so is the chain receipt logo');
+  assert.ok(/\{ k: "mark", kind: "image"/.test(SRC), 'the mark is an image slot');
+  assert.ok(/\{ k: "photo", kind: "image"/.test(SRC), 'the photograph is an image slot');
+  assert.ok(/b\.mark \? this\.photoUrl\(b\.mark\)/.test(SRC),
+    'the receipt paper renders the mark through the blob seam');
+  assert.ok(/this\.photoUrl\(st\.photo\)/.test(SRC),
+    'and the avatar renders the photo through it');
+  assert.ok(/photo: r\.photo \|\| null, sex: r\.sex \|\| null/.test(SRC),
+    'the employee op carries the photo and the silhouette gender');
+  const apply = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  assert.ok(/photo = coalesce\(excluded\.photo, employee\.photo\)/.test(apply),
+    'silence preserves — an older build\'s op cannot strip a photo');
+  assert.ok(/that photograph is too large/.test(apply)
+    && /that logo is too large/.test(apply.slice(apply.indexOf('H.brand_update'))),
+    'oversize images are refused by name on both ops');
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.ok(/photo: r\.photo \|\| ''/.test(boot),
+    'and the bootstrap publishes the row\'s own photo, not a literal blank');
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'src', 'migrations', '050_a_person_has_a_face.sql')),
+    'migration 050 gives it the column');
+  assert.ok(/photo     text/.test(fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'migrations', '003_outlet_provision.sql'), 'utf8')),
+    'and a brand-new outlet is born with it');
 });

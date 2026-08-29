@@ -935,7 +935,10 @@ function employeeOf(r) {
   return {
     id: r.id, name: r.name, outlet: null, job: r.job, kind: r.kind,
     basic: num(r.basic), hourly: num(r.hourly), joined: r.joined_on,
-    mrps: r.mrps, ot: r.ot, svc: r.svc, type: r.emp_type, photo: '',
+    mrps: r.mrps, ot: r.ot, svc: r.svc, type: r.emp_type,
+    // The row's own photograph (050) — the literal '' here is what wiped a
+    // browser's copy on every bootstrap while the column did not exist.
+    photo: r.photo || '', sex: r.sex || 'm',
     staffId: r.staff_id
   };
 }

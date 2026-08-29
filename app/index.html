@@ -8798,8 +8798,12 @@ class Component extends DCLogic {
        receipt preview carried the shipped KashikeyoPOS mark while the store's
        own logo (Store branding) reached only the portals. The uploaded logo
        is a data URL, so it renders through the blob seam like every image. */
+    /* Both sources go through the blob seam: `mark` is an UPLOAD now (a data
+       URL, which an inline style truncates at its own semicolon), and
+       photoUrl() passes a legacy shipped path through unchanged. */
     const mark = (b.logo ? this.photoUrl(b.logo) : "")
-      || b.mark || "brand/kashikeyo-mark.png";
+      || (b.mark ? this.photoUrl(b.mark) : "")
+      || "brand/kashikeyo-mark.png";
     // The mark is a background, never an <img src="{{ hole }}"> — the HTML
     // parser fetches a raw src as the template streams, so a hole there fires a
     // 404 for a file literally named "{{ brandMark }}" on every load. An
@@ -10001,7 +10005,9 @@ class Component extends DCLogic {
     return {
       hasPhoto: !!st.photo,
       photoStyle: st.photo
-        ? "width:" + size + "px;height:" + size + "px;flex-shrink:0;border-radius:10px;background:url('" + st.photo + "') center/cover no-repeat;border:1px solid var(--line)"
+        // Through the blob seam: a data-URL photograph inlined raw truncates
+        // the style at its own semicolon and paints nothing.
+        ? "width:" + size + "px;height:" + size + "px;flex-shrink:0;border-radius:10px;background:url('" + this.photoUrl(st.photo) + "') center/cover no-repeat;border:1px solid var(--line)"
         : "display:none",
       fallbackStyle: st.photo ? "display:none"
         : "width:" + size + "px;height:" + size + "px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;background:" + soft + ";border:1px solid var(--line);color:" + tint,
@@ -14771,7 +14777,12 @@ class Component extends DCLogic {
       staff: ["employee_upsert", (r) => ({
         id: r.id, name: r.name, job: r.job, kind: r.kind, basic: num(r.basic),
         hourly: num(r.hourly), joined: r.joined, mrps: !!r.mrps,
-        ot: r.ot !== false, svc: r.svc !== false, type: r.type
+        ot: r.ot !== false, svc: r.svc !== false, type: r.type,
+        // The photograph and the silhouette's gender ride the op (050) — they
+        // were collected, toasted as saved, and sent NEVER, so the photo lived
+        // in one browser and the next bootstrap wiped it. Null is silence: the
+        // server preserves what it holds.
+        photo: r.photo || null, sex: r.sex || null
       })],
       opex: ["opex_insert", (r) => ({
         id: r.id, cat: r.cat, vendor: r.vendor, amt: num(r.amt),
@@ -17449,10 +17460,17 @@ class Component extends DCLogic {
           { k: "name", label: "Trading name on receipts", v: this.brandOf().name || "", full: 1 },
           { k: "tagline", label: "Tagline", v: this.brandOf().tagline || "", full: 1 },
           { k: "receiptFoot", label: "Receipt footer", v: this.brandOf().receiptFoot || "", full: 1 },
-          // The receipts and the sign-in screen use the logo UPLOADED under
-          // Store branding first; this path is only the fallback for an
-          // install whose mark is a file the deployment ships.
-          { k: "mark", label: "Logo file path (fallback — upload under Store branding instead)", v: this.brandOf().mark || "", full: 1 },
+          /* AN UPLOAD, NOT A TYPED PATH. A customer has no way to put a file
+             on this server, an external URL is refused by the page's own CSP,
+             and a pasted data URL dies on the inline-style semicolon — so the
+             free-text "Logo file" could never work for anyone but the person
+             who built the deployment. The receipts and the sign-in screen use
+             the Store branding logo first; this is the chain-scope fallback. */
+          { k: "mark", kind: "image", label: "Receipt logo (used where no Store branding logo is set)",
+            v: this.brandOf().mark || "",
+            mode: "png", max: 320, tall: 120, fit: "contain",
+            guide: "Square PNG with a transparent background · at least 320 × 320 px · scaled on this device",
+            hint: "Most stores only need the Store branding upload (Promotions screen) — set this only to brand a whole chain's receipts at once." },
           { k: "scope", label: "Applies to", options: [{ v: "chain", l: "Whole chain" }, { v: "outlet", l: "This outlet only" }] },
           { k: "poweredBy", label: "Powered-by line", options: [{ v: "yes", l: "Show — included tier" }, { v: "no", l: "Hide — white label" }] }
         ],
@@ -17475,7 +17493,13 @@ class Component extends DCLogic {
           { k: "kind", label: "Employment", options: [{ v: "local", l: "Maldivian" }, { v: "expat", l: "Foreign national" }] },
           { k: "type", label: "Contract type", options: [{ v: "fulltime", l: "Full-time" }, { v: "parttime", l: "Part-time" }, { v: "contract", l: "Contract" }, { v: "casual", l: "Casual" }, { v: "probation", l: "Probation" }] },
           { k: "sex", label: "Sex", options: [{ v: "m", l: "Male" }, { v: "f", l: "Female" }] },
-          { k: "photo", label: "Photo URL (blank uses a silhouette)", v: "", full: 1 },
+          /* The same rule: an upload, never a typed URL — CSP blocks a foreign
+             address and nobody has one for a colleague anyway. Optional: blank
+             keeps the silhouette. */
+          { k: "photo", kind: "image", label: "Photograph (optional — blank uses a silhouette)",
+            max: 320, tall: 110, fit: "cover",
+            guide: "JPG or PNG · scaled to 320 px on this device",
+            hint: "Shown at about 40 px beside the name on rosters and payslips." },
           { k: "ot", label: "Overtime", options: [{ v: "yes", l: "Paid at 1.25× above the statutory day" }, { v: "no", l: "Not paid — salaried, hours still clocked" }], full: 1 },
           { k: "svc", label: "Service charge", options: [{ v: "yes", l: "Shares in the pool" }, { v: "no", l: "Excluded from the pool" }], full: 1 },
           { k: "pension", label: "MRPS pension", options: [{ v: "auto", l: "By nationality — mandatory for Maldivians" }, { v: "yes", l: "Enrolled (voluntary opt-in)" }, { v: "no", l: "Not enrolled" }], full: 1 }

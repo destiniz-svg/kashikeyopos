@@ -2917,9 +2917,20 @@ H.setting_change = async (c, p, ctx) => {
 };
 H.terminal_update = async (c, p, ctx) => setSetting(c, ctx, 'terminal', p);
 H.brand_update = async (c, p, ctx) => {
+  const b = p.brand || p;
+  // The mark is an UPLOAD now, so it can be a data URL — same ceiling the
+  // outlet's own branding keeps, refused by name rather than swallowed.
+  if (b && b.mark && String(b.mark).length > 600000) {
+    throw Object.assign(new Error('that logo is too large — add it through'
+      + ' the image holder, which scales it on the device'), { status: 400 });
+  }
   await c.query("UPDATE chain.company SET brand = coalesce(brand,'{}'::jsonb) || $1::jsonb,"
-    + ' updated_at = now() WHERE id = 1', [JSON.stringify(p.brand || p)]);
-  await log(c, 'brand_update', 'company', '1', null, p.brand || p);
+    + ' updated_at = now() WHERE id = 1', [JSON.stringify(b)]);
+  // The image itself has no business in the audit trail — the trail records
+  // THAT the brand changed and which keys, exactly as outlet_brand does.
+  const noted = Object.assign({}, b);
+  if (noted.mark && String(noted.mark).slice(0, 5) === 'data:') noted.mark = '<image>';
+  await log(c, 'brand_update', 'company', '1', null, noted);
   return { ok: true };
 };
 H.company_update = async (c, p, ctx) => {
@@ -2954,16 +2965,26 @@ H.location_upsert = async (c, p) => {
 };
 
 H.employee_upsert = async (c, p) => {
+  // The photograph is an UPLOAD (a data URL the device scaled), and silence
+  // preserves it: an op from an older build carries no photo and must not
+  // strip one somebody added. Same rule for sex — the silhouette's gender.
+  if (p.photo && String(p.photo).length > 600000) {
+    throw Object.assign(new Error('that photograph is too large — add it'
+      + ' through the image holder, which scales it on the device'), { status: 400 });
+  }
   await c.query('INSERT INTO employee (id, staff_id, name, job, kind, basic, hourly,'
-    + ' joined_on, mrps, ot, svc, emp_type, phone, id_no)'
+    + ' joined_on, mrps, ot, svc, emp_type, phone, id_no, photo, sex)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9,false),coalesce($10,true),'
-    + ' coalesce($11,true),$12,$13,$14) ON CONFLICT (id) DO UPDATE SET'
+    + ' coalesce($11,true),$12,$13,$14,$15,$16) ON CONFLICT (id) DO UPDATE SET'
     + ' name = excluded.name, job = excluded.job, kind = excluded.kind,'
     + ' basic = excluded.basic, hourly = excluded.hourly, mrps = excluded.mrps,'
-    + ' ot = excluded.ot, svc = excluded.svc, emp_type = excluded.emp_type',
+    + ' ot = excluded.ot, svc = excluded.svc, emp_type = excluded.emp_type,'
+    + ' photo = coalesce(excluded.photo, employee.photo),'
+    + ' sex = coalesce(excluded.sex, employee.sex)',
     [p.id || slug(p.name), p.staffId || null, p.name, p.job || '', p.kind || 'local',
       r2(p.basic), r2(p.hourly), p.joined || null, p.mrps, p.ot, p.svc,
-      p.type || 'fulltime', p.phone || null, p.idNo || null]);
+      p.type || 'fulltime', p.phone || null, p.idNo || null,
+      p.photo || null, p.sex || null]);
   return { ok: true };
 };
 H.staffedit = H.employee_upsert;

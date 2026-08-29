@@ -845,6 +845,8 @@ BEGIN
       svc       boolean NOT NULL DEFAULT true,      -- shares the service pool
       emp_type  text NOT NULL DEFAULT 'fulltime',
       phone     text, id_no text,
+      photo     text,                              -- an upload, never a URL (050)
+      sex       text,                              -- the silhouette's gender
       active    boolean NOT NULL DEFAULT true
     );
     CREATE TABLE IF NOT EXISTS %1$I.rota_shift (
