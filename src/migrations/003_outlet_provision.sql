@@ -340,6 +340,8 @@ BEGIN
       icon       text,
       station    text,
       hidden     boolean NOT NULL DEFAULT false,
+      -- Off the guest's phone while the counter keeps the whole section (048).
+      qr_off     boolean NOT NULL DEFAULT false,
       active     boolean NOT NULL DEFAULT true
     );
     CREATE TABLE IF NOT EXISTS %1$I.item (
@@ -370,6 +372,19 @@ BEGIN
       active      boolean NOT NULL DEFAULT true,
       off_menu    boolean NOT NULL DEFAULT false,
       sold_out_reason text,
+      -- BOUGHT IN READY TO SELL (048). NULL buy_item = made here, costed
+      -- from its recipe. NOT NULL = one sale takes 1/buy_pack of the linked
+      -- ingredient itself off the shelf, and the dish costs what the
+      -- supplier charged. buy_pack: the supplier delivers a box, the guest
+      -- buys a piece — one stock unit serves buy_pack guests.
+      buy_item    text,
+      buy_vendor  uuid,
+      buy_pack    int NOT NULL DEFAULT 1
+                    CONSTRAINT item_buy_pack_serves CHECK (buy_pack >= 1),
+      -- Off the GUEST's phone while the counter keeps it (048). The third
+      -- switch beside off_menu (hidden everywhere, lasting) and
+      -- sold_out_reason (86, tonight): three questions, three lifespans.
+      qr_off      boolean NOT NULL DEFAULT false,
       pos         int NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS item_category ON %1$I.item(category_id);
@@ -600,6 +615,41 @@ BEGIN
       tax         numeric(12,2) NOT NULL DEFAULT 0,
       total       numeric(12,2) NOT NULL DEFAULT 0,
       note        text
+    );
+    -- THE DOOR RECEIPT (048). The gulha man is not a vendor invoice and a
+    -- GRN pad — a tray, a count and a price, taken in under a minute at the
+    -- till. A PERSON IS NOT A SUPPLIER RECORD: the name is stored here, and
+    -- the master stays a list of accounts with terms. `unpriced` is blind
+    -- receiving — the count is only evidence if the person counting could
+    -- not see the expected figure.
+    CREATE TABLE IF NOT EXISTS %1$I.door_receipt (
+      id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      no          text NOT NULL UNIQUE,
+      received_on date NOT NULL DEFAULT current_date,
+      supplier_id uuid,
+      person      text,
+      docket      text,
+      -- Cash at the door never becomes a payable: the money already left
+      -- the drawer.
+      paid_cash   boolean NOT NULL DEFAULT true,
+      total       numeric(12,2) NOT NULL DEFAULT 0,
+      status      text NOT NULL DEFAULT 'unpriced'
+                  CHECK (status IN ('unpriced', 'received')),
+      by_staff    uuid,
+      by_rank     smallint,
+      device_id   text,
+      notes       text,
+      at          timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT door_receipt_who
+        CHECK (supplier_id IS NOT NULL OR nullif(btrim(person), '') IS NOT NULL),
+      CONSTRAINT door_receipt_not_future CHECK (received_on <= current_date)
+    );
+    CREATE TABLE IF NOT EXISTS %1$I.door_line (
+      receipt_id uuid NOT NULL REFERENCES %1$I.door_receipt(id) ON DELETE CASCADE,
+      ingredient_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      qty        numeric(12,3) NOT NULL CHECK (qty > 0),
+      rate       numeric(12,2) NOT NULL DEFAULT 0 CHECK (rate >= 0),
+      PRIMARY KEY (receipt_id, ingredient_id)
     );
     CREATE TABLE IF NOT EXISTS %1$I.grn_line (
       id            bigserial PRIMARY KEY,
@@ -1085,7 +1135,7 @@ BEGIN
     (p_id, 'SALE', p_code || '-R'),  (p_id, 'CN',  p_code || '-CN'),
     (p_id, 'PO',   p_code || '-PO'), (p_id, 'GRN', p_code || '-GRN'),
     (p_id, 'PR',   p_code || '-PR'), (p_id, 'DSP', p_code || '-DSP'),
-    (p_id, 'JV',   p_code || '-JV')
+    (p_id, 'JV',   p_code || '-JV'), (p_id, 'DD',  p_code || '-DD')
   ON CONFLICT DO NOTHING;
 
   PERFORM chain.seed_chart(s);

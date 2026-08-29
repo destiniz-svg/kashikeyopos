@@ -175,7 +175,9 @@ async function buildBootstrap(ctx) {
       MENU_CATEGORIES: categories.rows.map((r) => ({
         id: r.id, name: r.name, section: r.section_id, pos: r.pos,
         icon: r.icon || null, color: r.colour || null,
-        station: r.station || null, hidden: !!r.hidden
+        station: r.station || null, hidden: !!r.hidden,
+        // Off the guest's phone while the counter keeps the section (048).
+        qrOff: !!r.qr_off
       })),
       MENU_SECTIONS: sections.rows.map((r) => ({ id: r.id, name: r.name, pos: r.pos })),
       /* Dishes only. A BATCH is an item too — that is what makes
@@ -474,6 +476,13 @@ async function buildState(ctx, opts) {
       batches: ['SELECT * FROM batch ORDER BY use_by NULLS LAST LIMIT 500'],
       deliveries: ['SELECT * FROM delivery ORDER BY at DESC LIMIT 300'],
       grnLines: ['SELECT * FROM grn_line'],
+      /* Door deliveries (048): the counter's own receipts, and the blind ones
+         a manager still has to price. */
+      doorReceipts: ['SELECT r.*, coalesce(json_agg(json_build_object('
+        + "'ing', dl.ingredient_id, 'qty', dl.qty, 'rate', dl.rate)"
+        + ") FILTER (WHERE dl.receipt_id IS NOT NULL), '[]') AS lines"
+        + ' FROM door_receipt r LEFT JOIN door_line dl ON dl.receipt_id = r.id'
+        + ' GROUP BY r.id ORDER BY r.at DESC LIMIT 200'],
       invoices: ['SELECT * FROM vendor_invoice ORDER BY invoice_date DESC LIMIT 300'],
       indents: ['SELECT i.*, coalesce(json_agg(json_build_object('
         + "'ing', il.ingredient_id, 'qty', il.qty, 'sent', il.sent_qty)"
@@ -617,6 +626,14 @@ async function buildState(ctx, opts) {
         id: v.id, vendor: v.supplier_id, no: v.invoice_no, date: v.invoice_date,
         due: v.due_date, net: num(v.net), tax: num(v.tax), amt: num(v.amount),
         paid: num(v.paid), grn: v.delivery_id
+      })),
+      /* Door deliveries (048): the tray, the count, the price — and whether a
+         manager still owes the blind ones a pricing pass. */
+      doorReceipts: q.doorReceipts.rows.map((d) => ({
+        id: d.id, no: d.no, on: String(d.received_on).slice(0, 10),
+        vendor: d.supplier_id, person: d.person || '', docket: d.docket || '',
+        cash: !!d.paid_cash, total: num(d.total), status: d.status,
+        at: ms(d.at), lines: d.lines
       })),
       indents: indents.rows.map((i) => ({
         id: i.id, no: i.pr_no, to: i.to_outlet, at: ms(i.at), by: i.raised_by,
@@ -839,6 +856,14 @@ function menuOf(r, recipe, mods) {
        read an `addons` list that only ever existed inside one open modal. */
     spice: num(r.spice),
     addons: mods === null ? null : mods,
+    /* WHERE IT COMES FROM (048). null = made here; {item, vendor, pack} =
+       bought in ready to sell — one sale takes 1/pack of the linked stock
+       item off the shelf and the dish costs what the supplier charged. And
+       the third channel switch: off the guest's phone while the counter
+       keeps it. */
+    buy: r.buy_item ? { item: r.buy_item, vendor: r.buy_vendor || null,
+      pack: Math.max(1, num(r.buy_pack) || 1) } : null,
+    qrOff: !!r.qr_off,
     recipe: recipe.map((l) => [l.ingredient_id || l.sub_item_id, num(l.qty),
       num(l.waste_pct), l.sub_item_id ? 'sub' : 'ing'])
   };

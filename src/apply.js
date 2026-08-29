@@ -619,6 +619,28 @@ async function deriveConsumption(c, sold) {
       net: Number(r.net), qty: YIELD.grossQty(a, Number(r.net)) };
   }).filter((m) => m.qty > 0);
 
+  /* A BOUGHT-IN DISH MOVES THE ITEM ITSELF (048). The recipe walk does not
+     touch it — the buy link cleared its recipe — so without this the tray's
+     count sits at its opening figure all service while it empties. One sale
+     takes 1/buy_pack of the linked stock item, in the unit the storekeeper
+     counts it in, and NO yield gross-up: nothing is trimmed off a can of
+     Coke. The till deducts by exactly the same rule, so the drift check
+     stays a check rather than a second opinion. */
+  const bought = await c.query(
+    'SELECT i.buy_item AS ing, ing.name AS name,'
+    + ' sum(s.q::numeric / greatest(i.buy_pack, 1)) AS qty'
+    + ' FROM unnest($1::text[], $2::numeric[]) AS s(id, q)'
+    + ' JOIN item i ON i.id = s.id AND i.buy_item IS NOT NULL'
+    + ' JOIN ingredient ing ON ing.id = i.buy_item'
+    + ' GROUP BY 1, 2', [ids, qtys]);
+  bought.rows.forEach((r) => {
+    const q = Number(r.qty);
+    if (!(q > 0)) return;
+    const at = moves.find((m) => m.ing === String(r.ing));
+    if (at) { at.qty += q; at.net += q; }
+    else moves.push({ ing: String(r.ing), name: r.name, net: q, qty: q });
+  });
+
   const deepest = walk.rows.reduce((a, r) => Math.max(a, Number(r.deepest || 0)), 0);
   if (deepest >= DERIVE_DEPTH) {
     // The frontier was still moving when the cap stopped it, so what came back
@@ -1261,6 +1283,151 @@ H.grn_priced = async (c, p, ctx) => {
   return { ok: true, total };
 };
 
+/* ── THE DOOR DELIVERY (048) ───────────────────────────────────────────────
+   The gulha man at seven in the morning is not a vendor invoice and a GRN
+   pad — he is a tray, a count and a price, and the till has to take him in
+   under a minute or the delivery never gets recorded at all. Same stock
+   ledger, same audit line, one small document, and a CASHIER may do it.
+
+   Blind receiving is enforced HERE, where the op is applied, not only where
+   the form hid a field: a rate from a rank-2 caller is refused by name,
+   because the count is only evidence if the person counting could not see
+   the expected figure. Cash paid at the door never becomes a payable — the
+   money already left the drawer, and a second claim on it at month end is a
+   real reconciliation break. A named person is deliberately NOT a supplier
+   record: the master is for accounts with terms, and the name lives on the
+   receipt where MIRA can find it. */
+H.door_receipt = async (c, p, ctx) => {
+  const refuse = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  const person = String((p && p.person) || '').trim() || null;
+  // Only a supplier PICKED from the master counts as one — a name typed in
+  // the person field must not quietly mint a supplier account.
+  const vendorId = p.vendor ? await supplierIdOf(c, p.vendor, p.vendorName) : null;
+  if (!vendorId && !person) refuse('Say who brought it — a supplier, or the person’s name');
+  const date = String(p.date || today(ctx));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) refuse('Date must be written as YYYY-MM-DD');
+  if (date > today(ctx)) refuse('A delivery cannot be received in the future');
+  const lines = arr(p.lines).map((l) => ({
+    ing: l && (l.ing || l.item) ? String(l.ing || l.item) : null,
+    qty: num(l && l.qty), rate: r2(num(l && l.rate))
+  })).filter((l) => l.ing);
+  if (!lines.length) refuse('Add at least one item — there is nothing to receive');
+  if (lines.some((l) => !(l.qty > 0))) refuse('Every line needs an item and a count above zero');
+  const rank = num(ctx.rank);
+  if (rank < 3 && lines.some((l) => l.rate > 0)) refuse('Pricing a delivery needs a manager');
+  const priced = lines.every((l) => l.rate > 0);
+  const cash = p.cash !== false;
+  if (!cash && !vendorId) {
+    refuse('On account needs a supplier from the list — a person with a tray is paid at the door');
+  }
+  const total = r2(lines.reduce((a, l) => a + l.qty * l.rate, 0));
+  const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['DD']);
+  const d = await one(c,
+    'INSERT INTO door_receipt (no, received_on, supplier_id, person, docket,'
+    + ' paid_cash, total, status, by_staff, by_rank, device_id, notes)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
+    [no.no, date, vendorId, person, p.docket || null, cash, total,
+      priced ? 'received' : 'unpriced', ctx.actor, rank || null,
+      ctx.deviceId || null, p.notes || null]);
+  for (const l of lines) {
+    await c.query('INSERT INTO door_line (receipt_id, ingredient_id, qty, rate)'
+      + ' VALUES ($1,$2,$3,$4) ON CONFLICT (receipt_id, ingredient_id)'
+      + ' DO UPDATE SET qty = door_line.qty + excluded.qty', [d.id, l.ing, l.qty, l.rate]);
+    // Usable immediately — the counter count is right before the first sale
+    // of it. A priced line re-averages the cost; a blind one moves quantity
+    // alone, and the manager's pricing pass values it afterwards.
+    await moveStock(c, ctx, { ing: l.ing, qty: Math.abs(l.qty), cost: l.rate,
+      value: r2(l.qty * l.rate), reason: 'purchase', date: date,
+      note: 'Door delivery ' + no.no });
+  }
+  if (priced && total > 0) {
+    await postJournal(c, ctx, cash ? [
+      { acct: '1200', dr: total, memo: 'Received at the door' },
+      { acct: '1010', cr: total, memo: 'Paid at the door' }
+    ] : [
+      { acct: '1200', dr: total, memo: 'Received at the door' },
+      { acct: '2100', cr: total, memo: 'Supplier payable' }
+    ], 'door_receipt', d.id, date, 'Door delivery ' + no.no);
+    if (!cash && vendorId) {
+      // On account it joins the payables under that supplier's terms.
+      await c.query('INSERT INTO vendor_invoice (supplier_id, invoice_no,'
+        + ' invoice_date, due_date, net, tax, amount, approved_by)'
+        + ' VALUES ($1,$2,$3,$4,$5,0,$5,$6)'
+        + ' ON CONFLICT (supplier_id, invoice_no) DO NOTHING',
+        [vendorId, p.docket || no.no, date, addDays(date, 30), total, ctx.actor]);
+    }
+  }
+  await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
+    + " VALUES ($1,'DD',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
+    [no.no, date, total, d.id, ctx.actor]);
+  await log(c, 'door_receipt', 'door_receipt', d.id, null, {
+    no: no.no, who: person || p.vendorName || String(vendorId || ''),
+    lines: lines.length, total: total, cash: cash,
+    status: priced ? 'received' : 'unpriced',
+    note: 'Received at the door · ' + no.no + ' · '
+      + (person || p.vendorName || 'supplier') + ' · ' + lines.length
+      + ' line(s) MVR ' + total.toFixed(2) });
+  return { receiptId: d.id, no: no.no, status: priced ? 'received' : 'unpriced' };
+};
+
+/* Pricing a blind door receipt afterwards — the manager's half of blind
+   receiving. The stock already moved when it was signed in; this values it:
+   the same weighted re-average a priced delivery gets, the journal, and the
+   payable where it was taken on account. */
+H.door_priced = async (c, p, ctx) => {
+  const refuse = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  if (num(ctx.rank) < 3) refuse('Pricing a delivery needs a manager');
+  const key = String(p.receiptId || p.no || '');
+  // Looked up by number first: the till names receipts by their DD number,
+  // and comparing a uuid column against a non-uuid string is a cast error,
+  // not a miss.
+  const r = UUID.test(key)
+    ? await one(c, 'SELECT * FROM door_receipt WHERE id = $1', [key])
+    : await one(c, 'SELECT * FROM door_receipt WHERE no = $1', [key]);
+  if (!r) return { skipped: 'no such door receipt' };
+  if (r.status === 'received') return { receiptId: r.id, no: r.no, already: true };
+  const rates = {};
+  arr(p.lines).forEach((l) => { if (l && (l.ing || l.item)) rates[String(l.ing || l.item)] = r2(num(l.rate)); });
+  const held = await c.query('SELECT ingredient_id, qty FROM door_line WHERE receipt_id = $1', [r.id]);
+  let total = 0;
+  for (const l of held.rows) {
+    const rate = rates[String(l.ingredient_id)];
+    if (!(rate > 0)) {
+      refuse('“' + l.ingredient_id + '” has no rate — price every line or the stock value is wrong');
+    }
+    total += num(l.qty) * rate;
+    await c.query('UPDATE door_line SET rate = $3 WHERE receipt_id = $1 AND ingredient_id = $2',
+      [r.id, l.ingredient_id, rate]);
+    // The blind move carried quantity and no value; the re-average happens
+    // now, weighted against what else is on the shelf.
+    await c.query(
+      'UPDATE ingredient SET avg_cost = CASE WHEN on_hand <= 0 THEN $2 ELSE'
+      + ' ((greatest(on_hand - $3, 0) * avg_cost) + ($3 * $2))'
+      + ' / nullif(greatest(on_hand - $3, 0) + $3, 0) END WHERE id = $1',
+      [l.ingredient_id, rate, num(l.qty)]);
+  }
+  total = r2(total);
+  await c.query('UPDATE door_receipt SET status = \'received\', total = $2 WHERE id = $1',
+    [r.id, total]);
+  await postJournal(c, ctx, r.paid_cash ? [
+    { acct: '1200', dr: total, memo: 'Door delivery priced' },
+    { acct: '1010', cr: total, memo: 'Paid at the door' }
+  ] : [
+    { acct: '1200', dr: total, memo: 'Door delivery priced' },
+    { acct: '2100', cr: total, memo: 'Supplier payable' }
+  ], 'door_receipt', r.id, today(ctx), 'Door delivery ' + r.no + ' priced');
+  if (!r.paid_cash && r.supplier_id) {
+    await c.query('INSERT INTO vendor_invoice (supplier_id, invoice_no,'
+      + ' invoice_date, due_date, net, tax, amount, approved_by)'
+      + ' VALUES ($1,$2,$3,$4,$5,0,$5,$6)'
+      + ' ON CONFLICT (supplier_id, invoice_no) DO NOTHING',
+      [r.supplier_id, r.docket || r.no, today(ctx), addDays(today(ctx), 30),
+        total, ctx.actor]);
+  }
+  await log(c, 'door_priced', 'door_receipt', r.id, null, { no: r.no, total: total });
+  return { receiptId: r.id, no: r.no, total: total };
+};
+
 /* A supplier as the LEDGER must know one: a uuid on chain.supplier. Tills
    hold seed-era numeric ids and names; a payment op that fed either straight
    into a uuid column died on the cast — the same disease member_upsert had,
@@ -1759,18 +1926,21 @@ H.menu_category_insert = async (c, p) => {
      ones it has already ordered — the rail reshuffling itself is not what
      "add a section" means. A caller that names a position gets it. */
   await c.query('INSERT INTO menu_category (id, name, section_id, pos, colour, icon,'
-    + ' station, hidden) VALUES ($1,$2,$3,'
+    + ' station, hidden, qr_off) VALUES ($1,$2,$3,'
     + ' coalesce($4, (SELECT coalesce(max(pos), -1) + 1 FROM menu_category)),'
-    + ' $5,$6,$7,coalesce($8,false))'
+    + ' $5,$6,$7,coalesce($8,false),coalesce($9,false))'
     + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
     + ' section_id = coalesce($3, menu_category.section_id),'
     + ' pos = coalesce($4, menu_category.pos),'
     + ' colour = coalesce($5, menu_category.colour),'
     + ' icon = coalesce($6, menu_category.icon),'
     + ' station = coalesce($7, menu_category.station),'
-    + ' hidden = coalesce($8, menu_category.hidden)',
+    + ' hidden = coalesce($8, menu_category.hidden),'
+    // The QR switch follows the hidden rule: silence preserves it.
+    + ' qr_off = coalesce($9, menu_category.qr_off)',
     [id, p.name, p.section || null, p.pos == null ? null : num(p.pos), p.colour || null,
-      p.icon || null, p.station || null, p.hidden == null ? null : !!p.hidden]);
+      p.icon || null, p.station || null, p.hidden == null ? null : !!p.hidden,
+      p.qrOff == null ? null : !!p.qrOff]);
   await log(c, 'menu_category_insert', 'menu_category', id, null, { name: p.name });
   return { categoryId: id };
 };
@@ -1809,11 +1979,34 @@ H.dish_upsert = async (c, p, ctx) => {
   const tags = Array.isArray(p.tags) ? p.tags : null;
   const spice = p.spice === undefined || p.spice === null ? null
     : Math.max(0, Math.min(3, Math.round(num(p.spice))));
+  /* WHERE IT COMES FROM (048). Three states, and the third is the default:
+     `buy` absent is silence (an older build, a partial save — keep what is
+     there), `buy: null` is "made here" said out loud, and `buy: {item,
+     vendor, pack}` is bought in ready to sell. The linked item must exist,
+     or the count on the menu would be a fiction — that one IS refused, by
+     name, because unlike a sale no money has been taken yet. */
+  let buyItem = null, buyVendor = null, buyPack = null, buyTouch = false;
+  if (p.buy !== undefined) {
+    buyTouch = true;
+    if (p.buy && p.buy.item != null) {
+      const si = await one(c, 'SELECT id FROM ingredient WHERE id = $1',
+        [String(p.buy.item)]);
+      if (!si) {
+        throw Object.assign(new Error('No stock item matches “' + p.buy.item
+          + '” — pick the item the storekeeper receives'), { status: 400 });
+      }
+      buyItem = si.id;
+      buyVendor = await supplierIdOf(c, p.buy.vendor, p.buy.vendorName);
+      buyPack = Math.max(1, Math.round(num(p.buy.pack)) || 1);
+    }
+  }
   await c.query('INSERT INTO item (id, name, category_id, station, price, yield_qty,'
     + ' unit, prep_mins, description, image, allergens, diets, tags, active, off_menu,'
-    + ' sold_out_reason, pos, spice) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'
+    + ' sold_out_reason, pos, spice, buy_item, buy_vendor, buy_pack, qr_off)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'
     + ' coalesce($13, \'{}\'::text[]),'
-    + ' coalesce($14,true), coalesce($15,false), $16, $17, coalesce($18,0))'
+    + ' coalesce($14,true), coalesce($15,false), $16, $17, coalesce($18,0),'
+    + ' $19, $20, coalesce($21,1), coalesce($22,false))'
     + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
     + ' category_id = excluded.category_id, station = excluded.station,'
     + ' price = excluded.price, yield_qty = excluded.yield_qty, unit = excluded.unit,'
@@ -1828,11 +2021,22 @@ H.dish_upsert = async (c, p, ctx) => {
        it again says false; saying nothing is not the same as saying false.
        sold_out_reason is the opposite by nature: null IS "back on sale". */
     + ' off_menu = coalesce($15, item.off_menu),'
-    + ' sold_out_reason = excluded.sold_out_reason',
+    + ' sold_out_reason = excluded.sold_out_reason,'
+    /* Same rule for the buy link and the QR switch: a caller that did not
+       mention them keeps them. $23 says whether `buy` was mentioned at all. */
+    + ' buy_item = CASE WHEN $23 THEN $19 ELSE item.buy_item END,'
+    + ' buy_vendor = CASE WHEN $23 THEN $20 ELSE item.buy_vendor END,'
+    + ' buy_pack = CASE WHEN $23 THEN coalesce($21,1) ELSE item.buy_pack END,'
+    + ' qr_off = coalesce($22, item.qr_off)',
     [id, p.name, p.cat || null, p.station || 'main', r2(p.price), num(p.yield) || 1,
       p.unit || 'plate', num(p.prep) || 12, p.desc || null, p.img || null,
       arr(p.allergens), arr(p.diets), tags, p.active, p.offMenu,
-      p.soldOutReason || null, num(p.pos), spice]);
+      p.soldOutReason || null, num(p.pos), spice,
+      buyItem, buyVendor, buyPack,
+      p.qrOff === undefined || p.qrOff === null ? null : !!p.qrOff, buyTouch]);
+  /* A dish costed from an invoice must not also carry recipe lines, or two
+     answers to "what does this cost" exist. */
+  if (buyItem) await c.query('DELETE FROM recipe_line WHERE item_id = $1', [id]);
   /* THE ADD-ONS THIS DISH OFFERS. `null` means "inherit whatever the section
      offers" — the editor's own default and a real answer — so only an ARRAY
      is written, and writing one is exhaustive: what is not in it is no longer
@@ -1847,11 +2051,16 @@ H.dish_upsert = async (c, p, ctx) => {
         + ' ON CONFLICT DO NOTHING', [id, p.addons.map(String)]);
     }
   }
-  if (Array.isArray(p.recipe)) await writeRecipe(c, id, p.recipe);
+  if (Array.isArray(p.recipe) && !buyItem) await writeRecipe(c, id, p.recipe);
   await publishDeclaration(c, id);
   await log(c, 'dish_upsert', 'item', id, null, { name: p.name, price: r2(p.price) });
   return { itemId: id };
 };
+
+/* The QR-channel switches deliberately have no op of their own: a dish's
+   rides `dish_upsert` (silence-preserving, like off_menu) and a section's
+   rides `menu_category_insert` — the same one seam every other fact about a
+   dish or a section already travels, with the same replay safety. */
 H.menu_import = async (c, p, ctx) => {
   let n = 0;
   for (const d of arr(p.dishes)) { await H.dish_upsert(c, d, ctx); n++; }

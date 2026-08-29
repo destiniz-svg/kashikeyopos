@@ -1657,6 +1657,104 @@ B (never touched):   {"tags":["chef","signature"],"spice":3}
 outlet_39.item       MASALA TEA | {chef,signature} | 3 | mains
 ```
 
+## Two honest kinds of menu item, and a third switch on every one
+
+Most Maldivian outlets sell a mix: curries cooked in the kitchen, and hedhika,
+pastry and bottled drinks that arrive READY TO SELL — from a supplier, or from
+a person with a tray at seven in the morning. Migration 048 models it as one
+nullable link on `item`: `buy_item` (an ingredient), `buy_vendor`, `buy_pack`.
+NULL is made here, costed from the recipe; set, the dish costs the supplier's
+last price ÷ pack, fires to the `counter` station (nothing is cooked), one
+sale takes `1/buy_pack` of the linked item itself off the shelf, and setting
+the link CLEARS the recipe — two answers to "what does this cost" is the
+defect. `buy_pack` is the field most tills forget: the supplier delivers a
+box, the guest buys a piece, and getting it wrong makes the count wrong from
+the first delivery, quietly. A bought-in stock item is counted, costed and
+sold in ONE unit (base = stock); the dish's pack does the sellable conversion.
+
+**Both runtimes deduct it by the same rule** — `explodeSold()`/`saleTrail()`
+on the till, the `bought` query in `deriveConsumption()` on the server — with
+NO yield gross-up (nothing is trimmed off a can of Coke), so the drift check
+stays a check. Proven: a sale pushed with the till's claim lands with no
+`qty_mismatch` and the move re-valued at WAC.
+
+**Portions is the shelf talking.** `dishPortions()` gives the three answers —
+`null` (nothing to count from: no recipe and not bought in), `{n: null}` (it
+counts from rows the item master does not hold), `{n}` (the measured figure,
+floored to the tightest ingredient GROSS of trim, or units × pack). A measured
+ZERO is a fact and is UNCAPPED in `eightySix()` — capping it was the shipped
+prototype's own defect, 43 of 46 empty trays left on sale — while the recipe
+heuristic stays capped because a guess that fires on every dish is a cry-wolf
+list. `passCache()` memoises the consumption bag per render pass (a microtask
+clears it, so a stale figure cannot outlive a write): the 301-row grid
+recomputing it per row was a measured one-to-two seconds per tab tap. The
+Menu Master grid carries a Portions column; the till tile carries a badge —
+a tray always says what is left, a made dish speaks only below six. The
+status chip ladder is Hidden → Sold out → 86'd → Till only → Live.
+
+**Hidden, 86, and off-the-QR are three switches, not one** — three questions,
+three lifespans, three people. `qr_off` on `item` AND on `menu_category`
+takes a dish or a whole section off the GUEST's phone while the counter keeps
+ringing it, which is what a tray you will not restock needs. It rides the
+same seams every other fact does (`dish_upsert` and `menu_category_insert`,
+silence-preserving) and is resolved SERVER-SIDE in the guest snapshot — the
+projection's items query filters `qr_off` and hidden sections in one place,
+so the table menu and the member portal can never disagree, and a reload
+changes nothing because the row is the outlet's. A bought-in tray at zero
+also sells ITSELF out there: the projection folds an empty shelf into
+`sold_out_reason` so both portals read Sold out with nobody touching a
+switch.
+
+**The floor got the counter's tools.** A 420ms hold or right-click on a dish
+tile — the same gesture as the table tiles, `_lp` flag so the sheet never
+also rings a line — opens the dish sheet: what's left (naming the tightest
+line), receive at the door, 86, the QR switch, and Edit for menu-edit ranks.
+The section rail gains a **Counter** chip (bought-in only, lowest stock
+first); the **Counter stock sheet** (`counterSheet()`, rank 2) carries the
+trays with 86/QR buttons per row, section chips that take a whole section
+off the phone, search over the whole menu, and — rank 3+ — the blind door
+receipts still waiting to be priced. The Today list raises "Counter trays
+running out" apart from the 86 warning, because the remedy is a delivery,
+not a chef.
+
+**The door delivery** (`door_receipt` + `door_priced`, tables in 048, DD
+series in `chain.doc_series`). The gulha man is not a vendor invoice and a
+GRN pad: a tray, a count and a price, taken in under a minute, and a CASHIER
+may do it. A person is NOT a supplier record — the name is mandatory on the
+receipt where MIRA can find it, and the master stays a list of accounts with
+terms. BLIND RECEIVING IS ENFORCED WHERE THE OP APPLIES: a rate from a
+rank-2 caller is refused by name ("Pricing a delivery needs a manager"),
+because the count is only evidence if the person counting cannot see the
+expected figure. Stock lands immediately; a priced receipt posts
+`Dr 1200 / Cr 1010` for cash — CASH AT THE DOOR IS NEVER A PAYABLE, the
+money already left the drawer — or `Cr 2100` plus a vendor invoice on
+account; `door_priced` values a blind one afterwards with the same weighted
+re-average a delivery gets.
+
+**The CSV carries all of it.** Columns are now `type, id, name, section,
+price, description, station, tags, spice, addons, visible, qr, source,
+stock_item, pack, supplier`. The `id`, when present and it resolves, is the
+match key — so a rename is a rename rather than a duplicate; a duplicate
+dish name in one file is refused ("Appears twice in this file") rather than
+last-wins; `source=bought` requires a `stock_item` that resolves (by code,
+id or name) and a supplier that exists, each refused by name; `qr=no` takes
+the dish (or a section row) off the guest channel on import. The download
+carries a UTF-8 BOM (Excel on Windows reads BOM-less UTF-8 as the system
+codepage) and `parseCsv()` strips one on the way in. Proven through the
+shipped screen with the merchant's real catalogue: 9 sections, 112 add-ons
+and 8 resale items landed through the real ops, then the 301-row
+`menu-full.csv` planned clean (0 rejected), landed whole at the outlet with
+the eight bought-in links and packs intact, and re-imported as 0 new / 301
+updated / 0 rejected.
+
+What this deliberately does not do: the handoff's REMOTE-stock answer (a
+pale figure from "the main store") — stock here is per outlet by the
+isolation model, so Portions answers for this outlet's own shelf and
+`null` stays distinct from zero; and the handoff's rank-stripped
+`GET /api/menu` — the bootstrap is this build's read, costs are gated on
+screen by `can()`, and the guest plane (the only anonymous one) carries no
+cost at all.
+
 ## The outlet does not always keep the id this device minted
 
 Reported: *"when I add a customer I see a duplicate record, but when I log in

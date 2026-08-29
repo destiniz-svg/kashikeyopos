@@ -178,7 +178,7 @@ const FORMS = [
   'fxrates', 'regclose', 'brand', 'staffedit', 'clockin', 'opex', 'asset',
   'breakdown', 'outlet', 'dish', 'outletPrice', 'pinFor', 'bankImport',
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
-  'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'indent', 'dispatch',
+  'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'door', 'doorPrice', 'indent', 'dispatch',
   'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
   'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn', 'plan',
   // Where an emailed receipt or statement goes when the customer has no

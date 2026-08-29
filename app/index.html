@@ -413,7 +413,7 @@
               </sc-for>
               <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
                 <div style="{{ m.style }}" style-hover="{{ m.hover }}">
-                  <button onClick="{{ m.add }}" style="padding:11px 11px 8px;display:flex;gap:11px;align-items:flex-start;background:none;border:0;color:inherit;font:inherit;text-align:left;width:100%;cursor:pointer">
+                  <button onClick="{{ m.add }}" onContextMenu="{{ m.ctx }}" onTouchStart="{{ m.press }}" onTouchEnd="{{ m.release }}" onTouchMove="{{ m.release }}" onMouseDown="{{ m.press }}" onMouseUp="{{ m.release }}" onMouseLeave="{{ m.release }}" title="{{ m.hint }}" style="padding:11px 11px 8px;display:flex;gap:11px;align-items:flex-start;background:none;border:0;color:inherit;font:inherit;text-align:left;width:100%;cursor:pointer">
                     <span style="{{ m.plateStyle }}">
                       <span style="{{ m.photoStyle }}"></span>
                       <span style="{{ m.glyphStyle }}"></span>
@@ -421,6 +421,7 @@
                     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
                       <span style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
                         <span style="{{ m.stationStyle }}">{{ m.station }}</span>
+                        <span style="{{ m.stockStyle }}">{{ m.stock }}</span>
                         <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
                         <span style="{{ m.vegStyle }}" role="img" aria-label="{{ m.vegLabel }}" title="{{ m.vegLabel }}"></span>
                       </span>
@@ -1412,6 +1413,38 @@
               </div>
 
               <div>
+                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Where it comes from</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ dbBuyModes }}" as="bm" hint-placeholder-count="2">
+                    <button onClick="{{ bm.go }}" style="{{ bm.style }}">{{ bm.label }}</button>
+                  </sc-for>
+                </div>
+                <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbBuyNote }}</div>
+                <div style="{{ dbBuyStyle }}">
+                  <div style="display:flex;gap:9px;flex-wrap:wrap">
+                    <label style="flex:2;min-width:190px;display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Stock item sold</span>
+                      <select value="{{ dbBuyItem }}" onChange="{{ onDbBuyItem }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
+                        <sc-for list="{{ dbBuyItemOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
+                      </select>
+                    </label>
+                    <label style="flex:1.4;min-width:150px;display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Supplier</span>
+                      <select value="{{ dbBuyVendor }}" onChange="{{ onDbBuyVendor }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
+                        <sc-for list="{{ dbBuyVendorOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
+                      </select>
+                    </label>
+                    <label style="width:110px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Units per pack</span>
+                      <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+                    </label>
+                  </div>
+                  <div style="{{ dbBuyLineStyle }}">{{ dbBuyLine }}</div>
+                  <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5">{{ dbBuyFoot }}</div>
+                </div>
+              </div>
+
+              <div>
                 <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Tags</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbTags }}" as="t" hint-placeholder-count="7">
@@ -1456,12 +1489,59 @@
                 <span style="{{ dbHidTrack }}"><span style="{{ dbHidKnob }}"></span></span>
               </button>
 
+              <button onClick="{{ dbQrGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+                <span style="flex:1;min-width:0">
+                  <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ dbQrLabel }}</span>
+                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbQrSub }}</span>
+                </span>
+                <span style="{{ dbQrTrack }}"><span style="{{ dbQrKnob }}"></span></span>
+              </button>
+
               <div style="font-size:11px;color:var(--text-muted);line-height:1.6">{{ dbCostNote }}</div>
 
               <div style="display:flex;gap:9px">
                 <button onClick="{{ dbRecipe }}" style="{{ dbRecipeStyle }}">Recipe &amp; costing</button>
                 <button onClick="{{ dbSave }}" style="flex:1;padding:11px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center" style-hover="background:var(--amber-deep)">{{ dbSaveLabel }}</button>
               </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mCounter }}">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <button onClick="{{ coDoorGo }}" style="width:100%;padding:12px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center" style-hover="background:var(--amber-deep)">{{ coDoor }}</button>
+              <div>
+                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Sections on the QR menu</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ coSecChips }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</button>
+                  </sc-for>
+                </div>
+                <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ coSecNote }}</div>
+              </div>
+              <input value="{{ coQ }}" onChange="{{ onCoQ }}" placeholder="Search every dish" aria-label="Search every dish" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ coRows }}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+                    <span style="flex:1;min-width:0">
+                      <span style="display:block;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                      <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ r.sub }}</span>
+                    </span>
+                    <span style="{{ r.nStyle }}">{{ r.n }}</span>
+                    <button onClick="{{ r.go86 }}" style="{{ r.s86 }}">{{ r.b86 }}</button>
+                    <button onClick="{{ r.goQr }}" style="{{ r.sQr }}">{{ r.bQr }}</button>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ coEmpty }}">
+                  <div style="padding:26px 16px;text-align:center;color:var(--text-faint);font-size:12px;line-height:1.6">{{ coEmpty }}</div>
+                </sc-if>
+              </div>
+              <div style="{{ coUnpricedStyle }}">
+                <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--warn-bright)">Signed in blind · waiting to be priced</span>
+                <sc-for list="{{ coUnpriced }}" as="u" hint-placeholder-count="2">
+                  <button onClick="{{ u.go }}" style="width:100%;text-align:left;padding:10px 13px;border-radius:10px;background:var(--warn-dim);border:1px solid var(--warn-line);color:var(--warn-bright);font-size:11.5px;font-weight:600">{{ u.label }}</button>
+                </sc-for>
+              </div>
+              <div style="font-size:10.5px;color:var(--text-muted);line-height:1.6">{{ coFoot }}</div>
             </div>
           </sc-if>
 
@@ -3817,6 +3897,14 @@ class Component extends DCLogic {
     return it ? this.costPerUsable(it) * (qty || 0) : 0;
   }
   foodCost(m) {
+    // A bought-in dish costs what the supplier charged — the last invoice
+    // divided by how many guests the pack serves — never a recipe and never
+    // the 30% guess.
+    const b = this.dishBuy(m);
+    if (b) {
+      const it = this.item(b.item);
+      if (it) return (it[4] || 0) / Math.max(1, b.pack || 1);
+    }
     let c = 0;
     (m.recipe || []).forEach((r) => { c += this.lineCost(r[0], r[1]); });
     return c || m.price * 0.3;
@@ -4952,7 +5040,8 @@ class Component extends DCLogic {
   // editor — and the till, the KOT and the QR menu all read one answer.
   // The same eight, from the same file the guest's phone reads.
   CATCOLORS() { return ((K() || {}).SECTION_HUES) || ["#b8431d", "#1d6b57", "#6f47a8", "#a8721a", "#2b5a9e", "#9c2f63", "#4d6b23", "#7f5330"]; }
-  STATIONS() { return [["hot", "Hot pass"], ["grill", "Grill"], ["cold", "Cold larder"], ["bar", "Bar"], ["pastry", "Pastry"]]; }
+  // `counter` is where a bought-in dish fires: nowhere — nothing is cooked.
+  STATIONS() { return [["hot", "Hot pass"], ["grill", "Grill"], ["cold", "Cold larder"], ["bar", "Bar"], ["pastry", "Pastry"], ["counter", "Counter"]]; }
   TAGSET() { return [["veg", "Vegetarian"], ["vegan", "Vegan"], ["gf", "Gluten free"], ["nuts", "Contains nuts"], ["chef", "Chef's pick"], ["new", "New"], ["signature", "Signature"]]; }
   SPICE() { return ["Not spicy", "Mild", "Medium", "Hot"]; }
   stationName(k) { const s = this.STATIONS().find((x) => x[0] === k); return s ? s[1] : "Hot pass"; }
@@ -4962,7 +5051,8 @@ class Component extends DCLogic {
      accessible variant. */
   stationHue(k) {
     return ({ hot: "var(--red-bright)", grill: "var(--amber)", cold: "var(--blue)",
-      bar: "var(--violet-bright)", pastry: "var(--go)" })[k] || "var(--red-bright)";
+      bar: "var(--violet-bright)", pastry: "var(--go)",
+      counter: "var(--text-dim)" })[k] || "var(--red-bright)";
   }
   /* How many of this dish are already on the open bill, on the share being
      served. The stepper corrects what is there; without this it could only
@@ -5085,6 +5175,9 @@ class Component extends DCLogic {
     this.queue("menu_category_insert", label, "menu_categories", {
       id: id, name: meta.name, icon: meta.icon || null, colour: meta.color || null,
       station: meta.station || null, hidden: !!meta.hidden,
+      // Off the guest's phone (048). Three-state on the wire: silence keeps
+      // what the outlet has, the same rule hidden follows on a dish.
+      qrOff: meta.qrOff === undefined ? null : !!meta.qrOff,
       pos: meta.pos == null ? null : meta.pos
     });
   }
@@ -5122,7 +5215,137 @@ class Component extends DCLogic {
   // its section's colour with its initials — recognisable in the same position
   // a photo would occupy, and never an empty grey box.
   dishArt(m) { const c = this.catMeta(m.cat).color; return ["color-mix(in oklab, " + c + " 16%, transparent)", c, this.initials(m.name)]; }
-  dishStation(m) { return m.station || this.catMeta(m.cat).station; }
+  /* ── bought in ready to sell (048) ───────────────────────────────────────
+     buy = null is made here; buy = { item, vendor, pack } arrives ready to
+     sell — one sale takes 1/pack of the linked stock item off the shelf, and
+     the dish costs what the supplier charged. A bought-in dish fires to no
+     pass: nothing is cooked. */
+  dishBuy(m) { return m && m.buy && m.buy.item != null ? m.buy : null; }
+  dishStation(m) { return this.dishBuy(m) ? "counter" : (m.station || this.catMeta(m.cat).station); }
+  /* MEMOISE PER RENDER PASS — the handoff's own measured lesson: a 301-row
+     grid recomputing the whole consumption bag once per row took one to two
+     seconds per tab tap. The cache lives for one synchronous pass and a
+     microtask clears it, so a stale figure can never outlive a write. */
+  passCache(key, fn) {
+    if (!this._pass) {
+      this._pass = {};
+      Promise.resolve().then(() => { this._pass = null; });
+    }
+    if (!(key in this._pass)) this._pass[key] = fn();
+    return this._pass[key];
+  }
+  /* PORTIONS — what can still be plated, and the answers are not the same
+     answer. null = nothing to count from (no recipe and not bought in, or
+     the item master has no such row). { n: null } = it counts from rows this
+     shelf has never held. { n } = the measured figure off this outlet's own
+     shelf — and a measured ZERO is a fact, never capped. Bought in: units of
+     the thing itself × pack. Made here: every recipe line divided by what one
+     portion takes off the shelf GROSS of trim, floored to the tightest
+     ingredient, which is remembered so the sheet can name it. */
+  dishPortions(m) {
+    return this.passCache("portions:" + m.id, () => {
+      const b = this.dishBuy(m);
+      if (b) {
+        const it = this.item(b.item);
+        if (!it) return { n: null };
+        const held = this.bookOnHand(b.item); // stock units
+        return { n: Math.max(0, Math.floor(held * Math.max(1, b.pack || 1) + 1e-6)),
+          bind: this.itemName(b.item) };
+      }
+      const rec = (m.recipe || []).filter((r) => !this.isSub(r[0]));
+      if (!rec.length) return null;
+      let n = Infinity, cap = null, counted = false;
+      for (const r of rec) {
+        const it = this.item(r[0]); if (!it) continue;
+        const per = this.grossQty(r[0], r[1] || 0); // base units, gross of trim
+        if (!(per > 0)) continue;
+        counted = true;
+        const heldBase = this.bookOnHand(r[0]) * this.convFactor(it);
+        const can = Math.floor(heldBase / per + 1e-6);
+        if (can < n) { n = can; cap = this.itemName(r[0]); }
+      }
+      if (!counted) return { n: null };
+      return { n: Math.max(0, n === Infinity ? 0 : n), bind: cap };
+    });
+  }
+  // The bought-in dishes a cashier manages from the counter: visible trays,
+  // sorted lowest stock first — the one about to run out is the one to stop
+  // promising.
+  counterDishes() {
+    return (K().MENU || []).filter((m) => this.dishBuy(m) && this.menuVisible(m))
+      .sort((a, b) => {
+        const pa = this.dishPortions(a), pb = this.dishPortions(b);
+        return ((pa && pa.n != null ? pa.n : 1e9) - (pb && pb.n != null ? pb.n : 1e9));
+      });
+  }
+  /* ── the dish sheet: hold or right-click a tile (048) ────────────────────
+     The same gesture the floor already uses on table tiles, and the same
+     rule: frequent, glanceable information lives on the tile as a badge;
+     deliberate actions live behind a deliberate gesture. The actions are
+     rank-correct — a kitchen token reads the stock line and nothing else. */
+  dishSheet(id) {
+    const m = (K().MENU || []).find((x) => String(x.id) === String(id));
+    if (!m) return;
+    const b = this.dishBuy(m), p = this.dishPortions(m), rank = this.rank();
+    const n = p && p.n != null ? p.n : null;
+    const left = !p ? "Nothing to count from \u2014 no recipe and nothing bought in"
+      : n === null ? "Not stocked here yet" + (b ? " \u2014 receive it at the door and the count starts" : "")
+      : n + (b ? " on the shelf" : " portions on the shelf")
+        + (p.bind ? (b ? " \u00b7 counted as " + p.bind : " \u00b7 tightest line: " + p.bind) : "");
+    const acts = [{ label: "What's left", sub: left, go: () => {} }];
+    if (b && this.canReceive()) {
+      acts.push({ label: "Add stock \u00b7 receive at the door",
+        sub: "A tray, a count and a price \u2014 under a minute", go: () => this.openDoorForm(m) });
+    }
+    if (rank >= 2) {
+      acts.push({
+        label: m.off ? "Put it back on" : "86 it for tonight",
+        sub: m.off ? "Back on the till and the QR menu" : "Off the till and the QR menu until it is back \u2014 tonight's stock talking, not a menu decision",
+        go: () => this.toggle86(m)
+      });
+      acts.push({
+        label: m.qrOff ? "Put it back on the QR menu" : "Take it off the QR menu",
+        sub: m.qrOff ? "Guests can order it from their phone again" : "The counter can still ring it \u2014 guests scanning the code are not offered it",
+        go: () => this.setDishQr(m, !m.qrOff)
+      });
+    }
+    if (this.can("menu", "e")) {
+      acts.push({ label: "Edit the dish", sub: "The chain master \u2014 price, section, photo, add-ons", go: () => this.openDish(m.id) });
+    }
+    this.setState({ modal: { kind: "share", title: m.name,
+      sub: this.catMeta(m.cat).name + " \u00b7 " + MVRc(this.menuPrice(m)), acts: acts } });
+  }
+  toggle86(m) {
+    const off = !m.off;
+    this.patchRows("menu", [m.id], { off: off, offReason: off ? "86'd on the floor" : null },
+      m.name + (off ? " is 86'd \u2014 off the till and the QR menu until it is back" : " back on sale \u00b7 " + this.me()), "menu_items");
+  }
+  setDishQr(m, off) {
+    this.patchRows("menu", [m.id], { qrOff: !!off },
+      m.name + (off ? " hidden from the QR menu \u00b7 the counter can still ring it" : " back on the QR menu"), "menu_items");
+  }
+  /* ── the counter stock sheet (048) ───────────────────────────────────────
+     The counter's own screen for the bought-in trays: counts, 86, the QR
+     switch, and the door. Rank 2 \u2014 the person who knows the gulha are
+     finished at 9pm is the cashier. */
+  counterSheet() {
+    if (this.rank() < 2) return this.toast("Counter stock needs a till sign-in", "warn");
+    this.setState({ modal: { kind: "counter", q: "" } });
+  }
+  openDoorForm(m) {
+    if (!this.canReceive()) {
+      return this.toast("Signing a delivery in needs receiving rights \u2014 ask a manager to add them", "warn");
+    }
+    this.openForm("door");
+  }
+  // Lines out of the shared editor, with the ids kept as the STRINGS they are:
+  // grnLines() coerces to Number for the seed-era numeric item master, and a
+  // minted id like "iabc12" would go to NaN through it.
+  doorLines(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && (String(r.item || "").length || +r.qty))
+      .map((r) => [String(r.item || ""), +r.qty || 0, Math.round((+r.rate || 0) * 100) / 100]);
+  }
   dishTags(m) { const t = (m.tags || []).slice(); if (m.veg && t.indexOf("veg") < 0) t.unshift("veg"); return t; }
   dishSpice(m) { return Math.max(0, Math.min(3, m.spice || 0)); }
   // addons unset = inherit whatever the section offers; an explicit list wins.
@@ -5564,13 +5787,21 @@ class Component extends DCLogic {
     (s.settled || []).filter((x) => x.outletId === s.outletId)
       .forEach((x) => (x.sold || []).forEach((sd) => { soldCount[String(sd[0])] = (soldCount[String(sd[0])] || 0) + (sd[1] || 0); }));
     const topIds = Object.keys(soldCount).sort((a, b) => soldCount[b] - soldCount[a]).slice(0, 8);
+    /* THE COUNTER CHIP (048): browse only the bought-in trays, lowest stock
+       first — the one about to run out is the one a cashier must stop
+       promising. It appears only where a store actually buys anything in. */
+    const hasCounter = (K0.MENU || []).some((m) => this.dishBuy(m) && this.menuVisible(m));
     const cats = (topIds.length >= 3 ? [{ id: "top", name: "Most ordered", icon: "all" }] : [])
+      .concat(hasCounter ? [{ id: "counter", name: "Counter", icon: "all" }] : [])
       .concat([{ id: "all", name: "All", icon: "all" }]).concat(this.sortedCats()).map((c) => {
       const on = s.cat === c.id;
       return {
       name: c.name,
       icon: this.catIcon(c.icon || c.id),
-      count: (c.id === "top" ? topIds : c.id === "all" ? K0.MENU.filter((m) => this.menuVisible(m)) : K0.MENU.filter((m) => m.cat === c.id && this.menuVisible(m))).length,
+      count: (c.id === "top" ? topIds
+        : c.id === "counter" ? this.counterDishes()
+        : c.id === "all" ? K0.MENU.filter((m) => this.menuVisible(m))
+        : K0.MENU.filter((m) => m.cat === c.id && this.menuVisible(m))).length,
       pick: () => this.pickCat(c.id),
       /* THE SELECTED TAB IS FILLED WITH ITS OWN SECTION'S HUE, and the dot is
          dropped there because the whole field is already that colour. An
@@ -5579,7 +5810,7 @@ class Component extends DCLogic {
          whichever one is current. */
       dot: on ? "display:none"
         : "width:8px;height:8px;border-radius:3px;flex-shrink:0;display:block;background:"
-          + (c.id === "top" ? "var(--warn)" : this.catHue(c.id)),
+          + (c.id === "top" || c.id === "counter" ? "var(--warn)" : this.catHue(c.id)),
       /* A BARE NUMERAL. It read "19 dishes" on every tab, so the word said
          nothing on any of them and cost the rail the width it needed to show
          the next section. */
@@ -5588,9 +5819,9 @@ class Component extends DCLogic {
       style: "display:inline-flex;align-items:center;gap:8px;flex-shrink:0;scroll-snap-align:start;padding:0 14px;border-radius:11px;min-height:"
         + (isPhone ? 44 : 40) + "px;font-size:13px;white-space:nowrap;font-weight:" + (on ? 700 : 600)
         + ";transition:background .12s ease-out, color .12s ease-out, border-color .12s ease-out"
-        + ";border:1px solid " + (on ? (c.id === "top" ? "var(--warn)" : "transparent") : "var(--line)")
-        + ";background:" + (on ? (c.id === "top" ? "var(--warn-dim)" : this.catHue(c.id)) : "var(--bg-1)")
-        + ";color:" + (on ? (c.id === "top" ? "var(--warn-bright)" : "var(--cat-ink)") : "var(--text-dim)"),
+        + ";border:1px solid " + (on ? (c.id === "top" || c.id === "counter" ? "var(--warn)" : "transparent") : "var(--line)")
+        + ";background:" + (on ? (c.id === "top" || c.id === "counter" ? "var(--warn-dim)" : this.catHue(c.id)) : "var(--bg-1)")
+        + ";color:" + (on ? (c.id === "top" || c.id === "counter" ? "var(--warn-bright)" : "var(--cat-ink)") : "var(--text-dim)"),
       hover: on ? "filter:brightness(1.04)" : "background:var(--bg-2);border-color:var(--line-3);color:var(--text)"
       };
     });
@@ -5603,9 +5834,11 @@ class Component extends DCLogic {
     const CAP = 60;
     const allDishes = K0.MENU
       .filter((m) => this.menuVisible(m))
-      .filter((m) => s.cat === "all" || (s.cat === "top" ? topIds.indexOf(String(m.id)) >= 0 : m.cat === s.cat))
+      .filter((m) => s.cat === "all" || (s.cat === "top" ? topIds.indexOf(String(m.id)) >= 0
+        : s.cat === "counter" ? !!this.dishBuy(m) : m.cat === s.cat))
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
-      .sort((a, b) => s.cat === "top" ? (soldCount[String(b.id)] || 0) - (soldCount[String(a.id)] || 0) : 0);
+      .sort((a, b) => s.cat === "top" ? (soldCount[String(b.id)] || 0) - (soldCount[String(a.id)] || 0)
+        : s.cat === "counter" ? (((this.dishPortions(a) || {}).n ?? 1e9) - ((this.dishPortions(b) || {}).n ?? 1e9)) : 0);
     const capped = !s.menuAll && allDishes.length > CAP;
     const dishes = (capped ? allDishes.slice(0, CAP) : allDishes)
       .map((m) => {
@@ -5614,10 +5847,23 @@ class Component extends DCLogic {
         const showCost = this.can("recipes");
         const art = this.artifact(m);
         const photo = this.photoUrl(m.img);
-        const stHue = this.stationHue(m.station || this.catMeta(m.cat).station);
+        const stHue = this.stationHue(this.dishStation(m));
         // What is already on this bill for this dish, so the stepper corrects
         // rather than only ever adding.
         const onBill = this.qtyOnTicket(m.id);
+        /* THE STOCK BADGE (048). A bought-in tray always says what is left —
+           its count is the whole point of it — and a made dish speaks only
+           below six: three hundred tiles each shouting a portion figure is
+           noise, but "4 left" under a thumb is the warning that stops a table
+           being promised something the kitchen cannot send. */
+        const b = this.dishBuy(m);
+        const p = this.dishPortions(m);
+        const n = p && p.n != null ? p.n : null;
+        const soldOut = !!b && n !== null && n <= 0;
+        const showN = b ? n !== null : (n !== null && n < 6);
+        const refuse = () => this.toast(m.name + (soldOut
+          ? " is sold out — receive more at the door to put it back on"
+          : " is 86'd — stock is out"), "err");
         return {
           name: m.name, desc: m.desc, price: MVRc(price),
           hasDesc: !!String(m.desc || "").trim(),
@@ -5634,7 +5880,27 @@ class Component extends DCLogic {
             ? "position:absolute;inset:0;background-image:url(" + photo + ");background-size:cover;background-position:center"
             : "display:none",
           glyphStyle: photo ? "display:none" : art.glyph,
-          add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
+          add: () => {
+            // A long-press that opened the sheet must not also ring a line.
+            if (this._lp) { this._lp = 0; return; }
+            return off ? refuse() : this.addLine(m);
+          },
+          /* The same gesture the floor already uses on table tiles: 420ms
+             hold, or right-click, opens the dish's own sheet — what is left,
+             86, the QR switch — without ringing anything. */
+          ctx: (e) => { e.preventDefault(); this.dishSheet(m.id); },
+          press: () => { clearTimeout(this._lpT); this._lpT = setTimeout(() => { this._lp = 1; this.dishSheet(m.id); }, 420); },
+          release: () => { clearTimeout(this._lpT); },
+          hint: m.name + " · tap to add · hold or right-click for stock, 86 and the QR menu",
+          /* The stock badge: a tray always says what is left; a made dish
+             speaks only below six portions. */
+          stock: showN ? (soldOut ? "SOLD OUT" : n + " LEFT") : "",
+          stockStyle: showN
+            ? "font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;"
+              + (soldOut ? "background:var(--red);color:#fff"
+                : n < 6 ? "background:var(--warn-dim);color:var(--warn-bright)"
+                : "background:var(--bg-2);color:var(--text-muted)")
+            : "display:none",
           /* A BUTTON CANNOT CONTAIN A BUTTON. The card is a container, the
              face is the +1 target, and the stepper sits outside it — nesting
              them makes the markup invalid and the inner taps unreliable. */
@@ -5645,10 +5911,12 @@ class Component extends DCLogic {
             + "transition:transform .13s cubic-bezier(.2,.8,.3,1),box-shadow .13s cubic-bezier(.2,.8,.3,1),background-color .12s ease-out,border-color .12s ease-out;"
             + "opacity:" + (off ? ".62" : "1"),
           hover: off ? "" : "transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.26),0 14px 30px rgba(0,0,0,.20)",
-          station: this.stationName(m.station || this.catMeta(m.cat).station),
+          station: this.stationName(this.dishStation(m)),
           stationStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:5px;background:"
             + "color-mix(in oklab, " + stHue + " 16%, transparent);color:" + stHue,
-          tag: off ? "86'd" : "",
+          // A tray at zero already wears SOLD OUT on its stock badge; doubling
+          // it with an 86 tag would say the same thing twice in two colours.
+          tag: off && !soldOut ? "86'd" : "",
           tagStyle: off ? "font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--red);color:#fff" : "display:none",
           vegStyle: m.veg ? "width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2px var(--bg-1),inset 0 0 0 4px var(--go)" : "display:none",
           // Colour and shape alone do not survive a screen reader, a
@@ -5657,7 +5925,7 @@ class Component extends DCLogic {
           foot: showCost ? Math.round((cost / price) * 100) + "% cost" : "",
           qty: String(onBill || 0),
           dec: () => this.stepLine(m, -1),
-          inc: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m, 1)
+          inc: () => off ? refuse() : this.addLine(m, 1)
         };
       });
 
@@ -6354,20 +6622,31 @@ class Component extends DCLogic {
   eightySix() {
     const raw = window.KPOS_RAW || {}, K0 = K();
     const oid = this.state.outletId;
-    // Two sources, one list: stock-derived (a recipe line is nearly out) and
-    // manual (a chef 86'd it from the menu screen). The stock heuristic is
-    // capped because it is inferred; a manual 86 is a decision and is absolute.
-    const auto = [], manual = [];
-    (K0.MENU || []).forEach((m) => {
-      if (m.off) { manual.push(m.id); return; }
-      if (!m.recipe || !m.recipe.length) return;
-      const short = m.recipe.some((r) => {
-        const inv = (raw.inv || []).find((i) => i[1] === r[0]);
-        return inv && inv[2] * 1000 < r[1] * 3;
+    /* Three sources, one list. A manual 86 is a decision and is absolute. A
+       MEASURED zero — a bought-in tray whose own count reads nothing left —
+       is a fact and is uncapped: capping it was the shipped defect that left
+       43 of 46 empty trays on sale. The recipe heuristic is an INFERENCE and
+       stays capped, because a guessed shortage on every dish is a cry-wolf
+       list nobody reads by the second week. */
+    return this.passCache("eightySix", () => {
+      const auto = [], manual = [];
+      (K0.MENU || []).forEach((m) => {
+        if (m.off) { manual.push(m.id); return; }
+        const b = this.dishBuy(m);
+        if (b) {
+          const p = this.dishPortions(m);
+          if (p && p.n !== null && p.n <= 0) manual.push(m.id);
+          return;
+        }
+        if (!m.recipe || !m.recipe.length) return;
+        const short = m.recipe.some((r) => {
+          const inv = (raw.inv || []).find((i) => i[1] === r[0]);
+          return inv && inv[2] * 1000 < r[1] * 3;
+        });
+        if (short) auto.push(m.id);
       });
-      if (short) auto.push(m.id);
+      return manual.concat(auto.slice(0, 3));
     });
-    return manual.concat(auto.slice(0, 3));
   }
 
   // Six beers used to be six taps on the same card. A table of eight ordering
@@ -6496,7 +6775,7 @@ class Component extends DCLogic {
       // the card clips its own corners instead of letting a wide child out.
       modalStyle: this.effBp() === "m"
         ? "background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;box-shadow:0 -14px 50px rgba(0,0,0,.6);width:100%;max-width:100vw;max-height:92dvh;display:flex;flex-direction:column;overflow:hidden;animation:ksheet .2s"
-        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:min(" + (m.kind === "pay" || m.kind === "dishb" || m.kind === "menuio" ? "740px" : m.kind === "receipt" || m.kind === "z" || m.kind === "settled" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" || m.kind === "recipeb" ? "620px" : "520px") + ", calc(100vw - " + (this.modalPad() * 2) + "px));max-height:calc(100dvh - " + (this.modalPad() * 2) + "px);display:flex;flex-direction:column;overflow:hidden;animation:kmodal .18s"
+        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:min(" + (m.kind === "pay" || m.kind === "dishb" || m.kind === "menuio" ? "740px" : m.kind === "receipt" || m.kind === "z" || m.kind === "settled" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" || m.kind === "recipeb" || m.kind === "counter" ? "620px" : "520px") + ", calc(100vw - " + (this.modalPad() * 2) + "px));max-height:calc(100dvh - " + (this.modalPad() * 2) + "px);display:flex;flex-direction:column;overflow:hidden;animation:kmodal .18s"
     };
     if (!s.modal) return base;
     const v = Object.assign(base, this.modalVals(m));
@@ -7632,13 +7911,64 @@ class Component extends DCLogic {
             go: () => put({ addons: on ? (d.addons || []).filter((x) => x !== a.id) : (d.addons || []).concat([a.id]) })
           };
         }),
+        /* ── Where it comes from (048) ─────────────────────────────────────
+           Made here: ingredients leave the shelf through the recipe. Bought
+           in: one sale takes one unit off the count, and the dish costs what
+           the supplier charged — so the two pills change the cost model, the
+           stock model and the kitchen route in one act. */
+        dbBuyModes: [
+          { label: "Made here", style: pill(!d.buy), go: () => put({ buy: null, station: this.defaultStation(d.cat) }) },
+          { label: "Bought in from a supplier", style: pill(!!d.buy), go: () => put({ buy: d.buy || { item: "", vendor: "", pack: 1 }, station: "counter" }) }
+        ],
+        dbBuyNote: d.buy
+          ? "Hedhika, pastries, bottled drinks \u2014 anything that arrives ready to sell. One sale takes one unit off the count below, and the dish costs what the supplier charged."
+          : "Its ingredients leave the shelf through its recipe, and its food cost is built from them.",
+        dbBuyStyle: d.buy ? "display:flex;flex-direction:column;gap:9px;margin-top:9px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
+        dbBuyItem: String((d.buy || {}).item || ""),
+        dbBuyItemOpts: [{ v: "", l: "Pick the stock item sold\u2026" }].concat(
+          ((window.KPOS_RAW || {}).items || []).map((i) => ({ v: String(i[0]), l: i[2] + " \u00b7 " + (i[8] || i[7] || "") }))),
+        onDbBuyItem: (e) => put({ buy: Object.assign({}, d.buy, { item: e.target.value }) }),
+        dbBuyVendor: String((d.buy || {}).vendor || ""),
+        dbBuyVendorOpts: [{ v: "", l: "Any supplier" }].concat(
+          ((window.KPOS_RAW || {}).vendors || []).map((v) => ({ v: String(v.id), l: v.name }))),
+        onDbBuyVendor: (e) => put({ buy: Object.assign({}, d.buy, { vendor: e.target.value }) }),
+        dbBuyPack: String((d.buy || {}).pack || 1),
+        onDbBuyPack: (e) => put({ buy: Object.assign({}, d.buy, { pack: e.target.value.replace(/[^0-9]/g, "") }) }),
+        dbBuyLine: (() => {
+          if (!d.buy) return "";
+          const bid = String((d.buy || {}).item || "");
+          if (!bid) return "Pick the item the storekeeper receives \u2014 the count on the menu follows it.";
+          const it = this.item(bid);
+          if (!it) return "That item is not in the item master yet \u2014 create it under Inventory first.";
+          const pk = Math.max(1, +(d.buy || {}).pack || 1);
+          const held = this.bookOnHand(bid);
+          const units = Math.max(0, Math.floor(held * pk + 1e-6));
+          const each = (it[4] || 0) / pk;
+          const gp = price - each;
+          if (held <= 0) return this.itemName(bid).toUpperCase() + " is not stocked here yet. Receive it on a GRN or at the door and the count starts here.";
+          return units + " on the shelf at " + (this.outlet().code || "") + " \u00b7 " + MVR(each) + " each \u00b7 GP " + MVR(gp) + " at " + MVR(price);
+        })(),
+        dbBuyLineStyle: "font-size:11px;line-height:1.55;color:" + (d.buy && String((d.buy || {}).item || "") && this.bookOnHand(String((d.buy || {}).item)) > 0 ? "var(--text-dim)" : "var(--warn-bright)"),
+        dbBuyFoot: "Receiving it on a GRN or at the door tops the count up, selling one takes one off, and at zero the dish reads sold out on the till and the QR menu without anyone touching it. A pack is what the supplier delivers; units per pack is how many guests it serves.",
+        /* The second channel switch: off the guest's phone while the counter
+           keeps it. NOT hidden and NOT 86 \u2014 three switches, three
+           lifespans, deliberately. */
+        dbQrLabel: d.qrOff ? "Off the QR menu" : "On the QR menu",
+        dbQrSub: d.qrOff ? "The counter can still ring it \u2014 guests scanning the code are not offered it."
+          : "Guests can order it from the table QR menu and the member portal.",
+        dbQrTrack: "width:38px;height:21px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (!d.qrOff ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.qrOff ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.qrOff ? "flex-end" : "flex-start"),
+        dbQrKnob: "width:17px;height:17px;border-radius:50%;background:" + (!d.qrOff ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s",
+        dbQrGo: () => put({ qrOff: !d.qrOff }),
         dbHidLabel: d.hidden ? "Hidden from every channel" : "Live on the menu",
         dbHidSub: d.hidden ? "Nobody sees it \u2014 till, QR menu and printed list alike. Use 86 on the floor for tonight's stock instead."
           : "Showing at the till, in the QR menu and on the printed list.",
         dbHidTrack: "width:38px;height:21px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (!d.hidden ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.hidden ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.hidden ? "flex-end" : "flex-start"),
         dbHidKnob: "width:17px;height:17px;border-radius:50%;background:" + (!d.hidden ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s",
         dbHidGo: () => put({ hidden: !d.hidden }),
-        dbCostNote: !existing ? "Build its recipe after saving \u2014 until there are lines, food cost falls back to a flat 30% guess."
+        dbCostNote: d.buy && String((d.buy || {}).item || "")
+          ? (() => { const it = this.item(String(d.buy.item)); const each = it ? (it[4] || 0) / Math.max(1, +d.buy.pack || 1) : 0;
+            return "Food cost " + MVR(each) + " each \u00b7 " + Math.round((each / (price || 1)) * 100) + "% at this price \u00b7 GP " + MVR(price - each) + " \u00b7 taken from the last invoice, not a recipe."; })()
+          : !existing ? "Build its recipe after saving \u2014 until there are lines, food cost falls back to a flat 30% guess."
           : (existing.recipe || []).length ? "Food cost " + MVR(cost) + " \u00b7 " + Math.round((cost / (price || 1)) * 100) + "% at this price \u00b7 GP " + MVR(price - cost)
           : "No recipe lines yet \u2014 costed at a flat 30% guess.",
         dbRecipeStyle: m.id ? "padding:9px 15px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:11.5px;font-weight:600;white-space:nowrap" : "display:none",
@@ -7648,9 +7978,14 @@ class Component extends DCLogic {
           const name = String(d.name || "").trim();
           if (!name) return this.toast("Give the dish a name", "warn");
           if (!(price > 0)) return this.toast("Price must be greater than zero", "warn");
+          if (d.buy && !String((d.buy || {}).item || "").trim()) {
+            return this.toast("Pick the stock item this dish is sold from", "warn");
+          }
           const next = {
             name: name, desc: String(d.desc || "").trim(), cat: d.cat, price: Math.round(price),
-            station: d.station, tags: (d.tags || []).slice(), spice: d.spice || 0,
+            station: d.buy ? "counter" : d.station, tags: (d.tags || []).slice(), spice: d.spice || 0,
+            buy: d.buy ? { item: String(d.buy.item), vendor: String((d.buy || {}).vendor || "") || null, pack: Math.max(1, +(d.buy || {}).pack || 1) } : null,
+            qrOff: !!d.qrOff,
             addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, veg: (d.tags || []).indexOf("veg") >= 0,
             // The photograph saves with everything else, or the Photograph
             // block would be a control that does nothing — it travels through
@@ -7721,6 +8056,79 @@ class Component extends DCLogic {
         }
       };
     }
+    if (m.kind === "counter") {
+      const put = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
+      const q = String(m.q || "").trim().toLowerCase();
+      const mayPrice = this.canPriceCheck();
+      /* Empty, the list is the bought-in trays plus anything a person has
+         switched off by hand; typing searches the whole menu, so any dish can
+         be reached from here. Capped at 40 rows. */
+      const base = q
+        ? (K0.MENU || []).filter((x) => x.name.toLowerCase().indexOf(q) >= 0)
+        : (K0.MENU || []).filter((x) => this.dishBuy(x) || x.off || x.qrOff);
+      const rows = base.slice(0, 40).map((x) => {
+        const b = this.dishBuy(x), p = this.dishPortions(x);
+        const n = p && p.n != null ? p.n : null;
+        const soldOut = !!b && n !== null && n <= 0;
+        return {
+          name: x.name,
+          sub: (b ? (n === null ? "not stocked here yet" : soldOut ? "sold out" : n + " on the shelf") : "made here")
+            + " \u00b7 " + this.catMeta(x.cat).name
+            + (soldOut && !x.off ? " \u00b7 off automatically" : ""),
+          n: b ? (n === null ? "\u2014" : String(n)) : "",
+          nStyle: "font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;min-width:34px;text-align:right;color:"
+            + (soldOut ? "var(--red-bright)" : n !== null && n < 6 ? "var(--warn-bright)" : "var(--text-dim)"),
+          b86: x.off ? "Put it back" : "86 it",
+          go86: () => this.toggle86(x),
+          s86: "padding:8px 12px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid "
+            + (x.off ? "var(--line)" : "var(--red-line)") + ";background:" + (x.off ? "var(--bg-2)" : "var(--bad-dim)")
+            + ";color:" + (x.off ? "var(--text-dim)" : "var(--red-bright)"),
+          bQr: x.qrOff ? "Off the QR" : "On the QR",
+          goQr: () => this.setDishQr(x, !x.qrOff),
+          sQr: "padding:8px 12px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:"
+            + (x.qrOff ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (x.qrOff ? "var(--text)" : "var(--text-dim)")
+        };
+      });
+      /* One chip per section: tapping takes the whole thing off the guest's
+         phone — the counter keeps it — through the same one seam every other
+         section fact travels. */
+      const secChips = this.sortedCats(true).map((c) => {
+        const meta = this.catMeta(c.id), off = !!meta.qrOff;
+        return {
+          label: meta.name,
+          style: "padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;border:1px solid "
+            + (off ? "var(--text)" : "var(--line)") + ";background:" + (off ? "var(--text)" : "var(--bg-2)")
+            + ";color:" + (off ? "var(--bg)" : "var(--text-dim)")
+            + ";text-decoration:" + (off ? "line-through" : "none"),
+          go: () => this.setCatMeta(c.id, { qrOff: !off },
+            meta.name + (off ? " back on the QR menu" : " taken off the guest's phone \u00b7 the counter keeps it"))
+        };
+      });
+      /* The blind receipts a manager still owes a pricing pass — the counter
+         signed the count in, and this is where their bill gets checked. */
+      const unpriced = mayPrice ? ((window.KPOS_RAW || {}).doorReceipts || [])
+        .filter((r) => r.status === "unpriced").slice(0, 6).map((r) => ({
+          label: r.no + " \u00b7 " + (r.person || "supplier") + " \u00b7 " + (r.lines || []).length + " line(s) \u00b7 " + r.on,
+          go: () => this.openForm("doorPrice", r)
+        })) : [];
+      return {
+        modalTitle: "Counter stock",
+        modalSub: "What is left of the bought-in trays \u00b7 and what the guest's phone is being offered",
+        mCounter: true,
+        coDoor: mayPrice ? "Receive at the door" : "Sign in a door delivery",
+        coDoorGo: () => this.openDoorForm(null),
+        coSecChips: secChips,
+        coSecNote: "Tap a section to take the whole thing off the guest's phone \u2014 the counter keeps it.",
+        coQ: m.q || "",
+        onCoQ: (e) => put({ q: e.target.value }),
+        coRows: rows,
+        coEmpty: rows.length ? "" : (q ? "No dish matches that."
+          : "Nothing is bought in yet. Mark a dish \u201cbought in from a supplier\u201d in Menu Master and its count appears here for the counter to manage."),
+        coUnpriced: unpriced,
+        coUnpricedStyle: unpriced.length ? "display:flex;flex-direction:column;gap:6px" : "display:none",
+        coFoot: "86 pulls it from the till and the phone for tonight; off the QR leaves it on the counter but takes it off the guest's phone and the member portal, which is what a tray you will not restock needs. Both are logged against you, and neither edits the chain menu."
+      };
+    }
     if (m.kind === "menuio") {
       const isImp = m.tab === "import";
       const put = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
@@ -7739,7 +8147,9 @@ class Component extends DCLogic {
         ioImportStyle: isImp ? "display:flex;flex-direction:column;gap:11px" : "display:none",
         ioCsv: csv,
         ioCount: (K0.MENU || []).length + " dishes · " + this.sortedCats(true).length + " sections · " + this.modList().length + " add-ons",
-        ioDownload: () => this.downloadText("kashikeyo-menu.csv", csv),
+        // The BOM: Excel on Windows reads BOM-less UTF-8 as the system
+        // codepage, which turns every Dhivehi transliteration into mojibake.
+        ioDownload: () => this.downloadText("kashikeyo-menu.csv", "\ufeff" + csv),
         ioCopy: () => { try { navigator.clipboard.writeText(csv); this.toast("Menu CSV copied"); } catch (e) { this.toast("Select the text and copy it manually", "warn"); } },
         ioTemplate: () => this.downloadText("kashikeyo-menu-template.csv", this.menuTemplateCsv()),
         ioText: m.text || "", onIoText: (e) => put({ text: e.target.value, file: null }),
@@ -10817,6 +11227,12 @@ class Component extends DCLogic {
               label: "Show on the menu", on: !meta.hidden,
               sub: meta.hidden ? "Hidden from the till, the QR menu and the printed list" : "Live on every channel",
               go: () => this.setCatMeta(c.id, { hidden: !meta.hidden }, meta.name + (meta.hidden ? " shown on the menu" : " hidden from the menu"))
+            }, {
+              /* The second axis (048): off the guest's phone while the
+                 counter keeps the whole section. */
+              label: "Show on the QR menu", on: !meta.qrOff,
+              sub: meta.qrOff ? "Counter only — guests scanning the code are not offered it" : "Guests can order it from their phone",
+              go: () => this.setCatMeta(c.id, { qrOff: !meta.qrOff }, meta.name + (meta.qrOff ? " back on the QR menu" : " taken off the guest's phone · the counter keeps it"))
             }] : [],
             picks: mayEdit ? [{
               label: "Position " + (i + 1) + " of " + cats.length,
@@ -10895,7 +11311,7 @@ class Component extends DCLogic {
         })))
         .map((t, i) => ({ label: t.label, hue: t.hue, count: t.count, on: tab === i,
           pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) })),
-      guideTitle: "Putting a dish on sale", guide: ["Create the dish — section, price, description, station and tags", "Attach its add-ons so the till and the QR menu offer the same list", "Build its recipe in Recipes & Costing so food cost is real", "Hide it to take it off every channel; 86 it to pull it for tonight only"],
+      guideTitle: "Putting a dish on sale", guide: ["Create the dish — section, price, description, station and tags", "Attach its add-ons so the till and the QR menu offer the same list", "Build its recipe in Recipes & Costing so food cost is real, or link the stock item if it is bought in ready to sell", "Hide it to take it off every channel; 86 it to pull it for tonight only"],
       actions: [
         { label: "Sort \u00b7 " + sortNow[1], go: () => { const i = sorts.findIndex((x) => x[0] === sortKey); this.setState({ menuSort: sorts[(i + 1) % sorts.length][0] }); } },
         { label: "Sections \u00b7 " + cats.length, go: () => this.setState({ menuMode: "sections" }) },
@@ -10908,7 +11324,8 @@ class Component extends DCLogic {
       ],
       cols: [
         { label: "Dish", w: "2.1fr" }, { label: "Section", w: ".9fr" }, { label: "Tags & heat", w: "1.3fr" },
-        { label: "Station", w: ".9fr" }, { label: "Add-ons", w: ".7fr", a: "right" },
+        { label: "Station", w: ".9fr" }, { label: "Portions", w: ".7fr", a: "right", mono: 1 },
+        { label: "Add-ons", w: ".7fr", a: "right" },
         { label: "Chain", w: ".8fr", a: "right", mono: 1 }, { label: o.code, w: ".8fr", a: "right", mono: 1 },
         { label: "GP %", w: ".6fr", a: "right", mono: 1 }, { label: "Status", w: ".8fr", a: "right" }
       ],
@@ -10921,6 +11338,14 @@ class Component extends DCLogic {
         const tagText = tags.map((t) => { const e = this.TAGSET().find((x) => x[0] === t); return e ? e[1] : t; })
           .concat(sp ? [this.SPICE()[sp] + " heat"] : []).join(" \u00b7 ");
         const adds = this.addonsFor(m).length;
+        /* PORTIONS — the shelf talking (048). What can still be plated,
+           floored to the tightest ingredient — or, bought in, the units left
+           of the item itself. A dash means there is nothing to count from,
+           which is a different answer from zero and must never be flattened
+           into it. */
+        const por = this.dishPortions(m);
+        const pn = por && por.n != null ? por.n : null;
+        const soldOut = !!this.dishBuy(m) && pn !== null && pn <= 0;
         return {
           go: () => this.openDish(m.id),
           cells: [
@@ -10928,11 +11353,20 @@ class Component extends DCLogic {
             { t: meta.name, c: meta.color, w: 600 },
             { t: tagText || "\u2014", c: tagText ? "var(--text-dim)" : "var(--text-faint)" },
             this.stationName(this.dishStation(m)),
+            { t: pn === null ? "\u2014" : String(pn),
+              c: pn === null ? "var(--text-faint)" : pn <= 0 ? "var(--red-bright)" : pn < 6 ? "var(--warn-bright)" : "var(--text-dim)",
+              w: pn !== null && pn < 6 ? 700 : 400 },
             { t: adds ? String(adds) : "\u2014", c: adds ? "var(--text-dim)" : "var(--text-faint)" },
             MVRc(m.price),
             { t: MVRc(local), c: local !== m.price ? "var(--warn-bright)" : "var(--text-dim)", w: local !== m.price ? 600 : 400 },
             { t: showCost ? gp + "%" : "\u2014", c: !showCost ? "var(--text-faint)" : gp >= 68 ? "var(--green)" : gp >= 62 ? "var(--warn-bright)" : "var(--red-bright)" },
-            m.hidden ? { t: "Hidden", chip: this.chip("mute") } : off ? { t: "86'd", chip: this.chip("err") } : { t: "Live", chip: this.chip("ok") }
+            /* Priority order: Hidden \u2192 Sold out (a tray at measured zero)
+               \u2192 86'd \u2192 Till only (off the QR) \u2192 Live. */
+            m.hidden ? { t: "Hidden", chip: this.chip("mute") }
+              : soldOut ? { t: "Sold out", chip: this.chip("err") }
+              : off ? { t: "86'd", chip: this.chip("err") }
+              : m.qrOff ? { t: "Till only", chip: this.chip("info") }
+              : { t: "Live", chip: this.chip("ok") }
           ]
         };
       }),
@@ -11149,6 +11583,22 @@ class Component extends DCLogic {
       if (!d) return;
       const qty = sd[1] || 0;
       revenue += this.menuPrice(d) * qty;
+      /* A BOUGHT-IN DISH MOVES THE ITEM ITSELF (048). The recipe walk cannot
+         touch it — there is no recipe — and without this the tray's count
+         sat at its opening figure all service. One sale takes 1/pack of the
+         linked item, in base units like every other movement here, and NO
+         yield gross-up: nothing is trimmed off a can of Coke. The server
+         derives the same figure by the same rule, which is what keeps the
+         drift check a check. */
+      const b = this.dishBuy(d);
+      if (b) {
+        const it = this.item(b.item);
+        if (!it) { flat.push(d.name); cogs += this.foodCost(d) * qty; return; }
+        const base = qty * this.convFactor(it) / Math.max(1, b.pack || 1);
+        add(b.item, base, d.name);
+        if (by[String(b.item)]) by[String(b.item)].net += base;
+        return;
+      }
       if (!(d.recipe || []).length) { flat.push(d.name); cogs += this.foodCost(d) * qty; return; }
       walk(d.recipe, qty, d.name);
     });
@@ -11174,7 +11624,11 @@ class Component extends DCLogic {
     const seeded = (raw.inv || []).filter((r) => r[1] === id && locs.indexOf(r[0]) >= 0).reduce((a, r) => a + (r[2] || 0), 0);
     const received = ((s.local || {}).purch || []).filter((g) => locs.indexOf(+g.branch) >= 0)
       .reduce((a, g) => a + (g.lines || []).filter((L) => L[0] === id).reduce((b, L) => b + (L[1] || 0), 0), 0);
-    const used = (this.theoreticalUse(0).by[String(id)] || {}).gross || 0;
+    // Memoised for the render pass: the Portions column asks this once per
+    // recipe line, and re-walking every settled sale each time is the
+    // measured one-to-two-seconds-per-tap defect.
+    const bag = this.passCache("usedBag", () => this.theoreticalUse(0).by);
+    const used = (bag[String(id)] || {}).gross || 0;
     // Base units in, stock units out — the shelf is counted in kilos, the recipe
     // in grams, and mixing them is the classic stock-take error.
     return seeded + received - this.stockQty(it, used);
@@ -11189,6 +11643,23 @@ class Component extends DCLogic {
       if (!d) return;
       const qty = sd[1] || 0;
       revenue += this.menuPrice(d) * qty;
+      // Bought in ready to sell: the movement is the item itself, 1/pack per
+      // sale, costed off the last invoice — the same rule explodeSold and the
+      // server's derivation keep, so all three agree.
+      const bb = this.dishBuy(d);
+      if (bb) {
+        const it = this.item(bb.item);
+        if (!it) { flat.push(d.name); cogs += this.foodCost(d) * qty; return; }
+        const base = qty * this.convFactor(it) / Math.max(1, bb.pack || 1);
+        const k = String(bb.item);
+        if (!by[k]) by[k] = { id: bb.item, it: it, name: this.itemName(bb.item), used: 0, net: 0, cost: 0, dishes: [] };
+        by[k].used += base;
+        by[k].net += base;
+        by[k].cost += this.costPerBase(it) * base;
+        if (by[k].dishes.indexOf(d.name) < 0) by[k].dishes.push(d.name);
+        cogs += this.costPerBase(it) * base;
+        return;
+      }
       const rec = d.recipe || [];
       // A dish with no recipe still has to cost something, or the margin figure
       // would flatter the kitchen. It is costed at the same 30% fallback the
@@ -11370,6 +11841,8 @@ class Component extends DCLogic {
     };
     const act = (label, sub, icon, go) => out.push({ kind: "do", key: "do:" + label, label: label, sub: sub, icon: icon, words: sub, go: () => { this.setState({ pal: false, palQ: "" }); go(); } });
     act("Receive a delivery", "Book goods in against a vendor invoice", ICO.box, () => this.openForm("grn"));
+    act("Receive at the door", "A supplier or a person with a tray \u2014 under a minute", ICO.box, () => this.openDoorForm(null));
+    act("Counter stock", "The bought-in trays \u2014 counts, 86 and the QR menu", ICO.box, () => this.counterSheet());
     act("Price a signed-in delivery", "Add the rates to a delivery someone signed for", ICO.cash, () => this.setState({ view: "purchases" }));
     act("Build a recipe", "Cost a dish, ingredient by ingredient", ICO.book, () => this.openRecipe(null));
     act("Add an item to the pantry", "A new ingredient in the item master", ICO.plus, () => this.openForm("item"));
@@ -13940,6 +14413,14 @@ class Component extends DCLogic {
         tags: (r.tags || []).slice(),
         spice: Math.max(0, Math.min(3, num(r.spice))),
         addons: r.addons ? r.addons.slice() : null,
+        /* Where it comes from (048): the whole row always knows, so this is
+           an explicit null ("made here") or the link — never silence. And the
+           QR-channel switch rides with it, three-state like off_menu. */
+        buy: r.buy && r.buy.item != null
+          ? { item: r.buy.item, vendor: r.buy.vendor || null,
+            pack: Math.max(1, num(r.buy.pack) || 1) }
+          : null,
+        qrOff: r.qrOff === undefined ? null : !!r.qrOff,
         diets: r.veg ? ["veg"] : [], recipe: r.recipe || []
       })],
       items: ["item_upsert", (r) => (Array.isArray(r) ? {
@@ -14513,10 +14994,14 @@ class Component extends DCLogic {
         d: d ? {
           name: d.name, desc: d.desc || "", cat: d.cat, price: String(d.price),
           station: this.dishStation(d), tags: this.dishTags(d), spice: this.dishSpice(d),
-          addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, img: d.img || ""
+          addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, img: d.img || "",
+          // Where it comes from (048), and the QR-channel switch.
+          buy: this.dishBuy(d) ? { item: String(d.buy.item), vendor: d.buy.vendor ? String(d.buy.vendor) : "", pack: d.buy.pack || 1 } : null,
+          qrOff: !!d.qrOff
         } : {
           name: "", desc: "", cat: (cats[0] || {}).id || "mains", price: "120",
-          station: this.defaultStation((cats[0] || {}).id), tags: [], spice: 0, addons: null, hidden: false, img: ""
+          station: this.defaultStation((cats[0] || {}).id), tags: [], spice: 0, addons: null, hidden: false, img: "",
+          buy: null, qrOff: false
         }
       }
     });
@@ -14546,7 +15031,7 @@ class Component extends DCLogic {
   // Import matches every kind on NAME: a known name is an update, a new one is
   // an insert, and nothing is written until the preview has been read. A file
   // exported before the type column existed has none, and every row is a dish.
-  MENUCSV() { return ["type", "name", "section", "price", "description", "station", "tags", "spice", "addons", "visible"]; }
+  MENUCSV() { return ["type", "id", "name", "section", "price", "description", "station", "tags", "spice", "addons", "visible", "qr", "source", "stock_item", "pack", "supplier"]; }
   csvCell(v) { const t = String(v === undefined || v === null ? "" : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }
   menuCsv() {
     const K0 = K();
@@ -14555,19 +15040,28 @@ class Component extends DCLogic {
     // import applies them, so a file handed straight back needs no sorting.
     this.sortedCats(true).forEach((c) => {
       const meta = this.catMeta(c.id);
-      out.push(["section", meta.name, "", "", "", this.stationName(meta.station), "", "", "", meta.hidden ? "no" : "yes"]
+      out.push(["section", c.id, meta.name, "", "", "", this.stationName(meta.station), "", "", "", meta.hidden ? "no" : "yes", meta.qrOff ? "no" : "yes", "", "", "", ""]
         .map((x) => this.csvCell(x)).join(","));
     });
     this.modList().forEach((a) => {
-      out.push(["addon", a.name, (a.cats || []).map((cid) => this.catMeta(cid).name).join("; "), a.price || 0, "", "", "", "", "", "yes"]
+      out.push(["addon", a.id, a.name, (a.cats || []).map((cid) => this.catMeta(cid).name).join("; "), a.price || 0, "", "", "", "", "", "yes", "yes", "", "", "", ""]
         .map((x) => this.csvCell(x)).join(","));
     });
     this.sortedCats(true).forEach((c) => {
       K0.MENU.filter((m) => m.cat === c.id).forEach((m) => {
-        out.push(["dish",
+        // The bought-in triple: the stock item by its CODE where it has one
+        // (a code survives a re-seed where an internal id does not), the
+        // units per pack, and the supplier by name.
+        const b = this.dishBuy(m);
+        const si = b ? this.item(b.item) : null;
+        const ven = b && b.vendor ? ((window.KPOS_RAW || {}).vendors || []).find((v) => String(v.id) === String(b.vendor)) : null;
+        out.push(["dish", m.id,
           m.name, this.catMeta(m.cat).name, m.price, m.desc || "", this.stationName(this.dishStation(m)),
           this.dishTags(m).map((t) => { const e = this.TAGSET().find((x) => x[0] === t); return e ? e[1] : t; }).join("; "),
-          this.SPICE()[this.dishSpice(m)], this.addonsFor(m).map((a) => a.name).join("; "), m.hidden ? "no" : "yes"
+          this.SPICE()[this.dishSpice(m)], this.addonsFor(m).map((a) => a.name).join("; "),
+          m.hidden ? "no" : "yes", m.qrOff ? "no" : "yes",
+          b ? "bought" : "made",
+          si ? (si[6] || si[0]) : "", b ? (b.pack || 1) : "", ven ? ven.name : ""
         ].map((x) => this.csvCell(x)).join(","));
       });
     });
@@ -14575,17 +15069,18 @@ class Component extends DCLogic {
   }
   menuTemplateCsv() {
     return [this.MENUCSV().join(","),
-      "section,Mains,,,,Hot pass,,,,yes",
-      "section,Drinks,,,,Bar,,,,yes",
-      "addon,Extra sambol,Mains,15,,,,,,yes",
-      "addon,Double portion,Mains,45,,,,,,yes",
-      "addon,No ice,Drinks,0,,,,,,yes",
-      "dish," + this.csvCell("Reef Fish Curry") + ",Mains,145," + this.csvCell("Line-caught fish, coconut, curry leaf") + ",Hot pass,Gluten free,Medium," + this.csvCell("Extra sambol; Double portion") + ",yes",
-      "dish," + this.csvCell("Lime & Mint Cooler") + ",Drinks,45," + this.csvCell("Fresh lime, mint, soda") + ",Bar,Vegan,Not spicy," + this.csvCell("No ice") + ",yes"
+      "section,,Mains,,,,Hot pass,,,,yes,yes,,,,",
+      "section,,Drinks,,,,Bar,,,,yes,yes,,,,",
+      "addon,,Extra sambol,Mains,15,,,,,,yes,yes,,,,",
+      "addon,,No ice,Drinks,0,,,,,,yes,yes,,,,",
+      "dish,," + this.csvCell("Reef Fish Curry") + ",Mains,145," + this.csvCell("Line-caught fish, coconut, curry leaf") + ",Hot pass,Gluten free,Medium," + this.csvCell("Extra sambol") + ",yes,yes,made,,,",
+      "dish,," + this.csvCell("Gulha") + "," + this.csvCell("Short Eats & Snacks") + ",8," + this.csvCell("Fried dough balls filled with tuna, coconut and lime") + ",Counter,,Mild,,yes,yes,bought,GULHA (VENDOR),1," + this.csvCell("Hedhika Supplier Co")
     ].join("\n");
   }
   parseCsv(text) {
-    const t = String(text || "").replace(/\r\n?/g, "\n");
+    // Excel on Windows writes a BOM; a header cell reading "\ufeffid" would
+    // silently fail to match its column.
+    const t = String(text || "").replace(/^\ufeff/, "").replace(/\r\n?/g, "\n");
     const rows = []; let row = [], cur = "", q = false;
     for (let i = 0; i < t.length; i++) {
       const ch = t[i];
@@ -14611,6 +15106,19 @@ class Component extends DCLogic {
     const stations = {}; this.STATIONS().forEach((st) => { stations[st[1].toLowerCase()] = st[0]; stations[st[0]] = st[0]; });
     const tagBy = {}; this.TAGSET().forEach((t) => { tagBy[t[1].toLowerCase()] = t[0]; tagBy[t[0]] = t[0]; });
     const addBy = {}; this.modList().forEach((a) => { addBy[a.name.toLowerCase()] = a.id; });
+    /* The bought-in columns resolve against the ITEM MASTER — by code, by id
+       or by name, lower-cased — and suppliers by name. Both must resolve or
+       the count on the menu would be a fiction, so a miss is a rejection by
+       name rather than a silently unlinked tray. */
+    const stockBy = {};
+    (((window.KPOS_RAW || {}).items) || []).forEach((i) => {
+      if (i[6]) stockBy[String(i[6]).toLowerCase()] = String(i[0]);
+      stockBy[String(i[0]).toLowerCase()] = String(i[0]);
+      stockBy[String(i[2] || "").toLowerCase()] = String(i[0]);
+    });
+    const venBy = {};
+    (((window.KPOS_RAW || {}).vendors) || []).forEach((v) => { venBy[String(v.name).toLowerCase()] = String(v.id); });
+    const byId = {}; (K0.MENU || []).forEach((mm) => { byId[String(mm.id)] = mm; });
     const cell = (r, k) => (at[k] >= 0 ? String(r[at[k]] === undefined ? "" : r[at[k]]).trim() : "");
     /* A file from before the type column has none, and every row is a dish. */
     const kindOf = (r) => {
@@ -14634,18 +15142,22 @@ class Component extends DCLogic {
       if (!name) return plan.err.push(["Row " + n, "No section name"]);
       const stRaw = cell(r, "station").toLowerCase();
       const hidden = /^(no|false|hidden|0)$/i.test(cell(r, "visible") || "yes");
-      const id = secs[name.toLowerCase()] || secs[slugOf(name)];
+      const qrOff = /^(no|false|0)$/i.test(cell(r, "qr") || "yes");
+      // An id column, when present and resolvable, is the match key — so a
+      // section rename is a rename rather than a second section.
+      const idRaw = cell(r, "id").toLowerCase();
+      const id = (idRaw && secs[idRaw]) || secs[name.toLowerCase()] || secs[slugOf(name)];
       if (id) {
         const meta = this.catMeta(id);
         const station = stRaw ? (stations[stRaw] || meta.station) : meta.station;
         secs[name.toLowerCase()] = id;
-        if (name !== meta.name || station !== meta.station || hidden !== !!meta.hidden)
-          plan.secUpd.push({ id: id, name: name, station: station, hidden: hidden });
+        if (name !== meta.name || station !== meta.station || hidden !== !!meta.hidden || qrOff !== !!meta.qrOff)
+          plan.secUpd.push({ id: id, name: name, station: station, hidden: hidden, qrOff: qrOff });
       } else {
         const sid = slugOf(name) || "section";
         if (plan.secAdd.some((s) => s.id === sid)) return;
         plan.secAdd.push({ id: sid, name: name,
-          station: stations[stRaw] || this.defaultStation(sid), hidden: hidden });
+          station: stations[stRaw] || this.defaultStation(sid), hidden: hidden, qrOff: qrOff });
         secs[name.toLowerCase()] = sid; secs[sid] = sid;
       }
     });
@@ -14682,6 +15194,13 @@ class Component extends DCLogic {
       if (!name) return plan.err.push(["Row " + n, "No dish name"]);
       if (!secs[sec]) return plan.err.push(["Row " + n + " \u00b7 " + name, sec ? "Unknown section \u201c" + cell(r, "section") + "\u201d \u2014 add a section row for it in this file" : "No section given"]);
       if (!(price > 0)) return plan.err.push(["Row " + n + " \u00b7 " + name, "Price must be a number greater than zero"]);
+      /* A duplicate on a hand-edited sheet used to apply both halves and let
+         the last one win — silent data loss. Refused by name instead. */
+      const dupKey = name.toLowerCase();
+      if (plan._seen && plan._seen[dupKey]) {
+        return plan.err.push(["Row " + n + " \u00b7 " + name, "Appears twice in this file"]);
+      }
+      (plan._seen = plan._seen || {})[dupKey] = true;
       const spRaw = cell(r, "spice").toLowerCase();
       const spIdx = this.SPICE().findIndex((x) => x.toLowerCase() === spRaw);
       const rec = {
@@ -14689,12 +15208,41 @@ class Component extends DCLogic {
         station: stations[cell(r, "station").toLowerCase()] || this.defaultStation(secs[sec]),
         tags: cell(r, "tags").split(";").map((x) => tagBy[x.trim().toLowerCase()]).filter(Boolean),
         spice: spIdx >= 0 ? spIdx : (+spRaw >= 0 && spRaw !== "" ? Math.min(3, +spRaw) : 0),
-        hidden: /^(no|false|hidden|0)$/i.test(cell(r, "visible") || "yes")
+        hidden: /^(no|false|hidden|0)$/i.test(cell(r, "visible") || "yes"),
+        qrOff: /^(no|false|0)$/i.test(cell(r, "qr") || "yes")
       };
       const addRaw = cell(r, "addons").split(";").map((x) => x.trim()).filter(Boolean);
       if (addRaw.length) rec.addons = addRaw.map((x) => addBy[x.toLowerCase()]).filter(Boolean);
-      const hit = (K0.MENU || []).find((m) => m.name.toLowerCase() === name.toLowerCase());
-      if (hit) plan.upd.push([hit, rec]); else plan.add.push(rec);
+      /* Bought in ready to sell: the stock item is what the storekeeper
+         receives, pack is how many guests one of those serves. Both must
+         resolve or the count on the menu would be a fiction. */
+      const src = cell(r, "source").toLowerCase();
+      if (/^(bought|buy|resale|bought in|bought-in)$/.test(src)) {
+        const siRaw = cell(r, "stock_item");
+        const si = siRaw ? stockBy[siRaw.toLowerCase()] : undefined;
+        if (si === undefined) {
+          return plan.err.push(["Row " + n + " \u00b7 " + name,
+            siRaw ? "No stock item matches \u201c" + siRaw + "\u201d"
+              : "Bought-in dishes need a stock_item"]);
+        }
+        const venRaw = cell(r, "supplier");
+        if (venRaw && venBy[venRaw.toLowerCase()] === undefined) {
+          return plan.err.push(["Row " + n + " \u00b7 " + name, "No supplier called \u201c" + venRaw + "\u201d"]);
+        }
+        const packRaw = +cell(r, "pack");
+        rec.buy = { item: si, vendor: venRaw ? venBy[venRaw.toLowerCase()] : null,
+          pack: packRaw >= 1 ? Math.round(packRaw) : 1 };
+        rec.station = "counter";
+      } else if (src === "made") {
+        rec.buy = null;
+      }
+      /* The id column, when present and it resolves, is the match key — a
+         rename is a rename rather than a duplicate. Name-matching stays the
+         fallback for a hand-typed sheet. */
+      const rid = cell(r, "id");
+      const idHit = rid && byId[rid];
+      const hit = idHit || (K0.MENU || []).find((m) => m.name.toLowerCase() === dupKey);
+      if (hit) plan.upd.push([hit, rec, !!idHit]); else plan.add.push(rec);
     });
     plan.ok = !!(plan.add.length || plan.upd.length || plan.secAdd.length
       || plan.secUpd.length || plan.modAdd.length || plan.modUpd.length);
@@ -14732,7 +15280,10 @@ class Component extends DCLogic {
       st.modifiers = mods;
     }
     plan.upd.forEach((p) => {
-      const set = Object.assign({}, p[1]); delete set.name;
+      const set = Object.assign({}, p[1]);
+      // Matched by NAME, the name is the key and stays; matched by ID, the
+      // file's name is a rename and is honoured.
+      if (!p[2]) delete set.name;
       Object.assign(p[0], set);
       patches.push({ coll: "menu", keys: [p[0].id], set: set });
     });
@@ -17572,6 +18123,101 @@ class Component extends DCLogic {
           }
         };
       })(),
+      /* ── THE DOOR DELIVERY (048) ─────────────────────────────────────────
+         The gulha man at seven in the morning is not a vendor invoice and a
+         GRN pad — he is a tray, a count and a price, and the till has to take
+         him in under a minute or the delivery never gets recorded at all.
+         Same stock ledger, same audit line, one screen, and a CASHIER may do
+         it — blind below rank 3, because the count is only evidence if the
+         person counting cannot see the expected figure. */
+      door: (() => {
+        const mayPrice = this.canPriceCheck();
+        const doorOpts = sel(
+          (K0.MENU || []).filter((mm) => this.dishBuy(mm))
+            .map((mm) => ({ v: this.dishBuy(mm).item, l: mm.name + " \u2014 " + this.itemName(this.dishBuy(mm).item) }))
+            .concat((raw.items || []).slice(0, 80).map((i) => ({ v: i[0], l: i[2] }))));
+        return {
+          title: mayPrice ? "Receive at the door" : "Sign in a door delivery",
+          sub: "A supplier, or a person with a tray \u00b7 the stock is usable the moment you save",
+          save: mayPrice ? "Receive it" : "Sign it in",
+          foot: mayPrice
+            ? "It lands in this outlet's own stock the moment you save, so the counter count is right before the first sale of it. Paid in cash it is closed here; on account it joins the payables under that supplier's terms."
+            : "Count the trays and sign them in \u2014 the stock is usable immediately and a manager prices it afterwards. What you count here is what their bill gets checked against.",
+          fields: [
+            { k: "vendor", label: "Who brought it", options: [{ v: "", l: "A person \u2014 write the name below" }].concat(vendorOpts), full: 1 },
+            { k: "person", label: "\u2026or the person's name", v: "" },
+            { k: "docket", label: "Docket or bill number", v: "" },
+            { k: "date", label: "Date received", v: this.today() },
+            { k: "paid", label: "Paid how?", options: [
+              { v: "cash", l: "Cash, paid at the door" },
+              { v: "account", l: "On account \u2014 bill it later" }
+            ], full: 1 },
+            { k: "lines", kind: "lines", label: mayPrice ? "What arrived \u2014 item, count and rate" : "What arrived \u2014 item and how many you counted", options: doorOpts, costed: mayPrice ? 1 : 0, full: 1 },
+            { k: "notes", label: "Notes", v: "", full: 1 }
+          ],
+          onSave: (v) => {
+            const when = String(v.date || "").trim() || this.today();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(when)) return this.toast("Date must be written as YYYY-MM-DD", "warn");
+            if (when > this.today()) return this.toast("A delivery cannot be received in the future", "warn");
+            const person = String(v.person || "").trim();
+            const vendor = String(v.vendor || "");
+            if (!vendor && !person) return this.toast("Say who brought it \u2014 a supplier, or the person's name", "warn");
+            const lines = this.doorLines(v.lines);
+            if (!lines.length) return this.toast("Add at least one item \u2014 there is nothing to receive", "warn");
+            if (lines.some((L) => !L[0] || L[1] <= 0)) return this.toast("Every line needs an item and a count above zero", "warn");
+            if (mayPrice) {
+              const zero = lines.find((L) => L[2] <= 0);
+              if (zero) return this.toast(this.itemName(zero[0]) + " has no rate \u2014 price every line or the stock value is wrong", "warn");
+            }
+            const cash = v.paid !== "account";
+            if (!cash && !vendor) return this.toast("On account needs a supplier from the list \u2014 a person with a tray is paid at the door", "warn");
+            const total = Math.round(lines.reduce((a, L) => a + L[1] * L[2], 0) * 100) / 100;
+            /* Usable immediately on THIS till too: the local row is what the
+               counter's own count reads until the outlet answers. */
+            const local = Object.assign({}, this.state.local || {});
+            local.purch = (local.purch || []).concat([{
+              no: "DOOR", date: when, branch: this.state.outletId,
+              lines: lines, status: mayPrice ? "received" : "unpriced", by: this.me(), door: 1
+            }]);
+            this.setState({ local: local, modal: null });
+            const who = person || ((raw.vendors || []).find((x) => String(x.id) === vendor) || {}).name || "supplier";
+            this.queue("door_receipt", "Received at the door \u00b7 " + who + " \u00b7 " + lines.length + " line(s) MVR " + total.toFixed(2), "purchases", {
+              date: when, vendor: vendor || null, person: person || null,
+              docket: String(v.docket || "").trim() || null, cash: cash,
+              notes: String(v.notes || "").trim() || null,
+              lines: lines.map((L) => ({ ing: L[0], qty: L[1], rate: mayPrice ? L[2] : 0 }))
+            });
+            this.toast(mayPrice
+              ? "Received \u00b7 " + lines.length + " line(s) MVR " + total.toFixed(2) + " \u2014 on the shelf now"
+              : "Signed in \u2014 the stock is usable now, a manager prices it afterwards");
+          }
+        };
+      })(),
+      /* Pricing a door delivery the counter signed in blind. The count is
+         theirs and stands; this screen only adds what the bill charged. */
+      doorPrice: {
+        title: "Price a door delivery", sub: "The count is already signed for \u2014 add what the bill charged",
+        save: "Price it", editSave: "Price it",
+        foot: "Pick each item as it was counted and give its rate \u2014 the quantities stay as signed. Rates re-average the item's cost, the value posts to the books, and on account it joins the payables.",
+        fields: [
+          { k: "no", label: "Door receipt number", v: "" },
+          { k: "lines", kind: "lines", label: "Rate against each counted item", options: itemOpts, costed: 1, full: 1 }
+        ],
+        pre: (r) => ({ no: r.no || "" }),
+        onEdit: (v, r) => {
+          const lines = this.doorLines(v.lines);
+          if (!lines.length) return this.toast("Give every counted item its rate", "warn");
+          const zero = lines.find((L) => L[2] <= 0);
+          if (zero) return this.toast(this.itemName(zero[0]) + " has no rate \u2014 price every line or the stock value is wrong", "warn");
+          this.queue("door_priced", "Door delivery priced \u00b7 " + (r.no || v.no), "purchases", {
+            no: String(r.no || v.no || "").trim(),
+            lines: lines.map((L) => ({ ing: L[0], rate: L[2] }))
+          });
+          this.setState({ modal: null });
+          this.toast((r.no || v.no) + " priced \u2014 the cost re-averages and the books pick it up");
+        },
+        onSave: () => this.toast("Open a signed-in door delivery from Counter stock to price it", "warn")
+      },
       // Pricing a delivery someone else signed for. The count is theirs and is
       // carried in, not re-asked: this screen only adds what the invoice charged.
       grnPrice: {
@@ -19898,6 +20544,20 @@ class Component extends DCLogic {
     if (pf.length) {
       add("now", "Dockets that never printed", pf.length + " failed", "The kitchen never saw " + (pf.length === 1 ? "one order" : pf.length + " orders") + ". Reprint from the spool before anyone re-keys them from memory.", "sync",
         { act: "Open the spool", go: () => this.setState({ view: "sync", tab: Object.assign({}, s.tab, { sync: 1 }) }) });
+    }
+    /* Counter trays low or out (048) — separate from the 86 warning, because
+       the remedy is different: an 86 needs a chef or a decision, an empty
+       tray needs a delivery signed in at the door. */
+    const trays = this.counterDishes();
+    if (trays.length) {
+      const outN = trays.filter((x) => { const p = this.dishPortions(x); return p && p.n !== null && p.n <= 0; }).length;
+      const lowN = trays.filter((x) => { const p = this.dishPortions(x); return p && p.n !== null && p.n > 0 && p.n < 6; }).length;
+      if (outN || lowN) {
+        add("now", "Counter trays running out",
+          (outN ? outN + " out" : "") + (outN && lowN ? " \u00b7 " : "") + (lowN ? lowN + " low" : ""),
+          "Bought-in stock sells itself out: at zero the dish reads sold out on the till and the guest's phone. Sign a delivery in at the door and it comes back on sale with no other action.",
+          "pos", { act: "Counter stock", go: () => this.counterSheet() });
+      }
     }
     const down = this.PRINTERS().filter((x) => x.down);
     if (down.length) {

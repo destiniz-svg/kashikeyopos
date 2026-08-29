@@ -34,7 +34,7 @@ const CONTRACT = [
   'clock_out', 'close_register', 'close_ticket', 'company_update',
   'consume_recipe', 'count_open', 'count_post', 'covers_update', 'credit_note',
   'credit_reverse', 'device_deregister', 'device_diagnostics', 'device_lock',
-  'device_paired', 'device_replay', 'fire_course', 'flag_ack', 'fulfil_stage',
+  'device_paired', 'device_replay', 'door_priced', 'door_receipt', 'fire_course', 'flag_ack', 'fulfil_stage',
   'fx_rates', 'grn_priced', 'grn_query', 'guest_add', 'kds_bump',
   'kds_bump_all', 'kds_recall', 'kds_station', 'line_note', 'loyalty_update',
   'maintenance_log', 'mdr_set', 'member_upsert', 'menu_category_insert',
@@ -104,7 +104,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 120, 'the contract is 120 kinds');
+  assert.strictEqual(CONTRACT.length, 122, 'the contract is 122 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -2632,8 +2632,12 @@ test('the two ways a dish comes off sale each survive a bootstrap', () => {
   assert.ok(/off_menu = coalesce\(\$15, item\.off_menu\)/.test(AP),
     'a save that says nothing about it does not put a hidden dish back');
 
-  assert.ok(/WHERE active AND NOT off_menu AND NOT is_batch/.test(OUT),
+  assert.ok(/WHERE i\.active AND NOT i\.off_menu AND NOT i\.is_batch/.test(OUT),
     'and a guest is offered neither a hidden dish nor a batch');
+  // The QR channel is the third axis (048): resolved in the same query, once,
+  // so the table menu and the member portal can never disagree.
+  assert.ok(/AND NOT i\.qr_off AND NOT coalesce\(mc\.hidden, false\)/.test(OUT),
+    'a dish or a section off the QR never reaches a phone');
 });
 
 /* ═══ ONE YIELD TABLE, NOT TWO ══════════════════════════════════════════════
@@ -4700,9 +4704,47 @@ test('one CSV carries a section, an add-on and a dish, queued in the order the o
 
   // And the export carries all three kinds, so a round trip loses nothing.
   const out = F.menuCsv();
-  assert.match(out, /^type,name,section,price/, 'the header names the type column');
+  assert.match(out, /^type,id,name,section,price/, 'the header leads with type and id');
   assert.match(out, /\nsection,/, 'the sections are in the file');
   assert.match(out, /\ndish,/, 'and the dishes');
+});
+
+/* ═══ BOUGHT IN READY TO SELL (048) ════════════════════════════════════════
+   Two honest kinds of menu item, from one nullable link — and the till's op
+   carries it, or the whole model lives in one browser. */
+test('a bought-in dish rides the wire whole, and the CSV can define one', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const op = F.opFor('menu', { id: 'm_gulha', name: 'Gulha', cat: 'mains', price: 8,
+    buy: { item: 'ing_fish', vendor: null, pack: 24 }, qrOff: true, tags: [], recipe: [] });
+  assert.ok(op && op.kind === 'dish_upsert');
+  assert.strictEqual(op.payload.buy.item, 'ing_fish', 'the buy link travels the item');
+  assert.strictEqual(op.payload.buy.vendor, null, 'and the vendor');
+  assert.strictEqual(op.payload.buy.pack, 24, 'and the pack');
+  assert.strictEqual(op.payload.qrOff, true, 'and the QR-channel switch');
+  // Silence still preserves: a row that has never heard of either sends
+  // buy: null (the whole row always knows) and qrOff: null.
+  const bare = F.opFor('menu', { id: 'm1', name: 'X', cat: 'mains', price: 10, tags: [], recipe: [] });
+  assert.strictEqual(bare.payload.buy, null);
+  assert.strictEqual(bare.payload.qrOff, null);
+  // A bought-in dish fires to no pass.
+  assert.strictEqual(F.dishStation({ buy: { item: 'ing_fish', pack: 1 }, cat: 'mains' }), 'counter');
+
+  // The CSV can define one — and refuses the two fictions by name.
+  const head = F.MENUCSV().join(',');
+  const plan = F.menuImportPlan([head,
+    'dish,,Gulha Tray,Mains,8,,,,,,yes,no,bought,ing_fish,24,',
+    'dish,,Ghost Tray,Mains,8,,,,,,yes,yes,bought,,,',
+    'dish,,Gulha Tray,Mains,9,,,,,,yes,yes,made,,,'
+  ].join('\n'));
+  assert.strictEqual(plan.add.length, 1, JSON.stringify(plan.err));
+  assert.strictEqual(plan.add[0].buy.item, 'ing_fish');
+  assert.strictEqual(plan.add[0].buy.pack, 24);
+  assert.strictEqual(plan.add[0].station, 'counter');
+  assert.strictEqual(plan.add[0].qrOff, true, 'qr=no takes it off the guest channel on import');
+  assert.ok(plan.err.some((e) => /Bought-in dishes need a stock_item/.test(e[1])),
+    'a bought-in row with no stock item is refused by name');
+  assert.ok(plan.err.some((e) => /Appears twice in this file/.test(e[1])),
+    'and a duplicate dish name is refused rather than last-wins');
 });
 
 /* AND THE ADD-ON EDITOR'S OWN WRITES REACH THE OUTLET. `setMods()` queued

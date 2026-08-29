@@ -723,11 +723,34 @@ async function snapshot(c, outletId) {
        things onto a phone that must never be there: a dish the back office has
        taken off the menu — the toggle says "till, QR menu and printed list
        alike" — and a BATCH the kitchen makes, which is an item so that
-       recipe_line.sub_item_id resolves and is not something anybody orders. */
-    items: ['SELECT id, name, category_id, price, description, image, allergens,'
-      + ' diets, off_menu, sold_out_reason FROM item'
-      + ' WHERE active AND NOT off_menu AND NOT is_batch ORDER BY pos, name'],
-    cats: ['SELECT id, name, pos FROM menu_category WHERE active ORDER BY pos, name'],
+       recipe_line.sub_item_id resolves and is not something anybody orders.
+
+       THE QR CHANNEL IS RESOLVED HERE, ONCE (048): a dish or a whole section
+       switched off the guest's phone — while the counter keeps ringing it —
+       never reaches either portal, so no phone works out a section rule for
+       itself and the table menu and the member card can never disagree. A
+       HIDDEN section goes with it: hidden is off every channel, and the
+       dish-level filter alone let a hidden section's dishes onto the phone.
+
+       And a bought-in tray SELLS ITSELF OUT: the count is the shelf's, so at
+       zero the dish reads sold out on the phone without anyone touching a
+       switch — projected through the same sold_out_reason field both portals
+       already render. */
+    items: ['SELECT i.id, i.name, i.category_id, i.price, i.description, i.image,'
+      + ' i.allergens, i.diets, i.off_menu,'
+      + ' coalesce(i.sold_out_reason, CASE WHEN i.buy_item IS NOT NULL'
+      + '   AND coalesce(ing.on_hand, 0) <= 0 THEN \'Sold out\' END)'
+      + '   AS sold_out_reason'
+      + ' FROM item i'
+      // LEFT joins: a dish in no section is not thereby promoted or demoted.
+      + ' LEFT JOIN menu_category mc ON mc.id = i.category_id'
+      + ' LEFT JOIN ingredient ing ON ing.id = i.buy_item'
+      + ' WHERE i.active AND NOT i.off_menu AND NOT i.is_batch'
+      + '   AND NOT i.qr_off AND NOT coalesce(mc.hidden, false)'
+      + '   AND NOT coalesce(mc.qr_off, false)'
+      + ' ORDER BY i.pos, i.name'],
+    cats: ['SELECT id, name, pos FROM menu_category'
+      + ' WHERE active AND NOT hidden AND NOT qr_off ORDER BY pos, name'],
     // The floor is the outlet's own, never a count guessed by the phone: a
     // room with six tables must not offer a guest twelve to sit at.
     floor: ['SELECT id, label, seats, zone_id FROM table_def WHERE active'

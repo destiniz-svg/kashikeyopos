@@ -110,7 +110,8 @@ const PARTS = [
       // turn a litre of fish stock into a menu item priced at zero.
       const q = await c.query('SELECT id, name, description, category_id, price,'
         + ' station, yield_qty, unit, prep_mins, image, allergens, diets, tags,'
-        + ' active, off_menu, pos, spice FROM item WHERE NOT is_batch ORDER BY pos, name');
+        + ' active, off_menu, pos, spice, buy_item, buy_vendor, buy_pack, qr_off'
+        + ' FROM item WHERE NOT is_batch ORDER BY pos, name');
       const im = await c.query('SELECT item_id, group_id FROM item_modifier');
       const addons = {};
       im.rows.forEach((r) => { (addons[r.item_id] = addons[r.item_id] || []).push(r.group_id); });
@@ -124,6 +125,14 @@ const PARTS = [
            is what `sold_out_reason` is, and it is deliberately not here.
            `off_menu` is a standing menu decision and travels. */
         offMenu: r.off_menu, pos: r.pos, spice: r.spice,
+        /* Bought in ready to sell (048) and the QR-channel switch travel with
+           the dish — a setup file that dropped them would put a tray back on
+           a recipe costing and a hidden tray back on the guest's phone. The
+           supplier uuid does NOT travel (the store a file lands in issues its
+           own); the link comes back unattached, like an ingredient's. */
+        buy: r.buy_item ? { item: r.buy_item, vendor: null,
+          pack: Math.max(1, num(r.buy_pack) || 1) } : null,
+        qrOff: !!r.qr_off,
         // null means "inherit the section", which is a real answer; an array
         // is exhaustive. Only send an array where the dish actually has one.
         addons: addons[r.id] || null
