@@ -1239,6 +1239,73 @@ declaration is derived where the recipe lives — `publishDeclaration()` in
 published onto the item. A dish nobody has written a recipe for **claims
 nothing**: silence beats an unearned "Vegetarian" on a reef fish.
 
+## An empty pen is truthy, and a paid bill leaves the floor
+
+Two reports in one sentence — *"still menu master addon is zero"* and *"qr
+portal orders when settled shows received status"* — with nothing in common
+but the shape: a local copy standing in front of the outlet's own answer.
+
+**Menu Master read "Add-ons · 0"** on a store whose outlet publishes 115.
+`modList()` answered `this.state.modifiers || K().MODIFIERS`, and **an empty
+array is truthy** — so a terminal holding no un-synced add-on edit, which is
+every terminal almost all the time, answered the outlet's whole catalogue with
+nothing. A pen holding ONE row was worse than empty: it hid the other hundred
+behind a single local edit, so the dish sheet offered one add-on and the CSV
+export wrote one row. Every other local copy in this build is a **holding pen,
+not a private fork** — a measured yield, a saved batch, a section's meta, the
+loyalty programme — and this one had been written as the fork. It layers now:
+the outlet is the floor, a held row replaces the outlet's copy of that same id
+(this device's edit has not been delivered, so it is the later answer here),
+and a held row the outlet has never published rides beside them.
+
+**The QR tracker said "Received" for ever after the guest had paid.** The guest
+snapshot's ticket query is `WHERE t.status = 'open'`, so the moment the counter
+takes the money the table leaves the floor list the tracker reads — and
+`stage()` fell through every live branch to its localStorage fallback, which is
+this phone's own record of what it last SENT. `paidReceipt()` could not help:
+it reads a CO-LOCATED till's localStorage, which only works when the phone and
+the till share a browser, and a guest's phone never does.
+
+Absence cannot be the answer, because an open list carries no reason — closed,
+voided and moved all look identical from the phone. So the projection **says**
+so: `settled`, a bounded window (two hours) joined through `sale.ticket_id` so
+each row names the table the guest is sitting at, voided sales excluded, and
+carrying nothing a guest may not see — no cost, no margin, no staff, no device,
+no member id. `settledHere()` is the ladder's last rung, guarded the same way
+`paidReceipt()` already guards its own: a settlement older than this phone's
+last round belongs to an earlier sitting and is not this guest's.
+
+**The rung states the exact total, through `money()` and never `fmt()`.**
+`fmt()` rounds to whole units, which is right for a menu price and a lie on a
+settled one — MVR 6.16 taken at the counter read "MVR 6" on the guest's own
+record of what they paid. Measured on a phone at table 2: order, Received, the
+counter opens the bill, the counter settles it, and the phone — untouched —
+redraws the ladder ending on **Paid · Settled · MVR 6.16 · LOYC-R-010235**.
+
+### And the registry cannot be filed as one of its own customers
+
+Found while running the suite for those two: `/api/account/signup` answering
+`server error`, because `chain.account` was **missing from the registry** —
+which also held `chain.company` and `chain.staff`, and listed ITSELF in
+`chain.business` at 4 of 49.
+
+`control()` has always refused to GUESS which database is the registry.
+Nothing refused to **write** its name into `chain.business`, and
+`businessForDb()` registers whatever database name it is handed — so an
+ordinary path (a single-database install claiming itself, a provision
+resolving the process's own database, an `adopt` run aimed at the wrong `--db`)
+files the registry as customer N. The fleet then migrates it with the
+**business** set, whose migration 011 is a tombstone that DROPS `chain.account`
+and `chain.account_identity`: every account on the install, and the only record
+of who owns each business, gone with no error anywhere. The first symptom is a
+customer unable to sign up, three screens away from the cause.
+
+Refused **by name** at both doors now — `refuseRegistry()` in `src/business.js`
+and the same check in `src/scripts/adopt-install.js`, the latter *before* it
+prints a dry run, because a plan that describes this is a plan somebody then
+runs with `--apply`. `test/tenancy.test.js` asserts the refusal, that nothing
+was written on the way to it, and that the CLI's guard precedes its own output.
+
 ## A row added on the till, and the bootstrap that ate it
 
 Reported from a live store: a menu item added on the till disappeared from the
