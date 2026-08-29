@@ -4998,6 +4998,34 @@ test('the pre-set add-ons load on their own, links and all', () => {
     'an unknown part is refused rather than rounded down to the destructive one');
 });
 
+/* ── A REFUSAL THE OUTLET CANNOT EXPLAIN REACHES THE OPERATOR'S LOG ──────────
+   `flag_ack` compared a uuid column to text[] and raised
+   `operator does not exist: uuid = text` on EVERY acknowledgement since it was
+   written — and the process log said nothing at all. The customer reported it
+   and the logs they were pointed at were empty.
+
+   Data refusals stay silent on purpose: a foreign key or a trigger's own
+   sentence belongs to the till that sent it, and one poison op retrying every
+   five seconds would fill the log. SQLSTATE class 42 is the exception —
+   undefined column, table, function or OPERATOR cannot be caused by data. It
+   means the query this build sent cannot run against this schema, for anybody,
+   for ever. */
+test('an op that cannot run against the schema is a BUILD FAULT in the log', () => {
+  const SY = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+  assert.ok(/BUILD FAULT/.test(SY), 'it is named as what it is');
+  assert.ok(/indexOf\('42'\) === 0/.test(SY),
+    'and fires on SQLSTATE class 42, which data can never cause');
+  assert.ok(/BUILD_FAULTS\[mark\]/.test(SY),
+    'once per kind per boot — the fault is the code, so the first is the finding');
+  // It must carry what a person needs: which outlet, which op, and the words.
+  const seg = SY.slice(SY.indexOf('BUILD FAULT'), SY.indexOf('BUILD FAULT') + 400);
+  ['outlet ', 'op.kind', 'e.code', 'e.message'].forEach((k) =>
+    assert.ok(seg.indexOf(k) >= 0, 'the line carries ' + k));
+  // And an ordinary data refusal still says nothing, or one poison op fills it.
+  assert.ok(!/console\.error[\s\S]{0,120}opSays/.test(SY),
+    'a data refusal is answered to the till, not logged');
+});
+
 /* ── THE MINIMUM WAGE IS A BAND, AND THE BUSINESS SAYS WHICH ─────────────────
    Reported: "an employee could not be added. not showing."
 

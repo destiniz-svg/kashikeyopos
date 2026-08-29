@@ -1401,6 +1401,29 @@ asserts the poll and the bootstrap both stop carrying it; that a replay clears
 none rather than erroring; that "Acknowledge all" clears several; and that a
 malformed id is not a database error.
 
+### And the log said nothing, which is why it had to be reported
+
+The operator went looking at the install's logs and found nothing, because a
+refused op has never reached the process log. That is deliberate for a DATA
+refusal — a foreign key, a unique index, a trigger's own sentence belongs to
+the till that sent it, goes back in the answer, parks, and a person decides;
+one poison op retrying every five seconds would otherwise fill the log.
+
+**SQLSTATE class 42 is not that.** Undefined column, table, function or
+OPERATOR cannot be caused by data: it means the query this build sent cannot
+run against this schema, for anybody, for ever. `src/routes/sync.js` logs one
+line per kind per boot now — the fault is the code, so the first one is the
+whole finding and the next thousand are noise:
+
+```
+[sync] BUILD FAULT · outlet 39 · op "flag_ack" cannot run against this
+schema · 42883 operator does not exist: uuid = text — every device sending
+this op is being refused
+```
+
+Verified by putting the broken handler back and watching the line appear
+exactly once.
+
 ## The minimum wage is a band, and the business says which
 
 Reported: *"an employee could not be added. not showing."* Two defects, one on

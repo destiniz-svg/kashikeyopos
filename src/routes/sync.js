@@ -137,6 +137,35 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
           await c.query('SET CONSTRAINTS ALL IMMEDIATE');
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT ' + sp);
+          /* A REFUSAL THE OUTLET CANNOT EXPLAIN IS A BUG IN THIS BUILD, and it
+             has to reach the operator's log.
+
+             Everything else here is a DATA refusal — a foreign key, a unique
+             index, a trigger's own sentence — and belongs to the till that sent
+             it: it goes back in the answer, parks, and a person decides. Nothing
+             is written here, deliberately, because one poison op retrying every
+             five seconds would otherwise fill the log.
+
+             SQLSTATE class 42 is different. Undefined column, undefined table,
+             undefined function, undefined OPERATOR — none of those can be
+             caused by data. They mean the query this build sent cannot run
+             against this schema, for anybody, for ever. `flag_ack` compared a
+             uuid column to text[] and raised `operator does not exist: uuid =
+             text` on EVERY acknowledgement since it was written, and the
+             process log said nothing at all: the customer reported it, and the
+             logs they were told to check were empty. Once, per kind per boot —
+             the fault is the code, so the first one is the whole finding and
+             the next thousand are noise. */
+          if (String(e && e.code || '').indexOf('42') === 0) {
+            const mark = op.kind + '|' + e.code;
+            if (!BUILD_FAULTS[mark]) {
+              BUILD_FAULTS[mark] = 1;
+              console.error('[sync] BUILD FAULT · outlet ' + req.ctx.outletId
+                + ' · op "' + op.kind + '" cannot run against this schema · '
+                + e.code + ' ' + (e.message || '')
+                + ' — every device sending this op is being refused');
+            }
+          }
           out.push({ opId: op.opId, error: opSays(e) });
           continue;
         }
@@ -196,6 +225,11 @@ const CONSTRAINT_SAYS = {
   ticket_line_ticket_id_fkey: 'This line belongs to a bill the outlet has no'
     + ' record of — the bill it was added to never arrived.'
 };
+/* Which build faults this process has already shouted about. Keyed by kind and
+   SQLSTATE, reset by a restart — a fresh process re-observes, which is the same
+   rule src/watch.js keeps for its alarms. */
+const BUILD_FAULTS = {};
+
 function opSays(e) {
   if (!e) return 'the outlet refused this without saying why';
   // 23503 foreign key, 23505 unique, 23514 check. Only a NAMED constraint is
