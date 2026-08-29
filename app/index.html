@@ -2076,6 +2076,12 @@ const r2 = (n) => Math.round((n || 0) * 100) / 100;
 // feeds it (menu, stock, buying), then the people and money behind it, then
 // the chain and the platform. Within a group the order follows the flow, not
 // the alphabet — an indent becomes a purchase becomes a dispatch.
+/* The sentinel the dish editor's stock-item dropdown carries for "make one".
+   A value no id can ever be — `newId()` mints `i…` and the item master's own
+   codes are `IT-…` — so it can never collide with a real ingredient, which is
+   the only property it needs. */
+const NEW_BUY_ITEM = "__new_stock_item__";
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 // Thirty destinations in nine groups was a filing cabinet, not a product: the
 // deployed system runs twelve modules and does the same work. What was a
@@ -5335,6 +5341,57 @@ class Component extends DCLogic {
     sides: "Sides", desserts: "Desserts", drinks: "Drinks", coffee: "Hot drinks",
     soup: "Soups", salad: "Salads", seafood: "Seafood", main: "Mains"
   };
+  /* ── THE SAME LESSON AS ensureSection(), ONE LINK ALONG ──────────────────
+     "Bought in from a supplier" asks which stock item the dish is sold from,
+     and on a store that has not built an item master yet the dropdown holds
+     exactly one entry — its own placeholder. There is nothing to pick, the
+     status line says "pick the item the storekeeper receives", and pressing
+     Create dish is refused with "Pick the stock item this dish is sold from":
+     an instruction that cannot be followed from the form giving it. Measured
+     on the shipped logic class against an empty outlet, which is the state
+     every new store is in — `provisionOutlet()` creates no ingredients, and
+     the eight bought-in trays only arrive with the pre-set catalogue.
+
+     A dead end, and this build has met it before: the dish editor defaulted
+     its SECTION to one nobody had created, and every dish on a brand-new
+     store was refused by `item_category_id_fkey` for ever. `ensureSection()`
+     was the answer — make the row real, through the one seam, BEFORE the dish
+     is queued. `item.buy_item` references `ingredient.id`, so the failure and
+     the fix are the same shape.
+
+     `newId()`, never a count: two devices adding a tray on one evening must
+     not mint the same ingredient id — that one re-points every recipe and
+     every stock movement at a different ingredient, which is the worst of
+     that whole class. And it does NOT toast: the save that follows ends in
+     its own message in the same tick, and a toast raised here would be
+     overwritten before it painted. */
+  ensureBuyItem(name, vendor) {
+    const label = String(name || "").trim().toUpperCase();
+    if (!label) return "";
+    const id = this.newId("i");
+    /* Positional, the shape the bootstrap publishes: a bought-in tray is
+       counted, costed and sold in ONE unit, so base and stock are both `pcs`
+       and the factor is 1. The dish's own pack does the sellable conversion —
+       a box of 24 gulha is one stock unit and twenty-four sales. */
+    const row = [id, "", label, "pcs", 0, "raw", id, "pcs", "pcs", "0",
+      null, null, 0, null, null];
+    const arr = this.coll("items");
+    if (arr) arr.unshift(row);
+    // Held as well as sent, so the editor resolves it at once and the pen
+    // re-sends it if this push does not land.
+    const L = Object.assign({}, this.state.local || {});
+    L.items = (L.items || []).concat([row]);
+    this.setState({ local: L });
+    /* Queued BEFORE the dish, so it carries the lower lamport and is applied
+       first — a push is applied in queue order, and a dish naming an
+       ingredient that has not arrived is refused exactly as a dish naming an
+       absent section was. */
+    this.queue("item_upsert", "Stock item created · " + label, "items", {
+      id: id, name: label, cat: "", base: "pcs", stock: "pcs", factor: 1,
+      cost: 0, vendor: vendor || null
+    });
+    return id;
+  }
   ensureSection(id) {
     const key = String(id || "").trim();
     if (!key) return;
@@ -8204,7 +8261,12 @@ class Component extends DCLogic {
           : "Its ingredients leave the shelf through its recipe, and its food cost is built from them.",
         dbBuyStyle: d.buy ? "display:flex;flex-direction:column;gap:9px;margin-top:9px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
         dbBuyItem: String((d.buy || {}).item || ""),
-        dbBuyItemOpts: [{ v: "", l: "Pick the stock item sold\u2026" }].concat(
+        /* THE WAY THROUGH IS IN THE LIST. Offered always, not only on an empty
+           store: a new tray from a new supplier is the ordinary case too, and
+           sending somebody to Inventory to type a name they have already typed
+           here is a round trip nobody makes twice. */
+        dbBuyItemOpts: [{ v: "", l: "Pick the stock item sold\u2026" },
+          { v: NEW_BUY_ITEM, l: "\uff0b New stock item, named after this dish" }].concat(
           ((window.KPOS_RAW || {}).items || []).map((i) => ({ v: String(i[0]), l: i[2] + " \u00b7 " + (i[8] || i[7] || "") }))),
         onDbBuyItem: (e) => put({ buy: Object.assign({}, d.buy, { item: e.target.value }) }),
         dbBuyVendor: String((d.buy || {}).vendor || ""),
@@ -8216,7 +8278,23 @@ class Component extends DCLogic {
         dbBuyLine: (() => {
           if (!d.buy) return "";
           const bid = String((d.buy || {}).item || "");
-          if (!bid) return "Pick the item the storekeeper receives \u2014 the count on the menu follows it.";
+          /* SAYING WHAT WILL HAPPEN, rather than describing a list. The old
+             line said "pick the item the storekeeper receives" whether or not
+             there was one to pick \u2014 on a store with no item master that is an
+             instruction pointing at nothing. */
+          if (bid === NEW_BUY_ITEM) {
+            const nm = String(d.name || "").trim().toUpperCase();
+            return "Saving creates " + (nm || "this dish's name")
+              + " in the item master and links the dish to it. Receive it at"
+              + " the door or on a GRN and the count starts there.";
+          }
+          const stocked = ((window.KPOS_RAW || {}).items || []).length;
+          if (!bid) {
+            return stocked
+              ? "Pick the item the storekeeper receives \u2014 the count on the menu follows it."
+              : "This store has no stock items yet. Choose \u201cNew stock item\u201d above and"
+                + " saving makes one, or build the item master under Inventory first.";
+          }
           const it = this.item(bid);
           if (!it) return "That item is not in the item master yet \u2014 create it under Inventory first.";
           const pk = Math.max(1, +(d.buy || {}).pack || 1);
@@ -8227,7 +8305,13 @@ class Component extends DCLogic {
           if (held <= 0) return this.itemName(bid).toUpperCase() + " is not stocked here yet. Receive it on a GRN or at the door and the count starts here.";
           return units + " on the shelf at " + (this.outlet().code || "") + " \u00b7 " + MVR(each) + " each \u00b7 GP " + MVR(gp) + " at " + MVR(price);
         })(),
-        dbBuyLineStyle: "font-size:11px;line-height:1.55;color:" + (d.buy && String((d.buy || {}).item || "") && this.bookOnHand(String((d.buy || {}).item)) > 0 ? "var(--text-dim)" : "var(--warn-bright)"),
+        /* A line that says what SAVING will do is not a warning — the amber is
+           for a shelf that cannot answer yet, not for a decision already made. */
+        dbBuyLineStyle: "font-size:11px;line-height:1.55;color:" + (d.buy
+          && String((d.buy || {}).item || "")
+          && (String((d.buy || {}).item) === NEW_BUY_ITEM
+            || this.bookOnHand(String((d.buy || {}).item)) > 0)
+          ? "var(--text-dim)" : "var(--warn-bright)"),
         dbBuyFoot: "Receiving it on a GRN or at the door tops the count up, selling one takes one off, and at zero the dish reads sold out on the till and the QR menu without anyone touching it. A pack is what the supplier delivers; units per pack is how many guests it serves.",
         /* The second channel switch: off the guest's phone while the counter
            keeps it. NOT hidden and NOT 86 \u2014 three switches, three
@@ -8260,10 +8344,17 @@ class Component extends DCLogic {
           if (d.buy && !String((d.buy || {}).item || "").trim()) {
             return this.toast("Pick the stock item this dish is sold from", "warn");
           }
+          /* The stock item is made real BEFORE the dish is queued, or
+             `item.buy_item` refuses it exactly as `item_category_id_fkey`
+             refused every dish naming a section that had not landed. */
+          let buyId = String((d.buy || {}).item || "");
+          if (d.buy && buyId === NEW_BUY_ITEM) {
+            buyId = this.ensureBuyItem(name, String((d.buy || {}).vendor || "") || null);
+          }
           const next = {
             name: name, desc: String(d.desc || "").trim(), cat: d.cat, price: Math.round(price),
             station: d.buy ? "counter" : d.station, tags: (d.tags || []).slice(), spice: d.spice || 0,
-            buy: d.buy ? { item: String(d.buy.item), vendor: String((d.buy || {}).vendor || "") || null, pack: Math.max(1, +(d.buy || {}).pack || 1) } : null,
+            buy: d.buy ? { item: buyId, vendor: String((d.buy || {}).vendor || "") || null, pack: Math.max(1, +(d.buy || {}).pack || 1) } : null,
             qrOff: !!d.qrOff,
             addons: d.addons ? d.addons.slice() : null, hidden: !!d.hidden, veg: (d.tags || []).indexOf("veg") >= 0,
             // The photograph saves with everything else, or the Photograph

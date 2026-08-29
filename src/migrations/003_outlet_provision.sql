@@ -1100,7 +1100,7 @@ BEGIN
     -- A PIN hash never leaves the database (038): the app is handed salts
     -- and offers back hashes, and the comparison happens in there.
     || ' chain.pin_salts(int), chain.pin_match(int, uuid[], text[]),'
-    -- And a PIN is an IDENTITY (049), so the door refuses a duplicate before
+    -- And a PIN is an IDENTITY (051), so the door refuses a duplicate before
     -- one is created — asked over the same salt-per-row walk, because a salted
     -- hash cannot be looked up any other way.
     || ' chain.pin_salts_all(int),'

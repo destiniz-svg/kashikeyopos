@@ -5600,3 +5600,99 @@ test('adding an employee with no salary says so, rather than citing the minimum 
   assert.ok(add > 0 && wage > add,
     'and it asks BEFORE the wage check, or the wrong cause is still reported');
 });
+
+/* ═══ THE BOUGHT-IN FORM HAS A WAY THROUGH ══════════════════════════════════
+   Reported as "bought in from a supplier form isn't working", and on a store
+   with a stocked item master it worked exactly as designed — which is why the
+   sweep went looking at the state a NEW store is in. `provisionOutlet()`
+   creates no ingredients, and the eight bought-in trays only arrive with the
+   pre-set catalogue, so an ordinary new customer opening that block saw:
+
+     · a "Stock item sold" dropdown holding one entry — its own placeholder;
+     · a status line reading "Pick the item the storekeeper receives", which is
+       an instruction pointing at nothing;
+     · and Create dish refused with "Pick the stock item this dish is sold
+       from" — an instruction that cannot be followed from the form giving it.
+
+   A dead end, and the same one `ensureSection()` closed a link along: the dish
+   editor defaulted its SECTION to a row nobody had created and every dish on a
+   brand-new store was refused by `item_category_id_fkey` for ever.
+   `item.buy_item` references `ingredient.id`, so the failure and the fix are
+   the same shape — make the row real, through the one seam, BEFORE the dish is
+   queued. */
+test('a bought-in dish can be created on a store with no item master', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  assert.strictEqual(((F.__win.KPOS_RAW || {}).items || []).length, 0,
+    'this instance is the empty store the test is about');
+
+  const m = { kind: 'dishb', d: { name: 'GULHA', price: 5, cat: 'mains',
+    buy: { item: '', vendor: '', pack: 24 } } };
+  F.state.modal = m;
+  const v = F.modalVals(m);
+
+  /* THE WAY THROUGH IS IN THE LIST, not behind a trip to another screen. */
+  const opts = v.dbBuyItemOpts || [];
+  assert.ok(opts.some((o) => /New stock item/i.test(o.l)),
+    'the dropdown offers to make one: ' + JSON.stringify(opts.map((o) => o.l)));
+
+  /* AND THE LINE SAYS WHAT IS TRUE, rather than pointing at an empty list. */
+  assert.match(v.dbBuyLine, /no stock items yet/i,
+    'an empty item master is named: ' + v.dbBuyLine);
+
+  const sentinel = (opts.find((o) => /New stock item/i.test(o.l)) || {}).v;
+  v.onDbBuyItem({ target: { value: sentinel } });
+  const w = F.modalVals(F.state.modal);
+  assert.match(w.dbBuyLine, /Saving creates GULHA/,
+    'and once chosen it says what saving will do: ' + w.dbBuyLine);
+  assert.ok(w.dbBuyLineStyle.indexOf('warn') < 0,
+    'in the ordinary ink — a decision already made is not a warning');
+
+  /* THE ORDER IS NOT NEGOTIABLE. A push is applied in queue order, so the
+     ingredient has to carry the lower lamport or the dish naming it is
+     refused by its foreign key exactly as a dish naming an absent section
+     was. */
+  const ops = [];
+  F.queue = (kind, label, ent, payload) => ops.push({ kind: kind, payload: payload });
+  w.dbSave();
+  const kinds = ops.map((o) => o.kind);
+  assert.ok(kinds.indexOf('item_upsert') >= 0, 'the stock item is written: ' + kinds);
+  assert.ok(kinds.indexOf('dish_upsert') >= 0, 'and the dish: ' + kinds);
+  assert.ok(kinds.indexOf('item_upsert') < kinds.indexOf('dish_upsert'),
+    'and the ingredient is queued FIRST, or item.buy_item refuses the dish: ' + kinds);
+
+  const item = ops.find((o) => o.kind === 'item_upsert');
+  const dish = ops.find((o) => o.kind === 'dish_upsert');
+  assert.strictEqual(dish.payload.buy.item, item.payload.id,
+    'the dish is linked to the ingredient that was just made');
+  assert.strictEqual(dish.payload.buy.pack, 24, 'and the pack survives');
+  /* Counted, costed and sold in ONE unit — 048's rule for a bought-in tray.
+     The dish's own pack does the sellable conversion. */
+  assert.strictEqual(item.payload.base, 'pcs');
+  assert.strictEqual(item.payload.stock, 'pcs');
+  assert.strictEqual(item.payload.factor, 1);
+  assert.match(String(item.payload.id), /^i/,
+    'minted by newId(), never counted — two devices adding a tray on one'
+    + ' evening minting the same ingredient id re-points every recipe and every'
+    + ' stock movement at a different ingredient');
+});
+
+/* AND A STORE THAT ALREADY HAS AN ITEM MASTER IS UNTOUCHED: picking a real
+   row still links to it and creates nothing. The offer is additive. */
+test('picking an existing stock item creates no second one', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.__win.KPOS_RAW.items = [['IT-1', '', 'GULHA (VENDOR)', 'pcs', 3, 'raw',
+    'IT-1', 'pcs', 'pcs', '3', null, null, 0, null, null]];
+  const m = { kind: 'dishb', d: { name: 'GULHA', price: 5, cat: 'mains',
+    buy: { item: 'IT-1', vendor: '', pack: 24 } } };
+  F.state.modal = m;
+  const v = F.modalVals(m);
+  const ops = [];
+  F.queue = (kind, label, ent, payload) => ops.push({ kind: kind, payload: payload });
+  v.dbSave();
+  assert.ok(!ops.some((o) => o.kind === 'item_upsert'),
+    'nothing was created: ' + ops.map((o) => o.kind));
+  const dish = ops.find((o) => o.kind === 'dish_upsert');
+  assert.strictEqual(dish.payload.buy.item, 'IT-1', 'and the link is the row that was picked');
+});

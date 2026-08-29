@@ -60,7 +60,9 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        046 a number is its digits
                        047 the ask carries the answer
                        048 a dish can be bought in
-                       049 a PIN is an identity
+                       049 a section wears its kind
+                       050 a person has a face
+                       051 a PIN is an identity
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -1557,7 +1559,7 @@ void, discount and drawer opening they made that shift was attributed to
 somebody else. The Users screen says in those words that a per-person PIN is
 what makes those acts attributable. Nothing enforced it.
 
-Migration 049, in two halves, and the build already keeps both rules one plane
+Migration 051, in two halves, and the build already keeps both rules one plane
 over:
 
 - **AMBIGUITY RESOLVES TO NOBODY.** `chain.member_resolve()` (046) refuses two
@@ -2099,6 +2101,44 @@ on the till, the `bought` query in `deriveConsumption()` on the server — with
 NO yield gross-up (nothing is trimmed off a can of Coke), so the drift check
 stays a check. Proven: a sale pushed with the till's claim lands with no
 `qty_mismatch` and the move re-valued at WAC.
+
+**And the form had no way through on a store with no item master.** Reported as
+*"bought in from a supplier form isn't working"*, and on a stocked store it
+worked exactly as designed — which is why the sweep went to the state a NEW
+customer is in. `provisionOutlet()` creates no ingredients, and the eight
+bought-in trays only arrive with the pre-set catalogue, so an ordinary new
+store opening that block met a **Stock item sold** dropdown holding one entry
+— its own placeholder — a status line reading *"Pick the item the storekeeper
+receives"*, which is an instruction pointing at nothing, and a **Create dish**
+refused with *"Pick the stock item this dish is sold from"*: an instruction
+that cannot be followed from the form giving it.
+
+A dead end, and the same one `ensureSection()` closed a link along — the dish
+editor defaulted its SECTION to a row nobody had created, and every dish on a
+brand-new store was refused by `item_category_id_fkey` for ever.
+`item.buy_item` references `ingredient.id`, so the failure and the fix are the
+same shape. `ensureBuyItem()` makes the row real, through the one seam, BEFORE
+the dish is queued — so it carries the lower lamport and lands first, because a
+push is applied in queue order.
+
+The offer is in the LIST (`＋ New stock item, named after this dish`), not
+behind a trip to Inventory: a new tray from a new supplier is the ordinary case
+too, and sending somebody to another screen to retype a name they have already
+typed here is a round trip nobody makes twice. It is offered on every store,
+not only an empty one; picking an existing row still links to it and creates
+nothing. The id comes from `newId()` and never from a count — two devices
+adding a tray on one evening minting the same ingredient id re-points every
+recipe and every stock movement at a different ingredient, which is the worst
+of that whole class. Base and stock are both `pcs` with factor 1, 048's rule
+for a tray: counted, costed and sold in one unit, with the dish's own pack
+doing the sellable conversion. The supplier chosen on the form rides onto the
+ingredient too. It does NOT toast — the save that follows ends in its own
+message in the same tick, and a toast raised here would be overwritten before
+it painted, which is the defect the wage-band note already paid for once.
+
+And the status line stops describing a list and says what is true: an empty
+item master is NAMED, and once *New stock item* is chosen it states what
+saving will do, in the ordinary ink — a decision already made is not a warning.
 
 **Portions is the shelf talking.** `dishPortions()` gives the three answers —
 `null` (nothing to count from: no recipe and not bought in), `{n: null}` (it
@@ -5381,7 +5421,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 559 tests
+npm test                          # 561 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

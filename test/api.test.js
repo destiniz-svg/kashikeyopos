@@ -4102,7 +4102,7 @@ test('renaming a store is the owner\'s, and nobody else\'s', opts, async () => {
    ended in a bare `LIMIT 1` with no ORDER BY and no uniqueness check, so two
    people sharing four digits BOTH matched and Postgres returned whichever row
    the plan happened to yield — which is not stable between calls. Measured on
-   a live outlet before migration 049: three consecutive sign-ins with one PIN
+   a live outlet before migration 051: three consecutive sign-ins with one PIN
    returned a rank-2 cashier, then a rank-5 owner, then the cashier again.
 
    A cashier keying their own PIN was therefore signed in AS THE OWNER, and
@@ -4157,7 +4157,7 @@ test('two people cannot be given the same PIN', opts, async () => {
 
   /* ═══ AND A STORE ALREADY HOLDING A DUPLICATE REFUSES BOTH ════════════════
      The door above stops a NEW one. Every database written before migration
-     049 may already hold duplicates, and evicting somebody from their own
+     051 may already hold duplicates, and evicting somebody from their own
      account is not a migration's call — so the second fence is that ambiguity
      resolves to NOBODY, exactly as `chain.member_resolve()` refuses two
      members whose numbers normalise alike and migration 018 refuses two on one
