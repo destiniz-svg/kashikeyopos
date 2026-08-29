@@ -808,6 +808,22 @@ async function snapshot(c, outletId) {
       + " WHERE t.status = 'open' GROUP BY t.id"],
     stages: ['SELECT ticket_id, station, stage, target_mins, fired_at FROM kds_ticket'
       + ' WHERE served_at IS NULL'],
+    /* AND THE BILL THAT HAS BEEN PAID. The ticket query above is open bills
+       only — correctly, it is what the floor is — so a table's row vanishes
+       the moment the counter settles it. The guest's tracker then had nothing
+       to read and fell back to the last stage this PHONE happened to have
+       recorded, which is "Received": a guest who has paid and left still had
+       a tracker saying the kitchen had their order. The settled fact has to
+       come from the outlet like every other fact.
+
+       Two hours is the window: long enough that a guest who paid and lingered
+       still sees it, short enough that tomorrow's guest on the same table is
+       never shown yesterday's bill. The phone guards it further against its
+       own last round. */
+    settled: ["SELECT t.table_no, s.receipt_no, s.total, s.at"
+      + ' FROM sale s JOIN ticket t ON t.id = s.ticket_id'
+      + " WHERE s.at > now() - interval '2 hours' AND s.voided_at IS NULL"
+      + ' ORDER BY s.at DESC LIMIT 60'],
     /* Only what a guest should SEE tonight: live, and inside its own date
        window. The slot switch is applied below — a merchant who turned the
        strip off must empty it on every phone, not only on the till. */
@@ -881,6 +897,7 @@ async function snapshot(c, outletId) {
     })),
     tickets: q.tickets.rows,
     stages: q.stages.rows,
+    settled: q.settled.rows,
     banners: ((q.bannerSlot.rows[0] || {}).value === true) ? q.banners.rows : [],
     promos: q.promos.rows,
     company: q.company.rows[0]

@@ -1030,6 +1030,20 @@ class Component extends DCLogic {
     };
     return norm(a) === norm(b);
   }
+  /* A bill the OUTLET says was settled on this table, guarded the same way
+     paidReceipt() guards its own: a settlement older than this phone's last
+     round belongs to an earlier sitting and is not this guest's. */
+  settledHere() {
+    const rows = ((window.KPOS || {}).SETTLED || [])
+      .filter((s) => this.sameTable(s.table, this.state.table))
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+    const hit = rows[0];
+    if (!hit) return null;
+    const sent = this.state.sent || [];
+    const last = sent.length ? Math.max.apply(null, sent.map((r) => r.at || 0)) : 0;
+    if (last && new Date(hit.at || 0).getTime() < last) return null;
+    return hit;
+  }
   stage() {
     /* THE STAGE IS AN INDEX, and the row carries its own step names.
 
@@ -1051,6 +1065,14 @@ class Component extends DCLogic {
     const live = (k.STAGES || []).filter((x) => mine.indexOf(x.ticket) >= 0)
       .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))[0];
     if (rung !== null) return { at: rung, steps: STEPS, when: live ? live.at : null };
+    /* SETTLED IS A STAGE, and the LAST one. The open-ticket list above is the
+       floor, so a paid table has no row there at all — and everything below
+       this point is a fallback that reads what this phone last recorded,
+       which is "Received". A guest who has paid was shown their food being
+       received for ever. The outlet says a bill on this table was settled, so
+       the ladder ends where it actually ended. */
+    const paid = this.settledHere();
+    if (paid) return { at: 4, steps: STEPS.concat(["Paid"]), when: paid.at, paid: paid };
     // The kitchen calls it "Cooking"; a guest is told what that means.
     if (live) {
       const word = live.stage === "Cooking" ? "In the kitchen" : live.stage;
@@ -1511,6 +1533,7 @@ class Component extends DCLogic {
     const STAGES = (fs && fs.steps && fs.steps.length)
       ? fs.steps : ["Received", "In the kitchen", "Ready", "Served"];
     const at = fs ? Math.max(0, Math.min(STAGES.length - 1, fs.at)) : (s.sent.length ? 0 : -1);
+    const paidRow = fs && fs.paid ? fs.paid : null;
     V.trackSub = s.sent.length
       ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
       : "Nothing sent yet";
@@ -1520,10 +1543,19 @@ class Component extends DCLogic {
       return {
         label: label,
         labelStyle: "display:block;font-size:14.5px;font-weight:" + (on ? 700 : 600) + ";color:" + (done || on ? "#111" : "#c0c0c5"),
-        sub: i === 0 ? (at >= 0 ? "The till has your round" : "Send a round to start")
-          : i === 1 ? (at >= 1 ? "Being cooked now" : "Fires once the kitchen accepts it")
-            : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
-              : (at >= 3 ? "On your table — enjoy" : "Brought to table " + tno),
+        // The paid rung only exists once the outlet says the bill was settled,
+        // so it names the receipt rather than repeating the serving line.
+        /* money(), never fmt(). fmt() rounds to whole units, which is right
+           for a menu price and a lie on a settled total: MVR 5.94 taken at
+           the counter would read "MVR 6" on the guest's own record of what
+           they paid. */
+        sub: label === "Paid"
+          ? (paidRow ? "Settled · " + this.money(paidRow.total)
+            + (paidRow.no ? " · " + paidRow.no : "") : "Settled at the counter")
+          : i === 0 ? (at >= 0 ? "The till has your round" : "Send a round to start")
+            : i === 1 ? (at >= 1 ? "Being cooked now" : "Fires once the kitchen accepts it")
+              : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
+                : (at >= 3 ? "On your table — enjoy" : "Brought to table " + tno),
         dot: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
           + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(244,85,60,.15)" : "background:#f0f0f2;color:#f0f0f2"),
         tickStyle: done || on ? "display:block" : "display:none",

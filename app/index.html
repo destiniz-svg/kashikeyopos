@@ -5563,7 +5563,29 @@ class Component extends DCLogic {
   // "extra shot" that cannot be repriced is a price list with a hole in it.
   // Unset falls through to the seed data, so an untouched build behaves
   // exactly as before.
-  modList() { return this.state.modifiers || (K().MODIFIERS || []); }
+  /* A HOLDING PEN, NOT A PRIVATE FORK — the rule every other pen in this
+     build follows, and the one this list did not. It returned the local pen
+     INSTEAD OF the outlet's published add-ons, so two things went wrong and
+     both end with the same screen:
+
+       - an EMPTY pen is `[]`, which is truthy, so `[] || published` answered
+         the empty array. Menu Master read "Add-ons · 0" on a store whose
+         outlet was publishing a hundred of them;
+       - and a non-empty pen HID the rest. A terminal that created one add-on
+         showed that one and lost every add-on the pre-set had loaded.
+
+     Reported as "menu master addon is zero. no addons added from list" — the
+     add-ons were at the outlet the whole time (the pre-set lands them and the
+     e2e run proves it); this is the only thing that was in the way. Now the
+     outlet's list is the floor and the pen is laid over it by id. */
+  modList() {
+    const pub = (K().MODIFIERS || []);
+    const held = this.state.modifiers;
+    if (!held || !held.length) return pub;
+    const out = pub.map((p) => held.find((h) => h.id === p.id) || p);
+    held.forEach((h) => { if (!out.some((x) => x.id === h.id)) out.push(h); });
+    return out;
+  }
   /* One add-on, out WHOLE: the group (one per till-made add-on, under the
      add-on's own id), the option, and — where the caller passes them — the
      item links for the sections it publishes to, which is what the bootstrap

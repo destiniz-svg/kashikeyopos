@@ -229,6 +229,19 @@ async function main() {
     console.error('CONTROL_DB is not set — the registry has to be named, never guessed');
     process.exit(2);
   }
+  /* And the registry is not an install to adopt. Registering it as a business
+     hands it to the fleet migration, which runs the BUSINESS set over it —
+     whose 011 is a tombstone that drops chain.account. See refuseRegistry() in
+     src/business.js: same refusal, the other door. Refused before the dry run
+     prints, because a dry run that describes this plan is a plan somebody
+     will then run with --apply. */
+  if (dbName === CONTROL_DB()) {
+    console.error('refusing: ' + dbName + ' is this install\'s REGISTRY, not a'
+      + ' business. Adopting it would let the fleet migrate it with the'
+      + ' business set, whose migration 011 drops chain.account — every'
+      + ' account on the install, gone.');
+    process.exit(2);
+  }
 
   say(APPLY ? '=== ADOPTING ' + dbName + ' ===' : '=== DRY RUN for ' + dbName
     + ' (nothing will change; add --apply) ===');

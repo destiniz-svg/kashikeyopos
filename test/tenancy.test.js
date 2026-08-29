@@ -14,6 +14,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { Client } = require('pg');
 const DB = require('./db');
+const fs = require('fs');
+const path = require('path');
 
 DB.secrets();
 /* Its own database-name prefix. Suites share a cluster and each registry
@@ -110,6 +112,48 @@ test('the account plane is in the registry, not in a business', opts, async () =
     "SELECT to_regclass('chain.account') IS NOT NULL AS ok");
   assert.strictEqual(inBiz.rows[0].ok, false,
     'and a business database holds no copy of them');
+});
+
+/* AND THE REGISTRY CANNOT BE REGISTERED AS ONE OF ITS OWN CUSTOMERS.
+
+   `control()` has always refused to GUESS which database is the registry.
+   Nothing refused to WRITE the registry's own name into `chain.business`, and
+   `businessForDb()` registers whatever name it is handed — so an ordinary
+   path (a single-database install claiming itself, a provision resolving the
+   process's own database) could file the registry as customer N. The fleet
+   then migrates it with the BUSINESS set, whose migration 011 is a tombstone
+   that DROPS `chain.account` and `chain.account_identity`: every account on
+   the install gone, the record of who owns each business with them.
+
+   Found in exactly that state on this project's own local registry — business
+   149, `db_name = kashikeyo_local_control`, at 4 of 49, `chain.company` and
+   `chain.staff` sitting in the registry, the account tables missing, and
+   `/api/account/signup` answering "server error" to every new customer. It is
+   refused by name at both doors now, so nobody has to notice it later. */
+test('the registry cannot be filed as a business, at either door', opts, async () => {
+  const reg = db.CONTROL_DB();
+  assert.ok(reg, 'the suite runs against a named registry');
+
+  await assert.rejects(() => BIZ.businessForDb(reg), (e) => {
+    assert.match(String(e.message), /registry/i, 'the refusal names what it is');
+    assert.match(String(e.message), /chain\.account/,
+      'and what would be lost, so the reason survives the stack trace');
+    return true;
+  }, 'businessForDb registers any name it is handed — except this one');
+
+  const rows = await db.control().query(
+    'SELECT count(*)::int AS n FROM chain.business WHERE db_name = $1', [reg]);
+  assert.strictEqual(rows.rows[0].n, 0,
+    'and nothing was written on the way to refusing');
+
+  // The other door is a CLI, so it is held to the same refusal statically —
+  // a dry run that prints this plan is a plan somebody then runs with --apply.
+  const cli = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'scripts', 'adopt-install.js'), 'utf8');
+  assert.ok(/dbName === CONTROL_DB\(\)/.test(cli),
+    'adopt refuses the registry too');
+  assert.ok(cli.indexOf('dbName === CONTROL_DB()') < cli.indexOf('=== DRY RUN'),
+    'and refuses BEFORE it describes the plan');
 });
 
 test('outlet ids are allocated globally, so a token names one store', opts, async () => {

@@ -4780,6 +4780,108 @@ test('an add-on edited on the till goes out whole, and a removed one is removed'
     'no modifier_update is queued without its payload');
 });
 
+/* AND `state.modifiers` IS A HOLDING PEN, NOT A PRIVATE FORK — which is the
+   rule every other local copy in this build already keeps (a measured yield,
+   a saved batch, a published programme, a section's meta) and the one
+   `modList()` broke.
+
+   It answered `this.state.modifiers || K().MODIFIERS`. An EMPTY ARRAY IS
+   TRUTHY, so a terminal holding no un-synced add-on edit answered the outlet's
+   hundred-odd options with nothing at all: Menu Master read "Add-ons · 0" on a
+   store whose outlet publishes 115, which is exactly how it was reported. And
+   a pen holding ONE row was worse than empty — it hid the other hundred behind
+   a single local edit, so the dish sheet offered one add-on and the CSV export
+   wrote one row.
+
+   Layering is the fix and the test is the shape: the outlet's list is the
+   floor, a held row REPLACES the outlet's copy of that same id (this device's
+   edit has not been delivered yet, so it is the later answer here), and a held
+   row the outlet has never published is appended. */
+test('the add-on pen layers over the outlet, and an empty one answers for nothing', () => {
+  const K = FX.kpos();
+  K.MODIFIERS = [
+    { id: 'm1', name: 'Extra cheese', price: 5, cats: ['mains'] },
+    { id: 'm2', name: 'Extra chilli', price: 3, cats: ['mains'] },
+    { id: 'm3', name: 'Large', price: 10, cats: ['drinks'] }
+  ];
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real() });
+
+  // No pen at all — the outlet answers.
+  F.state.modifiers = null;
+  assert.strictEqual(F.modList().length, 3, 'with no pen the outlet\'s list is the answer');
+
+  // THE REPORTED SHAPE. An empty pen is truthy and used to win.
+  F.state.modifiers = [];
+  assert.strictEqual(F.modList().length, 3,
+    'an empty pen must not answer zero over an outlet that publishes three');
+
+  // A held EDIT of a published row replaces that row, and only that row.
+  F.state.modifiers = [{ id: 'm2', name: 'Extra chilli', price: 4, cats: ['mains'] }];
+  const layered = F.modList();
+  assert.strictEqual(layered.length, 3, 'a one-row pen does not hide the other two');
+  assert.strictEqual(layered.find((x) => x.id === 'm2').price, 4,
+    'this device\'s un-delivered edit is what it reads back');
+  assert.strictEqual(layered.find((x) => x.id === 'm1').price, 5,
+    'and the outlet\'s answer stands for every row the pen says nothing about');
+
+  // A held row the outlet has never heard of is carried too.
+  F.state.modifiers = [{ id: 'mNew', name: 'Double shot', price: 12, cats: ['drinks'] }];
+  const withNew = F.modList();
+  assert.strictEqual(withNew.length, 4, 'an un-synced new add-on rides beside the outlet\'s');
+  assert.ok(withNew.some((x) => x.id === 'mNew'));
+
+  // And the defect itself, statically: `||` over a possibly-empty array.
+  assert.ok(!/this\.state\.modifiers\s*\|\|\s*(this\.)?K\(\)\.MODIFIERS/.test(SRC),
+    'the pen never REPLACES the published list');
+});
+
+/* ── A SETTLED BILL IS A STAGE, AND THE LAST ONE ─────────────────────────────
+   Reported: "qr portal orders when settled shows received status."
+
+   The guest snapshot's ticket query is `WHERE t.status = 'open'`, so the
+   moment the counter takes the money the table leaves the floor list the
+   tracker reads. `stage()` then fell through every live branch to its
+   localStorage fallback — this phone's own record of what it last SENT, which
+   is "Received" — and stayed there for ever. The guest paid and watched their
+   food be received.
+
+   Absence cannot be the answer, because an open list carries no reason: closed,
+   voided and moved all look identical from the phone. So the projection SAYS
+   so, and the ladder gains a rung. */
+test('the guest projection carries settled bills, and the tracker ends on Paid', () => {
+  const SNAP = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const BR = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  const GU = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+
+  // The projection is the road — never the co-located till's localStorage,
+  // which only works when the phone and the till share a browser.
+  assert.ok(/settled:\s*q\.settled\.rows/.test(SNAP),
+    'the guest snapshot publishes a settled list');
+  assert.ok(/JOIN\s+ticket\s+t\s+ON\s+t\.id\s*=\s*s\.ticket_id/.test(SNAP),
+    'joined through ticket_id, so the row names the TABLE the guest is sitting at');
+  assert.ok(/voided_at\s+IS\s+NULL/.test(SNAP),
+    'a voided sale is not a bill anybody settled');
+  assert.ok(/s\.at\s*>\s*now\(\)\s*-\s*interval/.test(SNAP),
+    'and it is a window, not the store\'s whole trading history');
+
+  // Nothing a guest may not see rides along.
+  const seg = SNAP.slice(SNAP.indexOf('settled:'), SNAP.indexOf('settled:') + 400);
+  ['cogs', 'margin', 'staff', 'device_id', 'member_id'].forEach((k) => {
+    assert.ok(seg.indexOf(k) < 0, 'the settled row carries no ' + k);
+  });
+
+  assert.ok(/K\.SETTLED\s*=/.test(BR), 'the bridge hands it to the page');
+  assert.ok(/settledHere\(\)/.test(GU) && /steps:\s*STEPS\.concat\(\["Paid"\]\)/.test(GU),
+    'and the ladder gains its last rung from the outlet\'s own answer');
+  // A settlement older than this phone's last round belongs to an earlier
+  // sitting — the same guard paidReceipt() already keeps.
+  assert.ok(/new Date\(hit\.at \|\| 0\)\.getTime\(\) < last/.test(GU),
+    'an earlier sitting\'s bill cannot claim a round somebody has just sent');
+  // fmt() rounds to whole units. What the guest paid is not a menu price.
+  assert.ok(/"Settled · " \+ this\.money\(paidRow\.total\)/.test(GU),
+    'the paid rung states the exact total, never a rounded one');
+});
+
 /* ── THE PRE-SET MENU IS INTERNALLY WHOLE ─────────────────────────────────────
    The onboarding choice and the Menu Master action both replay
    src/data/preset-menu.json through the ordinary handlers. A reference that

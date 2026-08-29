@@ -20,7 +20,7 @@
    hand. The same rule panel/railway.js follows, for the same reason.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const { control, ownerFor, owner, businessDb } = require('./db');
+const { control, ownerFor, owner, businessDb, CONTROL_DB } = require('./db');
 const { migrateBusiness } = require('./scripts/migrate');
 
 /* A database name is an identifier, not a value, so it can never be
@@ -182,7 +182,37 @@ async function registerOutlet(outletId, businessId) {
    step comes back a bare 500 — an install that can record a company and never
    an outlet. server.js names that at boot now rather than letting it surface
    here; see registryNamed(). */
+/* THE REGISTRY IS NOT A BUSINESS, AND REGISTERING IT AS ONE DESTROYS THE
+   ACCOUNT PLANE.
+
+   `control()` already refuses to GUESS which database is the registry — that
+   fence has been here since the boundary moved. Nothing refused to WRITE the
+   registry's own name into `chain.business`, and this function will register
+   whatever database name it is handed. Once that row exists the fleet
+   migration picks the registry up as an ordinary customer and runs the
+   BUSINESS set over it — whose migration 011 is a tombstone that DROPS
+   `chain.account` and `chain.account_identity`. Every account on the install
+   is gone, the only record of who owns each business with it, and the first
+   symptom is `/api/account/signup` answering "server error" to a customer.
+
+   Found in exactly that state on this project's own local registry: business
+   149, `db_name = kashikeyo_local_control`, at 4 of 49, with `chain.company`
+   and `chain.staff` sitting in the registry beside `chain.business` and the
+   account tables missing. The path in is ordinary — a single-database install
+   claiming itself, or a provision resolving the process's own database — so
+   this is refused BY NAME rather than left to the operator to notice. */
+function refuseRegistry(dbName) {
+  const reg = CONTROL_DB();
+  if (reg && String(dbName) === String(reg)) {
+    throw Object.assign(new Error('the registry (' + reg + ') cannot be'
+      + ' registered as a business — the fleet would migrate it with the'
+      + ' business set, whose migration 011 drops chain.account. Point'
+      + ' CONTROL_DB at a database of its own.'), { status: 409 });
+  }
+}
+
 async function businessForDb(dbName) {
+  refuseRegistry(dbName);
   const found = await control().query(
     'SELECT id FROM chain.business WHERE db_name = $1', [dbName]);
   if (found.rows.length) return Number(found.rows[0].id);

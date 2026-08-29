@@ -232,6 +232,15 @@
       return { ticket: k.ticket_id, station: k.station, stage: k.stage,
         target: k.target_mins, at: k.fired_at };
     });
+    /* THE BILL THAT HAS BEEN PAID, from the outlet. The open-ticket list is
+       the floor, so a settled table simply disappears from it — and the
+       tracker then read the last stage this PHONE had recorded, which is
+       "Received". A guest who had paid and left was still being told the
+       kitchen had their order. */
+    K.SETTLED = (snap.settled || []).map(function (s) {
+      return { table: s.table_no, no: s.receipt_no,
+        total: Number(s.total) || 0, at: s.at };
+    });
     if (snap.table) state.table = snap.table;
     root.KPOS_GUEST.snapshot = snap;
     try { root.dispatchEvent(new Event("kpos-data-ready")); } catch (e) {}
