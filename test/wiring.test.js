@@ -5696,3 +5696,65 @@ test('picking an existing stock item creates no second one', () => {
   const dish = ops.find((o) => o.kind === 'dish_upsert');
   assert.strictEqual(dish.payload.buy.item, 'IT-1', 'and the link is the row that was picked');
 });
+
+/* ═══ A DEFAULT IN THE VALUE IS A FIELD THAT CANNOT BE CLEARED ══════════════
+   Reported as "units per pack is not editable". `dbBuyPack` read
+   `String(pack || 1)`, and an empty string is falsy — so deleting the last
+   digit rendered "1" straight back and the deletion was undone. Measured in a
+   browser on the shipped build:
+
+     starting value      "1"
+     after one Backspace "1"     ← the deletion was undone
+     after typing "24"   "124"   ← silently the wrong pack
+
+   Only select-all-then-type ever worked, which is not how anyone edits a
+   one-character box. And it is the one field CLAUDE.md already names as the
+   one most tills forget: the supplier delivers a box, the guest buys a piece,
+   and a wrong pack makes the shelf count wrong from the first delivery.
+
+   The default belongs at the SAVE and at the derived figures, which all clamp
+   with `Math.max(1, +pack || 1)` — never in the value the box renders. Sibling
+   `dbPrice` had this right all along (`d.price || ""`), which is what made the
+   odd one out findable in a sweep of all 100 bound inputs. */
+test('units per pack can be cleared and retyped', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const m = { kind: 'dishb', d: { name: 'GULHA', price: 5, cat: 'mains',
+    buy: { item: 'IT-1', vendor: '', pack: 1 } } };
+  F.state.modal = m;
+
+  assert.strictEqual(F.modalVals(m).dbBuyPack, '1', 'it renders what is held');
+
+  /* THE KEYSTROKE THAT WAS UNDONE. Deleting the only digit leaves an empty
+     box, and the next render must agree — or the operator types their number
+     onto a "1" that came back. */
+  F.modalVals(F.state.modal).onDbBuyPack({ target: { value: '' } });
+  assert.strictEqual(F.modalVals(F.state.modal).dbBuyPack, '',
+    'an emptied box stays empty; "1" here is the deletion being undone, and'
+    + ' the next digits typed land on it');
+
+  F.modalVals(F.state.modal).onDbBuyPack({ target: { value: '24' } });
+  assert.strictEqual(F.modalVals(F.state.modal).dbBuyPack, '24');
+
+  /* AND THE DEFAULT IS STILL THERE, where it belongs: an empty box saves as
+     one unit per pack rather than as nothing. */
+  F.modalVals(F.state.modal).onDbBuyPack({ target: { value: '' } });
+  const ops = [];
+  F.queue = (kind, label, ent, payload) => ops.push({ kind: kind, payload: payload });
+  F.modalVals(F.state.modal).dbSave();
+  const dish = ops.find((o) => o.kind === 'dish_upsert');
+  assert.strictEqual(dish.payload.buy.pack, 1,
+    'an empty box is one unit per pack at the save: ' + JSON.stringify(dish.payload.buy));
+
+  /* And the box says so, so clearing it is a choice rather than a surprise. */
+  assert.match(SRC, /aria-label="Units per pack"/);
+  const tag = SRC.slice(SRC.indexOf('value="{{ dbBuyPack }}"'),
+    SRC.indexOf('value="{{ dbBuyPack }}"') + 400);
+  assert.match(tag, /placeholder="1"/,
+    'the empty box states what it will be taken as');
+
+  /* THE SHAPE ITSELF IS BANNED, because this is a class rather than a typo:
+     the value a text input renders must never carry a non-empty default. */
+  assert.ok(!/dbBuyPack: String\([^)]*\|\| *1\)/.test(SRC),
+    'the default is back in the rendered value, and the field cannot be cleared again');
+});

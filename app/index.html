@@ -1436,7 +1436,7 @@
                     </label>
                     <label style="width:110px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
                       <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Units per pack</span>
-                      <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+                      <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" placeholder="1" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                     </label>
                   </div>
                   <div style="{{ dbBuyLineStyle }}">{{ dbBuyLine }}</div>
@@ -8273,7 +8273,25 @@ class Component extends DCLogic {
         dbBuyVendorOpts: [{ v: "", l: "Any supplier" }].concat(
           ((window.KPOS_RAW || {}).vendors || []).map((v) => ({ v: String(v.id), l: v.name }))),
         onDbBuyVendor: (e) => put({ buy: Object.assign({}, d.buy, { vendor: e.target.value }) }),
-        dbBuyPack: String((d.buy || {}).pack || 1),
+        /* A DEFAULT IN THE VALUE IS A FIELD THAT CANNOT BE CLEARED. This read
+           `String(pack || 1)`, and an empty string is falsy — so deleting the
+           last digit rendered "1" straight back and the deletion was undone.
+           Measured in a browser on the shipped build: the box holds "1", one
+           Backspace leaves "1", and typing 24 after it gives **124**.
+
+           Silently wrong, and wrong in the one field this build already names
+           as the one most tills forget: the supplier delivers a box, the guest
+           buys a piece, and a wrong pack makes the shelf count wrong from the
+           first delivery. Only select-all-then-type ever worked, which is not
+           how anyone edits a one-character box.
+
+           The value is now whatever is HELD, empty included; the default lives
+           where it belongs — at the save and at the two derived figures, which
+           all already clamp with `Math.max(1, +pack || 1)`. The placeholder
+           says what an empty box will be taken as, so clearing it is a choice
+           rather than a surprise. Sibling `dbPrice` had this right all along
+           (`d.price || ""`), which is what made the odd one out findable. */
+        dbBuyPack: (d.buy || {}).pack == null ? "" : String((d.buy || {}).pack),
         onDbBuyPack: (e) => put({ buy: Object.assign({}, d.buy, { pack: e.target.value.replace(/[^0-9]/g, "") }) }),
         dbBuyLine: (() => {
           if (!d.buy) return "";

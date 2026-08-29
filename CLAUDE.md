@@ -2140,6 +2140,34 @@ And the status line stops describing a list and says what is true: an empty
 item master is NAMED, and once *New stock item* is chosen it states what
 saving will do, in the ordinary ink — a decision already made is not a warning.
 
+**And a default in the VALUE is a field that cannot be cleared.** Reported next
+as *"units per pack is not editable"*. `dbBuyPack` read `String(pack || 1)`,
+and an empty string is falsy — so deleting the last digit rendered `1` straight
+back and the deletion was undone. Measured in a browser on the shipped build:
+
+```
+starting value      "1"
+after one Backspace "1"     ← the deletion was undone
+after typing "24"   "124"   ← silently the wrong pack
+```
+
+Only select-all-then-type ever worked, which is not how anyone edits a
+one-character box — and this is the field named three paragraphs up as the one
+most tills forget, where a wrong figure makes the shelf count wrong from the
+first delivery, quietly. The value the box renders is whatever is HELD now,
+empty included; the default lives where it belongs, at the save and at the two
+derived figures, which all already clamp with `Math.max(1, +pack || 1)`. The
+placeholder states what an empty box will be taken as, so clearing it is a
+choice rather than a surprise.
+
+Sibling `dbPrice` had this right all along (`d.price || ""`), which is what
+made the odd one out findable: a sweep of all 100 `<input value="{{ … }}">`
+bindings in the terminal turned up exactly one more candidate, `rbNewUnit`, and
+that is a `<select>` — which cannot be cleared, so defaulting its value is
+correct. `test/wiring.test.js` pins the keystroke that was undone, the clamp
+that survives it, and the shape itself, because this is a class rather than a
+typo.
+
 **Portions is the shelf talking.** `dishPortions()` gives the three answers —
 `null` (nothing to count from: no recipe and not bought in), `{n: null}` (it
 counts from rows the item master does not hold), `{n}` (the measured figure,
@@ -5421,7 +5449,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 561 tests
+npm test                          # 562 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
