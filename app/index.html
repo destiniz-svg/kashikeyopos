@@ -1682,16 +1682,20 @@
             <sc-if value="{{ lockPicking }}">
               <div style="display:flex;flex-direction:column;gap:9px">
                 <div role="img" aria-label="Store logo" style="{{ lockLogoStyle }}"></div>
-                <sc-for list="{{ lockStaff }}" as="u" hint-placeholder-count="5">
-                  <button onClick="{{ u.go }}" style="{{ u.style }}">
-                    <span style="{{ u.av }}">{{ u.ini }}</span>
-                    <span style="display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:2px;flex:1">
-                      <span style="font-size:13.5px;font-weight:700;letter-spacing:-0.01em">{{ u.name }}</span>
-                      <span style="font-size:11px;color:var(--text-dim)">{{ u.role }}</span>
-                    </span>
-                    <span style="{{ u.pinStyle }}">{{ u.pin }}</span>
-                  </button>
-                </sc-for>
+                <input value="{{ lockFindVal }}" onChange="{{ onLockFind }}" placeholder="{{ lockFindHint }}" aria-label="Find your name" style="{{ lockFindStyle }}"/>
+                <div style="{{ lockListStyle }}">
+                  <sc-for list="{{ lockStaff }}" as="u" hint-placeholder-count="5">
+                    <button onClick="{{ u.go }}" style="{{ u.style }}">
+                      <span style="{{ u.av }}">{{ u.ini }}</span>
+                      <span style="display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:2px;flex:1">
+                        <span style="font-size:13.5px;font-weight:700;letter-spacing:-0.01em">{{ u.name }}</span>
+                        <span style="font-size:11px;color:var(--text-dim)">{{ u.role }}</span>
+                      </span>
+                      <span style="{{ u.pinStyle }}">{{ u.pin }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+                <div style="{{ lockNoneStyle }}">{{ lockNone }}</div>
                 <div style="font-size:10.5px;color:var(--text-faint);line-height:1.65;margin-top:5px">{{ lockHint }}</div>
                 <div style="{{ lockSignOutNoteStyle }}">{{ lockSignOutNote }}</div>
                 <button onClick="{{ lockSignOutGo }}" style="{{ lockSignOutStyle }}">{{ lockSignOutLabel }}</button>
@@ -2677,7 +2681,7 @@ class Component extends DCLogic {
     const m = this.state.modal;
     if (!m || m.kind !== "lock" || !m.who) return;
     if (this.lockoutLeft()) return;
-    const K0 = K(), u = (K0.USERS || []).find((x) => x.user === m.who) || {};
+    const K0 = K(), u = (K0.USERS || []).find((x) => String(x.id) === String(m.who)) || {};
     const entered = m.pin || "";
     if (d === "back") { this.setState({ modal: Object.assign({}, m, { pin: entered.slice(0, -1), err: "" }) }); return; }
     const next = (entered + d).slice(0, 4);
@@ -2692,7 +2696,7 @@ class Component extends DCLogic {
     this.checkPin(next, m);
   }
   checkPin(pin, m) {
-    const K0 = K(), u = (K0.USERS || []).find((x) => x.user === m.who) || {};
+    const K0 = K(), u = (K0.USERS || []).find((x) => String(x.id) === String(m.who)) || {};
     const bridge = window.KPOS_BRIDGE;
     if (!bridge) return this.pinRefused(m, u, "This terminal is not connected to its outlet yet");
     bridge.signIn(this.state.outletId, pin).then((r) => {
@@ -2702,7 +2706,8 @@ class Component extends DCLogic {
       // against a person who fat-fingered one digit earlier in the shift.
       this.setState({ pinFails: 0 });
       const who = (K().USERS || []).find((x) => String(x.id) === String(r.staffId))
-        || { id: r.staffId, name: r.name, user: m.who, role: r.roleKey, outlet: r.outletId, outlets: [] };
+        // `m.who` is the row's ID now, so it is not a `user` handle to copy in.
+        || { id: r.staffId, name: r.name, user: "", role: r.roleKey, outlet: r.outletId, outlets: [] };
       /* The rank the SERVER issued rides along whatever row the roster held —
          the lock screen's sign-out gate reads it, and a roster row with no
          rank must not read as rank 0 for a person the server just ranked. */
@@ -2783,7 +2788,7 @@ class Component extends DCLogic {
       // The lock is the one screen Escape must not dismiss — an escapable PIN
       // is a decorative PIN. Backing out to the staff list is fine.
       if (m) {
-        if (m.kind === "lock") { if (m.who) { e.preventDefault(); this.setState({ modal: { kind: "lock" } }); } return; }
+        if (m.kind === "lock") { if (m.who) { e.preventDefault(); this.setState({ modal: { kind: "lock", find: m.find || "" } }); } return; }
         e.preventDefault(); this.setState({ modal: null }); return;
       }
       if (this.state.cart) { e.preventDefault(); this.setState({ cart: false }); return; }
@@ -7620,6 +7625,28 @@ class Component extends DCLogic {
       if (!m.who) {
         const users = (K().USERS || []).filter((u) => u.status === "Active" && (!u.outlet || u.outlet === s.outletId || this.roleIsChainWide()));
         const roleOf = (u) => ((K().ROLES || []).find((r) => r.key === u.role) || {});
+        /* THE ROSTER WAS `users.slice(0, 7)`, WITH NOTHING SAYING SO. Reported
+           as "switch user does not show staffs", and that is exactly what it
+           is: a store with more than seven active people showed seven, and the
+           eighth onwards could not sign in AT ALL — no scroll, no search, no
+           count, no "and 5 more". Measured on a real outlet: nine on the roll,
+           seven on screen, and the two missing were the two most recently
+           added, which is precisely who somebody goes looking for.
+
+           The ordering made it worse. The roll arrives `ORDER BY rank DESC`,
+           so the owner and the managers are first and the FLOOR STAFF are
+           last — and the floor is who hands a till over at a shift change.
+           A restaurant with a dozen waiters showed none of them.
+
+           This build already answers long lists (the till pages 60 dishes, the
+           tables 100 rows) and the answer is never a silent truncation. Here
+           it cannot even be a "load the rest": this is the screen somebody is
+           standing at, so the list scrolls and a name filter appears once the
+           roll is long enough to hunt through. */
+        const find = String(m.find || "").trim().toLowerCase();
+        const shown = find
+          ? users.filter((u) => String(u.name || "").toLowerCase().indexOf(find) > -1)
+          : users;
         /* The store's own mark heads the sign-in screen — the first thing a
            person sees on this terminal is whose terminal it is. Hidden where
            no logo is published; never the product's mark, because the welcome
@@ -7631,13 +7658,41 @@ class Component extends DCLogic {
             ? "width:56px;height:56px;margin:2px auto 4px;background:url('" + lockLogo + "') center/contain no-repeat"
             : "display:none",
           lockPicking: true, lockPin: false,
-          lockStaff: users.slice(0, 7).map((u) => ({
+          /* The finder appears only where there is something to hunt through:
+             on a three-person café it is one more control between somebody and
+             their shift. It carries the COUNT, so the screen states the size of
+             the roll without an element of its own. */
+          lockFindStyle: users.length > 8
+            ? "width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 13px;font-size:13px;color:var(--text);outline:none;min-height:44px"
+            : "display:none",
+          lockFindHint: "Find your name — " + users.length + " on this roll",
+          lockFindVal: m.find || "",
+          onLockFind: (e) => this.setState({ modal: Object.assign({}, m, { find: e.target.value }) }),
+          // It SCROLLS rather than truncating. The sheet keeps its height; the
+          // roll is as long as the roll.
+          lockListStyle: "display:flex;flex-direction:column;gap:9px;max-height:46vh;overflow:auto",
+          lockNone: find && !shown.length
+            ? "Nobody on this roll matches “" + String(m.find).trim() + "”. Clear the box to see all "
+              + users.length + "."
+            : (!users.length ? "Nobody is on this outlet's roll yet — a manager adds people under Users & Roles." : ""),
+          lockNoneStyle: (find && !shown.length) || !users.length
+            ? "font-size:11.5px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:9px;padding:10px 12px;line-height:1.6"
+            : "display:none",
+          lockStaff: shown.map((u) => ({
             name: u.name, role: roleOf(u).label || u.role, ini: ini(u.name),
             av: av(this.tone(roleOf(u).color)),
             pin: "PIN " + (u.pin || "----"),
             pinStyle: "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--warn-bright);background:var(--warn-dim);padding:5px 9px;border-radius:7px",
             style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
-            go: () => this.setState({ modal: { kind: "lock", who: u.user, pin: "" } })
+            /* THE ID, NEVER `user`. `userOf()` derives `user` from the LAST
+               WORD of the name, so every Ibrahim on the floor shares one — and
+               the PIN pad, which looks the row up by it, drew the FIRST match.
+               Tap one person, key your PIN under somebody else's name, and a
+               wrong attempt is filed on the trail against them. Measured here:
+               six people whose row read `user: "cashier"`. Signing in was never
+               wrong — the server matches the PIN itself — but who the screen
+               said you were, was. */
+            go: () => this.setState({ modal: { kind: "lock", who: u.id, pin: "" } })
           })),
           lockHint: "Tap your own name, then key your own PIN. It is checked by the server against a hash this terminal has never seen \u2014 a PIN compared in the browser is a PIN shipped to the browser, and then every \u201cwho voided this\u201d answer in the audit log is a guess. Five wrong attempts hold this terminal for fifteen minutes. A suspended account is refused at the keypad rather than hidden from it, so nobody is left wondering.",
           /* THE DOOR OUT. The lock holds through reloads now, so without this
@@ -7653,10 +7708,10 @@ class Component extends DCLogic {
           lockSignOutLabel: s.signOutIntent ? "Cancel \u2014 keep this terminal signed in" : "Sign out of this terminal\u2026",
           lockSignOutStyle: "width:100%;margin-top:8px;padding:10px 13px;border-radius:10px;min-height:44px;font-size:11.5px;font-weight:600;text-align:center;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
           // Arming (or cancelling) clears any standing refusal with it.
-          lockSignOutGo: () => this.setState({ signOutIntent: !s.signOutIntent, modal: { kind: "lock" } })
+          lockSignOutGo: () => this.setState({ signOutIntent: !s.signOutIntent, modal: { kind: "lock", find: m.find || "" } })
         };
       }
-      const u = (K().USERS || []).find((x) => x.user === m.who) || {};
+      const u = (K().USERS || []).find((x) => String(x.id) === String(m.who)) || {};
       const role = (K().ROLES || []).find((r) => r.key === u.role) || {};
       const demoPin = u.pin || "";
       const held = this.lockoutLeft();
@@ -7670,7 +7725,9 @@ class Component extends DCLogic {
         modalTitle: "Enter PIN", modalSub: this.outlet().name + " · " + this.deviceCode() + " · tap the pad or type it",
         lockPicking: false, lockPin: true,
         lockWhoName: u.name, lockWhoRole: role.label || u.role, lockWhoIni: ini(u.name || "?"), lockWhoAv: av(this.tone(role.color)),
-        lockBack: () => this.setState({ modal: { kind: "lock" } }),
+        // Back to the list keeps what was typed into the finder: retyping a
+        // name because you tapped the wrong face is a small insult.
+        lockBack: () => this.setState({ modal: { kind: "lock", find: m.find || "" } }),
         lockDots: [0, 1, 2, 3].map((i) => "width:13px;height:13px;border-radius:50%;background:" + (i < entered.length ? "var(--warn)" : "transparent") + ";border:1.5px solid " + (i < entered.length ? "var(--warn)" : "var(--line-3)")),
         // The hint line under the dots: an error, a demo PIN when the roster
         // actually carries one (the standalone demo only — a server-issued

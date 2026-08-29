@@ -2430,6 +2430,48 @@ it needed two.
   plane: an account token is a signed blob that expires on its own, so dropping
   it is the whole of signing out there.
 
+### And the roster it hands over to showed seven people
+
+Reported as *"switch user does not show staffs"*. The lock screen's roll was
+`users.slice(0, 7)` — **with nothing on the screen saying so.** No scroll, no
+count, no search, no "and 5 more". A store with more than seven active people
+showed seven, and the eighth onwards **could not sign in at all**. Measured on
+a real outlet: nine on the roll, seven drawn, and the two missing were the two
+most recently added, which is precisely who somebody goes looking for.
+
+The ordering made it worse. The roll arrives `ORDER BY rank DESC, name`, so the
+owner and the managers are first and the FLOOR STAFF are last — and the floor is
+who hands a till over at a shift change. A restaurant with a dozen waiters
+showed none of them.
+
+This build already answers long lists — the till pages 60 dishes, the tables
+100 rows — and the answer is never a silent truncation. Here it cannot even be
+a "load the rest": this is the screen somebody is standing at, so the list
+**scrolls** (`max-height:46vh`, so the sign-out control stays on a phone) and a
+**name finder** appears once the roll passes eight, carrying the count in its
+own placeholder rather than taking an element for it. A filter matching nobody
+**says so** — an empty list under a box somebody typed into reads as a broken
+terminal, which is the whole complaint. Under eight the finder is hidden: on a
+three-person café it is one more control between somebody and their shift.
+
+**And the face you tapped was not always the person the pad named.** `userOf()`
+derives `user` from the LAST WORD of the name, so every Ibrahim on the floor
+shares one — and the PIN pad looked its row up by that key and drew the FIRST
+match. Measured on the same outlet: six people whose row read `user: "cashier"`.
+Tap Drive Cashier, key your PIN under a Door Cashier's name, and a wrong attempt
+is filed on the trail **against somebody who was not standing there**. Signing
+in was never wrong — the server matches the PIN itself and migration 051 makes
+duplicate PINs impossible — but who the screen said you were, was. The pick
+carries the row's **id** now, in all three lookups.
+
+Measured through the shipped screen: nine of nine drawn at 1500px and at 390px
+with no tap target under 44px, the finder narrowing and saying so when it
+matches nobody, the pad naming the person tapped, and a cashier who was
+invisible before signing in with their own PIN. `test/wiring.test.js` pins the
+whole roll at 23 people, the scroll, the finder's three states, the id-keyed
+pick, and **bans the slice itself** — this is the one screen where a silent cap
+costs somebody their shift.
+
 ## A row the outlet has no record of has not been delivered
 
 Reported straight after the section fix landed: *"I added three menu items, two
@@ -5521,7 +5563,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 565 tests
+npm test                          # 568 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

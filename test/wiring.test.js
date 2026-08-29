@@ -5893,3 +5893,117 @@ test('nothing composes a result and then clears the modal in the same tick', () 
     'and neither must the send that produced it — this exact line is what made'
     + ' every invitation on every channel look like nothing had happened');
 });
+
+/* ═══ THE SIGN-IN ROSTER IS THE WHOLE ROLL ════════════════════════════════
+   Reported as "switch user does not show staffs". The lock screen took
+   `users.slice(0, 7)` with nothing on the screen saying so — no scroll, no
+   count, no search, no "and 5 more" — so a store with more than seven active
+   people showed seven and the rest could not sign in AT ALL.
+
+   The ordering made it worse: the roll arrives `ORDER BY rank DESC`, so the
+   owner and the managers are first and the FLOOR STAFF, who are the people
+   handing a till over at a shift change, fall off the end. */
+test('every active person on the roll can sign in, however many there are', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const K = F.__win.KPOS;
+
+  const roll = [];
+  for (let i = 0; i < 23; i++) {
+    roll.push({ id: 'u' + i, name: 'Waiter ' + i, user: 'w' + i, role: 'Cashier',
+      rank: 2, outlet: F.state.outletId, outlets: [], pin: '', status: 'Active' });
+  }
+  // Somebody suspended is still refused, and this is not the thing being fixed.
+  roll.push({ id: 'gone', name: 'Left Last Month', user: 'gone', role: 'Cashier',
+    rank: 2, outlet: F.state.outletId, outlets: [], pin: '', status: 'Suspended' });
+  K.USERS = roll;
+
+  const v = F.modalVals({ kind: 'lock' });
+  assert.strictEqual(v.lockStaff.length, 23,
+    'all 23 are reachable — 7 here is the silent cap that made the eighth'
+    + ' person onwards unable to sign in: ' + v.lockStaff.length);
+  assert.ok(!v.lockStaff.some((u) => /Left Last Month/.test(u.name)),
+    'and a suspended account is still not offered');
+
+  /* IT SCROLLS RATHER THAN TRUNCATING. A sheet that grows to 23 rows is a
+     sheet whose sign-out control is off the bottom of a phone. */
+  assert.match(String(v.lockListStyle), /overflow\s*:\s*auto/);
+  assert.match(String(v.lockListStyle), /max-height/);
+
+  /* AND A LONG ROLL CAN BE SEARCHED, because scrolling 40 names to find
+     yours is its own defect. The count rides on it, so the screen states the
+     size of the roll without an element of its own. */
+  assert.ok(!/display:\s*none/.test(String(v.lockFindStyle)),
+    'a long roll offers the finder');
+  assert.match(String(v.lockFindHint), /23 on this roll/);
+
+  const found = F.modalVals({ kind: 'lock', find: 'waiter 1' });
+  // 1, and 10..19 — eleven of them
+  assert.strictEqual(found.lockStaff.length, 11,
+    'typing narrows it: ' + JSON.stringify(found.lockStaff.map((u) => u.name)));
+
+  /* A FILTER THAT MATCHES NOBODY SAYS SO. An empty list under a box somebody
+     typed into reads as a broken terminal, which is the whole complaint. */
+  const none = F.modalVals({ kind: 'lock', find: 'zzzz' });
+  assert.strictEqual(none.lockStaff.length, 0);
+  assert.match(String(none.lockNone), /Nobody on this roll matches/);
+  assert.ok(!/display:\s*none/.test(String(none.lockNoneStyle)));
+
+  /* AND A SHORT ROLL IS NOT GIVEN A CONTROL IT DOES NOT NEED: on a
+     three-person café the finder is one more thing between somebody and
+     their shift. */
+  K.USERS = roll.slice(0, 3);
+  const small = F.modalVals({ kind: 'lock' });
+  assert.strictEqual(small.lockStaff.length, 3);
+  assert.match(String(small.lockFindStyle), /display:\s*none/);
+
+  /* An outlet with nobody on it is a state, not a blank screen. */
+  K.USERS = [];
+  const empty = F.modalVals({ kind: 'lock' });
+  assert.strictEqual(empty.lockStaff.length, 0);
+  assert.match(String(empty.lockNone), /Nobody is on this outlet's roll yet/);
+});
+
+/* THE FACE YOU TAP IS THE PERSON THE PAD NAMES. `userOf()` in src/bootstrap.js
+   derives `user` from the LAST WORD of the name, so every Ibrahim on the floor
+   shares one — and the PIN pad looked the row up by it and drew the FIRST
+   match. Signing in was never wrong (the server matches the PIN itself), but
+   who the screen said you were, was — and a wrong attempt was filed on the
+   trail against somebody who was not standing there. */
+test('the lock screen identifies a person by id, never by a derived name key', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.__win.KPOS.USERS = [
+    { id: 'a1', name: 'Ahmed Ibrahim', user: 'ibrahim', role: 'Cashier', rank: 2,
+      outlet: F.state.outletId, outlets: [], pin: '', status: 'Active' },
+    { id: 'b2', name: 'Mohamed Ibrahim', user: 'ibrahim', role: 'Cashier', rank: 2,
+      outlet: F.state.outletId, outlets: [], pin: '', status: 'Active' }
+  ];
+
+  const list = F.modalVals({ kind: 'lock' });
+  assert.strictEqual(list.lockStaff.length, 2, 'both are on the roll');
+
+  // Tap the SECOND one.
+  const seen = [];
+  F.setState = (p) => { seen.push(p); Object.assign(F.state, p); };
+  list.lockStaff[1].go();
+  const picked = seen[seen.length - 1].modal;
+  assert.strictEqual(picked.who, 'b2',
+    'the pick carries the row id, not a name key two people share');
+
+  const pad = F.modalVals(picked);
+  assert.strictEqual(pad.lockWhoName, 'Mohamed Ibrahim',
+    'and the pad names the person whose face was tapped, not the first row'
+    + ' sharing their derived key: ' + pad.lockWhoName);
+});
+
+/* THE SHAPE: a roster the operator is standing in front of may never be
+   silently truncated. This is the one screen where the cap costs somebody
+   their shift, so it is banned rather than merely fixed. */
+test('the sign-in roster is never sliced', () => {
+  const i = SRC.indexOf('lockStaff:');
+  assert.ok(i > 0);
+  const near = SRC.slice(i - 2400, i + 400).replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/users\.slice\(/.test(near),
+    'the roll is capped again — the eighth person onwards cannot sign in');
+});
