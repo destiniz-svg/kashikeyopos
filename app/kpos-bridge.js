@@ -370,6 +370,8 @@
     /* The shipped catalogue, landed server-side and re-read whole — the same
        reason the setup import is not an outbox op. */
     menuPreset: function () { return api.menuPreset(); },
+    /* The log-out's cache clean — see wipeLocal() in the API client. */
+    wipeLocal: function () { return api.wipeLocal(); },
     revokeMember: function (id) { return api.revokeMember(id); },
     /* Ending every other session is a real call, and it answers with a real
        count. The old control queued an audit-only op and toasted a number it

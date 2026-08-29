@@ -1660,6 +1660,8 @@
                   </button>
                 </sc-for>
                 <div style="font-size:10.5px;color:var(--text-faint);line-height:1.65;margin-top:5px">{{ lockHint }}</div>
+                <div style="{{ lockSignOutNoteStyle }}">{{ lockSignOutNote }}</div>
+                <button onClick="{{ lockSignOutGo }}" style="{{ lockSignOutStyle }}">{{ lockSignOutLabel }}</button>
               </div>
             </sc-if>
             <sc-if value="{{ lockPin }}">
@@ -2260,6 +2262,10 @@ class Component extends DCLogic {
     return live.concat(done).sort((a, b) => (a.lamport || 0) - (b.lamport || 0));
   }
   writeSession() {
+    /* After the full log-out's wipe, nothing persists again: every setState
+       lands here, so the sign-out's own toast would otherwise re-create the
+       session blob the wipe just removed. One-way, ended by the reload. */
+    if (this._wiped) return;
     const s = this.state;
     this._lastWrite = Date.now();
     const body = {
@@ -2327,6 +2333,9 @@ class Component extends DCLogic {
   // Signing in switches the acting role too — a shared till has one identity at
   // a time, and it is the person, not the browser, that the audit log names.
   signIn(u) {
+    // A PIN keyed while the lock screen's sign-out intent is armed is
+    // authority for THAT, not a shift starting.
+    if (this.state.signOutIntent) return this.finishTerminalSignOut(u);
     const first = NAVDEF.reduce((a, g) => a.concat(g[1]), []).find((it) => {
       const r = (K().ROLES || []).find((x) => x.key === u.role) || { perms: {} };
       // Asked first, because the Owner group is first: a rank 5 sign-in lands
@@ -2380,6 +2389,92 @@ class Component extends DCLogic {
   }
   // Kept under its old name for anything still calling it.
   signOut() { return this.lockTill(); }
+  /* THE FULL LOG-OUT, shared by both doors (the signed-in sheet and the lock
+     screen). Ends the session on the outlet, clears this browser's cached
+     till state — token, persisted session, per-outlet caches; the durable
+     outbox only when it owes nothing, because undelivered work is never
+     destroyed — and reloads, so the next sign-in starts a fresh session from
+     the outlet's own answer. The reload is the point: a "clean" terminal
+     still holding this page's memory is not clean. */
+  terminalSignOut() {
+    const B = window.KPOS_BRIDGE;
+    this.setState({ session: null, locked: true, signOutIntent: false,
+      roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
+    /* The sign_out op gets a bounded chance to reach the outlet BEFORE the
+       token it needs is dropped — so the trail names who did this without
+       waiting for the next login. Bounded, because a dead link must not hold
+       the person walking away; whatever does not go is kept in the outbox. */
+    const drain = async () => {
+      if (!B || !B.flush || !B.pending) return;
+      const until = Date.now() + 2500;
+      while (Date.now() < until) {
+        try {
+          await Promise.race([Promise.resolve(B.flush()).catch(() => {}),
+            new Promise((r) => setTimeout(r, 1200))]);
+          const owed = (await B.pending()).filter((o) => !o.parked);
+          if (!owed.length) return;
+        } catch (e) { return; }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    };
+    const wipe = () => {
+      /* One-way. From here nothing persists again — writeSession() runs on
+         every setState (the toast below is one), so a wipe followed by
+         ordinary persistence quietly re-creates the blob it just removed.
+         The reload ends the wiped state. */
+      this._wiped = true;
+      return B && B.wipeLocal ? Promise.resolve(B.wipeLocal()).catch(() => 0) : Promise.resolve(0);
+    };
+    const finish = (owed) => {
+      this.toast(owed
+        ? "Signed out — " + owed + (owed === 1 ? " operation is" : " operations are")
+          + " kept and will go when somebody signs in here again"
+        : "Signed out — this terminal is cleared");
+      setTimeout(() => {
+        /* Belt two: sweep once more, synchronously, in the same tick as the
+           reload — anything an in-flight timer wrote back between the wipe
+           and now goes with it. Same keep-list as wipeLocal(). */
+        try {
+          const keep = ["kashikeyo.outlet", "kashikeyo.device", "kashikeyo.lamport"];
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i) || "";
+            if (k.indexOf("kashikeyo") === 0 && keep.indexOf(k) < 0) {
+              try { localStorage.removeItem(k); } catch (e) {}
+            }
+          }
+        } catch (e) {}
+        try { location.replace("/pos"); } catch (e) { location.reload(); }
+      }, 900);
+    };
+    drain()
+      .then(() => (B && B.signOut ? Promise.resolve(B.signOut()).catch(() => {}) : null))
+      .then(wipe).then(finish);
+  }
+  /* The LOCK screen's door out. Nobody is signed in there, so the authority
+     is proved the same way everything else is: a name and a PIN, checked by
+     the server — and the rank the SERVER issued decides. Below rank 4 the
+     terminal stays locked and the just-minted session is ended, because a
+     refusal that leaves the refused person signed in is not a refusal. */
+  finishTerminalSignOut(u) {
+    if ((u.rank || 0) < 4) {
+      /* The token their PIN just minted is KEPT, exactly as a handover keeps
+         one — ending it would leave the till token-less and stop the outbox
+         delivering behind the lock. Only the screen stays locked. */
+      /* The refusal STANDS on the lock screen rather than riding a toast: a
+         message that dismisses itself in three seconds is one the person who
+         went to fetch a manager never gets to show them. */
+      this.setState({ session: null, locked: true, signOutIntent: false,
+        roleKey: this.LOCKED_ROLE,
+        modal: { kind: "lock", refused: u.name + "'s PIN was refused — signing this terminal out needs an admin or the owner (rank 4 or above)" } });
+      this.toast("Signing this terminal out needs an admin or the owner — rank 4 or above", "warn");
+      return;
+    }
+    // The payload is what an audit-only op records — a label alone never
+    // reaches the trail, which is the "queued with no payload" defect class.
+    this.queue("sign_out", u.name + " signed this terminal out and cleared it · " + this.deviceCode(), "sessions",
+      { note: u.name + " signed this terminal out and cleared it · " + this.deviceCode(), by: u.name, cleared: true });
+    this.terminalSignOut();
+  }
   // ── Register session ─────────────────────────────────────────────────────
   // A closed register cannot take money. Without this a till has no opening
   // float, no expected cash and therefore no over/short — the single control
@@ -2562,6 +2657,10 @@ class Component extends DCLogic {
       this.setState({ pinFails: 0 });
       const who = (K().USERS || []).find((x) => String(x.id) === String(r.staffId))
         || { id: r.staffId, name: r.name, user: m.who, role: r.roleKey, outlet: r.outletId, outlets: [] };
+      /* The rank the SERVER issued rides along whatever row the roster held —
+         the lock screen's sign-out gate reads it, and a roster row with no
+         rank must not read as rank 0 for a person the server just ranked. */
+      if (typeof r.rank === "number") who.rank = r.rank;
       this.signIn(who);
     }).catch((e) => {
       const cur = this.state.modal;
@@ -7338,7 +7437,21 @@ class Component extends DCLogic {
             style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
             go: () => this.setState({ modal: { kind: "lock", who: u.user, pin: "" } })
           })),
-          lockHint: "Tap your own name, then key your own PIN. It is checked by the server against a hash this terminal has never seen \u2014 a PIN compared in the browser is a PIN shipped to the browser, and then every \u201cwho voided this\u201d answer in the audit log is a guess. Five wrong attempts hold this terminal for fifteen minutes. A suspended account is refused at the keypad rather than hidden from it, so nobody is left wondering."
+          lockHint: "Tap your own name, then key your own PIN. It is checked by the server against a hash this terminal has never seen \u2014 a PIN compared in the browser is a PIN shipped to the browser, and then every \u201cwho voided this\u201d answer in the audit log is a guess. Five wrong attempts hold this terminal for fifteen minutes. A suspended account is refused at the keypad rather than hidden from it, so nobody is left wondering.",
+          /* THE DOOR OUT. The lock holds through reloads now, so without this
+             a locked till is a dead end for its own owner. Arming it turns the
+             NEXT keyed PIN into authority for the sign-out — rank 4 or above,
+             decided by the server — rather than a shift starting. */
+          lockSignOutNote: s.signOutIntent
+            ? "Now tap an admin or owner's name and key their PIN. This ends the session on the outlet and clears this terminal \u2014 the next sign-in starts fresh. Undelivered work is kept and goes when somebody signs in again."
+            : (m.refused || ""),
+          lockSignOutNoteStyle: (s.signOutIntent || m.refused)
+            ? "font-size:11px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:9px;padding:9px 11px;line-height:1.6;margin-top:8px"
+            : "display:none",
+          lockSignOutLabel: s.signOutIntent ? "Cancel \u2014 keep this terminal signed in" : "Sign out of this terminal\u2026",
+          lockSignOutStyle: "width:100%;margin-top:8px;padding:10px 13px;border-radius:10px;min-height:44px;font-size:11.5px;font-weight:600;text-align:center;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
+          // Arming (or cancelling) clears any standing refusal with it.
+          lockSignOutGo: () => this.setState({ signOutIntent: !s.signOutIntent, modal: { kind: "lock" } })
         };
       }
       const u = (K().USERS || []).find((x) => x.user === m.who) || {};
@@ -7514,8 +7627,8 @@ class Component extends DCLogic {
         sub: armed
           ? (owed ? owed + (owed === 1 ? " operation has" : " operations have")
               + " not reached the outlet — they are kept and will go when somebody signs in here again"
-            : "Everything this till wrote has reached the outlet")
-          : "Ends this session on the outlet — this browser stops being a way in until somebody signs in again",
+            : "Everything this till wrote has reached the outlet — this browser is cleared")
+          : "Ends this session on the outlet and clears this terminal's cache — the next sign-in starts fresh",
         style: armed ? on : btn,
         go: () => {
           if (!armed) {
@@ -7529,17 +7642,13 @@ class Component extends DCLogic {
             return;
           }
           this._signOutArmed = false;
-          const B = window.KPOS_BRIDGE;
           const name = (s.session || {}).name;
-          if (name) this.queue("sign_out", name + " signed out \u00b7 " + this.deviceCode(), "sessions");
-          this.setState({ session: null, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
-          if (B && B.signOut) {
-            Promise.resolve(B.signOut())
-              .then(() => this.toast("Signed out \u2014 this session is ended on the outlet"))
-              .catch(() => this.toast("Signed out here \u2014 the outlet could not be told, so the session ends when it expires", "warn"));
-          } else {
-            this.toast("Signed out here \u2014 this terminal is not connected to an outlet", "warn");
-          }
+          // The payload is what an audit-only op records \u2014 a label alone
+          // never reaches the trail.
+          if (name) this.queue("sign_out", name + " signed this terminal out and cleared it \u00b7 " + this.deviceCode(), "sessions",
+            { note: name + " signed this terminal out and cleared it \u00b7 " + this.deviceCode(), by: name, cleared: true });
+          // The one shared road: end the session, clear the cache, reload.
+          this.terminalSignOut();
         }
       });
       // Seven palettes in light and dark have existed since the first build and

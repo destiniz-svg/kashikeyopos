@@ -220,6 +220,36 @@
       }
     }
 
+    /* THE FULL LOG-OUT's second half: this browser stops holding the till's
+       cache, so the next sign-in starts a fresh session from the outlet's own
+       answer rather than from whatever this machine remembered. Undelivered
+       work is never destroyed: while the outbox owes anything the database is
+       KEPT — those operations go when somebody signs in here again — and only
+       the caches are cleared; with nothing owed the whole database goes too.
+       Three things survive on purpose, because they are the TERMINAL's
+       identity rather than a person's session: which store this is
+       (kashikeyo.outlet — signing out is not un-assigning the machine), its
+       device pairing (deregistering is a different decision with its own
+       control), and the Lamport clock (a clock walked back is the defect its
+       persistence exists to stop). Returns how many operations are owed. */
+    async wipeLocal() {
+      var owed = 0;
+      try { owed = (await this.pending()).length; } catch (e) { owed = 0; }
+      try {
+        var keep = ["kashikeyo.outlet", "kashikeyo.device", "kashikeyo.lamport"];
+        var kill = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i) || "";
+          if (k.indexOf("kashikeyo") === 0 && keep.indexOf(k) < 0) kill.push(k);
+        }
+        kill.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+      } catch (e) {}
+      if (!owed) {
+        try { this._db = null; indexedDB.deleteDatabase(DB_NAME); } catch (e) {}
+      }
+      return owed;
+    }
+
     // The one gate the whole system uses. Kitchen 1, Till 2, Manager 3,
     // Admin 4, Owner 5 — never a name, never a title.
     canApprove(need) { return this.rank >= (need || 3); }

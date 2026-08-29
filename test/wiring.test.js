@@ -1918,8 +1918,8 @@ test('a till can be handed over, and it can also be left', () => {
   assert.match(body, /Sign out of this terminal/, 'and leaving');
   assert.match(body, /the till stays connected and keeps delivering/,
     'the handover says it keeps the till connected');
-  assert.match(body, /stops being a way in until somebody signs in again/,
-    'and signing out says what it actually ends');
+  assert.match(body, /Ends this session on the outlet and clears this terminal's cache/,
+    'and signing out says what it actually ends — the session AND this browser\'s cache');
 
   // ── UNDELIVERED WORK IS NAMED, not blocked. The ops are durable and survive
   //    signing out; what changes is that nothing will deliver them until
@@ -4901,8 +4901,46 @@ test('the lock survives a reload, and only a PIN clears it', () => {
   const adopt = SRC.slice(SRC.indexOf('adoptSession() {'), SRC.indexOf('adoptSession() {') + 700);
   assert.ok(/if \(this\.state\.locked\) return false;/.test(adopt),
     'a locked terminal never adopts the token\'s session back');
-  const signin = SRC.slice(SRC.indexOf('signIn(u) {'), SRC.indexOf('signIn(u) {') + 900);
+  const signin = SRC.slice(SRC.indexOf('signIn(u) {'), SRC.indexOf('signIn(u) {') + 1600);
   assert.ok(/locked: false/.test(signin), 'a keyed PIN is what clears it');
   assert.ok(/locked: !!s\.locked/.test(SRC), 'and the mark rides the persisted session');
   assert.ok(/locked: !!this\._saved\.locked/.test(SRC), 'restored at boot');
+});
+
+/* The full log-out. Both doors — the signed-in sheet and the lock screen —
+   go through one road: end the session on the outlet, clear this browser's
+   cached till state, reload so the next login starts fresh. The rules that
+   make that safe are exactly the ones a regression would drop silently. */
+test('the full log-out: cleared, kept, gated, and recorded', () => {
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const wl = api.slice(api.indexOf('async wipeLocal()'), api.indexOf('async wipeLocal()') + 1000);
+  assert.ok(wl.includes('"kashikeyo.outlet"') && wl.includes('"kashikeyo.device"')
+    && wl.includes('"kashikeyo.lamport"'),
+    'the store identity, the pairing and the clock survive the wipe — a cleared '
+    + 'terminal is still THIS store\'s terminal, and a clock never walks back');
+  assert.ok(/if \(!owed\)/.test(wl),
+    'the durable outbox is deleted only when it owes nothing — undelivered work is never destroyed');
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  assert.ok(/wipeLocal: function/.test(bridge), 'the bridge exposes the wipe');
+
+  // The lock screen's door: arming turns the NEXT keyed PIN into authority for
+  // the sign-out, and the rank the SERVER issued decides.
+  assert.ok(/if \(this\.state\.signOutIntent\) return this\.finishTerminalSignOut\(u\);/.test(SRC),
+    'a PIN keyed while the intent is armed is authority for the sign-out, not a shift starting');
+  const fin = SRC.slice(SRC.indexOf('finishTerminalSignOut(u) {'),
+    SRC.indexOf('finishTerminalSignOut(u) {') + 1600);
+  assert.ok(/\(u\.rank \|\| 0\) < 4/.test(fin), 'rank 4 or above, from the rank the server issued');
+  assert.ok(/refused: /.test(fin), 'the refusal STANDS on the lock screen, not only in a toast');
+  assert.ok(/queue\("sign_out",[\s\S]*?"sessions",\s*\{ note: /.test(fin),
+    'the record carries a payload — an audit-only op records the payload, never the label');
+
+  // Nothing persists after the wipe, and the reload is the point.
+  const ws = SRC.slice(SRC.indexOf('writeSession() {'), SRC.indexOf('writeSession() {') + 500);
+  assert.ok(/if \(this\._wiped\) return;/.test(ws),
+    'after the wipe nothing persists — the sign-out\'s own toast must not re-create the blob');
+  const t = SRC.slice(SRC.indexOf('terminalSignOut() {'), SRC.indexOf('terminalSignOut() {') + 3200);
+  assert.ok(/this\._wiped = true/.test(t), 'the wipe turns persistence off one-way');
+  assert.ok(/location\.replace/.test(t), 'and reloads, so the next login starts a fresh session');
+  assert.ok(/B\.flush/.test(t) && /B\.signOut/.test(t),
+    'the sign_out op gets a bounded drain BEFORE the token it needs is dropped');
 });
