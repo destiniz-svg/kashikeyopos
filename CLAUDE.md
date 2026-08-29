@@ -3058,6 +3058,58 @@ four surfaces and the op's fields; `test/api.test.js` rings a discounted bill
 carrying all three and one with a malformed authoriser, and asserts the
 columns and the drop.
 
+## The portals wear the store's face, and the banner is real
+
+Reported as *"this banner I believe is not functional"* — correct, and worse
+than not functional: the Promotions & Banners screen "published" its banners
+into **this browser's localStorage** (`kashikeyo.promos.v1`), which only a
+portal sharing the machine could ever read. A real guest's phone saw nothing,
+ever, while the screen at the counter said what was live — and the banner form
+asked for an "Image path" defaulting to `img/hero.jpg`, a file that resolves
+to nothing on any phone. The member card read that same localStorage key; the
+guest QR menu never drew a banner at all.
+
+**The road is the projection now, end to end.** A banner rides `banner_upsert`
+like any other write; the guest snapshot filters what a phone may see — live,
+inside its own date window, and only while the slot is ON (`qr_banner_slot`
+writes the outlet setting, and the snapshot reads it, so switching the slot
+off empties the strip on every phone rather than hiding it client-side). Both
+portals render the same rows: the guest QR menu as a swipeable strip above the
+diet chips, the member card in its existing offers section. Tapping a coded
+banner fills the promo field the bill tab already verifies at settlement — a
+banner never discounts a bill on its own.
+
+**Branding is a guided panel, not trial and error.** *Portal branding* (on the
+Promotions screen, rank 4 — RLS on `chain.outlet` is the gate, and the handler
+refuses by name when the policy matches no row, because RLS does not error a
+hidden write, it silently updates nothing) offers two slots, each stating on
+the holder what it takes: the **logo** (square PNG, transparency kept, scaled
+to 320 px on the device) and the **cover** (wide photograph, scaled to
+1200 px). The banner form's image is the same kind of slot. A slot is a
+transparent file input covering the whole holder — which is what makes it BOTH
+the tap target and the drop target: dropping a file onto a file input sets
+`.files` natively, so there is no drag choreography to break. `readImage()` is
+the one reader (validate, downscale, PNG stays PNG — re-encoding a logo as
+JPEG puts a white box behind the mark on every dark surface).
+
+The face lives on `chain.outlet.brand` (044), written by the new `outlet_brand`
+op (silence preserves per key; an explicit null takes an image down; anything
+past 600 KB is refused by name as a file the downscale never touched). The
+bootstrap publishes the signed-in outlet's `brand` for the till's preview (a
+`brandPen` holds this terminal's un-synced edit, dropped when the outlet
+publishes the same answer); the snapshot publishes it to both portals, which
+draw the cover as the QR menu's masthead with the store's name over its lower
+edge, the logo on the guest header and on the membership card the way a bank
+card wears the bank's. Data URLs render through `photoUrl()` blob URLs — the
+semicolon trap — and a banner with no image is a tinted card, never a path to
+a file that is not there.
+
+`test/wiring.test.js` pins the whole road (the snapshot's filters, no typed
+image path, no localStorage publish, both portals reading the projection);
+`test/api.test.js` proves the slot and window filters and the rank-2 refusal
+over HTTP; the Chromium drive sets all three images through the shipped
+screens and reads them back on both portals.
+
 ## A bill somebody can be handed
 
 A guest asks for the bill on WhatsApp, a house-account customer wants last

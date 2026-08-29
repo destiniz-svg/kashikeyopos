@@ -2331,13 +2331,59 @@ H.promo_clamped = async (c, p, ctx) => {
 };
 
 H.banner_upsert = async (c, p) => {
+  /* The image is a data URL the till already downscaled (1200px, ~100 KB). A
+     figure far past that is a file the downscale never touched — a raw camera
+     JPEG pasted around the holder — and storing it costs every phone that
+     opens the menu, so it is refused by name rather than accepted quietly. */
+  if (p.img && String(p.img).length > 600000) {
+    throw Object.assign(new Error('that banner image is too large — add it'
+      + ' through the image holder, which scales it on the device'), { status: 400 });
+  }
   await c.query('INSERT INTO banner (id, slot, title, body, image, link, starts_on,'
     + ' ends_on, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9,true))'
     + ' ON CONFLICT (id) DO UPDATE SET slot = excluded.slot, title = excluded.title,'
     + ' body = excluded.body, image = excluded.image, link = excluded.link,'
+    // The window rides the update too — it used to survive only the insert,
+    // so shortening a promotion's dates edited nothing.
+    + ' starts_on = excluded.starts_on, ends_on = excluded.ends_on,'
     + ' active = excluded.active',
     [p.id || slug(p.title), p.slot || 'hero', p.title, p.sub || null, p.img || null,
       p.code || null, p.from || null, p.to || null, p.active]);
+  return { ok: true };
+};
+
+/* THE OUTLET'S FACE, edited from the till. Migration 044 gave chain.outlet a
+   brand jsonb for exactly this; onboarding writes it once and nothing could
+   edit it after. Two keys travel from the branding screen — the LOGO (a
+   square PNG, transparency kept, on the portal headers and the receipt) and
+   the COVER (a wide photograph heading the guest menu). Silence preserves per
+   key; an explicit null takes the image down. RLS is the gate: UPDATE on
+   chain.outlet requires rank 4, so a cashier's op is refused by the database
+   whatever the screen showed. */
+H.outlet_brand = async (c, p, ctx) => {
+  const patch = {};
+  for (const k of ['logo', 'cover']) {
+    if (p[k] === undefined) continue;
+    const v = p[k] ? String(p[k]) : null;
+    if (v && v.length > 600000) {
+      throw Object.assign(new Error('that ' + k + ' is too large — add it'
+        + ' through the image holder, which scales it on the device'), { status: 400 });
+    }
+    patch[k] = v;
+  }
+  if (!Object.keys(patch).length) return { skipped: 'nothing to change' };
+  const q = await c.query('UPDATE chain.outlet'
+    + ' SET brand = jsonb_strip_nulls(brand || $2::jsonb) WHERE id = $1',
+    [ctx.outletId, JSON.stringify(patch)]);
+  /* RLS does not ERROR a write the policy hides — it matches no rows. Zero
+     rows here is a cashier's session, and answering ok over a write that
+     touched nothing is the "control does what it says" defect. */
+  if (!q.rowCount) {
+    throw Object.assign(new Error('Branding the store needs an admin — rank 4'
+      + ' or above'), { status: 403 });
+  }
+  await log(c, 'outlet_brand', 'outlet', String(ctx.outletId), null,
+    { keys: Object.keys(patch) });
   return { ok: true };
 };
 /* A DISPLAY TOGGLE IS NOT A BANNER. This was aliased to `banner_upsert`, so

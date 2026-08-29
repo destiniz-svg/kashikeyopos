@@ -41,7 +41,7 @@ const CONTRACT = [
   'menu_category_reorder', 'menu_category_update', 'menu_import',
   'menu_section_insert', 'menu_section_reorder', 'menu_section_update',
   'modifier_remove', 'modifier_update', 'move_table', 'open_register', 'opex_insert',
-  'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
+  'outlet_brand', 'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
   'payment_run', 'period_close', 'period_reopen', 'permission_change',
   'permission_reset', 'pin_failed', 'pin_lockout', 'pin_reset', 'plan_request', 'post_journal',
   'post_payroll', 'price_override', 'print_abandoned', 'print_failed',
@@ -104,7 +104,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 122, 'the contract is 122 kinds');
+  assert.strictEqual(CONTRACT.length, 123, 'the contract is 123 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -4824,4 +4824,64 @@ test('the pre-set menu resolves every reference it makes, in apply order', () =>
     counts.suppliers + counts.sections + counts.addons + counts.stockItems
     + counts.dishes,
     'nothing rides the preset but what the counts describe');
+});
+
+/* ── THE OFFER BANNER REACHES A REAL PHONE, AND THE SLOTS ARE GUIDED ─────────
+   The banner strip used to be "published" into this browser's localStorage
+   (kashikeyo.promos.v1), which only a portal sharing the machine could read —
+   a real guest's phone saw nothing, ever, while the screen at the counter
+   said what was live. And the banner form asked for an "Image path" defaulting
+   to img/hero.jpg, a file that resolves to nothing on any phone. These pins
+   hold the replacement road: rows through banner_upsert, filtered by the slot
+   switch and the date window IN THE PROJECTION, rendered by both portals; and
+   image slots that state their type and size and take a dropped file. */
+test('banners ride the projection and the image slots are guided', () => {
+  const file = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+  const outletR = file('src/routes/outlet.js');
+  // The snapshot filters what a guest may see: live, in window, slot on.
+  assert.ok(/banners: \['SELECT[^\]]*starts_on IS NULL OR starts_on <= current_date/.test(outletR),
+    'the snapshot applies each banner\'s own date window');
+  assert.ok(/bannerSlot: \["SELECT value FROM setting WHERE key = 'qrBanners'"\]/.test(outletR),
+    'the snapshot reads the slot switch');
+  assert.ok(outletR.indexOf("(q.bannerSlot.rows[0] || {}).value === true) ? q.banners.rows : []") > 0,
+    'the slot OFF empties the strip on every phone, not only on the till');
+  assert.ok(/outlet: \['SELECT[^\]]*brand[^\]]*FROM chain\.outlet/.test(outletR),
+    'the snapshot carries the outlet\'s face');
+
+  // The till: no typed image path, no localStorage publish, guided slots.
+  assert.ok(SRC.indexOf('publishPromos') < 0,
+    'the localStorage "publish" is gone — the projection is the road');
+  assert.ok(SRC.indexOf('kashikeyo.promos.v1') < 0, 'and so is its key');
+  assert.ok(SRC.indexOf('Image path') < 0,
+    'no banner asks for a typed image path');
+  const bannerSpec = SRC.slice(SRC.indexOf('banner: {'), SRC.indexOf('banner: {') + 2200);
+  assert.ok(/k: "img", kind: "image"/.test(bannerSpec),
+    'the banner image is a guided slot, not a text field');
+  const brandSpec = SRC.slice(SRC.indexOf('portalBrand: {'), SRC.indexOf('portalBrand: {') + 2600);
+  assert.ok(/k: "logo", kind: "image", label: "Store logo", mode: "png"/.test(brandSpec),
+    'the logo slot keeps PNG — transparency is the point of the file');
+  assert.ok(/320 × 320 px/.test(brandSpec) && /1200 × 640 px/.test(brandSpec),
+    'each slot states its size on the holder');
+  assert.ok(/this\.queue\("outlet_brand"/.test(SRC),
+    'saving the branding queues the op the handler reads');
+  assert.ok(typeof HANDLERS.outlet_brand === 'function', 'and the handler exists');
+
+  // Both portals read the projection's banners, not a co-located till's state.
+  const member = file('app/member.html');
+  assert.ok(member.indexOf('kashikeyo.promos.v1') < 0,
+    'the member card no longer reads a till\'s localStorage for offers');
+  assert.ok(/\(this\.K\(\) \|\| \{\}\)\.BANNERS/.test(member),
+    'it reads the projection\'s banners');
+  const guest = file('app/guest.html');
+  assert.ok(/bannersV = banners\.map/.test(guest) && /k\.BANNERS/.test(guest),
+    'the guest QR menu renders the banner strip from the projection');
+  assert.ok(/coverStyle = brand\.cover/.test(guest),
+    'and wears the outlet\'s cover as its masthead');
+  // A tap on a coded banner fills the same promo state the bill tab verifies.
+  assert.ok(/promo: b\.code, promoOk: true/.test(guest),
+    'tapping a coded banner fills the promo field');
+  // The bridge hands the outlet's face to both portals.
+  const bridge = file('app/guest-bridge.js');
+  assert.ok(/logo: \(o\.brand \|\| \{\}\)\.logo/.test(bridge),
+    'the bridge maps chain.outlet.brand onto the portals\' outlet record');
 });

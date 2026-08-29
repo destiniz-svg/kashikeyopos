@@ -744,8 +744,8 @@ r.get('/snapshot', sameOutlet, async function (req, res, next) {
 
 async function snapshot(c, outletId) {
   const q = await all(c, {
-    outlet: ['SELECT id, name, currency, service_pct, tax_code, slug FROM chain.outlet'
-      + ' WHERE id = $1', [outletId]],
+    outlet: ['SELECT id, name, currency, service_pct, tax_code, slug, brand'
+      + ' FROM chain.outlet WHERE id = $1', [outletId]],
     tax: ['SELECT code, rate FROM chain.tax_version WHERE outlet_id = $1'
       + ' AND effective_from <= current_date'
       + ' AND (effective_to IS NULL OR effective_to >= current_date)'
@@ -801,7 +801,15 @@ async function snapshot(c, outletId) {
       + " WHERE t.status = 'open' GROUP BY t.id"],
     stages: ['SELECT ticket_id, station, stage, target_mins, fired_at FROM kds_ticket'
       + ' WHERE served_at IS NULL'],
-    banners: ['SELECT id, slot, title, body, image, link FROM banner WHERE active'],
+    /* Only what a guest should SEE tonight: live, and inside its own date
+       window. The slot switch is applied below — a merchant who turned the
+       strip off must empty it on every phone, not only on the till. */
+    banners: ['SELECT id, slot, title, body, image, link FROM banner WHERE active'
+      + ' AND (starts_on IS NULL OR starts_on <= current_date)'
+      + ' AND (ends_on IS NULL OR ends_on >= current_date)'],
+    // The banner slot is opt-in (qr_banner_slot): a QR menu opens straight on
+    // the food until a merchant decides otherwise.
+    bannerSlot: ["SELECT value FROM setting WHERE key = 'qrBanners'"],
     promos: ['SELECT id, name, kind, value, code, max_pct FROM promo WHERE active'
       + ' AND (starts_on IS NULL OR starts_on <= current_date)'
       + ' AND (ends_on IS NULL OR ends_on >= current_date)'],
@@ -866,7 +874,7 @@ async function snapshot(c, outletId) {
     })),
     tickets: q.tickets.rows,
     stages: q.stages.rows,
-    banners: q.banners.rows,
+    banners: ((q.bannerSlot.rows[0] || {}).value === true) ? q.banners.rows : [],
     promos: q.promos.rows,
     company: q.company.rows[0]
       ? { name: q.company.rows[0].legal_name,

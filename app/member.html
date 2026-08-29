@@ -184,9 +184,12 @@ a:hover{color:#d63f27}
             <span style="position:absolute;top:-70px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07);display:block"></span>
             <span style="position:absolute;bottom:-90px;left:-40px;width:190px;height:190px;border-radius:50%;background:rgba(255,255,255,.05);display:block"></span>
             <span style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-              <span style="display:block">
-                <span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
-                <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
+              <span style="display:flex;align-items:center;gap:10px;min-width:0">
+                <img src="{{ storeLogo }}" alt="" style="{{ storeLogoStyle }}"/>
+                <span style="display:block;min-width:0">
+                  <span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
+                  <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
+                </span>
               </span>
               <span style="{{ tierBadgeStyle }}">{{ tierMark }}</span>
             </span>
@@ -1958,6 +1961,14 @@ class Component extends DCLogic {
     // The tier card's small-caps line: the outlet the guest actually visits,
     // falling back to the chain only when no outlet has resolved yet.
     V.chainName = (this.outlet().name || k.CHAIN.name || "Kashikeyo").toUpperCase();
+    /* The store's own mark on the membership card, the way a bank card wears
+       the bank's — from chain.outlet.brand through the projection, on a small
+       white plate so a dark or transparent logo reads on every tier gradient. */
+    const oBrand = (this.outlet().brand || {});
+    V.storeLogo = oBrand.logo ? this.photoUrl(oBrand.logo) : "";
+    V.storeLogoStyle = oBrand.logo
+      ? "width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.92);object-fit:contain;padding:3px;flex-shrink:0"
+      : "display:none";
     V.poweredLine = k.CHAIN.brand.poweredBy ? "Powered by KashikeyoPOS™" : k.CHAIN.brand.name;
 
     // ── member ─────────────────────────────────────────────────────────────
@@ -2020,14 +2031,13 @@ class Component extends DCLogic {
       V.liveEarn = "This visit will earn about " + Math.floor(tot / this.pointsPer()) + " points when the till settles it.";
     }
 
-    // offers
-    let promos = [];
-    try {
-      const raw = JSON.parse(localStorage.getItem("kashikeyo.promos.v1") || "null");
-      if (Array.isArray(raw)) promos = raw;
-      else if (raw && raw.on !== false) promos = raw.items || [];
-    } catch (e) { promos = []; }
-    promos = promos.filter((b) => b && (!b.outlet || b.outlet === this.outletId())).slice(0, 3);
+    /* THE OFFERS, off the projection — the same rows the guest QR menu shows,
+       already filtered by the merchant's slot switch and each banner's own
+       date window on the server. This used to read a till's localStorage,
+       which exists only on a browser sharing the till's machine: a member's
+       real phone saw no offer, ever, whatever the screen at the counter said
+       was live. */
+    let promos = ((this.K() || {}).BANNERS || []).slice(0, 3);
     V.offersHeadStyle = promos.length ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
     V.offersWrapStyle = promos.length
       ? "margin-top:12px;display:grid;grid-template-columns:repeat(" + (M.wide ? 2 : 1) + ",minmax(0,1fr));gap:11px"
@@ -2036,7 +2046,11 @@ class Component extends DCLogic {
       title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
       tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
-      imgStyle: "position:absolute;inset:0;display:block;background-image:url('" + (this.photoUrl(b.img) || "img/hero.jpg") + "');background-size:cover;background-position:center",
+      /* No image is a TINTED CARD, never a path to a file that is not there —
+         the dark card ground carries the white copy either way. */
+      imgStyle: b.img
+        ? "position:absolute;inset:0;display:block;background-image:url('" + this.photoUrl(b.img) + "');background-size:cover;background-position:center"
+        : "display:none",
       tap: () => this.toast(b.code ? b.code + " — mention it at the till" : b.title)
     }));
 

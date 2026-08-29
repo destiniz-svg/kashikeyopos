@@ -801,7 +801,13 @@ function outletOf(r, rates, zones, tables, mine) {
       pos: t.pos, shape: t.shape, status: t.status
     })),
     slug: r.slug, tz: r.tz, currency: r.currency,
-    dayStart: r.day_start, phone: r.phone || '', active: r.active
+    dayStart: r.day_start, phone: r.phone || '', active: r.active,
+    /* The outlet's FACE (044) — only the signed-in outlet's, and only the
+       keys the portals draw: another store's logo is not this terminal's to
+       hold, and the brand jsonb also carries contact fields no till needs. */
+    brand: r.id === mine
+      ? { logo: (r.brand || {}).logo || null, cover: (r.brand || {}).cover || null }
+      : {}
   };
 }
 

@@ -1902,6 +1902,20 @@
                       </sc-for>
                     </select>
                   </sc-if>
+                  <sc-if value="{{ f.isImage }}" hint-placeholder-val="{{ false }}">
+                    <div style="{{ f.imgHolderStyle }}">
+                      <img src="{{ f.imgPreview }}" alt="" style="{{ f.imgPreviewStyle }}"/>
+                      <div style="{{ f.imgEmptyStyle }}">
+                        <div style="font-size:12.5px;font-weight:700;color:var(--text-dim)">Drop an image here, or tap to choose</div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">{{ f.imgGuide }}</div>
+                      </div>
+                      <input type="file" accept="image/*" onChange="{{ f.onPick }}" aria-label="{{ f.label }}" title="{{ f.label }}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer"/>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px">
+                      <span style="font-size:10.5px;color:var(--text-muted);min-width:0;line-height:1.5">{{ f.imgHint }}</span>
+                      <button onClick="{{ f.imgRemove }}" style="{{ f.imgRemoveStyle }}">Remove</button>
+                    </div>
+                  </sc-if>
           
                   <sc-if value="{{ f.isLines }}" hint-placeholder-val="{{ false }}">
                     <div style="display:flex;flex-direction:column;gap:6px">
@@ -2149,7 +2163,7 @@ class Component extends DCLogic {
     pairCode: null,
     pinFails: this._saved.pinFails || 0, pinLockUntil: this._saved.pinLockUntil || 0,
     qtyMult: 0,
-    pal: false, palQ: "", palSel: 0, palPlan: null, parOv: this._saved.parOv || {}, setupHide: !!this._saved.setupHide, palRecent: this._saved.palRecent || [],
+    pal: false, palQ: "", palSel: 0, palPlan: null, parOv: this._saved.parOv || {}, setupHide: !!this._saved.setupHide, palRecent: this._saved.palRecent || [], brandPen: this._saved.brandPen || null,
     // The loyalty programme's definitions, the compliance acknowledgements and
     // the count of sessions signed out from here — all operator decisions, so
     // all of them survive a reload the way the rest of the session does.
@@ -2250,13 +2264,11 @@ class Component extends DCLogic {
     const body = {
       v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox),
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
-      local: s.local, catMeta: s.catMeta, catOrder: s.catOrder, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden,
+      local: s.local, catMeta: s.catMeta, catOrder: s.catOrder, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden, brandPen: s.brandPen,
       fulfil: s.fulfil,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
     };
-    // Guest phones poll the promo key, not the session: publish alongside.
-    this.publishPromos();
     // Fulfilment stages ride their own key: a phone tracking one order must not
     // have to parse — or be trusted with — the whole till session.
     this.publishFulfil();
@@ -8379,6 +8391,33 @@ class Component extends DCLogic {
               })
             };
           }
+          /* A GUIDED IMAGE SLOT \u2014 what the branding screens are made of. A
+             transparent file input covers the whole holder, which makes it
+             BOTH the tap target and the drop target: dropping a file onto a
+             file input sets .files natively, so there is no drag choreography
+             to break. The image is downscaled on this device before it is
+             ever held (the dish-photo rule), and PNG stays PNG where
+             transparency is the point of the file. */
+          if (f.kind === "image") {
+            const cur = String(vals[f.k] || "");
+            const setVal = (val) => this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: val }) }));
+            return {
+              label: f.label, wrap: "grid-column:1/-1",
+              isImage: true, isText: false, isSelect: false, isLines: false,
+              value: "", options: [],
+              imgHolderStyle: "position:relative;border:2px dashed var(--line-3);border-radius:12px;background:var(--bg-2);overflow:hidden;display:grid;place-items:center;min-height:" + (f.tall || 120) + "px",
+              imgPreview: cur ? this.photoUrl(cur) : "",
+              imgPreviewStyle: cur ? "position:absolute;inset:0;width:100%;height:100%;object-fit:" + (f.fit || "cover") : "display:none",
+              imgEmptyStyle: cur ? "display:none" : "text-align:center;padding:18px 14px",
+              imgGuide: f.guide || "",
+              imgHint: cur ? "Image attached \u2014 save to publish it" : (f.hint || ""),
+              onPick: (e) => this.readImage(e, f, setVal),
+              imgRemove: () => setVal(""),
+              imgRemoveStyle: cur
+                ? "padding:7px 13px;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--text-dim);font-size:11.5px;font-weight:600;white-space:nowrap;flex-shrink:0;min-height:40px"
+                : "display:none"
+            };
+          }
           return {
             label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
             value: vals[f.k] === undefined ? "" : String(vals[f.k]),
@@ -9641,6 +9680,36 @@ class Component extends DCLogic {
      So the data URL is what is stored and a blob: URL is what CSS is given.
      Cached by the raw data URL for the session; the objectURL is never
      persisted, because it means nothing to the next page load. */
+  /* ONE READER FOR EVERY GUIDED IMAGE SLOT: validate, downscale on this
+     device, hand back a data URL. `mode: "png"` keeps PNG \u2014 a logo needs its
+     transparency, and re-encoding it as JPEG puts a white box behind the mark
+     on every dark surface \u2014 and a PNG source stays PNG either way; a
+     photograph lands as JPEG q0.82. `max` is the longest side. The input is
+     cleared so the same file can be picked twice after a mistake. */
+  readImage(e, spec, cb) {
+    const f = e.target.files && e.target.files[0];
+    const clear = () => { try { e.target.value = ""; } catch (x) {} };
+    if (!f) return clear();
+    if (!/^image\//.test(f.type || "")) { clear(); return this.toast("That file is not an image", "warn"); }
+    const png = spec.mode === "png" || f.type === "image/png";
+    const rd = new FileReader();
+    rd.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        const max = spec.max || 1200;
+        const sc = Math.min(1, max / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(im.width * sc); cv.height = Math.round(im.height * sc);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        cb(png ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg", 0.82));
+      };
+      im.onerror = () => this.toast("That image could not be read", "warn");
+      im.src = String(rd.result || "");
+    };
+    rd.onerror = () => this.toast("That image could not be read", "warn");
+    rd.readAsDataURL(f);
+    clear();
+  }
   photoUrl(src) {
     const v = String(src || "");
     if (!v) return "";
@@ -12962,33 +13031,42 @@ class Component extends DCLogic {
     };
   }
   // ── Promotions & banners ─────────────────────────────────────────────────
-  // The merchant writes these; the guest QR app reads them. Publishing is a
-  // separate key from the session so a phone never has to parse — or be able to
-  // reach — the terminal's own state.
+  /* The merchant writes these; the guest PROJECTION carries them. They used to
+     be "published" into this browser's localStorage, which only a portal
+     sharing the machine could ever read — a real guest's phone saw nothing.
+     The rows ride banner_upsert like any other write, the snapshot filters
+     them by the slot and the date window, and both portals read that. */
   banners() { return (K().BANNERS || []); }
   // The banner slot is off until a merchant turns it on: a QR menu that opens
-  // with an advert nobody asked for is worse than one that opens with food. The
-  // published payload carries the switch as well as the copy, so switching it
-  // off empties the slot on every phone without deleting anyone's work.
+  // with an advert nobody asked for is worse than one that opens with food.
+  // The switch is an outlet SETTING (qr_banner_slot), so every terminal and
+  // the projection agree about it.
   bannersOn() { return this.prefs().qrBanners === true; }
-  publishPromos() {
-    try {
-      const live = this.banners().filter((b) => b.active !== false).map((b) => ({
-        id: b.id, outlet: b.outlet || 0, title: b.title, sub: b.sub || "",
-        code: b.code || "", img: b.img || ""
-      }));
-      localStorage.setItem("kashikeyo.promos.v1", JSON.stringify({ v: 1, on: this.bannersOn(), items: live, at: Date.now() }));
-      return this.bannersOn() ? live.length : 0;
-    } catch (e) { return 0; }
-  }
   toggleBanners() {
     const on = !this.bannersOn();
-    this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { qrBanners: on }) }, () => {
-      const n = this.publishPromos();
-      this.toast(on ? "Banner slot on · " + n + " banner" + (n === 1 ? "" : "s") + " live on the QR menu" : "Banner slot off — the QR menu opens straight on the food");
-    });
+    const n = this.banners().filter((b) => b.active !== false).length;
+    this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { qrBanners: on }) });
     this.queue("qr_banner_slot", "QR banner slot " + (on ? "enabled" : "disabled") + " · by " + this.me(), "settings",
       { on: on });
+    this.toast(on ? "Banner slot on · " + n + " banner" + (n === 1 ? "" : "s") + " live on the QR menu" : "Banner slot off — the QR menu opens straight on the food");
+  }
+  /* THE OUTLET'S FACE, with this terminal's un-synced edit on top — the same
+     holding-pen shape a measured yield keeps. The pen is dropped the moment
+     the outlet publishes the same answer, which is the op coming home. */
+  brandNow() {
+    const pub = ((this.outlet() || {}).brand) || {};
+    const pen = this.state.brandPen || null;
+    return pen
+      ? { logo: pen.logo || null, cover: pen.cover || null }
+      : { logo: pub.logo || null, cover: pub.cover || null };
+  }
+  reconcileBrand() {
+    const pen = this.state.brandPen;
+    if (!pen) return;
+    const pub = ((this.outlet() || {}).brand) || {};
+    if ((pub.logo || null) === (pen.logo || null) && (pub.cover || null) === (pen.cover || null)) {
+      this.setState({ brandPen: null });
+    }
   }
   // ── Loyalty programme ────────────────────────────────────────────────────
   // The customer row already carries a tier name and a points balance. This is
@@ -13106,29 +13184,30 @@ class Component extends DCLogic {
   }
 
   g_promos() {
-    const scope = (b) => b.outlet ? ((this.outlet(b.outlet) || {}).name || "Outlet " + b.outlet) : "Every outlet";
-    const live = this.banners().filter((b) => b.active !== false);
+    const brand = this.brandNow();
+    const mayBrand = this.rank() >= 4;
     return {
-      guideTitle: "Running a promotion", guide: [
+      guideTitle: "Branding the portals, and running a promotion", guide: [
+        "Set the store logo and cover — both portals wear them",
         "Turn the banner slot on — it is off until you want it",
-        "Write the banner; it appears at the top of the QR menu",
-        "Scope it chain-wide or to one outlet",
-        "A promo code is optional; the till still has to honour it at settlement",
-        "Switching the slot or a banner off empties it on every phone within seconds"
+        "Write the banner; it rides the guest projection to every phone",
+        "A promo code is optional; the till still verifies it at settlement",
+        "Switching the slot or a banner off empties it on every phone on its next open"
       ],
       actions: [
-        { label: this.bannersOn() ? "Banner slot: on" : "Banner slot: off", primary: true, go: () => this.toggleBanners() },
-        { label: "New banner", go: () => this.can("promos", "a") ? this.openForm("banner") : this.toast("Adding a promotion needs edit rights here", "warn") },
-        { label: "Publish now", go: () => this.toast(this.bannersOn() ? this.publishPromos() + " banner" + (live.length === 1 ? "" : "s") + " live on the QR menu" : "Banner slot is off — nothing is shown to guests", this.bannersOn() ? "ok" : "warn") }
+        { label: "Portal branding", primary: true, go: () => mayBrand ? this.openForm("portalBrand", brand) : this.toast("Branding needs an admin — the database refuses the write below rank 4", "warn") },
+        { label: this.bannersOn() ? "Banner slot: on" : "Banner slot: off", go: () => this.toggleBanners() },
+        { label: "New banner", go: () => this.can("promos", "a") ? this.openForm("banner") : this.toast("Adding a promotion needs edit rights here", "warn") }
       ],
       notes: [
+        ["The store's face", (brand.logo ? "Logo set" : "No logo yet") + " · " + (brand.cover ? "cover set" : "no cover yet") + ". The logo heads both portals beside the store's name; the cover is the photograph across the top of the QR menu. Portal branding states each slot's type and size on the holder."],
         ["The slot is opt-in", this.bannersOn()
-          ? "The banner slot is ON. Active banners for this outlet rotate at the top of the QR menu, newest first, and the guest can tap the dots to move between them."
+          ? "The banner slot is ON. Live banners ride the guest projection, so a phone reads them the next time it opens or refreshes the menu — no till needs to be anywhere near it."
           : "The banner slot is OFF, so guests open straight onto the menu — the space collapses, it does not sit empty. Draft banners below stay saved and go live the moment you switch the slot on."],
         ["What tapping one does", "A banner with a code fills the promo field for that table and tells the guest so. The code is still verified by the till at settlement — a banner never discounts a bill on its own."]
       ],
       cols: [
-        { label: "Banner", w: "2.2fr" }, { label: "Scope", w: "1.1fr" },
+        { label: "Banner", w: "2.4fr" }, { label: "Image", w: ".9fr" },
         { label: "Code", w: ".8fr", mono: 1 }, { label: "Status", w: ".8fr", a: "right" }
       ],
       rows: this.banners().map((b) => ({
@@ -13136,7 +13215,7 @@ class Component extends DCLogic {
         go: () => this.openForm("banner", b),
         cells: [
           b.title + (b.sub ? " · " + b.sub : ""),
-          scope(b),
+          { t: b.img ? "Image set" : "Tinted card", c: b.img ? "var(--text-dim)" : "var(--text-muted)", size: 11.5 },
           { t: b.code || "—", mono: 1, c: b.code ? "var(--warn-bright)" : "var(--text-muted)" },
           { t: b.active !== false ? "Live" : "Off", chip: b.active !== false ? ["var(--ok-dim)", "var(--green)"] : ["var(--bg-2)", "var(--text-muted)"] }
         ]
@@ -14030,6 +14109,7 @@ class Component extends DCLogic {
     });
     this.reconcilePrefs();
     this.reconcileMods();
+    this.reconcileBrand();
   }
 
   /* ── WHAT THIS DEVICE IS HOLDING THAT THE OUTLET HAS NEVER SEEN ──────────
@@ -18426,36 +18506,57 @@ class Component extends DCLogic {
         onSave: (v) => this.applyDiscount(v),
         onEdit: (v) => this.applyDiscount(v)
       },
+      /* THE PORTALS' FACE, walked through slot by slot: what each image is
+         for, what kind of file, and what size — stated on the holder, never
+         left to trial and error. The write is one op the database itself
+         gates at rank 4 (RLS on chain.outlet). */
+      portalBrand: {
+        title: "Portal branding", sub: "The face both guest portals wear", save: "Publish branding",
+        foot: "The logo heads the guest QR menu and the member card beside the store's name; the cover is the photograph across the top of the QR menu. Both reach every phone through the guest projection — remove one and the portals fall back to the plain masthead.",
+        fields: [
+          { k: "logo", kind: "image", label: "Store logo", mode: "png", max: 320, tall: 132, fit: "contain",
+            guide: "Square PNG with a transparent background · at least 320 × 320 px · scaled to 320 px on this device",
+            hint: "Shown at about 40 px on the portal headers — a simple mark reads better than fine detail." },
+          { k: "cover", kind: "image", label: "Cover photograph", max: 1200, tall: 150,
+            guide: "Wide photograph · JPG or PNG · at least 1200 × 640 px · scaled to 1200 px on this device",
+            hint: "Drawn about 3:1 with the store's name over the lower edge — keep faces and food out of the bottom third." }
+        ],
+        onSave: (v) => {
+          const brand = { logo: v.logo || null, cover: v.cover || null };
+          this.queue("outlet_brand", "Portal branding · by " + this.me(), "settings", brand);
+          this.setState({ modal: null, brandPen: brand });
+          this.toast("Branding published — the portals wear it on their next open");
+        }
+      },
       banner: {
         title: "Promotion banner", sub: "Shown at the top of the QR ordering menu", save: "Publish banner",
-        foot: "Banners rotate on the guest's phone, newest first. A code is optional and is verified by the till at settlement — publishing a banner never discounts a bill on its own.",
+        foot: "Banners ride the guest projection — a phone reads them the next time it opens or refreshes the menu. A code is optional and is verified by the till at settlement — publishing a banner never discounts a bill on its own. No image is fine: the banner shows as a tinted card carrying the headline.",
         fields: [
           { k: "title", label: "Headline", v: "", full: 1 },
           { k: "sub", label: "Supporting line", v: "", full: 1 },
           { k: "code", label: "Promo code (optional)", v: "" },
-          { k: "outlet", label: "Where it runs", options: [{ v: "0", l: "Every outlet" }].concat(this.posOutlets().map((o) => ({ v: String(o.id), l: o.name }))) },
-          { k: "img", label: "Image path", v: "img/hero.jpg", full: 1 },
-          { k: "active", label: "Status", options: [{ v: "yes", l: "Live on the QR menu" }, { v: "no", l: "Off — hidden from guests" }], full: 1 }
+          { k: "active", label: "Status", options: [{ v: "yes", l: "Live on the QR menu" }, { v: "no", l: "Off — hidden from guests" }] },
+          { k: "img", kind: "image", label: "Banner image", max: 1200, tall: 130,
+            guide: "Wide photograph · JPG or PNG · at least 1200 × 500 px · scaled to 1200 px on this device",
+            hint: "Drawn about 12:5 behind the headline — keep any wording in the image away from the left edge, where the headline sits." }
         ],
         editSave: "Save changes",
-        pre: (b) => ({ outlet: String(b.outlet || 0), active: b.active === false ? "no" : "yes" }),
+        pre: (b) => ({ active: b.active === false ? "no" : "yes", img: b.img || "" }),
         onEdit: (v, b) => {
           if (!v.title) return this.toast("A headline is required", "warn");
           const on = v.active !== "no";
           this.patchRows("banners", [b.id], {
             title: v.title, sub: v.sub, code: (v.code || "").trim().toUpperCase(),
-            outlet: +v.outlet || 0, img: v.img, active: on
+            img: v.img || "", active: on
           }, "Banner updated · " + v.title + (on !== (b.active !== false) ? (on ? " · now live" : " · pulled from guest phones") : ""), "banners");
-          this.publishPromos();
         },
         onSave: (v) => {
           if (!v.title) return this.toast("A headline is required", "warn");
           this.insertRow("banners", {
-            id: this.newId("b"), outlet: +v.outlet || 0, title: v.title,
-            sub: v.sub || "", code: (v.code || "").trim().toUpperCase(), img: v.img || "img/hero.jpg",
+            id: this.newId("b"), title: v.title,
+            sub: v.sub || "", code: (v.code || "").trim().toUpperCase(), img: v.img || "",
             active: v.active !== "no"
           }, "Banner published · " + v.title, "banners");
-          this.publishPromos();
         }
       },
       // A supplier is not just a name on a GRN: it is who to ring when the fish

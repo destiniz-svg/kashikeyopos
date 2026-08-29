@@ -179,7 +179,7 @@ const FORMS = [
   'breakdown', 'outlet', 'dish', 'outletPrice', 'pinFor', 'bankImport',
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'door', 'doorPrice', 'indent', 'dispatch',
-  'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
+  'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'portalBrand', 'vendor',
   'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn', 'plan',
   // Where an emailed receipt or statement goes when the customer has no
   // address on file yet. Typed once, saved onto the customer, used now.

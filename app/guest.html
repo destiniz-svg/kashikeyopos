@@ -105,12 +105,22 @@ a:hover{color:#d33d26}
       <sc-if value="{{ onMenu }}">
         <div style="flex:1;min-height:0;overflow-y:auto" class="qs">
           <div style="padding:6px 20px 0">
+            <div style="{{ coverStyle }}">
+              <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,14,0) 34%,rgba(20,16,14,.72) 100%)"></div>
+              <div style="position:absolute;left:14px;right:14px;bottom:11px;display:flex;align-items:center;gap:9px">
+                <img src="{{ coverLogo }}" alt="" style="{{ coverLogoStyle }}"/>
+                <span style="font-size:17px;font-weight:700;color:#fff;letter-spacing:-.025em;text-shadow:0 1px 8px rgba(0,0,0,.45)">{{ coverName }}</span>
+              </div>
+            </div>
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-              <div style="min-width:0">
+              <div style="min-width:0;display:flex;align-items:center;gap:10px">
+                <img src="{{ brandLogo }}" alt="" style="{{ brandLogoStyle }}"/>
+                <div style="min-width:0">
                 <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ outletName }}</div>
                 <div style="margin-top:5px;display:flex;align-items:center;gap:6px;font-size:13.5px;color:#f4553c;font-weight:600">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
                   {{ tableLabel }}
+                </div>
                 </div>
               </div>
               <button onClick="{{ goYou }}" aria-label="Your orders and card" style="{{ avatarStyle }}">{{ avatarText }}</button>
@@ -121,6 +131,20 @@ a:hover{color:#d33d26}
               <input value="{{ q }}" onChange="{{ setQ }}" aria-label="Search the menu" placeholder="Search the menu" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
               <button onClick="{{ clearQ }}" aria-label="Clear the search" style="{{ clearQStyle }}">&#215;</button>
             </div>
+          </div>
+
+          <div class="qs" style="{{ bannersWrap }}">
+            <sc-for list="{{ bannersV }}" as="bn" hint-placeholder-count="1">
+              <button onClick="{{ bn.tap }}" style="{{ bn.style }}">
+                <span style="{{ bn.imgStyle }}"></span>
+                <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(24,17,14,.12) 0%,rgba(24,17,14,.78) 100%)"></span>
+                <span style="position:relative;display:block;text-align:left;min-width:0">
+                  <span style="{{ bn.tagStyle }}">{{ bn.tag }}</span>
+                  <span style="display:block;margin-top:7px;font-size:15.5px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.25">{{ bn.title }}</span>
+                  <span style="{{ bn.subStyle }}">{{ bn.sub }}</span>
+                </span>
+              </button>
+            </sc-for>
           </div>
 
           <div class="qs" style="margin-top:13px;padding:0 20px 3px;display:flex;gap:7px;overflow-x:auto">
@@ -1218,6 +1242,57 @@ class Component extends DCLogic {
     V.onYou = !!s.table && s.tab === "you";
 
     V.outletName = o.name || "";
+    /* THE STORE'S FACE. The cover is a masthead across the top of the menu
+       with the store's name over its lower edge; the logo rides the header
+       beside the name where there is no cover, and inside the masthead where
+       there is. Both come off the projection (chain.outlet.brand) — a store
+       that has set neither reads exactly as before. Images go through
+       photoUrl(): a data URL inside a style string truncates at its own
+       semicolon and paints nothing. */
+    const brand = (o.brand || {});
+    V.coverStyle = brand.cover
+      ? "position:relative;height:148px;border-radius:18px;overflow:hidden;background:#1c1917 center/cover url('" + this.photoUrl(brand.cover) + "');margin-bottom:14px"
+      : "display:none";
+    V.coverLogo = brand.cover && brand.logo ? this.photoUrl(brand.logo) : "";
+    V.coverLogoStyle = brand.cover && brand.logo
+      ? "width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.92);object-fit:contain;padding:3px;flex-shrink:0"
+      : "display:none";
+    V.coverName = brand.cover ? (o.name || "") : "";
+    V.brandLogo = !brand.cover && brand.logo ? this.photoUrl(brand.logo) : "";
+    V.brandLogoStyle = !brand.cover && brand.logo
+      ? "width:42px;height:42px;border-radius:11px;background:#f5f5f6;object-fit:contain;padding:3px;flex-shrink:0"
+      : "display:none";
+    /* THE OFFER BANNERS — live rows off the projection, already filtered by
+       the slot switch and each banner's own date window on the server, so a
+       strip the merchant turned off is EMPTY here, not hidden client-side.
+       Tapping one with a code fills the promo field the bill tab verifies at
+       settlement; tapping one without simply says what it said. */
+    const banners = (k.BANNERS || []);
+    V.bannersWrap = banners.length
+      ? "margin-top:13px;padding:0 20px 4px;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory"
+      : "display:none";
+    V.bannersV = banners.map((b) => ({
+      title: b.title || "",
+      sub: b.sub || "",
+      subStyle: b.sub
+        ? "display:block;margin-top:3px;font-size:12px;color:rgba(255,255,255,.85);line-height:1.45"
+        : "display:none",
+      tap: () => {
+        if (b.code) {
+          self.setState({ promo: b.code, promoOk: true,
+            promoMsg: b.code + " will be sent with your order. The till checks it and applies it to the bill." });
+          self.toast(b.code + " applied — it rides your next order to the till");
+        } else {
+          self.toast(b.title + (b.sub ? " — " + b.sub : ""));
+        }
+      },
+      tag: b.code ? "OFFER · " + b.code : "WHAT'S ON",
+      tagStyle: "display:inline-block;padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
+      style: "position:relative;flex:0 0 " + (banners.length > 1 ? "86%" : "100%") + ";min-height:104px;border-radius:16px;overflow:hidden;background:#241a16;padding:13px 14px;display:flex;align-items:flex-end;scroll-snap-align:start",
+      imgStyle: b.img
+        ? "position:absolute;inset:0;background:#241a16 center/cover url('" + this.photoUrl(b.img) + "')"
+        : "display:none"
+    }));
     V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
     V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
     V.avatarStyle = "width:44px;height:44px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"

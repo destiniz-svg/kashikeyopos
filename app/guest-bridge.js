@@ -135,6 +135,12 @@
       loc: "restaurant", parent: 0, region: "", tax: (snap.tax || {}).code || o.tax_code,
       rate: rate, sc: Number(o.service_pct) || 0, addr: "", mgr: "",
       pos: true, currency: o.currency,
+      // The store's FACE (chain.outlet.brand): the logo both portal headers
+      // wear and the cover photograph across the top of the QR menu.
+      brand: {
+        logo: (o.brand || {}).logo || "",
+        cover: (o.brand || {}).cover || ""
+      },
       // The room as it really is, not a guessed twelve.
       tables: floor.length,
       seats: floor.reduce(function (a, t) { return a + t.seats; }, 0),

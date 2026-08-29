@@ -587,6 +587,65 @@ test('a guest posts intent and never money', opts, async () => {
   assert.match(gone.body.error, /not in use here any more/);
 });
 
+test('a banner reaches the phone only live, in window, with the slot on — and the outlet has a face', opts, async () => {
+  const pushOps = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, token);
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T01');
+  const table = t.body.token;
+  const snap = () => getWith('/api/g/' + slug + '/menu', { 'x-table-token': table })
+    .then((r) => r.body);
+
+  /* Three banners: live, switched off, and one whose window closed last year.
+     Plus the outlet's face — a logo and a cover — through the same op road a
+     till write takes. */
+  const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+  const r = await pushOps([
+    { opId: uuid(), kind: 'banner_upsert', lamport: 1, payload: {
+      id: 'bn_live', title: 'High tea, half price', sub: 'Weekdays 4 to 6',
+      code: 'HIGHTEA', img: logo } },
+    { opId: uuid(), kind: 'banner_upsert', lamport: 2, payload: {
+      id: 'bn_off', title: 'Not on', active: false } },
+    { opId: uuid(), kind: 'banner_upsert', lamport: 3, payload: {
+      id: 'bn_past', title: 'Long over', from: '2024-01-01', to: '2024-02-01' } },
+    { opId: uuid(), kind: 'outlet_brand', lamport: 4, payload: {
+      logo: logo, cover: logo } }
+  ]);
+  assert.strictEqual(r.status, 200);
+  r.body.results.forEach((x) => assert.ok(!x.error, JSON.stringify(x)));
+
+  // The slot is OFF, so the strip is EMPTY on the phone — not filtered there.
+  let m = await snap();
+  assert.deepStrictEqual(m.banners, [], 'slot off empties the strip server-side');
+
+  // The switch travels like any other setting.
+  const on = await pushOps([{ opId: uuid(), kind: 'qr_banner_slot', lamport: 5,
+    payload: { on: true } }]);
+  assert.ok(!on.body.results[0].error);
+  m = await snap();
+  assert.strictEqual(m.banners.length, 1, 'only the live, in-window banner');
+  assert.strictEqual(m.banners[0].id, 'bn_live');
+  assert.strictEqual(m.banners[0].link, 'HIGHTEA', 'the code rides for the tap to fill');
+  assert.ok(m.banners[0].image, 'the image rides for the strip to draw');
+
+  // The outlet's face reaches the same projection.
+  assert.strictEqual((m.outlet.brand || {}).logo, logo, 'the logo is published');
+  assert.strictEqual((m.outlet.brand || {}).cover, logo, 'and the cover');
+
+  // A rank-2 session cannot rebrand the store: RLS on chain.outlet is the gate.
+  const till = await post('/api/auth/pin', { outletId, pin: '6520' });
+  if (till.status === 200) {
+    const denied = await post('/api/outlet/' + outletId + '/sync/push', { ops: [
+      { opId: uuid(), kind: 'outlet_brand', lamport: 6, payload: { logo: null } }
+    ] }, till.body.token);
+    const res = denied.body.results && denied.body.results[0];
+    assert.ok(res && res.error, 'a cashier\'s rebrand is refused: ' + JSON.stringify(res));
+  }
+
+  // Tidy: the slot goes back off so no later projection test inherits a strip.
+  await pushOps([{ opId: uuid(), kind: 'qr_banner_slot', lamport: 7, payload: { on: false } }]);
+});
+
 test('the guest projection carries the floor and only this table', opts, async () => {
   const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
   const slug = b.body.kpos.OUTLETS[0].slug;
