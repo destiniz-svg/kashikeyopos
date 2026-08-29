@@ -5533,3 +5533,70 @@ test('choosing a dish at the till shows its add-ons, and the money follows', () 
   assert.ok(/&& \(\+l\.extra \|\| 0\) === extra && String\(l\.note \|\| ""\) === note/.test(al),
     'a dressed line is never merged into a plain one');
 });
+
+/* ═══ A GRANT IS A DECISION, SO THE DEFAULT MUST BE THE SAFEST ONE ══════════
+   Reported as "I cannot add staffs", and the sweep of everything around staff
+   found three faults. This is the one that would have been worst to leave.
+
+   `openForm` seeds a select with its FIRST option, and `assignableRoles()`
+   returned `K().ROLES` in shipped order — which leads with SuperAdmin. So the
+   Role box on "Add someone to the floor" came up reading **Owner**, and adding
+   a waiter without touching that dropdown made a second RANK 5 account: the
+   estate read, GST registration, the store rename and the trade reset, handed
+   out by a control whose entire subject is who reaches what. Measured on a
+   live outlet at both a desktop and a phone viewport before this was written:
+   `select.value === "SuperAdmin"`, and the account it created came back
+   `rank 5`.
+
+   The list is ordered by REACH now, least first, so the default costs least if
+   nobody thinks about it and the strongest role is the one somebody has to
+   reach for. */
+test('the role a new account gets by default is the safest one, not the strongest', () => {
+  const H = require('./harness');
+  [['SuperAdmin', 5], ['ChainAdmin', 4]].forEach(([who]) => {
+    const F = H.makeInstance({ role: who });
+    const roles = F.assignableRoles();
+    assert.ok(roles.length > 1, who + ' can grant more than one role');
+
+    const ranks = roles.map((r) => F.rankOf(r.key));
+    const sorted = ranks.slice().sort((a, b) => a - b);
+    assert.deepStrictEqual(ranks, sorted,
+      'assignableRoles() must be ordered from the least reach upward, because'
+      + ' openForm seeds a select with its FIRST option — ' + who + ' sees '
+      + roles.map((r) => r.key).join(', '));
+
+    assert.notStrictEqual(roles[0].key, 'SuperAdmin',
+      'the Role box would open on Owner, so "add a waiter" creates a rank-5'
+      + ' account for ' + who);
+    assert.ok(F.rankFor(roles[0].key) <= 2,
+      'the default grant is a floor rung, not a management one: '
+      + roles[0].key + ' is rank ' + F.rankFor(roles[0].key));
+
+    /* And nobody may hand out more reach than they hold — unchanged, and
+       asserted here because the reorder moved every index in this list. */
+    roles.forEach((r) => assert.ok(F.rankOf(r.key) <= F.rankOf(who),
+      who + ' must not be offered ' + r.key));
+  });
+
+  /* THE RANK RIDES ON THE LABEL, because the rank is what the server actually
+     enforces and "Owner · rank 5" is a sentence somebody reads before they
+     hand it over. */
+  assert.match(SRC, /l: r\.label \+ " · rank " \+ this\.rankFor\(r\.key\)/,
+    'the role options name the rank they grant');
+});
+
+/* ═══ AND THE ADD PATH NAMES THE FIELD THAT IS MISSING ══════════════════════
+   `onEdit` asked for a basic salary by name; the ADD path did not, so a form
+   left on its default 0 fell through to the minimum-wage check and came back
+   "Below the MVR 8,000 minimum wage" — which sends an operator to the Act, to
+   the business size band and to the wrong screen, when what is actually wrong
+   is that they have not typed a wage yet. Same defect class as a refusal that
+   names a constraint instead of a cause. */
+test('adding an employee with no salary says so, rather than citing the minimum wage', () => {
+  assert.match(SRC, /A basic salary is required — it is the pensionable wage/,
+    'the add path asks for the salary by name');
+  const add = SRC.indexOf('A basic salary is required — it is the pensionable wage');
+  const wage = SRC.indexOf('const W = this.wageCheck(basic);', add);
+  assert.ok(add > 0 && wage > add,
+    'and it asks BEFORE the wage check, or the wrong cause is still reported');
+});

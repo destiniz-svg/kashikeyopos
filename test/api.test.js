@@ -4097,6 +4097,112 @@ test('renaming a store is the owner\'s, and nobody else\'s', opts, async () => {
   assert.notStrictEqual(now.rows[0].slug, 'nice-try', 'and nothing moved');
 });
 
+/* ═══ A PIN IS AN IDENTITY, SO IT BELONGS TO ONE PERSON ═════════════════════
+   Found by sweeping the staff path after "I cannot add staffs". `pin_match()`
+   ended in a bare `LIMIT 1` with no ORDER BY and no uniqueness check, so two
+   people sharing four digits BOTH matched and Postgres returned whichever row
+   the plan happened to yield — which is not stable between calls. Measured on
+   a live outlet before migration 049: three consecutive sign-ins with one PIN
+   returned a rank-2 cashier, then a rank-5 owner, then the cashier again.
+
+   A cashier keying their own PIN was therefore signed in AS THE OWNER, and
+   every void, discount and drawer opening they made that shift was attributed
+   to somebody else — on a screen whose own copy says a per-person PIN is
+   exactly what makes those acts attributable.
+
+   Two fences, and this proves both: nothing new can be created into that
+   state, and a store already in it refuses rather than guessing. This suite
+   cannot reach the second half — its fixture has no duplicate and can no
+   longer be given one — so the ambiguity itself is proved in test/reset.test.js
+   style against rows written directly. Here: the door. */
+test('two people cannot be given the same PIN', opts, async () => {
+  const pin = '9042';
+  const a = await post('/api/auth/staff',
+    { name: 'PIN Holder A', rank: 2, roleKey: 'Cashier', pin: pin }, token);
+  assert.strictEqual(a.status, 201, JSON.stringify(a.body));
+
+  const b = await post('/api/auth/staff',
+    { name: 'PIN Holder B', rank: 5, roleKey: 'SuperAdmin', pin: pin }, token);
+  assert.strictEqual(b.status, 409,
+    'a second person on the same four digits is refused: ' + JSON.stringify(b.body));
+  assert.match(b.body.error, /already keys that PIN/, b.body.error);
+  assert.match(b.body.error, /attributable/,
+    'and the refusal says WHY, because "choose another" alone reads as a rule'
+    + ' somebody invented: ' + b.body.error);
+
+  const made = await db.owner().query(
+    "SELECT count(*)::int AS n FROM chain.staff WHERE name = 'PIN Holder B'");
+  assert.strictEqual(made.rows[0].n, 0, 'and nobody was created');
+
+  /* THE ONE LEGITIMATE HOLDER STILL SIGNS IN — the fence must not cost the
+     person who had the digits first. */
+  const ok = await post('/api/auth/pin', { outletId: outletId, pin: pin });
+  assert.ok(ok.body.token, 'the holder signs in: ' + JSON.stringify(ok.body));
+  assert.strictEqual(ok.body.name, 'PIN Holder A');
+  assert.strictEqual(ok.body.rank, 2,
+    'at their own rank — this is the assertion that fails against the build'
+    + ' where the owner-ranked duplicate could answer instead');
+
+  /* AND A RESET ONTO SOMEBODY ELSE'S DIGITS IS THE SAME ACT, so it is refused
+     the same way — while resetting a PIN to what it already was is not a
+     collision with oneself. */
+  const id = a.body.id;
+  const onto = await patch('/api/auth/staff/' + id, { pin: '6520' }, token);
+  assert.strictEqual(onto.status, 409,
+    'resetting onto a colleague\'s PIN is refused: ' + JSON.stringify(onto.body));
+  const same = await patch('/api/auth/staff/' + id, { pin: pin }, token);
+  assert.strictEqual(same.status, 200,
+    'but re-setting their own PIN to what it already was is not a collision:'
+    + ' ' + JSON.stringify(same.body));
+
+  /* ═══ AND A STORE ALREADY HOLDING A DUPLICATE REFUSES BOTH ════════════════
+     The door above stops a NEW one. Every database written before migration
+     049 may already hold duplicates, and evicting somebody from their own
+     account is not a migration's call — so the second fence is that ambiguity
+     resolves to NOBODY, exactly as `chain.member_resolve()` refuses two
+     members whose numbers normalise alike and migration 018 refuses two on one
+     email. Take-one-silently is one person acting as another.
+
+     Written straight into the table, because the door can no longer produce
+     this state — which is the point. Copying the hash AND the salt is what
+     makes it the same PIN: the salt exists so two people with one PIN do not
+     share a hash, so sharing both is the duplicate. */
+  const twin = await db.owner().query(
+    'INSERT INTO chain.staff (name, rank, role_key, outlet_id, pin_hash, pin_salt)'
+    + ' SELECT $1, 5, $2, outlet_id, pin_hash, pin_salt FROM chain.staff'
+    + ' WHERE id = $3 RETURNING id', ['PIN Twin Owner', 'SuperAdmin', id]);
+
+  for (let i = 0; i < 4; i++) {
+    const r = await post('/api/auth/pin', { outletId: outletId, pin: pin });
+    assert.ok(!r.body.token,
+      'a PIN two people share must sign in NOBODY, not whichever row the plan'
+      + ' yielded — attempt ' + (i + 1) + ' let ' + JSON.stringify(r.body.name)
+      + ' in at rank ' + r.body.rank);
+  }
+
+  /* AND THE SHOP IS TOLD, because the refusal at the keypad is deliberately
+     byte-identical to a wrong PIN — saying "those digits belong to two people"
+     confirms to a stranger that the digits are real. The fact reaches the one
+     place a manager can act on it. */
+  const trail = await db.owner().query(
+    "SELECT after FROM chain.audit WHERE action = 'pin_ambiguous'"
+    + ' ORDER BY at DESC LIMIT 1');
+  assert.strictEqual(trail.rows.length, 1, 'the ambiguity is on the trail');
+  assert.ok(Number(trail.rows[0].after.sharing) >= 2,
+    'naming how many people key those digits: ' + JSON.stringify(trail.rows[0].after));
+  assert.match(String(trail.rows[0].after.why), /Users & roles/,
+    'and where to fix it');
+
+  await db.owner().query("DELETE FROM chain.staff WHERE id = $1", [twin.rows[0].id]);
+  const back = await post('/api/auth/pin', { outletId: outletId, pin: pin });
+  assert.ok(back.body.token,
+    'and once the duplicate is gone the holder signs in again, so the fence'
+    + ' costs nothing permanent: ' + JSON.stringify(back.body));
+
+  await db.owner().query("DELETE FROM chain.session WHERE staff_id = $1", [id]);
+  await db.owner().query("DELETE FROM chain.staff WHERE id = $1", [id]);
+});
+
 /* ═══ THE MOST DESTRUCTIVE DOOR IN THE PRODUCT ═════════════════════════════
    `POST /reset/trade` clears everything the store traded. What it DOES is
    proved in test/reset.test.js, on a business of its own — this suite's

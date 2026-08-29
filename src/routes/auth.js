@@ -220,6 +220,28 @@ async function pinSignIn(oid, pin, deviceId, caller) {
         staffId: s.id, outletId: oid, expiresAt: now + hours * 3600e3
       };
     }
+    /* AN AMBIGUOUS PIN IS NOT A WRONG ONE, and the difference is invisible from
+       the keypad by design. Migration 049 makes two people sharing four digits
+       match NOBODY rather than whichever row the plan yielded — so a store
+       that already holds a duplicate refuses both of them, which is correct
+       and unexplainable to the person standing there. The refusal itself stays
+       byte-identical, because saying "those digits belong to two people"
+       confirms to a stranger that the digits are real; what changes is that
+       the fact reaches somebody who can fix it, on the trail this build never
+       prunes. Only reachable from data written before 049: the door refuses a
+       duplicate now. */
+    if (ids.length) {
+      const dupe = await c.query('SELECT chain.pin_taken($1,$2,$3) AS n',
+        [oid, ids, hashes]);
+      if (Number(dupe.rows[0].n) > 1) {
+        await c.query("SELECT chain.log_anon($1,'pin_ambiguous','staff',NULL,$2)",
+          [oid, JSON.stringify({ sharing: Number(dupe.rows[0].n),
+            why: 'more than one person at this outlet keys these digits, so'
+              + ' sign-in refuses rather than guessing which of them it is —'
+              + ' reset one of their PINs from Users & roles' })]);
+      }
+    }
+
     /* Wrong PIN. Tier one first — this caller pays for its own mistake — and
        then tier two, which only engages once the outlet's whole allowance is
        gone. pin_failed() keeps its contract; the DECISION moved up here, where
@@ -478,6 +500,34 @@ r.get('/staff', atLeast('manager'), async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ═══ A PIN IS AN IDENTITY, SO IT BELONGS TO ONE PERSON ═════════════════════
+   Migration 049 makes an ambiguous PIN match NOBODY, which is the fence that
+   protects the rows already in a store's database. This is the other half: no
+   new duplicate can be created. "Every person has their own four-digit PIN,
+   not a shared role PIN — that is what makes a void, a discount or a drawer
+   opening attributable" is what the Users screen says, and until 049 nothing
+   at all enforced it: two people on one PIN signed in as each other, on
+   alternate attempts, at each other's rank.
+
+   Asked over the salt-per-row walk sign-in already does, because a salted hash
+   cannot be looked up any other way — and against EVERY staff row including
+   the suspended, since a suspended colleague's PIN is still theirs. */
+async function pinTaken(c, outletId, pin, exceptId) {
+  const salts = await c.query('SELECT * FROM chain.pin_salts_all($1)', [outletId]);
+  if (!salts.rows.length) return 0;
+  const ids = [], hashes = [];
+  for (const row of salts.rows) {
+    ids.push(row.id);
+    hashes.push(hashPin(pin, row.pin_salt).hash);
+  }
+  const q = await c.query('SELECT chain.pin_taken($1,$2,$3,$4) AS n',
+    [outletId, ids, hashes, exceptId || null]);
+  return Number(q.rows[0].n) || 0;
+}
+const PIN_TAKEN = 'Somebody at this outlet already keys that PIN. Every person'
+  + ' has their own, because that is what makes a void, a discount and a drawer'
+  + ' opening attributable — choose four different digits';
+
 r.post('/staff', atLeast('admin'), async function (req, res, next) {
   const { name, rank, roleKey, pin, outlets } = req.body || {};
   if (!name || !rank || !pin) return res.status(400).json({ error: 'name, rank and pin required' });
@@ -488,6 +538,9 @@ r.post('/staff', atLeast('admin'), async function (req, res, next) {
   try {
     const h = hashPin(pin);
     const row = await withOutlet(req.ctx, async function (c) {
+      if (await pinTaken(c, req.ctx.outletId, pin)) {
+        throw Object.assign(new Error(PIN_TAKEN), { status: 409 });
+      }
       const q = await c.query(
         'INSERT INTO chain.staff (name, rank, role_key, outlet_id, outlets, pin_hash, pin_salt)'
         + ' VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, name, rank, role_key, active',
@@ -520,6 +573,11 @@ r.patch('/staff/:id', atLeast('admin'), async function (req, res, next) {
       if (b.permOverride) add('perm_override', JSON.stringify(b.permOverride));
       if (b.pin) {
         if (!/^\d{4,8}$/.test(String(b.pin))) throw Object.assign(new Error('PIN must be 4 to 8 digits'), { status: 400 });
+        /* Excepting THIS person: resetting somebody's PIN to what it already
+           was is not a collision with themselves. */
+        if (await pinTaken(c, req.ctx.outletId, b.pin, req.params.id)) {
+          throw Object.assign(new Error(PIN_TAKEN), { status: 409 });
+        }
         const h = hashPin(b.pin);
         add('pin_hash', h.hash); add('pin_salt', h.salt);
         add('failed', 0); add('locked_until', null);

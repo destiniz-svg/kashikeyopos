@@ -16108,9 +16108,25 @@ class Component extends DCLogic {
     }
   }
   rankOf(key) { const r = this.ROLERANK()[key]; return r === undefined ? 1 : r; }
+  /* THE LIST IS ORDERED FROM THE LEAST REACH UPWARD, and that is not cosmetic:
+     `openForm` seeds a select with its FIRST option, so whatever leads this
+     list is what an operator creates when they do not touch the dropdown.
+
+     It used to lead with the strongest role the grantor could grant — for an
+     owner, Owner itself. So "add a waiter" made a second rank-5 account with
+     the estate read, GST registration, the store rename and the trade reset,
+     silently, on a screen whose whole subject is who reaches what. Measured on
+     a live outlet: the Role box came up reading SuperAdmin, on a phone and on
+     a desktop alike, and the account it created was rank 5.
+
+     A grant is a decision. The default has to be the one that costs least if
+     nobody makes it, so the safest assignable role leads and the strongest is
+     the one somebody has to reach for. */
   assignableRoles() {
     const mine = this.rankOf(this.state.roleKey);
-    return (K().ROLES || []).filter((r) => this.rankOf(r.key) <= mine);
+    return (K().ROLES || []).filter((r) => this.rankOf(r.key) <= mine)
+      .slice().sort((a, b) => this.rankOf(a.key) - this.rankOf(b.key)
+        || this.rankFor(a.key) - this.rankFor(b.key));
   }
   removeUser(u) {
     const K0 = K(), sess = this.state.session || {};
@@ -17854,6 +17870,14 @@ class Component extends DCLogic {
         onSave: (v) => {
           const basic = +v.basic || 0;
           if (!v.name || !v.job) return this.toast("Name and job title are required", "warn");
+          /* NAME THE FIELD THAT IS MISSING. `onEdit` asked for a salary by
+             name and the ADD path did not, so a form left on its default 0
+             fell straight through to the wage check and came back "Below the
+             MVR 8,000 minimum wage" — which points an operator at the band,
+             at the Act and at the wrong screen, when what is actually wrong is
+             that they have not typed the wage yet. A refusal that names the
+             wrong cause is worse than a slow one. */
+          if (basic <= 0) return this.toast("A basic salary is required — it is the pensionable wage every payroll figure is derived from", "warn");
           const W = this.wageCheck(basic);
           if (W.refuse) return this.toast(W.refuse, "warn");
           const local = v.kind === "local";
@@ -18186,7 +18210,12 @@ class Component extends DCLogic {
           { k: "name", label: "Full name", v: "", full: 1 },
           { k: "pin", label: "Four-digit PIN", v: "" },
           { k: "again", label: "Repeat it", v: "" },
-          { k: "role", label: "Role", options: sel(this.assignableRoles().map((r) => ({ v: r.key, l: r.label }))) },
+          /* The rank rides on the label because the rank IS the gate — it is
+             what the server enforces and what every later refusal is measured
+             against — and "Owner" beside "rank 5" is a sentence somebody reads
+             before they hand it over. */
+          { k: "role", label: "Role", options: sel(this.assignableRoles().map((r) =>
+            ({ v: r.key, l: r.label + " · rank " + this.rankFor(r.key) }))) },
           { k: "outlet", label: "Outlet scope", options: [{ v: "0", l: "Chain-wide" }].concat(outletOpts), full: 1 },
           { k: "status", label: "Account status", options: [{ v: "Active", l: "Active" }, { v: "Suspended", l: "Suspended — sign-in refused" }], full: 1 },
           { k: "extra", label: "Additional outlets (codes, comma separated)", v: "", full: 1 }

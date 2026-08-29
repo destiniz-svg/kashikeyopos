@@ -57,6 +57,10 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        043 a sale the till can name
                        044 an outlet has a face
                        045 a person has a number
+                       046 a number is its digits
+                       047 the ask carries the answer
+                       048 a dish can be bought in
+                       049 a PIN is an identity
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -1527,6 +1531,81 @@ this op is being refused
 
 Verified by putting the broken handler back and watching the line appear
 exactly once.
+
+## A PIN is an identity, so it belongs to one person
+
+Reported as *"I cannot add staffs"*, and sweeping everything around staff found
+three faults. The add paths themselves were sound — both of them, driven at a
+desktop and at a phone viewport, before and after a trade reset — which is what
+sent the sweep looking at what the screens DO rather than at whether they save.
+
+**`chain.pin_match()` ended in a bare `LIMIT 1`.** No ORDER BY, no check that
+the match was unique. Two people sharing four digits therefore both matched and
+Postgres returned whichever row the plan happened to yield — which is not
+stable between calls. Measured on a real outlet: one cashier and one owner
+given the same PIN, three consecutive sign-ins with those digits:
+
+```
+Dupe A Cashier | rank 2
+Dupe B Owner   | rank 5
+Dupe A Cashier | rank 2
+```
+
+So a cashier keying their own PIN was signed in AS THE OWNER — rank 5, the
+estate read, GST registration, the store rename, the trade reset — and every
+void, discount and drawer opening they made that shift was attributed to
+somebody else. The Users screen says in those words that a per-person PIN is
+what makes those acts attributable. Nothing enforced it.
+
+Migration 049, in two halves, and the build already keeps both rules one plane
+over:
+
+- **AMBIGUITY RESOLVES TO NOBODY.** `chain.member_resolve()` (046) refuses two
+  members whose numbers normalise alike and 018 refuses two on one email, for
+  exactly this reason: take-one-silently is one person acting as another. A
+  duplicate PIN matches NOTHING now, so a store that already holds one refuses
+  both rather than guessing — and keeps every row, because evicting somebody
+  from their own account is not a migration's call. The keypad's refusal stays
+  **byte-identical** to a wrong PIN, since "those digits belong to two people"
+  confirms to a stranger that the digits are real; the fact reaches the one
+  place a manager can act on it, as `pin_ambiguous` on the trail, naming how
+  many people share them and where to fix it;
+- **and the door refuses a duplicate before one is created**, so nobody new
+  enters that state. `chain.pin_taken()` answers it over the same salt-per-row
+  walk sign-in already does — a salted hash cannot be looked up any other way —
+  and against every staff row **including the suspended**, because a suspended
+  colleague's PIN is still theirs and handing it to somebody new is how a
+  suspension gets undone by accident the day they are reinstated. Resetting a
+  PIN onto a colleague's digits is the same act and is refused the same way;
+  re-setting your own to what it already was is not a collision with yourself.
+
+The hashes still never leave the database (038): the caller is handed salts,
+hashes the candidate once per salt, and learns a count or an id.
+
+**And the Role box opened on Owner.** `openForm` seeds a select with its FIRST
+option, and `assignableRoles()` returned the shipped order, which leads with
+SuperAdmin. So "Add someone to the floor" came up reading **Owner**, and adding
+a waiter without touching that dropdown made a second RANK 5 account — handed
+out by the one control whose entire subject is who reaches what. Measured at
+both a desktop and a phone viewport: `select.value === "SuperAdmin"`, and the
+account created came back rank 5. A grant is a decision, so the list is ordered
+by REACH now, least first: the default costs least if nobody makes it, and the
+strongest role is the one somebody has to reach for. The rank rides on each
+label (`Owner · rank 5`), because the rank is what the server enforces and that
+is a sentence somebody reads before they hand it over.
+
+**And the employee add path named the wrong cause.** `onEdit` asked for a basic
+salary by name; `onSave` did not, so a form left on its default 0 fell through
+to the minimum-wage check and came back *"Below the MVR 8,000 minimum wage"* —
+sending an operator to the Act, to the business size band and to the wrong
+screen, when what is actually wrong is that they have not typed a wage yet.
+
+`test/api.test.js` proves the door, the ambiguity (written straight into the
+table, because the door can no longer produce that state — which is the point),
+the trail row, and that removing the duplicate lets the rightful holder back in
+so the fence costs nothing permanent. `test/wiring.test.js` pins the ordering
+on the shipped logic class at two ranks and the salary refusal's position; both
+fail against the version that shipped.
 
 ## The minimum wage is a band, and the business says which
 
@@ -5302,7 +5381,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 556 tests
+npm test                          # 559 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
