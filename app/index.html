@@ -1545,6 +1545,38 @@
             </div>
           </sc-if>
 
+          <sc-if value="{{ mDishAdd }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Make it yours</span>
+                <sc-for list="{{ daRows }}" as="a" hint-placeholder-count="4">
+                  <div style="{{ a.rowStyle }}">
+                    <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.name }}</span>
+                    <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                      <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                      <button onClick="{{ a.dec }}" aria-label="One fewer" style="{{ a.decStyle }}">&#8722;</button>
+                      <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+                      <button onClick="{{ a.inc }}" aria-label="One more" style="{{ a.incStyle }}">+</button>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+              <div>
+                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
+                <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none"/>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Quantity</span>
+                <span style="display:flex;align-items:center;gap:11px">
+                  <button onClick="{{ daQtyDec }}" aria-label="One fewer" style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--text)">&#8722;</button>
+                  <span style="font-size:15px;font-weight:700;min-width:18px;text-align:center;font-family:'JetBrains Mono',monospace">{{ daQty }}</span>
+                  <button onClick="{{ daQtyInc }}" aria-label="One more" style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--text);background:var(--text);color:var(--bg)">+</button>
+                </span>
+              </div>
+              <button onClick="{{ daAdd }}" style="width:100%;padding:13px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:700;text-align:center;min-height:48px">{{ daAddLabel }}</button>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ mCatB }}">
             <div style="display:flex;flex-direction:column;gap:15px">
               <div>
@@ -3890,13 +3922,27 @@ class Component extends DCLogic {
     const x = o || this.outlet();
     return this.taxRegistered(x) ? x.tax + " " + (x.rate || 0) + "%" : "";
   }
+  /* WHAT ONE LINE COSTS, in one place. The menu price plus whatever add-ons
+     were chosen on THAT line — a dish rung twice, once with extra cheese, is
+     two lines at two prices.
+
+     This existed nowhere, and the money was already going missing: a guest's
+     phone can order a priced add-on, the round's op carried
+     `menuPrice + addons` to the outlet, and the till's own subtotal added up
+     `menuPrice` alone. The pay screen takes money on the till's figure, so
+     every add-on a guest ordered and was shown was charged to nobody. The QR
+     ingest stamps `extra` on the line now, and this is what reads it. */
+  linePrice(l) {
+    const m = (K().MENU || []).find((x) => x.id === (l || {}).id);
+    return (m ? this.menuPrice(m) : 0) + (+(l || {}).extra || 0);
+  }
   totals(tk, split) {
     const o = this.outlet();
     let sub = 0;
     (tk ? tk.lines : []).forEach((l) => {
       if (split !== undefined && split !== null && l.split !== split) return;
       const m = (K().MENU || []).find((x) => x.id === l.id);
-      if (m) sub += this.menuPrice(m) * l.qty;
+      if (m) sub += this.linePrice(l) * l.qty;
     });
     // A ticket opened yesterday and settled today is taxed on the day it was
     // opened — which is also what makes a backdated correction behave.
@@ -5437,6 +5483,16 @@ class Component extends DCLogic {
      rule: frequent, glanceable information lives on the tile as a badge;
      deliberate actions live behind a deliberate gesture. The actions are
      rank-correct — a kitchen token reads the stock line and nothing else. */
+  /* MAKE IT YOURS — the counter's copy of the sheet the guest's phone has
+     always had. Same shape, same rule: the dish's own add-ons as a flat list
+     with a quantity each (a guest asking for two extra shots is one line,
+     not two), a note for the kitchen, a quantity, and a button that says what
+     the line will cost. */
+  openAddons(id) {
+    const m = (K().MENU || []).find((x) => String(x.id) === String(id));
+    if (!m) return;
+    this.setState({ modal: { kind: "dishadd", id: String(id), picks: {}, note: "", qty: 1 } });
+  }
   dishSheet(id) {
     const m = (K().MENU || []).find((x) => String(x.id) === String(id));
     if (!m) return;
@@ -6040,7 +6096,17 @@ class Component extends DCLogic {
           add: () => {
             // A long-press that opened the sheet must not also ring a line.
             if (this._lp) { this._lp = 0; return; }
-            return off ? refuse() : this.addLine(m);
+            if (off) return refuse();
+            /* CHOOSING THE DISH SHOWS ITS LIST. A dish the shop dresses opens
+               the same "Make it yours" sheet the guest's phone has always
+               had — the cashier could not attach an add-on at all before, so
+               a guest ordering extra cheese from the table got it and one
+               asking the person at the counter did not. A dish with nothing
+               to choose still rings on the tap, and the + stepper beside the
+               card always rings straight through, so the fast path a busy
+               counter needs is untouched. */
+            if (this.addonsFor(m).length) return this.openAddons(m.id);
+            return this.addLine(m);
           },
           /* The same gesture the floor already uses on table tiles: 420ms
              hold, or right-click, opens the dish's own sheet — what is left,
@@ -6092,7 +6158,7 @@ class Component extends DCLogic {
       const m = K0.MENU.find((x) => x.id === l.id) || { name: "?", price: 0 };
       const i = tk.lines.indexOf(l);
       return {
-        name: m.name, qty: l.qty, amount: MVR(this.menuPrice(m) * l.qty),
+        name: m.name, qty: l.qty, amount: MVR(this.linePrice(l) * l.qty),
         rowStyle: "padding:9px 16px;border-bottom:1px solid var(--line);animation:" + ((s.lastAdd && s.lastAdd.id === l.id && Date.now() - s.lastAdd.at < 700) ? "kaddline .2s cubic-bezier(.2,.8,.3,1)" : "kfade .16s"),
         inc: () => this.mutate(undefined, (t) => { t.lines[i] = Object.assign({}, t.lines[i], { qty: t.lines[i].qty + 1, fired: false }); }),
         dec: () => this.mutate(undefined, (t) => { if (t.lines[i].qty > 1) t.lines[i] = Object.assign({}, t.lines[i], { qty: t.lines[i].qty - 1 }); else t.lines.splice(i, 1); }),
@@ -6766,7 +6832,7 @@ class Component extends DCLogic {
           doc: { title: this.outlet().name, sub: "Bill · " + this.slotName(s.activeTable),
             rows: (tk ? tk.lines : []).map((l) => {
               const mi = (K().MENU || []).find((x) => x.id === l.id) || { name: "Item" };
-              return [l.qty + " x " + mi.name, MVRc(this.menuPrice(mi) * l.qty)];
+              return [l.qty + " x " + mi.name, MVRc(this.linePrice(l) * l.qty)];
             }).concat([{ rule: 1 }, ["TOTAL", MVRc(T.total)]]),
             foot: "Not a tax invoice — settle to receive one" } });
         this.toast("Bill sent to " + this.printer("receipt").name);
@@ -6813,15 +6879,22 @@ class Component extends DCLogic {
   //
   // It resets after one add on purpose: a sticky multiplier that survives is how
   // a table ends up with six desserts nobody ordered.
-  addLine(m, qtyIn) {
+  /* `opts` is what the add-on sheet chose: { extra, note } — the money and
+     the names. A line carrying add-ons is NEVER merged into a plain one: the
+     same dish with extra cheese and without it are two lines at two prices,
+     which is also how the guest's phone sends them. */
+  addLine(m, qtyIn, opts) {
     const s = this.state;
     if (!this.guardRegister()) return;
     if (!s.activeTable) { this.toast("Pick a table first", "warn"); return; }
     const qty = Math.max(1, qtyIn || s.qtyMult || 1);
+    const extra = +((opts || {}).extra) || 0;
+    const note = String((opts || {}).note || "");
     let line = null;
     this.mutate(undefined, (t) => {
       const gi = Math.min(s.activeSplit, Math.max(0, this.guestsOf(t).length - 1));
-      const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired);
+      const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired
+        && (+l.extra || 0) === extra && String(l.note || "") === note);
       if (ex) {
         const i = t.lines.indexOf(ex);
         t.lines[i] = Object.assign({}, ex, { qty: ex.qty + qty });
@@ -6832,8 +6905,8 @@ class Component extends DCLogic {
         // a server id to be nameable, and without a name "void the second
         // line" is unsendable, which is why the open ticket used to live on one
         // device and the other terminals saw an empty floor.
-        line = { id: m.id, lid: this.opId(), qty: qty, note: "", split: gi,
-          fired: false, since: 0, firedAt: 0 };
+        line = { id: m.id, lid: this.opId(), qty: qty, note: note, split: gi,
+          extra: extra, fired: false, since: 0, firedAt: 0 };
         t.lines.push(line);
       }
       t.status = "occupied";
@@ -6843,11 +6916,15 @@ class Component extends DCLogic {
     // The whole line, every time. An op that carries a label and no payload
     // looks fine in the outbox, appears in the audit trail, and changes
     // nothing — which is the worst failure available, because it is invisible.
-    this.queue("add_line", m.name + " × " + qty + " · " + this.slotName(s.activeTable),
+    this.queue("add_line", m.name + " × " + qty + (note ? " · " + note : "")
+      + " · " + this.slotName(s.activeTable),
       "order_lines", {
         table: this.slotName(s.activeTable), split: 0,
         item: m.id, name: m.name, qty: (line || {}).qty || qty,
-        price: this.menuPrice(m), guest: (line || {}).split || 0,
+        // The add-ons' money rides the price and their names ride the note —
+        // the same two fields an accepted guest round already fills, so a
+        // line rung at the counter and one ordered from a phone are one shape.
+        price: this.menuPrice(m) + extra, guest: (line || {}).split || 0,
         note: (line || {}).note || "", lid: (line || {}).lid || undefined,
         station: this.dishStation(m), party: (this.ticket() || {}).party || 0
       });
@@ -7046,7 +7123,7 @@ class Component extends DCLogic {
           + (this.taxRegistered(o) ? " · " + this.taxLine(o) : "") + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
-          return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
+          return { n: l.qty + "× " + mi.name, v: MVRc(this.linePrice(l) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
         }),
         splitLabel: evenN > 1 ? "Split evenly · " + evenN + " ways" : "Split evenly",
         splitWays: [1, 2, 3, 4, 5, 6].map((n) => {
@@ -7298,7 +7375,12 @@ class Component extends DCLogic {
             table: this.slotName(s.activeTable), guest: gname, tender: m.tender, cust: cust,
             lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
               const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
-              return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty) };
+              /* The add-ons are named on the paper, not only priced into it —
+                 a guest reading a total two rufiyaa above the menu price is
+                 owed the line that explains it. They ride the note, so this
+                 is the same string the kitchen was given. */
+              return { n: l.qty + "× " + mi.name + (l.note ? " · " + l.note : ""),
+                v: MVRc(this.linePrice(l) * l.qty) };
             }),
             // Dish ids and quantities, not just the printed strings: the sale's
             // consequences (stock, COGS, journal) can only be shown if the close
@@ -8173,6 +8255,62 @@ class Component extends DCLogic {
           if (m.id) this.patchRows("menu", [m.id], next, name + " updated \u00b7 " + this.catMeta(d.cat).name + " \u00b7 " + MVRc(price), "menu");
           else this.insertRow("menu", Object.assign({ id: this.newId("m"), recipe: [] }, next),
             "Dish created \u00b7 " + name + " at " + MVRc(price), "menu_items");
+        }
+      };
+    }
+    /* THE COUNTER'S "MAKE IT YOURS". The guest portal's sheet, at the till —
+       the same flat list with a quantity each, because that is the model the
+       add-ons are actually stored in: one option, one price, chosen as many
+       times as the guest asks for it. */
+    if (m.kind === "dishadd") {
+      const dish = (K0.MENU || []).find((x) => String(x.id) === String(m.id));
+      if (!dish) return { modalTitle: "Dish", modalSub: "", mDishAdd: true, daRows: [] };
+      const picks = m.picks || {};
+      const mods = this.addonsFor(dish);
+      const qty = Math.max(1, +m.qty || 1);
+      const put = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
+      const setPick = (id, n) => {
+        const next = Object.assign({}, picks);
+        if (n > 0) next[id] = n; else delete next[id];
+        put({ picks: next });
+      };
+      const extra = mods.reduce((a, x) => a + (picks[x.id] || 0) * (+x.price || 0), 0);
+      const chosen = mods.filter((x) => picks[x.id])
+        .map((x) => (picks[x.id] > 1 ? picks[x.id] + "× " : "") + x.name);
+      const base = this.menuPrice(dish);
+      return {
+        modalTitle: dish.name,
+        modalSub: MVRc(base) + " · " + this.catMeta(dish.cat).name
+          + " · " + mods.length + " add-on" + (mods.length === 1 ? "" : "s") + " on this dish",
+        mDishAdd: true,
+        daRows: mods.map((a) => {
+          const n = picks[a.id] || 0;
+          return {
+            name: a.name, price: a.price ? "+" + MVR(a.price) : "free",
+            qty: String(n),
+            qtyStyle: "font-size:14px;font-weight:700;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace;color:"
+              + (n ? "var(--text)" : "var(--text-faint)"),
+            decStyle: "width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;border:1px solid var(--line);background:"
+              + (n ? "var(--bg-2)" : "transparent") + ";color:" + (n ? "var(--text)" : "var(--text-faint)"),
+            incStyle: "width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--text);color:var(--bg);border:1px solid var(--text)",
+            rowStyle: "min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)",
+            dec: () => setPick(a.id, Math.max(0, n - 1)),
+            inc: () => setPick(a.id, n + 1)
+          };
+        }),
+        daNote: m.note || "", onDaNote: (e) => put({ note: e.target.value }),
+        daQty: String(qty),
+        daQtyDec: () => put({ qty: Math.max(1, qty - 1) }),
+        daQtyInc: () => put({ qty: qty + 1 }),
+        daAddLabel: "Add · " + MVRc((base + extra) * qty),
+        daAdd: () => {
+          /* The names go on the note the kitchen reads and the money goes on
+             the price the bill charges — one line, both halves, exactly as an
+             accepted guest round already lands. */
+          const note = [chosen.join(", "), String(m.note || "").trim()]
+            .filter(Boolean).join(" · ");
+          this.setState({ modal: null });
+          this.addLine(dish, qty, { extra: extra, note: note });
         }
       };
     }
@@ -9731,8 +9869,13 @@ class Component extends DCLogic {
       x.lines.forEach((ql) => {
         const note = ql.note || "QR";
         const lid = this.opId();
+        /* `extra` on the LINE, not only in the op. The op has carried the
+           add-ons' money to the outlet all along while the till's own
+           subtotal added up the menu price alone — and the pay screen takes
+           money on the till's figure, so every priced add-on a guest chose
+           was charged to nobody. */
         cur.lines.push({ id: ql.id, lid: lid, qty: ql.qty || 1, note: note, split: 0,
-          fired: false, since: 0, firedAt: 0, sig: x.id });
+          extra: +ql.addons || 0, fired: false, since: 0, firedAt: 0, sig: x.id });
         // The round becomes lines on the OUTLET's ticket, not just on this
         // screen: the counter has to be able to settle a table a phone opened.
         // The line's price is the MENU's plus the add-ons the phone declared —

@@ -5129,3 +5129,44 @@ test('no control asks for a typed file path or URL, and the photo travels', () =
     path.join(__dirname, '..', 'src', 'migrations', '003_outlet_provision.sql'), 'utf8')),
     'and a brand-new outlet is born with it');
 });
+
+/* ═══ THE COUNTER CAN DRESS A DISH ══════════════════════════════════════════
+   The guest's phone has offered add-ons since the portals were built; the
+   TILL never did — `addonsFor()` was called only by the add-ons admin screen,
+   a Menu Master count and the CSV export, never by the ordering path. So a
+   guest ordering extra cheese from the table got it and one asking the person
+   at the counter did not. The till gets the prototype's own sheet: the dish's
+   add-ons as a flat list with a quantity each. */
+test('choosing a dish at the till shows its add-ons, and the money follows', () => {
+  assert.ok(/if \(this\.addonsFor\(m\)\.length\) return this\.openAddons\(m\.id\);/.test(SRC),
+    'a dish the shop dresses opens the sheet when it is chosen');
+  assert.ok(/openAddons\(id\) \{/.test(SRC), 'the sheet has an opener');
+  assert.ok(/m\.kind === "dishadd"/.test(SRC), 'and a body');
+  const sheet = SRC.slice(SRC.indexOf('if (m.kind === "dishadd")'),
+    SRC.indexOf('if (m.kind === "dishadd")') + 3000);
+  assert.ok(/Make it yours/.test(SRC), 'wearing the portal\'s own heading');
+  assert.ok(/picks\[x\.id\] \|\| 0\) \* \(\+x\.price \|\| 0\)/.test(sheet),
+    'a quantity each, priced — two extra shots are one line, not two');
+  assert.ok(/daAddLabel: "Add · " \+ MVRc\(\(base \+ extra\) \* qty\)/.test(sheet),
+    'and the button says what the line will cost');
+
+  /* ONE DEFINITION OF WHAT A LINE COSTS, and it closed a money defect that
+     was already live: the QR round's op carried menuPrice + addons to the
+     outlet while the till's own subtotal added up menuPrice alone — and the
+     pay screen takes money on the till's figure. */
+  assert.ok(/linePrice\(l\) \{/.test(SRC), 'linePrice is the one definition');
+  assert.ok(/\(m \? this\.menuPrice\(m\) : 0\) \+ \(\+\(l \|\| \{\}\)\.extra \|\| 0\)/.test(SRC),
+    'menu price plus what was chosen on THAT line');
+  assert.ok(!/menuPrice\(mi\) \* l\.qty/.test(SRC) && !/menuPrice\(m\) \* l\.qty/.test(SRC),
+    'and no renderer prices a line any other way');
+  assert.ok(/extra: \+ql\.addons \|\| 0/.test(SRC),
+    'the accepted guest round stamps it on the LINE, not only in the op');
+
+  // The two halves land where they already land for a phone order.
+  const al = SRC.slice(SRC.indexOf('addLine(m, qtyIn, opts) {'),
+    SRC.indexOf('addLine(m, qtyIn, opts) {') + 2600);
+  assert.ok(/price: this\.menuPrice\(m\) \+ extra/.test(al),
+    'the op carries the add-ons\' money on the price');
+  assert.ok(/&& \(\+l\.extra \|\| 0\) === extra && String\(l\.note \|\| ""\) === note/.test(al),
+    'a dressed line is never merged into a plain one');
+});
