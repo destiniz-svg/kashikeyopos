@@ -118,7 +118,11 @@ test('the section glyphs and hues live in the one file both apps load', () => {
 test('the guest portal can pick a glyph from a section name alone', () => {
   const K = till().__win.KPOS;
   const cases = [
-    ['Reef Fish', 'seafood'], ['Rice & Curries', 'rice'], ['Cold Drinks', 'drink'],
+    // A name that says "curry" is a curry section whatever else it says — the
+    // bowl, not the rice dome — and a cold-drinks rail is the glass with the
+    // straw. The classifier ranks the most specific family first.
+    ['Reef Fish', 'seafood'], ['Rice & Curries', 'curry'], ['Cold Drinks', 'juice'],
+    ['Rice & Biryani', 'rice'], ['Drinks', 'drink'],
     ['Sweets & Puddings', 'dessert'], ['Hedhikaa', 'starter'], ['Soups', 'soup'],
     ['Anything at all', 'main']
   ];

@@ -15,7 +15,7 @@
   {
    "id": "breakfast",
    "name": "Breakfast & Maldivian Specialties",
-   "icon": "salad",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 0
@@ -23,23 +23,23 @@
   {
    "id": "shorteats",
    "name": "Short Eats & Snacks",
-   "icon": "starter",
-   "colour": "#b7791f",
+   "icon": null,
+   "colour": null,
    "station": null,
    "pos": 1
   },
   {
    "id": "mains",
    "name": "Mains & Curries",
-   "icon": "main",
-   "colour": "var(--cat-mains)",
+   "icon": null,
+   "colour": null,
    "station": "hot",
    "pos": 2
   },
   {
    "id": "rice",
    "name": "Rice & Noodles",
-   "icon": "rice",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 3
@@ -47,7 +47,7 @@
   {
    "id": "western",
    "name": "Pizza, Burgers & Pasta",
-   "icon": "grill",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 4
@@ -55,7 +55,7 @@
   {
    "id": "sides",
    "name": "Sides & Add-ons",
-   "icon": "side",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 5
@@ -63,7 +63,7 @@
   {
    "id": "desserts",
    "name": "Desserts & Sweets",
-   "icon": "dessert",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 6
@@ -71,7 +71,7 @@
   {
    "id": "hotdrinks",
    "name": "Coffee & Tea",
-   "icon": "coffee",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 7
@@ -79,7 +79,7 @@
   {
    "id": "colddrinks",
    "name": "Cold Beverages",
-   "icon": "drink",
+   "icon": null,
    "colour": null,
    "station": null,
    "pos": 8

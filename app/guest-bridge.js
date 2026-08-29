@@ -147,7 +147,12 @@
       floor: floor
     }];
     K.MENU_CATEGORIES = (snap.categories || []).map(function (c) {
-      return { id: c.id, name: c.name, icon: "main" };
+      /* The published icon and colour ride AS PUBLISHED — a person picked
+         them in the section editor. Null stays null, so the portal
+         classifies the section by NAME into its typed glyph and hue. The
+         old literal `icon: "main"` here stamped cutlery onto every section,
+         which made the whole classification unreachable on a phone. */
+      return { id: c.id, name: c.name, icon: c.icon || null, colour: c.colour || null };
     });
     K.MENU = (snap.items || []).map(function (i) {
       return {

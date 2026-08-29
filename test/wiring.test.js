@@ -4944,3 +4944,84 @@ test('the full log-out: cleared, kept, gated, and recorded', () => {
   assert.ok(/B\.flush/.test(t) && /B\.signOut/.test(t),
     'the sign_out op gets a bounded drain BEFORE the token it needs is dropped');
 });
+
+/* ═══ THE TYPE DECIDES THE DESIGN ═══════════════════════════════════════════
+   A menu section's glyph and hue are classified from its NAME — a curry
+   section is the bowl in curry maroon, a cold-drinks rail the glass in
+   teal-cyan — on the till, the guest QR menu and the member card alike. The
+   classifier is the DEFAULT: an icon or colour a person picked always wins,
+   and an unpicked one is stored as NOTHING so a rename re-classifies. The
+   pre-set menu ships classification-owned rows, and migration 049 resets
+   exactly the machine-written values existing outlets carry. */
+test('the section type decides the glyph and the hue, everywhere at once', () => {
+  const vm = require('node:vm');
+  const ctx = { window: {}, Event: function Event() {}, dispatchEvent: () => {} };
+  ctx.window.dispatchEvent = () => {};
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-data.js'), 'utf8'), ctx);
+  const k = ctx.window.KPOS;
+  ['curry', 'breakfast', 'burger', 'noodles', 'juice'].forEach((key) => {
+    assert.ok(k.SECTION_GLYPHS[key], 'the ' + key + ' glyph exists');
+    assert.ok(k.SECTION_ART[key], 'and carries its own hue');
+  });
+  // The canonical pre-set sections classify to their kinds.
+  const want = {
+    'Mains & Curries': 'curry', 'Breakfast & Maldivian Specialties': 'breakfast',
+    'Pizza, Burgers & Pasta': 'burger', 'Cold Beverages': 'juice',
+    'Coffee & Tea': 'coffee', 'Short Eats & Snacks': 'starter',
+    'Rice & Noodles': 'noodles', 'Desserts & Sweets': 'dessert',
+    'Sides & Add-ons': 'side', 'Seafood Specials': 'seafood'
+  };
+  Object.keys(want).forEach((name) => {
+    const art = k.sectionArt(name);
+    assert.strictEqual(art.icon, want[name], name + ' classifies to ' + want[name]);
+    assert.strictEqual(art.hue, k.SECTION_ART[want[name]], 'and wears that kind\'s hue');
+  });
+  assert.strictEqual(k.glyphFor('Mains & Curries'), 'curry',
+    'glyphFor is the classification\'s icon half — one vocabulary, not two');
+  assert.notStrictEqual(k.sectionArt('Cold Beverages').hue, k.sectionArt('Mains & Curries').hue,
+    'drinks and curries are different colours by TYPE, not by position');
+
+  // The till classifies where nothing was chosen…
+  assert.ok(/const art = \(K\(\) \|\| \{\}\)\.sectionArt;/.test(SRC),
+    'catHue falls through to the type before the index palette');
+  assert.ok(/icon: K0\.sectionArt \? K0\.sectionArt\(base\.name \|\| id\)\.icon : "main"/.test(SRC),
+    'and catMeta\'s default glyph is the type, not generic cutlery');
+  // …and never bakes the guess into a row.
+  assert.ok(/color: c\.color \|\| null, icon: c\.icon \|\| null/.test(SRC),
+    'the section editor stores an unpicked icon or colour as NOTHING');
+  assert.ok(/const meta = \{ id: key, name: name, icon: null, color: null,/.test(SRC),
+    'ensureSection sends no icon and no colour of its own');
+
+  // Both portals: a published choice wins, then the type — the same rule.
+  ['guest.html', 'member.html'].forEach((f) => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8');
+    assert.ok(/k\.sectionArt\(c \? c\.name : ""\)\.hue/.test(P), f + ' hue classifies by type');
+    assert.ok(/c\.icon && g\[c\.icon\]/.test(P), f + ' honours a published glyph');
+  });
+  // The snapshot publishes the choice — and only a REAL colour: a till theme
+  // token (`var(--cat-…)`) means nothing on a phone.
+  const outletSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.ok(/CASE WHEN colour LIKE '#%' THEN colour END/.test(outletSrc),
+    'a non-hex colour never reaches a phone');
+  // And the guest bridge passes it through: its old literal `icon: "main"`
+  // stamped cutlery onto every section, which made the classification
+  // unreachable on a phone however right everything upstream was.
+  const gb = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.ok(/icon: c\.icon \|\| null, colour: c\.colour \|\| null/.test(gb),
+    'the bridge carries the published icon and colour, and invents neither');
+  assert.ok(!/return \{ id: c\.id, name: c\.name, icon: "main" \}/.test(gb),
+    'no hardcoded glyph in the bridge');
+
+  // The pre-set ships classification-owned sections, and 049 repairs exactly
+  // what the extraction wrote on existing outlets — never a person's pick.
+  const preset = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'data', 'preset-menu.json'), 'utf8'));
+  preset.sections.forEach((s) => {
+    assert.strictEqual(s.icon, null, s.id + ' ships no baked icon');
+    assert.strictEqual(s.colour, null, s.id + ' ships no baked colour');
+  });
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations', '049_a_section_wears_its_kind.sql'), 'utf8');
+  assert.ok(/\('breakfast','salad'\)/.test(mig.replace(/''/g, "'")),
+    'the breakfast-wearing-the-salad-glyph row is repaired by exact match');
+  assert.ok(/var\(--cat-mains\)/.test(mig), 'and the theme token leaves the colour column');
+});

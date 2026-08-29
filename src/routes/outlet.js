@@ -780,7 +780,14 @@ async function snapshot(c, outletId) {
       + '   AND NOT i.qr_off AND NOT coalesce(mc.hidden, false)'
       + '   AND NOT coalesce(mc.qr_off, false)'
       + ' ORDER BY i.pos, i.name'],
-    cats: ['SELECT id, name, pos FROM menu_category'
+    /* Colour and icon travel too, so a glyph or hue a person picked in the
+       section editor reaches the phone — but only a REAL colour: a shipped
+       section's colour is a till theme token (`var(--cat-mains)`), which
+       means nothing off the till, so anything that is not a hex stays home
+       and the phone classifies from the name instead. */
+    cats: ["SELECT id, name, pos, icon,"
+      + " CASE WHEN colour LIKE '#%' THEN colour END AS colour"
+      + ' FROM menu_category'
       + ' WHERE active AND NOT hidden AND NOT qr_off ORDER BY pos, name'],
     // The floor is the outlet's own, never a count guessed by the phone: a
     // room with six tables must not offer a guest twelve to sit at.

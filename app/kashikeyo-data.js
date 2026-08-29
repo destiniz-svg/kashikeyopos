@@ -501,35 +501,75 @@
     soup: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M9 3v3M12 2v4M15 3v3",
     salad: "M3 12h18a9 9 0 0 1-18 0zM12 3a4 4 0 0 1 4 4M12 3a4 4 0 0 0-4 4",
     seafood: "M3 12c4-5 14-5 18 0-4 5-14 5-18 0zM17 12h.01M6 8.5 3 6M6 15.5 3 18",
-    coffee: "M4 8h12v5a5 5 0 0 1-10 0zM16 9h2a2.5 2.5 0 0 1 0 5h-2M4 21h14"
+    coffee: "M4 8h12v5a5 5 0 0 1-10 0zM16 9h2a2.5 2.5 0 0 1 0 5h-2M4 21h14",
+    /* The typed kinds a Maldivian menu actually has, so a section reads as
+       WHAT IT SELLS rather than as generic cutlery: a curry is a bowl with
+       steam (not the soup bowl — the steam curls where soup's stands
+       straight), breakfast is the pan with the egg in it, the western rail
+       is a burger, noodles are the bowl under chopsticks, and a cold drink
+       is the tall glass with the straw the drink tumbler is not. */
+    curry: "M4 12h16a8 8 0 0 1-16 0zM3 21h18M8.5 8c.8-.8.8-1.6 0-2.4s-.8-1.6 0-2.4M12 8c.8-.8.8-1.6 0-2.4s-.8-1.6 0-2.4M15.5 8c.8-.8.8-1.6 0-2.4s-.8-1.6 0-2.4",
+    breakfast: "M10 13m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M10 13m-2.6 0a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0-5.2 0M17 13h4",
+    burger: "M4 10a8 4.8 0 0 1 16 0v.6H4zM3.5 13.6h17M5 16.6h14v1a2.6 2.6 0 0 1-2.6 2.6H7.6A2.6 2.6 0 0 1 5 17.6zM9 7h.01M12.5 6.4h.01",
+    noodles: "M4 12h16a8 8 0 0 1-16 0zM3 21h18M7 9.5 17.5 3M10.5 9.5 20 4.5",
+    juice: "M7.5 5h9l-1.2 15h-6.6zM13 5l2.6-3M7 10h10"
   };
-  /* One hue per section, by section index. The till resolves shipped sections
-     through theme tokens first; a merchant-created section — and every section
-     on the guest's phone, which is told only names — falls back to these. */
+  /* One hue per section KIND, so the colour says the same thing the glyph
+     does: every drinks rail in every store is the drinks teal, every curry
+     section the curry maroon. Food kinds sit warm, drinks cool, and the
+     hues are tints and strokes (16% washes, half-opacity lines), never text
+     — so distinctness matters here and AA does not. */
+  var SECTION_ART = {
+    all: "#64748b", breakfast: "#b7791f", starter: "#c05621", main: "#b8431d",
+    curry: "#8c2f39", grill: "#7f5330", burger: "#9a3412", rice: "#4d6b23",
+    noodles: "#67702a", side: "#6a8a2a", salad: "#2f7d4f", soup: "#a8721a",
+    seafood: "#2b5a9e", dessert: "#9c2f63", drink: "#1d6b57",
+    juice: "#0e7490", coffee: "#5f4025"
+  };
+  /* One hue per section, by section index — the LAST resort, kept for a page
+     holding an older copy of this file. Everything current classifies by
+     type through sectionArt() instead. */
   var SECTION_HUES = ["#b8431d", "#1d6b57", "#6f47a8", "#a8721a", "#2b5a9e",
     "#9c2f63", "#4d6b23", "#7f5330"];
-  /* THE GUEST PORTAL IS TOLD NAMES, NOT KEYS. It reads the published category
-     list, which carries no `icon`, so the glyph is matched by keyword — first
-     hit wins, and anything unmatched is a main. A section called "Hedhikaa"
-     gets the starter glyph rather than a generic square. */
-  function glyphFor(name) {
+  /* THE TYPE DECIDES THE DESIGN. A section is classified from its NAME into
+     one kind, and the kind carries both the glyph and the hue — so "Mains &
+     Curries" is the curry bowl in curry maroon on the till, the guest's
+     phone and the member card alike, and two stores' drinks rails wear the
+     same glass. Most specific families first: a name that says "curry" is a
+     curry section whatever else it says, and "Cold Beverages" is a juice
+     glass, not the generic tumbler. An explicit icon or colour a person
+     picked in the section editor always wins over this — the classifier is
+     the DEFAULT, never the decision. */
+  function sectionArt(name) {
     var t = String(name || "").toLowerCase();
-    var direct = ["seafood", "salad", "soup", "coffee", "dessert", "grill",
-      "rice", "side", "starter", "drink"];
-    for (var i = 0; i < direct.length; i++) if (t.indexOf(direct[i]) >= 0) return direct[i];
-    if (/fish|reef|tuna/.test(t)) return "seafood";
-    if (/noodle|curry|curries/.test(t)) return "rice";
-    if (/juice|shake|cold|water|tea/.test(t)) return "drink";
-    if (/breakfast|snack|starter|hedhikaa/.test(t)) return "starter";
-    if (/sweet|cake|pudding/.test(t)) return "dessert";
-    return "main";
+    function pick(k) { return { icon: k, hue: SECTION_ART[k] || SECTION_ART.main }; }
+    if (/breakfast|brunch|morning|nashta|egg/.test(t)) return pick("breakfast");
+    if (/curry|curries|riha|garudhiya|masala/.test(t)) return pick("curry");
+    if (/burger|pizza|pasta|sandwich|submarine|western|wrap/.test(t)) return pick("burger");
+    if (/noodle|chow ?mein|goreng/.test(t)) return pick("noodles");
+    if (/juice|shake|smoothie|lassi|mojito|beverage|cold drink|soft drink/.test(t)) return pick("juice");
+    if (/coffee|\btea\b|hot drink|espresso|latte|sai\b/.test(t)) return pick("coffee");
+    if (/seafood|fish|reef|tuna|prawn|crab|lobster|octopus/.test(t)) return pick("seafood");
+    if (/soup/.test(t)) return pick("soup");
+    if (/salad/.test(t)) return pick("salad");
+    if (/dessert|sweet|cake|pudding|ice cream/.test(t)) return pick("dessert");
+    if (/grill|bbq|barbecue|tandoor/.test(t)) return pick("grill");
+    if (/rice|biryani/.test(t)) return pick("rice");
+    if (/side|add-on|extras/.test(t)) return pick("side");
+    if (/starter|hedhikaa|short eat|snack|appetiser|appetizer|bites/.test(t)) return pick("starter");
+    if (/drink|water/.test(t)) return pick("drink");
+    return pick("main");
   }
+  // Kept under its old name for every existing caller: the glyph half of the
+  // classification above.
+  function glyphFor(name) { return sectionArt(name).icon; }
 
   window.KPOS = {
     ALLERGENS: ALLERGENS, DIETS: DIETS, MEAT_RE: RULES.MEAT_RE,
     CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU,
     MENU_CATEGORIES: MENU_CATEGORIES, MENU_SECTIONS: MENU_SECTIONS,
-    SECTION_GLYPHS: SECTION_GLYPHS, SECTION_HUES: SECTION_HUES, glyphFor: glyphFor,
+    SECTION_GLYPHS: SECTION_GLYPHS, SECTION_HUES: SECTION_HUES,
+    SECTION_ART: SECTION_ART, sectionArt: sectionArt, glyphFor: glyphFor,
     BANNERS: BANNERS, PROMOS: PROMOS, MODIFIERS: MODIFIERS,
     TIERS: TIERS, REWARDS: REWARDS,
     MODULES: MODULES, ROLES: ROLES, USERS: USERS, CUSTOMERS: CUSTOMERS,

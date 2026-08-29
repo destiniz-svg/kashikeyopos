@@ -844,9 +844,18 @@ class Component extends DCLogic {
      the phone from another is how the same dish ends up with two faces. */
   artHue(catId) {
     const k = window.KPOS || {};
-    const pal = k.SECTION_HUES || ["#b8431d"];
     const list = k.MENU_CATEGORIES || [];
-    const i = list.findIndex((c) => c.id === catId);
+    const c = list.find((x) => x.id === catId);
+    /* A hue the outlet PUBLISHED wins — a person picked it in the section
+       editor. Otherwise the TYPE decides, classified from the name, so a
+       curry section is curry maroon on this phone and on the till alike —
+       where the old index palette coloured a section by its POSITION and no
+       two stores' drinks rails matched. */
+    const chosen = c && (c.colour || c.color);
+    if (chosen && String(chosen)[0] === "#") return chosen;
+    if (k.sectionArt) return k.sectionArt(c ? c.name : "").hue;
+    const pal = k.SECTION_HUES || ["#b8431d"];
+    const i = list.findIndex((x) => x.id === catId);
     return pal[(i < 0 ? 0 : i) % pal.length];
   }
   artName(catId) {
@@ -881,7 +890,11 @@ class Component extends DCLogic {
   artGlyphUrl(catId, ink) {
     const k = window.KPOS || {};
     const g = k.SECTION_GLYPHS || {};
-    const key = k.glyphFor ? k.glyphFor(this.artName(catId)) : "main";
+    // An icon the outlet published wins; a section with none classifies by
+    // its name into the same typed glyph the till draws.
+    const c = (k.MENU_CATEGORIES || []).find((x) => x.id === catId);
+    const key = (c && c.icon && g[c.icon]) ? c.icon
+      : (k.glyphFor ? k.glyphFor(this.artName(catId)) : "main");
     const d = g[key] || g.main || "";
     const stroke = ink || this.artHue(catId);
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"

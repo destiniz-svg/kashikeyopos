@@ -5229,7 +5229,11 @@ class Component extends DCLogic {
     const base = list.find((c) => c.id === id) || { id: id, name: id };
     const idx = Math.max(0, list.findIndex((c) => c.id === id));
     const pal = this.CATCOLORS();
-    const out = { id: id, name: base.name || id, icon: "main",
+    // The default glyph is the section's TYPE, classified from its name —
+    // never generic cutlery. An icon the outlet published (or this pen
+    // holds) overrides it two lines down.
+    const out = { id: id, name: base.name || id,
+      icon: K0.sectionArt ? K0.sectionArt(base.name || id).icon : "main",
       color: this.catHue(id) || pal[idx % pal.length],
       station: this.defaultStation(id), hidden: false, section: base.section, pos: base.pos };
     ["icon", "color", "station"].forEach((k) => { if (base[k] != null) out[k] = base[k]; });
@@ -5284,7 +5288,12 @@ class Component extends DCLogic {
     if ((((this.state.local || {}).menucats) || []).some((c) => c && c.id === key)) return;
     const name = this.SHIPPED_SECTIONS[key]
       || key.replace(/[-_]+/g, " ").replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
-    const meta = { id: key, name: name, icon: key, color: this.catHue(key),
+    /* Icon and colour ride as NOTHING: the row stays classification-owned,
+       so it wears its type's glyph and hue everywhere at once and a rename
+       re-classifies it. Baking `catHue()` here froze a section's colour at
+       whatever the rail happened to resolve the moment a dish first named
+       it. */
+    const meta = { id: key, name: name, icon: null, color: null,
       station: this.defaultStation(key), hidden: false, pos: null };
     // Held here as well as sent, so the rail draws it at once and the pen
     // re-sends it if this push does not land.
@@ -5310,7 +5319,20 @@ class Component extends DCLogic {
     next[id] = Object.assign({}, next[id] || {}, patch);
     this.setState({ catMeta: next });
     if (label) {
-      this.catWrite(id, Object.assign({}, this.catMeta(id), patch), label);
+      /* The write composes the STORED row, this pen's own edits and the
+         change — never `catMeta()`, whose icon and colour are the RESOLVED
+         answer (the classification, or a `var(--cat-…)` theme token). Every
+         toggle used to re-send those as though somebody had picked them,
+         which is exactly how a till theme token ended up in a colour column
+         the guest's phone reads. */
+      const stored = ((K() || {}).MENU_CATEGORIES || []).find((c) => c.id === id) || {};
+      const body = Object.assign({}, stored, next[id] || {});
+      // The name and the station always ride (the outlet needs both to draw
+      // and to route); a stored null must not shadow the resolved ones.
+      const cur = this.catMeta(id);
+      if (body.name == null) body.name = cur.name;
+      if (body.station == null) body.station = cur.station;
+      this.catWrite(id, body, label);
       this.toast(label);
     }
   }
@@ -5921,7 +5943,10 @@ class Component extends DCLogic {
       const on = s.cat === c.id;
       return {
       name: c.name,
-      icon: this.catIcon(c.icon || c.id),
+      // A real section with no chosen glyph classifies through catMeta (the
+      // type, from the name); the pseudo-tabs keep their own marks.
+      icon: this.catIcon(c.icon || (["all", "top", "counter"].indexOf(c.id) < 0
+        ? this.catMeta(c.id).icon : c.id)),
       count: (c.id === "top" ? topIds
         : c.id === "counter" ? this.counterDishes()
         : c.id === "all" ? K0.MENU.filter((m) => this.menuVisible(m))
@@ -8144,8 +8169,18 @@ class Component extends DCLogic {
       // a palette swatch — the picker opened with nothing marked and no way back
       // to the original hue. Its current colour leads the row instead.
       const pal = this.CATCOLORS();
-      const swatches = (pal.indexOf(c.color) >= 0 ? [] : [c.color]).concat(pal);
-      const icons = [["main", "Mains"], ["starter", "Starters"], ["grill", "Grill"], ["rice", "Rice"], ["side", "Sides"], ["dessert", "Desserts"], ["drink", "Drinks"], ["coffee", "Hot drinks"], ["soup", "Soups"], ["salad", "Salads"], ["seafood", "Seafood"]];
+      /* THE TYPE IS THE DEFAULT, AND IT FOLLOWS THE NAME. Until somebody
+         picks a swatch or a glyph, the section wears what its name
+         classifies to \u2014 type "Curries" and the bowl in curry maroon is
+         already marked; retype it "Juices" and the glass in teal-cyan takes
+         over. A pick STOPS the following, the same rule the tax rate keeps
+         against its class: a suggestion steps aside for an answer, a
+         decision is never stomped. */
+      const auto = (K0.sectionArt || (() => ({ icon: "main", hue: pal[0] })))(c.name || "");
+      const curColor = c.color || auto.hue;
+      const curIcon = c.icon || auto.icon;
+      const swatches = (pal.indexOf(curColor) >= 0 ? [] : [curColor]).concat(pal);
+      const icons = [["main", "Mains"], ["curry", "Curries"], ["breakfast", "Breakfast"], ["starter", "Starters"], ["grill", "Grill"], ["burger", "Burgers"], ["rice", "Rice"], ["noodles", "Noodles"], ["side", "Sides"], ["dessert", "Desserts"], ["drink", "Drinks"], ["juice", "Juices"], ["coffee", "Hot drinks"], ["soup", "Soups"], ["salad", "Salads"], ["seafood", "Seafood"]];
       const n = m.id ? (K0.MENU || []).filter((x) => x.cat === m.id).length : 0;
       return {
         modalTitle: m.id ? c.name || "Section" : "New menu section",
@@ -8154,10 +8189,11 @@ class Component extends DCLogic {
         cbName: c.name || "", onCbName: (e) => put({ name: e.target.value }),
         cbColors: swatches.map((hex) => ({
           go: () => put({ color: hex }),
-          style: "width:30px;height:30px;border-radius:9px;flex-shrink:0;background:" + hex + ";box-shadow:0 0 0 " + (c.color === hex ? "2px var(--bg-1), 0 0 0 4px var(--text)" : "1px rgba(0,0,0,.14)")
+          style: "width:30px;height:30px;border-radius:9px;flex-shrink:0;background:" + hex + ";box-shadow:0 0 0 " + (curColor === hex ? "2px var(--bg-1), 0 0 0 4px var(--text)" : "1px rgba(0,0,0,.14)")
         })),
-        cbColorNote: "This hue bands the till grid, tints the artifact on dishes with no photograph, and colours the KDS rail.",
-        cbIcons: icons.map((ic) => ({ label: ic[1], style: pill(c.icon === ic[0]), go: () => put({ icon: ic[0] }) })),
+        cbColorNote: (c.color || c.icon ? "" : "Matched to the section's type from its name \u2014 pick a swatch or glyph only to override it. ")
+          + "This hue bands the till grid, tints the artifact on dishes with no photograph, and colours the KDS rail.",
+        cbIcons: icons.map((ic) => ({ label: ic[1], style: pill(curIcon === ic[0]), go: () => put({ icon: ic[0] }) })),
         cbStations: this.STATIONS().map((st) => ({ label: st[1], style: pill(c.station === st[0]), go: () => put({ station: st[0] }) })),
         cbHidLabel: c.hidden ? "Hidden section" : "Shown on the menu",
         cbHidSub: c.hidden ? "Its dishes disappear from the till, the QR menu and the printed list." : "Guests and cashiers both see this section.",
@@ -8176,7 +8212,11 @@ class Component extends DCLogic {
           const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
           if (!id) return this.toast("That name has no letters to make a section id from", "warn");
           if ((K0.MENU_CATEGORIES || []).some((x) => x.id === id)) return this.toast("That menu section already exists", "warn");
-          const meta0 = { name: name, color: c.color, icon: c.icon || "main",
+          /* An unpicked icon or colour is stored as NOTHING, not as a baked
+             guess: the row stays classification-owned, so a later rename
+             re-classifies it everywhere at once — which "main" written here
+             would have frozen for ever. */
+          const meta0 = { name: name, color: c.color || null, icon: c.icon || null,
             station: c.station, hidden: !!c.hidden };
           const row = Object.assign({ id: id, section: null, pos: null }, meta0);
           (K0.MENU_CATEGORIES || []).push(row);
@@ -9858,12 +9898,20 @@ class Component extends DCLogic {
      the shipped hue underneath. The middle one is what was missing — a colour
      chosen on the manager's tablet reached the counter never. */
   catHue(id) {
+    if (id === "all") return "var(--cat-all)";
     const ov = (this.state.catMeta || {})[id];
     if (ov && ov.color) return ov.color;
     const list = (K().MENU_CATEGORIES || []); const i = list.findIndex((c) => c.id === id);
     if (i >= 0 && list[i].color) return list[i].color;
     const known = ["starters", "mains", "grill", "rice", "sides", "desserts", "drinks"];
     if (known.indexOf(id) >= 0) return "var(--cat-" + id + ")";
+    /* THE TYPE DECIDES THE HUE. A section nobody has picked a colour for is
+       classified from its name — every drinks rail teal, every curry maroon
+       — instead of taking whatever hue its POSITION happened to land on,
+       which coloured the same section differently in every store. The index
+       palette survives only for a page holding an older data file. */
+    const art = (K() || {}).sectionArt;
+    if (art) return art((i >= 0 ? list[i].name : "") || id).hue;
     return i < 0 ? "var(--cat-all)" : this.CATCOLORS()[i % this.CATCOLORS().length];
   }
   // Switching sections repaints a grid of photo cards. That is the one place in
@@ -15240,8 +15288,10 @@ class Component extends DCLogic {
     this.setState({
       modal: {
         kind: "catb", id: id || null,
+        // A new section opens with NOTHING picked — the form shows what the
+        // typed name classifies to, and only an actual pick writes a value.
         c: c ? { name: c.name, color: c.color, icon: c.icon || "main", station: c.station, hidden: !!c.hidden }
-             : { name: "", color: this.CATCOLORS()[(K().MENU_CATEGORIES || []).length % 8], icon: "main", station: "hot", hidden: false }
+             : { name: "", color: "", icon: "", station: "hot", hidden: false }
       }
     });
   }
@@ -15537,8 +15587,13 @@ class Component extends DCLogic {
     plan.secAdd.forEach((s) => this.catWrite(s.id,
       (local.menucats || []).find((c) => c.id === s.id) || s,
       "Menu section created \u00b7 " + s.name));
+    /* The update sends the STORED row under the CSV's own fields \u2014 not
+       `catMeta()`, whose icon and colour are the resolved classification:
+       sending those would bake the classifier's answer onto every section a
+       CSV touches, freezing what a rename should re-classify. */
     plan.secUpd.forEach((s) => this.catWrite(s.id,
-      Object.assign({}, this.catMeta(s.id)), "Menu section \u00b7 " + s.name));
+      Object.assign({}, (K().MENU_CATEGORIES || []).find((c) => c.id === s.id) || {}, s),
+      "Menu section \u00b7 " + s.name));
     modRows.forEach((a) => this.modWrite(a, "Add-on imported \u00b7 " + a.name, []));
     /* THE IMPORT CARRIES THE DISHES. `H.menu_import` has always existed and
        loops `dish_upsert` over what it is given — and this call site sent a
@@ -16799,7 +16854,8 @@ class Component extends DCLogic {
           if (v.scope === "menu") {
             const id = v.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             if ((K0.MENU_CATEGORIES || []).some((c) => c.id === id)) return this.toast("That menu section already exists", "warn");
-            const meta0 = { name: v.name, icon: v.icon || "main" };
+            // Unpicked stays NOTHING — the type classifies it from the name.
+            const meta0 = { name: v.name, icon: v.icon || null };
             const row = Object.assign({ id: id, section: null, pos: null, hidden: false }, meta0);
             (K0.MENU_CATEGORIES || []).push(row);
             const L = Object.assign({}, this.state.local || {});

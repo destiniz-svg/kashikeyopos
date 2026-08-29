@@ -1312,9 +1312,15 @@ class Component extends DCLogic {
      unphotographed dish was a blank grey box. One product, one plate. */
   artHue(catId) {
     const k = window.KPOS || {};
-    const pal = k.SECTION_HUES || ["#b8431d"];
     const list = k.MENU_CATEGORIES || [];
-    const i = list.findIndex((c) => c.id === catId);
+    const c = list.find((x) => x.id === catId);
+    // A published hue wins (a person picked it); otherwise the TYPE decides,
+    // classified from the name — the guest portal's rule, exactly.
+    const chosen = c && (c.colour || c.color);
+    if (chosen && String(chosen)[0] === "#") return chosen;
+    if (k.sectionArt) return k.sectionArt(c ? c.name : "").hue;
+    const pal = k.SECTION_HUES || ["#b8431d"];
+    const i = list.findIndex((x) => x.id === catId);
     return pal[(i < 0 ? 0 : i) % pal.length];
   }
   artName(catId) {
@@ -1342,7 +1348,9 @@ class Component extends DCLogic {
   artGlyphUrl(catId, ink) {
     const k = window.KPOS || {};
     const g = k.SECTION_GLYPHS || {};
-    const key = k.glyphFor ? k.glyphFor(this.artName(catId)) : "main";
+    const c = (k.MENU_CATEGORIES || []).find((x) => x.id === catId);
+    const key = (c && c.icon && g[c.icon]) ? c.icon
+      : (k.glyphFor ? k.glyphFor(this.artName(catId)) : "main");
     const d = g[key] || g.main || "";
     const stroke = ink || this.artHue(catId);
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'"
