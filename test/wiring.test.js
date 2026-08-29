@@ -4885,3 +4885,24 @@ test('banners ride the projection and the image slots are guided', () => {
   assert.ok(/logo: \(o\.brand \|\| \{\}\)\.logo/.test(bridge),
     'the bridge maps chain.outlet.brand onto the portals\' outlet record');
 });
+
+/* ── A LOCKED TERMINAL STAYS LOCKED THROUGH A RELOAD ──────────────────────────
+   Reported: PIN-lock the till, refresh the browser — the lock disappears; a
+   deployed update's reload did the same. adoptSession() exists so a tab that
+   crashed mid-shift comes back without costing the floor a PIN, and it was
+   also undoing a lock somebody CHOSE, because the lock decision itself was
+   never persisted. These pins hold the fix: the lock is a persisted fact,
+   adoption refuses while it stands, and only a keyed PIN clears it. */
+test('the lock survives a reload, and only a PIN clears it', () => {
+  const lock = SRC.slice(SRC.indexOf('lockTill() {'), SRC.indexOf('lockTill() {') + 700);
+  assert.ok(/locked: true/.test(lock), 'lockTill persists the decision');
+  const idle = SRC.slice(SRC.indexOf('checkIdle() {'), SRC.indexOf('checkIdle() {') + 900);
+  assert.ok(/locked: true/.test(idle), 'the idle lock is the same persisted decision');
+  const adopt = SRC.slice(SRC.indexOf('adoptSession() {'), SRC.indexOf('adoptSession() {') + 700);
+  assert.ok(/if \(this\.state\.locked\) return false;/.test(adopt),
+    'a locked terminal never adopts the token\'s session back');
+  const signin = SRC.slice(SRC.indexOf('signIn(u) {'), SRC.indexOf('signIn(u) {') + 900);
+  assert.ok(/locked: false/.test(signin), 'a keyed PIN is what clears it');
+  assert.ok(/locked: !!s\.locked/.test(SRC), 'and the mark rides the persisted session');
+  assert.ok(/locked: !!this\._saved\.locked/.test(SRC), 'restored at boot');
+});

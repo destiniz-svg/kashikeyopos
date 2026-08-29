@@ -2184,6 +2184,7 @@ class Component extends DCLogic {
     prefs: Object.assign({}, this._saved.prefs || {}),
     lastTouch: Date.now(),
     session: this._saved.session || null,
+    locked: !!this._saved.locked,
     register: this._saved.register || null,
     assetState: this._saved.assetState || {},
     // Clocked shifts. An entry with out:0 is someone still on the floor, so
@@ -2266,7 +2267,7 @@ class Component extends DCLogic {
       settled: s.settled, costMoves: s.costMoves, palRecent: s.palRecent, counts: s.counts, lastCountAt: s.lastCountAt, acqRuns: s.acqRuns, vendPays: s.vendPays, docs: s.docs, docSeq: s.docSeq, taxVers: s.taxVers, seededDays: s.seededDays, printJobs: s.printJobs, printerDown: s.printerDown, pinFails: s.pinFails, pinLockUntil: s.pinLockUntil,
       local: s.local, catMeta: s.catMeta, catOrder: s.catOrder, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden, brandPen: s.brandPen,
       fulfil: s.fulfil,
-      clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, register: s.register,
+      clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, locked: !!s.locked, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
     };
     // Fulfilment stages ride their own key: a phone tracking one order must not
@@ -2336,6 +2337,8 @@ class Component extends DCLogic {
     this.setState({
       session: { id: u.id, user: u.user, name: u.name, role: u.role, rank: u.rank,
         outlet: u.outlet, outlets: (u.outlets || []).slice(), at: Date.now() },
+      // A keyed PIN is the only thing that clears a persisted lock.
+      locked: false,
       roleKey: u.role, modal: null, view: first ? first[0] : "pos"
     });
     this.queue("sign_in", u.name + " signed in · " + this.deviceCode(), "sessions");
@@ -2367,7 +2370,12 @@ class Component extends DCLogic {
      decision and is on the same sheet, one row down. */
   lockTill() {
     const n = (this.state.session || {}).name;
-    this.setState({ session: null, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
+    /* `locked` is the DECISION, and it persists. Without it a browser refresh
+       — or the reload a deployed update forces — re-adopted the server session
+       bound to the kept token and walked straight past the lock screen: the
+       operator locked the till, and the till unlocked itself. Reported exactly
+       that way. Only a keyed PIN clears it. */
+    this.setState({ session: null, locked: true, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
     if (n) this.queue("sign_out", n + " signed out · " + this.deviceCode(), "sessions");
   }
   // Kept under its old name for anything still calling it.
@@ -2465,6 +2473,11 @@ class Component extends DCLogic {
     this.setState({ modal: { kind: "lock" } });
   }
   adoptSession() {
+    /* A LOCKED TERMINAL STAYS LOCKED. Adoption exists so a tab that crashed
+       mid-shift comes back without costing the floor a PIN — it must never
+       undo a lock somebody chose, and without this check it did, on every
+       refresh and on every deployed update's reload. */
+    if (this.state.locked) return false;
     const real = window.KPOS_REAL || {};
     const sess = real.session;
     if (!sess || !sess.actor) return false;
@@ -9898,7 +9911,9 @@ class Component extends DCLogic {
     if (this.state.modal && this.state.modal.kind === "lock") return;
     if (Date.now() - (this.state.lastTouch || 0) < mins * 60000) return;
     this.queue("auto_lock", this.me() + " · terminal locked after " + mins + " minutes idle", "sessions");
-    this.setState({ session: null, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
+    // The same persisted decision lockTill() makes: an idle lock must also
+    // survive a reload, or refreshing the tab is a way around it.
+    this.setState({ session: null, locked: true, roleKey: this.LOCKED_ROLE, modal: { kind: "lock" } });
     this.toast("Locked after " + mins + " minutes idle", "warn");
   }
   touch() { if (Date.now() - (this.state.lastTouch || 0) > 20000) this.setState({ lastTouch: Date.now() }); }
