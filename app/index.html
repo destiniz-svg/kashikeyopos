@@ -2444,7 +2444,14 @@ class Component extends DCLogic {
             }
           }
         } catch (e) {}
-        try { location.replace("/pos"); } catch (e) { location.reload(); }
+        /* AND IT LANDS ON THE LOGIN PAGE, not back on the keypad. Reloading
+           /pos put the operator on the staff PIN screen — the same screen a
+           HANDOVER leaves them on — so the one control that ends the session
+           and clears the browser was indistinguishable from the one that
+           deliberately does neither. Reported exactly that way: "it stays in
+           the pin login". Signing out of the application lands where signing
+           in begins. */
+        try { location.replace("/account?signedout=1"); } catch (e) { location.reload(); }
       }, 900);
     };
     drain()
@@ -7477,7 +7484,7 @@ class Component extends DCLogic {
              NEXT keyed PIN into authority for the sign-out — rank 4 or above,
              decided by the server — rather than a shift starting. */
           lockSignOutNote: s.signOutIntent
-            ? "Now tap an admin or owner's name and key their PIN. This ends the session on the outlet and clears this terminal \u2014 the next sign-in starts fresh. Undelivered work is kept and goes when somebody signs in again."
+            ? "Now tap an admin or owner's name and key their PIN. This ends the session on the outlet, clears this terminal and returns to the sign-in page. Undelivered work is kept and goes when somebody signs in again."
             : (m.refused || ""),
           lockSignOutNoteStyle: (s.signOutIntent || m.refused)
             ? "font-size:11px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:9px;padding:9px 11px;line-height:1.6;margin-top:8px"
@@ -7662,7 +7669,7 @@ class Component extends DCLogic {
           ? (owed ? owed + (owed === 1 ? " operation has" : " operations have")
               + " not reached the outlet — they are kept and will go when somebody signs in here again"
             : "Everything this till wrote has reached the outlet — this browser is cleared")
-          : "Ends this session on the outlet and clears this terminal's cache — the next sign-in starts fresh",
+          : "Ends this session on the outlet, clears this terminal's cache and returns to the sign-in page",
         style: armed ? on : btn,
         go: () => {
           if (!armed) {

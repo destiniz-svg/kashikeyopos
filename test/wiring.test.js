@@ -1918,8 +1918,8 @@ test('a till can be handed over, and it can also be left', () => {
   assert.match(body, /Sign out of this terminal/, 'and leaving');
   assert.match(body, /the till stays connected and keeps delivering/,
     'the handover says it keeps the till connected');
-  assert.match(body, /Ends this session on the outlet and clears this terminal's cache/,
-    'and signing out says what it actually ends — the session AND this browser\'s cache');
+  assert.match(body, /Ends this session on the outlet, clears this terminal's cache and returns to the sign-in page/,
+    'and signing out says what it actually ends — the session, this browser\'s cache, and where it lands');
 
   // ── UNDELIVERED WORK IS NAMED, not blocked. The ops are durable and survive
   //    signing out; what changes is that nothing will deliver them until
@@ -1954,7 +1954,9 @@ test('a device asking which store it is opens on sign in, not sign up', () => {
   const acct = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
   assert.match(acct, /var forStore = \/\[\?&\]store=1\\b\/\.test\(location\.search\);/,
     'the page reads it');
-  assert.match(acct, /var mode = forStore \? "signin" : "signup";/,
+  // Two errands open on Sign in — a terminal that has not been told its store,
+  // and one somebody just signed out — and the front door keeps Create account.
+  assert.match(acct, /var mode = \(forStore \|\| signedOut\) \? "signin" : "signup";/,
     'and opens on SIGN IN for a terminal — the front door keeps sign up');
 
   // And it says what is happening. A screen that silently swaps its default
@@ -4940,7 +4942,21 @@ test('the full log-out: cleared, kept, gated, and recorded', () => {
     'after the wipe nothing persists — the sign-out\'s own toast must not re-create the blob');
   const t = SRC.slice(SRC.indexOf('terminalSignOut() {'), SRC.indexOf('terminalSignOut() {') + 3200);
   assert.ok(/this\._wiped = true/.test(t), 'the wipe turns persistence off one-way');
-  assert.ok(/location\.replace/.test(t), 'and reloads, so the next login starts a fresh session');
+  /* AND IT LANDS ON THE LOGIN PAGE. Reloading /pos put the operator back on
+     the staff PIN keypad — the screen a HANDOVER leaves them on — so the
+     control that ends the session looked exactly like the one that keeps it.
+     Reported as "when signed out of terminal, it stays in the pin login". */
+  assert.ok(/location\.replace\("\/account\?signedout=1"\)/.test(t),
+    'signing out of the application lands where signing in begins');
+  const acct = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  assert.ok(/signedout=1\\b\/\.test\(location\.search\)/.test(acct),
+    '/account knows the sign-out errand');
+  assert.ok(/\(forStore \|\| signedOut\) \? "signin" : "signup"/.test(acct),
+    'and opens on Sign in — following Create account there makes a second business');
+  assert.ok(/signedOut \? "Signed out"/.test(acct), 'the heading says what happened');
+  assert.ok(/signedOut && knowsStore && !code/.test(acct),
+    'a cashier is not stranded behind an account password: the way back to the '
+    + 'till shows where this browser still knows its store');
   assert.ok(/B\.flush/.test(t) && /B\.signOut/.test(t),
     'the sign_out op gets a bounded drain BEFORE the token it needs is dropped');
 });

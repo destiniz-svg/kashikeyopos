@@ -260,6 +260,15 @@ button.link:hover{text-decoration:underline}
              one word short, and nothing on it says whose account that is or
              offers to leave it. -->
         <button class="link" id="signOut" type="button" style="display:none">Not you? Sign out</button>
+        <!-- AND NOBODY IS STRANDED BEHIND A PASSWORD THEY DO NOT HAVE. Signing
+             the terminal out is rank 4, so an ADMIN can do it — and an admin is
+             a staff record with a PIN, not necessarily an account holder. The
+             next person to pick this terminal up may be a cashier whose way in
+             is four digits at the till. The store stamp survives the wipe on
+             purpose, so that door is still there; this is what makes it
+             visible. Shown only after a sign-out, and only where this browser
+             still knows its store. -->
+        <button class="link" id="toTill" type="button" style="display:none">Staff sign in at the till →</button>
       </div>
 
       <p class="foot" id="foot">
@@ -315,7 +324,16 @@ button.link:hover{text-decoration:underline}
      till then points at it. The bridge says which errand this is (`?store=1`)
      and the door opens on the right side of itself. */
   var forStore = /[?&]store=1\b/.test(location.search);
-  var mode = forStore ? "signin" : "signup";  // signup | signin | code
+  /* A THIRD ERRAND: somebody just signed this terminal OUT. The till used to
+     reload itself after a sign-out, which put them back on the staff PIN
+     keypad — the same screen a HANDOVER leaves them on — so the control that
+     ends the session and clears the browser looked exactly like the one that
+     deliberately does neither. It lands here now, and this page has to open on
+     Sign in rather than Create account for the same reason `?store=1` does:
+     following the primary action would make a second account and a second
+     business. */
+  var signedOut = /[?&]signedout=1\b/.test(location.search);
+  var mode = (forStore || signedOut) ? "signin" : "signup";  // signup | signin | code
   var pending = "";                          // the address a code went to
   /* WHETHER IT ACTUALLY WENT. "Check your email" and "We sent a six-digit code
      to …" are both statements of fact, and on an install whose transport
@@ -420,7 +438,8 @@ button.link:hover{text-decoration:underline}
     var signup = mode === "signup", code = mode === "code";
     $("title").textContent = code ? (sent ? "Check your email" : "No code was sent")
       : signup ? "Create your account"
-        : forStore ? "Which store is this terminal?" : "Sign in";
+        : signedOut ? "Signed out"
+          : forStore ? "Which store is this terminal?" : "Sign in";
     $("sub").textContent = code
       ? (sent
         ? "We sent a six-digit code to " + pending + "."
@@ -429,11 +448,15 @@ button.link:hover{text-decoration:underline}
           + " whoever runs it can read it out, and it goes in below.")
       : signup
         ? "One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that."
-        : forStore
-          ? "This terminal does not know which store it belongs to yet. Sign in"
-            + " with the account that owns it and it will be told — then your"
-            + " staff key their PINs as usual."
-          : "Welcome back.";
+        : signedOut
+          ? "This terminal's session has ended and its cached data is cleared."
+            + " Sign in with the account that owns the store, or hand the"
+            + " terminal back to the floor — staff key their PINs at the till."
+          : forStore
+            ? "This terminal does not know which store it belongs to yet. Sign in"
+              + " with the account that owns it and it will be told — then your"
+              + " staff key their PINs as usual."
+            : "Welcome back.";
     // The two doors stay visible next to each other; entering a code is a step
     // INSIDE one of them, not a third door, so the control goes away there.
     $("seg").style.display = code ? "none" : "grid";
@@ -448,6 +471,12 @@ button.link:hover{text-decoration:underline}
     $("codeLabel").textContent = sent ? "The six digits we sent you"
       : "The six digits from the audit trail";
     $("alts").style.display = code ? "none" : "block";
+    /* The way back to the floor, on the sign-out landing only, and only where
+       this browser still knows its store — offering it anywhere else sends
+       somebody to a till that cannot say who works there. */
+    var knowsStore = false;
+    try { knowsStore = !!localStorage.getItem("kashikeyo.outlet"); } catch (e) {}
+    $("toTill").style.display = (signedOut && knowsStore && !code) ? "block" : "none";
     $("submit").textContent = code ? "Verify and continue"
       : signup ? "Create account" : "Sign in";
     $("password").setAttribute("autocomplete", signup ? "new-password" : "current-password");
@@ -686,6 +715,10 @@ button.link:hover{text-decoration:underline}
     rememberStore("");
     location.href = "/account";
   });
+
+  /* Back to the floor. The store stamp is untouched — this is the terminal
+     handing itself to whoever works the counter, not a second sign-out. */
+  $("toTill").addEventListener("click", function () { location.href = "/pos"; });
 
   // Already signed in? Go where this account belongs.
   if (token()) {
