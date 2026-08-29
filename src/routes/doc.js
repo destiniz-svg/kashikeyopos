@@ -65,11 +65,17 @@ async function receiptBody(outletId, saleId) {
       const co = (await c.query(
         'SELECT legal_name, tin, gst_registered FROM chain.company LIMIT 1')).rows[0] || {};
       const o = (await c.query(
-        'SELECT name, currency, address FROM chain.outlet WHERE id = $1',
+        "SELECT name, currency, address, brand->>'logo' AS logo"
+        + ' FROM chain.outlet WHERE id = $1',
         [outletId])).rows[0] || {};
       return {
         kind: 'receipt',
         outlet: o.name || '', address: o.address || '',
+        /* The store's mark, exactly as published under Store branding — a
+           data URL the page renders inline. Only an image data URL travels:
+           this document is read by a stranger's phone, and anything else in
+           that column is not a picture. */
+        logo: /^data:image\//.test(o.logo || '') ? o.logo : '',
         company: co.legal_name || '',
         // A TIN prints only where the business actually holds one. A tax line
         // on a document from a business that is not registered claims a

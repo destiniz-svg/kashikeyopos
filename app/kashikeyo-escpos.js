@@ -71,6 +71,25 @@
         return api.line(l + " ".repeat(Math.max(1, width - l.length - r.length)) + r);
       },
       rule() { return api.line("-".repeat(width)); },
+      /* A raster image — GS v 0, the store-logo primitive nearly every
+         thermal head honours. `data` is the packed 1-bit rows (MSB first,
+         ceil(w/8) bytes per row), base64 so the same spec travels as JSON
+         through the spool and the LAN relay unchanged. The bitmap is
+         prepared ONCE when the logo is published (rasterPrintLogo in the
+         till) — this module never rasterises, because the server has no
+         canvas and two rasterisers would print two logos. */
+      image(w, h, dataB64) {
+        const wBytes = Math.ceil((w | 0) / 8);
+        if (!wBytes || !(h | 0) || !dataB64) return api;
+        let bin = "";
+        if (typeof Buffer !== "undefined") bin = Buffer.from(String(dataB64), "base64").toString("binary");
+        else { try { bin = atob(String(dataB64)); } catch (e) { return api; } }
+        if (bin.length < wBytes * (h | 0)) return api;   // truncated payload: skip, never garble
+        push([GS, 0x76, 0x30, 0x00,
+          wBytes & 0xff, (wBytes >> 8) & 0xff, (h | 0) & 0xff, ((h | 0) >> 8) & 0xff]);
+        for (let i = 0; i < wBytes * (h | 0); i++) b.push(bin.charCodeAt(i) & 0xff);
+        return api;
+      },
       feed(n) { push([ESC, 0x64, Math.max(1, n | 0)]); return api; },
       cut() { push([ESC, 0x64, 3, GS, 0x56, 66, 3]); return api; },
       kick(pin) { push([ESC, 0x70, pin ? 1 : 0, 60, 120]); return api; },
@@ -83,13 +102,19 @@
      till builds it from what it is already holding — and this renders it, so
      a KOT and a receipt differ in content, never in dialect.
 
-       { title, sub?, rows?: [ [left,right] | "text" | {big:"text"} | {rule:1} ],
+       { logo?: {w,h,data}, title, sub?,
+         rows?: [ [left,right] | "text" | {big:"text"} | {rule:1} ],
          foot?, cut?: default true, kick?: false } */
   function render(spec, cols) {
     const s = spec || {};
     const d = doc(cols);
     d.init();
     if (s.kick) d.kick(0);
+    // The store's mark, centred above its name — the paper leads with the
+    // brand exactly as the on-screen receipt does.
+    if (s.logo && s.logo.data) {
+      d.align(1).image(s.logo.w, s.logo.h, s.logo.data).feed(1);
+    }
     d.align(1).bold(true).size(1, 1).line(s.title || "").size(0, 0).bold(false);
     if (s.sub) d.line(s.sub);
     d.align(0).rule();

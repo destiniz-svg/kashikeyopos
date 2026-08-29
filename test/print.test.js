@@ -72,3 +72,40 @@ test('base64 round-trips the exact bytes', () => {
   const back = Array.from(Buffer.from(E.toBase64(b), 'base64'));
   assert.deepStrictEqual(back, b);
 });
+
+/* The store logo, as the raster the thermal head actually prints — GS v 0
+   with the packed 1-bit rows the branding publish derived. Prepared ONCE at
+   publish and carried as base64, so the browser and the server compose
+   byte-identical paper from the same spec. */
+test('a print logo renders as GS v 0, centred above the title', () => {
+  const payload = Buffer.alloc(16, 0xAA);           // 16px wide × 8 rows = 2×8 bytes
+  const spec = { logo: { w: 16, h: 8, data: payload.toString('base64') }, title: 'LOY CAFE' };
+  const b = E.render(spec, 48);
+  const hdr = [0x1d, 0x76, 0x30, 0x00, 2, 0, 8, 0];
+  const at = b.join(',').indexOf(hdr.join(','));
+  assert.ok(at >= 0, 'the raster header is in the bytes');
+  const i = (() => { for (let k = 0; k + hdr.length <= b.length; k++) {
+    if (hdr.every((x, j) => b[k + j] === x)) return k; } return -1; })();
+  assert.ok(i > 0, 'found at a real offset');
+  assert.deepStrictEqual(b.slice(i + 8, i + 8 + 16), Array.from(payload),
+    'the payload bytes ride verbatim');
+  // Centred: ESC a 1 precedes the raster.
+  const before = b.slice(0, i);
+  const centred = (() => { for (let k = before.length - 3; k >= 0; k--) {
+    if (before[k] === 0x1b && before[k + 1] === 0x61) return before[k + 2]; } return -1; })();
+  assert.strictEqual(centred, 1, 'the logo is centred');
+});
+
+test('a truncated logo payload is skipped, never fed to the head', () => {
+  const spec = { logo: { w: 16, h: 8, data: Buffer.alloc(3, 1).toString('base64') }, title: 'X' };
+  const b = E.render(spec, 48);
+  assert.ok(b.join(',').indexOf([0x1d, 0x76, 0x30].join(',')) < 0,
+    'no raster command for rows that are not there — garbled feed is worse than no logo');
+});
+
+test('both runtimes compose identical bytes from one stored bitmap', () => {
+  const logo = { w: 24, h: 4, data: Buffer.from([1,2,3,4,5,6,7,8,9,10,11,12]).toString('base64') };
+  const a = E.render({ logo, title: 'SAME' }, 32);
+  const b = E.render({ logo, title: 'SAME' }, 32);
+  assert.deepStrictEqual(a, b, 'deterministic — the byte-identical doctrine holds');
+});

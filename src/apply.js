@@ -2371,6 +2371,28 @@ H.outlet_brand = async (c, p, ctx) => {
     }
     patch[k] = v;
   }
+  /* The PRINT raster the till derived from the logo when it published it —
+     a packed 1-bit bitmap ({w, h, data}), never an image file. Bounded hard:
+     360 dots is the widest the composer ever asks a 58mm head for, and the
+     payload must be exactly the rows it claims or the printer feeds garbage. */
+  if (p.printLogo !== undefined) {
+    const pl = p.printLogo;
+    if (pl === null) patch.printLogo = null;
+    else {
+      const w = Number(pl && pl.w), h = Number(pl && pl.h);
+      const data = pl && typeof pl.data === 'string' ? pl.data : '';
+      const okShape = Number.isInteger(w) && Number.isInteger(h)
+        && w > 0 && w <= 384 && h > 0 && h <= 240
+        && data.length > 0 && data.length <= 90000
+        && Buffer.from(data, 'base64').length === Math.ceil(w / 8) * h;
+      if (!okShape) {
+        throw Object.assign(new Error('that print logo is not a bitmap this'
+          + ' build composed — publish the logo again through Store branding'),
+          { status: 400 });
+      }
+      patch.printLogo = { w: w, h: h, data: data };
+    }
+  }
   if (!Object.keys(patch).length) return { skipped: 'nothing to change' };
   const q = await c.query('UPDATE chain.outlet'
     + ' SET brand = jsonb_strip_nulls(brand || $2::jsonb) WHERE id = $1',

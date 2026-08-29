@@ -5025,3 +5025,56 @@ test('the section type decides the glyph and the hue, everywhere at once', () =>
     'the breakfast-wearing-the-salad-glyph row is repaired by exact match');
   assert.ok(/var\(--cat-mains\)/.test(mig), 'and the theme token leaves the colour column');
 });
+
+/* ═══ THE STORE'S LOGO IS ON THE RECEIPT, AND THE PAPER SETTING IS REAL ═════
+   The uploaded logo (Store branding) reaches every receipt surface — the
+   on-screen papers, the printed paper as a GS v 0 raster, the shared /r/
+   page, the sign-in screen — from ONE upload. And prefs().paper, collected
+   since the printers screen existed and read by nothing, now decides the
+   columns: 80mm = 48, 58mm = 32, with a per-printer override. */
+test('the store logo reaches every receipt, and 58/80mm decides the columns', () => {
+  // The raster is derived once, at publish, into the same outlet_brand op.
+  assert.ok(/rasterPrintLogo\(v\.logo \|\| null\)\.then/.test(SRC),
+    'publishing the logo derives the print raster in the same act');
+  assert.ok(/printLogo: v\.logo \? printLogo : null/.test(SRC),
+    'removing the logo removes the raster with it');
+  const ras = SRC.slice(SRC.indexOf('rasterPrintLogo(dataUrl) {'),
+    SRC.indexOf('rasterPrintLogo(dataUrl) {') + 2200);
+  assert.ok(/Math\.min\(360,/.test(ras), 'capped at 360 dots — fits a 58mm head (384)');
+  assert.ok(/fillStyle = "#ffffff"/.test(ras),
+    'alpha composited onto WHITE first — raw transparency prints as ink');
+
+  // The server accepts only a bitmap this build composed, bounded.
+  const apply = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  assert.ok(/w > 0 && w <= 384 && h > 0 && h <= 240/.test(apply),
+    'outlet_brand bounds the raster');
+  assert.ok(/Buffer\.from\(data, 'base64'\)\.length === Math\.ceil\(w \/ 8\) \* h/.test(apply),
+    'and the payload must be exactly the rows it claims');
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.ok(/printLogo: \(r\.brand \|\| \{\}\)\.printLogo \|\| null/.test(boot),
+    'the bootstrap publishes it to the signed-in outlet');
+
+  // The print path: receipts carry it, dockets skip it, and paper → columns.
+  const pd = SRC.slice(SRC.indexOf('printDoc(job) {'), SRC.indexOf('printDoc(job) {') + 1200);
+  assert.ok(/job\.target === "receipt" \? \(this\.brandOf\(\)\.printLogo \|\| null\) : null/.test(pd),
+    'the logo prints on receipts and never on a KOT');
+  assert.ok(/cfg\.cols \|\| \(Number\(this\.prefs\(\)\.paper\) === 58 \? 32 : 48\)/.test(SRC),
+    'prefs().paper decides the columns — 58mm is 32, the 80mm POS roll default is 48');
+  const esc = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-escpos.js'), 'utf8');
+  assert.ok(/image\(w, h, dataB64\)/.test(esc) && /GS, 0x76, 0x30, 0x00/.test(esc),
+    'the composer speaks GS v 0');
+  assert.ok(/this module never rasterises/.test(esc),
+    'and never rasterises — one bitmap, both runtimes, identical bytes');
+
+  // On screen: the uploaded logo leads; the free-text path is only a fallback.
+  assert.ok(/const mark = \(b\.logo \? this\.photoUrl\(b\.logo\) : ""\)\s*\n?\s*\|\| b\.mark \|\| "brand\/kashikeyo-mark\.png"/.test(SRC),
+    'the receipt papers wear the uploaded logo first');
+  assert.ok(/lockLogoStyle/.test(SRC), 'and the sign-in screen leads with it');
+
+  // The shared /r/ page: vetted server-side, rendered as an <img>.
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'doc.js'), 'utf8');
+  assert.ok(/\^data:image\\\//.test(doc), 'only an image data URL travels to a stranger');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'doc.html'), 'utf8');
+  assert.ok(/d\.logo && \/\^data:image\\\/\/\.test\(d\.logo\)/.test(page),
+    'and the page checks again before rendering it');
+});

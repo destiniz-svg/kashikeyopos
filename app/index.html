@@ -1649,6 +1649,7 @@
           <sc-if value="{{ mLock }}">
             <sc-if value="{{ lockPicking }}">
               <div style="display:flex;flex-direction:column;gap:9px">
+                <div role="img" aria-label="Store logo" style="{{ lockLogoStyle }}"></div>
                 <sc-for list="{{ lockStaff }}" as="u" hint-placeholder-count="5">
                   <button onClick="{{ u.go }}" style="{{ u.style }}">
                     <span style="{{ u.av }}">{{ u.ini }}</span>
@@ -7451,8 +7452,16 @@ class Component extends DCLogic {
       if (!m.who) {
         const users = (K().USERS || []).filter((u) => u.status === "Active" && (!u.outlet || u.outlet === s.outletId || this.roleIsChainWide()));
         const roleOf = (u) => ((K().ROLES || []).find((r) => r.key === u.role) || {});
+        /* The store's own mark heads the sign-in screen — the first thing a
+           person sees on this terminal is whose terminal it is. Hidden where
+           no logo is published; never the product's mark, because the welcome
+           belongs to the store. */
+        const lockLogo = this.brandOf().logo ? this.photoUrl(this.brandOf().logo) : "";
         return {
           modalTitle: this.outlet().name, modalSub: this.deviceCode() + " · " + (this.outlet().region || "") + " · " + (s.online ? "online" : "offline"),
+          lockLogoStyle: lockLogo
+            ? "width:56px;height:56px;margin:2px auto 4px;background:url('" + lockLogo + "') center/contain no-repeat"
+            : "display:none",
           lockPicking: true, lockPin: false,
           lockStaff: users.slice(0, 7).map((u) => ({
             name: u.name, role: roleOf(u).label || u.role, ini: ini(u.name),
@@ -8784,7 +8793,13 @@ class Component extends DCLogic {
   }
   brandVals() {
     const b = this.brandOf();
-    const mark = b.mark || "brand/kashikeyo-mark.png";
+    /* THE LOGO THE STORE UPLOADED LEADS. `mark` was a free-text file path —
+       the banner form's typed-path defect wearing a smaller face — so every
+       receipt preview carried the shipped KashikeyoPOS mark while the store's
+       own logo (Store branding) reached only the portals. The uploaded logo
+       is a data URL, so it renders through the blob seam like every image. */
+    const mark = (b.logo ? this.photoUrl(b.logo) : "")
+      || b.mark || "brand/kashikeyo-mark.png";
     // The mark is a background, never an <img src="{{ hole }}"> — the HTML
     // parser fetches a raw src as the template streams, so a hole there fires a
     // 404 for a file literally named "{{ brandMark }}" on every load. An
@@ -9889,6 +9904,46 @@ class Component extends DCLogic {
       this._blob[v] = url;
       return url;
     } catch (e) { return ""; }
+  }
+  /* THE PRINT LOGO IS RASTERISED ONCE, when the logo is published — never at
+     print time. A thermal head speaks 1-bit rasters (GS v 0), the composer is
+     one module shared by the browser and the server, and the server has no
+     canvas: rasterising here and storing the packed bitmap beside the logo is
+     what keeps both runtimes composing byte-identical paper. 360 dots wide at
+     most, so the same bitmap fits a 58mm head (384 dots) and centres on an
+     80mm one (576); alpha is composited onto WHITE first, because a
+     transparent PNG thresholded raw prints its transparency as ink. */
+  rasterPrintLogo(dataUrl) {
+    return new Promise((resolve) => {
+      if (!dataUrl) return resolve(null);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const w = Math.min(360, img.naturalWidth || 360);
+          const h = Math.min(240, Math.round(w * (img.naturalHeight || 1) / (img.naturalWidth || 1)));
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          const g = c.getContext("2d");
+          g.fillStyle = "#ffffff"; g.fillRect(0, 0, w, h);
+          g.drawImage(img, 0, 0, w, h);
+          const px = g.getImageData(0, 0, w, h).data;
+          const wBytes = Math.ceil(w / 8);
+          const bits = new Uint8Array(wBytes * h);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const i = (y * w + x) * 4;
+              const lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+              if (lum < 160) bits[y * wBytes + (x >> 3)] |= (0x80 >> (x & 7));
+            }
+          }
+          let bin = "";
+          for (let i = 0; i < bits.length; i++) bin += String.fromCharCode(bits[i]);
+          resolve({ w: w, h: h, data: btoa(bin) });
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
   }
   // One hue per menu section, resolved from the token layer so both themes get
   // the accessible variant. Unknown sections fall back to neutral rather than
@@ -13367,7 +13422,7 @@ class Component extends DCLogic {
         "Switching the slot or a banner off empties it on every phone on its next open"
       ],
       actions: [
-        { label: "Portal branding", primary: true, go: () => mayBrand ? this.openForm("portalBrand", brand) : this.toast("Branding needs an admin — the database refuses the write below rank 4", "warn") },
+        { label: "Store branding", primary: true, go: () => mayBrand ? this.openForm("portalBrand", brand) : this.toast("Branding needs an admin — the database refuses the write below rank 4", "warn") },
         { label: this.bannersOn() ? "Banner slot: on" : "Banner slot: off", go: () => this.toggleBanners() },
         { label: "New banner", go: () => this.can("promos", "a") ? this.openForm("banner") : this.toast("Adding a promotion needs edit rights here", "warn") }
       ],
@@ -17394,7 +17449,10 @@ class Component extends DCLogic {
           { k: "name", label: "Trading name on receipts", v: this.brandOf().name || "", full: 1 },
           { k: "tagline", label: "Tagline", v: this.brandOf().tagline || "", full: 1 },
           { k: "receiptFoot", label: "Receipt footer", v: this.brandOf().receiptFoot || "", full: 1 },
-          { k: "mark", label: "Logo file", v: this.brandOf().mark || "", full: 1 },
+          // The receipts and the sign-in screen use the logo UPLOADED under
+          // Store branding first; this path is only the fallback for an
+          // install whose mark is a file the deployment ships.
+          { k: "mark", label: "Logo file path (fallback — upload under Store branding instead)", v: this.brandOf().mark || "", full: 1 },
           { k: "scope", label: "Applies to", options: [{ v: "chain", l: "Whole chain" }, { v: "outlet", l: "This outlet only" }] },
           { k: "poweredBy", label: "Powered-by line", options: [{ v: "yes", l: "Show — included tier" }, { v: "no", l: "Hide — white label" }] }
         ],
@@ -18691,21 +18749,28 @@ class Component extends DCLogic {
          left to trial and error. The write is one op the database itself
          gates at rank 4 (RLS on chain.outlet). */
       portalBrand: {
-        title: "Portal branding", sub: "The face both guest portals wear", save: "Publish branding",
-        foot: "The logo heads the guest QR menu and the member card beside the store's name; the cover is the photograph across the top of the QR menu. Both reach every phone through the guest projection — remove one and the portals fall back to the plain masthead.",
+        title: "Store branding", sub: "The face the portals AND the receipts wear", save: "Publish branding",
+        foot: "The logo heads the guest QR menu, the member card, the sign-in screen and every receipt — on screen, on the shared link, and printed at the top of the paper (it is rasterised for the thermal head the moment you publish). The cover is the photograph across the top of the QR menu. Remove either and everything falls back to the plain masthead.",
         fields: [
           { k: "logo", kind: "image", label: "Store logo", mode: "png", max: 320, tall: 132, fit: "contain",
             guide: "Square PNG with a transparent background · at least 320 × 320 px · scaled to 320 px on this device",
-            hint: "Shown at about 40 px on the portal headers — a simple mark reads better than fine detail." },
+            hint: "About 40 px on the portal headers and 45 mm-wide at the top of a printed receipt — a simple, high-contrast mark reads best; fine detail and pale greys disappear on thermal paper." },
           { k: "cover", kind: "image", label: "Cover photograph", max: 1200, tall: 150,
             guide: "Wide photograph · JPG or PNG · at least 1200 × 640 px · scaled to 1200 px on this device",
             hint: "Drawn about 3:1 with the store's name over the lower edge — keep faces and food out of the bottom third." }
         ],
         onSave: (v) => {
-          const brand = { logo: v.logo || null, cover: v.cover || null };
-          this.queue("outlet_brand", "Portal branding · by " + this.me(), "settings", brand);
-          this.setState({ modal: null, brandPen: brand });
-          this.toast("Branding published — the portals wear it on their next open");
+          /* The print raster is derived HERE, from the same logo, in the same
+             act — a second upload for the paper would drift from the portals
+             the first time either changed. Removing the logo removes the
+             raster with it (explicit null, the op's take-it-down word). */
+          this.rasterPrintLogo(v.logo || null).then((printLogo) => {
+            const brand = { logo: v.logo || null, cover: v.cover || null,
+              printLogo: v.logo ? printLogo : null };
+            this.queue("outlet_brand", "Store branding · by " + this.me(), "settings", brand);
+            this.setState({ modal: null, brandPen: brand });
+            this.toast("Branding published — the portals and receipts wear it now");
+          });
         }
       },
       banner: {
@@ -19244,7 +19309,14 @@ class Component extends DCLogic {
        reason: unplugged, refused, timed out. */
     if (cfg.conn && cfg.conn !== "spool" && window.KPOS_PRINT && window.KASHIKEYO_ESCPOS) {
       if (pr.down) return fail(pr.name + " is marked out of service");
-      const bytes = window.KASHIKEYO_ESCPOS.render(this.printDoc(job), cfg.cols || 42);
+      /* THE PAPER SETTING DECIDES THE COLUMNS. Settings has collected 58/80mm
+         since the printers screen existed and nothing ever read it — every
+         head got 42 columns, which is right for neither: an 80mm roll at
+         font A carries 48, a 58mm roll 32, and 42 on a 58mm head wraps every
+         total onto two lines. The default is the 80mm POS roll; an explicit
+         per-printer `cols` still wins for the odd head that differs. */
+      const cols = cfg.cols || (Number(this.prefs().paper) === 58 ? 32 : 48);
+      const bytes = window.KASHIKEYO_ESCPOS.render(this.printDoc(job), cols);
       window.KPOS_PRINT.send(job.target, bytes, cfg).then((r) => {
         this.patchJob(id, { state: "done", doneAt: Date.now(), via: (r && r.via) || cfg.conn });
       }).catch((e) => fail(e && e.message ? e.message : "the printer did not answer"));
@@ -19267,7 +19339,13 @@ class Component extends DCLogic {
   printDoc(job) {
     const o = this.outlet();
     const d = (job.meta || {}).doc || {};
+    /* The store's mark heads the RECEIPT paper — the raster the branding
+       publish derived, so every till prints the same bytes. Dockets skip it:
+       a KOT is read across a hot pass, and a logo there is feed time and
+       paper for nobody. */
+    const pl = job.target === "receipt" ? (this.brandOf().printLogo || null) : null;
     return {
+      logo: pl && pl.data ? pl : null,
       title: d.title || o.name || "Kashikeyo",
       sub: d.sub || (job.kind + " · " + job.id),
       rows: (d.rows || [job.label]).concat([{ rule: 1 }, [this.clock(), this.me()]]),
