@@ -2292,8 +2292,17 @@ H.modifier_update = async (c, p) => {
       + ' price = excluded.price, pos = excluded.pos',
       [p.id, p.group, p.name, r2(p.price), num(p.pos)]);
   }
+  /* A LINK NAMING A DISH THIS OUTLET DOES NOT HAVE IS DROPPED, not a refusal.
+     `item_modifier.item_id` is a foreign key, so a bare INSERT aborts the whole
+     op on the first unknown id — and the add-ons-only pre-set load carries
+     1,334 links composed against the shipped catalogue, of which a real store
+     holds whatever subset it actually sells. Refusing the entire load because
+     one dish was deleted is the wrong trade: it is the mirror of the rule
+     dish_upsert already keeps in the other direction, where an unknown add-on
+     group is dropped rather than making a dish unsaveable. */
   for (const item of arr(p.items)) {
-    await c.query('INSERT INTO item_modifier (item_id, group_id) VALUES ($1,$2)'
+    await c.query('INSERT INTO item_modifier (item_id, group_id)'
+      + ' SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM item WHERE id = $1)'
       + ' ON CONFLICT DO NOTHING', [item, p.group]);
   }
   return { ok: true };

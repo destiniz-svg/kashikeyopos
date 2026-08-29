@@ -11731,9 +11731,47 @@ class Component extends DCLogic {
         guideTitle: "How an add-on reaches a dish",
         guide: ["Price it once here — the till and the QR menu read the same figure", "Publish it to the sections it belongs to", "A dish inherits its section's add-ons unless it names its own", "A free add-on is still an add-on: it prints on the kitchen docket"],
         actions: [
-          { label: "Back to dishes", go: () => this.setState({ menuMode: "items" }) },
+          { label: "Back to dishes", go: () => this.setState({ menuMode: "items" }) }
+        ].concat(
+          /* THE PRE-SET ADD-ONS, and this is the only door to them.
+             "Load the pre-set menu" on the dish screen is drawn only while the
+             menu is still small — rightly, because it replays 301 dish_upserts
+             and would put the shipped name, price and description back over
+             whatever the store has since typed. So a store that reached its
+             menu any other way (the CSV import, or a build from before the
+             add-ons were in the file) had NO WAY AT ALL to get the 112
+             options, and this screen read "Add-ons · 0" for ever with nothing
+             on it to do about that. Reported exactly that way.
+
+             This is the additive half: the 112 groups and options plus the
+             1,334 links that attach them to the dishes, and not one dish row.
+             Offered only while the outlet is still short of them, because a
+             store that has its add-ons does not need a button to load them
+             again; rank 5, like the whole-catalogue load, because the server
+             refuses anybody else and a control that cannot work is worse than
+             none. */
+          mods.length < ((K().PRESET || {}).addons || 0) && this.rank() >= 5 ? [{
+            label: "Load the pre-set add-ons", go: async () => {
+              const B = window.KPOS_BRIDGE;
+              if (!B || !B.menuPreset) return this.toast("Loading the pre-set add-ons needs the outlet — this terminal is not connected to one", "warn");
+              this.toast("Loading the pre-set add-ons…");
+              try {
+                const r = await B.menuPreset("addons");
+                await B.refresh();
+                /* Both figures are the server's own count of what it did —
+                   `links` is what RESOLVED against THIS outlet's dishes, never
+                   what the catalogue ships, so a store holding part of the
+                   menu is told the truth about its part. */
+                this.toast("Pre-set add-ons loaded — " + r.addons
+                  + " options across " + r.links + " dishes");
+              } catch (e) {
+                this.toast((e && e.message) || "The outlet refused the pre-set add-ons", "warn");
+              }
+            }
+          }] : []
+        ).concat([
           { label: "New add-on", primary: true, go: gate(() => this.openForm("addon")) }
-        ],
+        ]),
         cols: [{ label: "Add-on", w: "1.8fr" }, { label: "Published to", w: "2.4fr" }, { label: "Dishes offering it", w: "1fr", a: "right", mono: 1 }, { label: "Price", w: ".9fr", a: "right", mono: 1 }],
         rows: mods.map((a) => {
           const secs = (a.cats || []).map((c) => this.catMeta(c).name);

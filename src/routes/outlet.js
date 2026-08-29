@@ -482,11 +482,24 @@ r.post('/menu/preset', sameOutlet, atLeast('owner'),
   gate('menu-preset', { id: [10, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
   async function (req, res, next) {
     try {
-      const out = await withOutlet(req.ctx, (c) => applyPreset(c, req.ctx, applyOp));
+      /* `part` is 'all' or 'addons'. The add-ons part is the additive half —
+         the 112 options and the links that attach them — for a store whose
+         menu arrived some other way and therefore has no add-ons and no way to
+         get them; it writes no dish row, so nothing the store has priced or
+         renamed is touched. Anything else is refused by name rather than
+         quietly rounded down to the whole catalogue, which is the destructive
+         one of the two. */
+      const part = String((req.body || {}).part || 'all');
+      if (part !== 'all' && part !== 'addons') {
+        return res.status(400).json({
+          error: 'the pre-set menu loads as "all" or "addons", not "' + part + '"' });
+      }
+      const out = await withOutlet(req.ctx,
+        (c) => applyPreset(c, req.ctx, applyOp, { part: part }));
       await withOutlet(req.ctx, (c) => c.query(
         "SELECT chain.log_anon($1,'menu_preset_loaded','outlet',$2,$3)",
         [req.ctx.outletId, String(req.ctx.outletId), JSON.stringify({
-          by: req.ctx.actor, applied: out.applied })]));
+          by: req.ctx.actor, applied: out.applied, part: part })]));
       res.set('cache-control', 'no-store').json(Object.assign({ ok: true }, out));
     } catch (e) {
       if (e && e.status) return res.status(e.status).json({ error: e.message });

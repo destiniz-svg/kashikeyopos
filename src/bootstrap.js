@@ -16,6 +16,7 @@
 const { withOutletRead } = require('./db');
 // What this install is running. Read once, from the one place it is stated.
 const APP_VERSION = require('../package.json').version;
+const { presetCounts } = require('./preset');
 // The outlet's own local date — see apply.js. One day-key, not two.
 const { today } = require('./apply');
 
@@ -341,6 +342,14 @@ async function buildBootstrap(ctx) {
          and a published loyalty programme already layer. */
       PREFS: oset,
       APPVER: APP_VERSION,
+      /* What the shipped catalogue holds — counted from the file, never typed,
+         so the screens that offer to load it cannot quote a figure the data
+         has since moved past. It is the same `presetCounts()` the onboarding
+         choice reads, and it is what lets Menu Master's add-ons screen know
+         whether this outlet is still short of the pre-set options without a
+         literal 112 sitting in the client. Shipped structure, no trade, no
+         query. */
+      PRESET: presetCounts(),
       /* Live sign-ins at this outlet, this device included. `others` is what
          "sign out everywhere" would actually end. */
       SESSIONS: (function () {

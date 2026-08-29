@@ -287,6 +287,57 @@ test('the pre-set menu lands whole — add-ons and buy links included', opts, as
   assert.ok((K.MODIFIERS || []).length >= preset.addons, 'every add-on option is published');
   assert.strictEqual((K.MENU_CATEGORIES || []).length, preset.sections,
     'the sections reach the till');
+  assert.strictEqual((K.PRESET || {}).addons, preset.addons,
+    'and the bootstrap says what the shipped catalogue holds, so no screen'
+    + ' needs a literal to know whether this outlet is short of it');
+
+  /* ── THE ADD-ONS ON THEIR OWN ─────────────────────────────────────────────
+     Reported: "menu master ... addons is zero." The whole-catalogue loader is
+     drawn only while a store's menu is still small — rightly, since it is 301
+     exhaustive dish_upserts — so a store that reached its menu another way had
+     no door to the 112 options at all.
+
+     Driven here from the state that actually produces the report: the add-ons
+     stripped from a store that keeps its menu, AND its dishes re-keyed so
+     their ids are nothing like the catalogue's, which is what a CSV-imported
+     store looks like and what made matching on id alone attach zero links. */
+  await inBiz("DELETE FROM item_modifier");
+  await inBiz("DELETE FROM modifier");
+  await inBiz("DELETE FROM modifier_group");
+  await inBiz("UPDATE item SET id = 'x' || id WHERE NOT is_batch");
+  const gone = await inBiz('SELECT count(*)::int AS c FROM modifier');
+  assert.strictEqual(Number(gone.c), 0, 'the reported state: a menu, and no add-ons');
+
+  const only = await call('POST', '/api/outlet/' + outletId + '/menu/preset',
+    { part: 'addons' }, { authorization: 'Bearer ' + tillToken });
+  assert.strictEqual(only.status, 200, JSON.stringify(only.body));
+  assert.strictEqual(only.body.addons, preset.addons, 'every option landed');
+  assert.ok(only.body.links > 1000,
+    'and the links resolved against THIS outlet by name: ' + only.body.links);
+
+  const back = await inBiz('SELECT'
+    + ' (SELECT count(*) FROM modifier) AS opts,'
+    + ' (SELECT count(*) FROM item_modifier) AS links,'
+    + ' (SELECT count(*) FROM item WHERE id LIKE \'x%\') AS kept');
+  assert.strictEqual(Number(back.opts), preset.addons);
+  assert.ok(Number(back.links) > 1000, back.links + ' links');
+  assert.ok(Number(back.kept) >= preset.dishes,
+    'NOT ONE DISH ROW was rewritten — the whole point of the separate door');
+
+  // Idempotent, like every other part of this file.
+  const twice = await call('POST', '/api/outlet/' + outletId + '/menu/preset',
+    { part: 'addons' }, { authorization: 'Bearer ' + tillToken });
+  assert.strictEqual(twice.status, 200);
+  const n3 = await inBiz('SELECT count(*)::int AS c FROM modifier');
+  assert.strictEqual(Number(n3.c), preset.addons, 'twice is once here too');
+
+  // And a part nobody defined is refused by name, never rounded down to the
+  // whole-catalogue load — which is the destructive one of the two.
+  const bad = await call('POST', '/api/outlet/' + outletId + '/menu/preset',
+    { part: 'everything' }, { authorization: 'Bearer ' + tillToken });
+  assert.strictEqual(bad.status, 400, JSON.stringify(bad.body));
+  assert.match(String(bad.body.error), /"everything"/,
+    'and the refusal says what it was handed');
 });
 
 test('a bill with a member, a redemption and credit reaches the ledger',

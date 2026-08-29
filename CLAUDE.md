@@ -1282,6 +1282,56 @@ record of what they paid. Measured on a phone at table 2: order, Received, the
 counter opens the bill, the counter settles it, and the phone — untouched —
 redraws the ladder ending on **Paid · Settled · MVR 6.16 · LOYC-R-010235**.
 
+### And the add-ons had no door on a store that already had a menu
+
+Reported straight after: *"menu master … addons is zero. I asked to bring all
+addons list in that prot and add those."* Both halves were right, and the
+second is a different defect from the pen above — that one made a store's OWN
+add-ons unreadable, this one is a store that has none and no way to get them.
+
+**"Load the pre-set menu" is drawn only while `MENU.length < 10`**, and that
+gate is correct: it replays 301 `dish_upsert`s, which are exhaustive, so on a
+store with a menu it would put the shipped name, price and description back
+over everything the owner has since typed. But it was the ONLY door to the 112
+add-ons. A store that reached its catalogue any other way — the CSV import, or
+a build from before the add-ons were in the file — read "Add-ons · 0" for ever
+with nothing on any screen to do about it.
+
+`part: 'addons'` is the additive half, on the add-ons screen itself: the 112
+groups and options and the 1,334 links that attach them to the dishes, and
+**not one dish row**. Rank 5, idempotent, and offered only while the outlet is
+still short of them.
+
+**The links resolve by id and, failing that, by NAME.** They are composed
+against the shipped catalogue's own ids, and a store only carries those if its
+menu came from the pre-set load; a store that reached the same catalogue
+through the CSV import holds every dish under an id its own terminal minted.
+Measured before this was written, against a real outlet: 112 options landed and
+**0 links**. Name is the key the rest of this build already resolves a menu on
+— the CSV import matches sections, add-ons and dishes by name — compared
+case- and space-insensitively, because a catalogue that went out through a
+spreadsheet comes back with different capitalisation. **An ambiguous name
+resolves to NOBODY**: two dishes under one name make "which one offers extra
+cheese" a coin toss, and take-one-silently is what migration 018 and
+`chain.member_resolve()` both exist to refuse.
+
+**And an unknown dish is dropped, not a refusal.** `item_modifier.item_id` is a
+foreign key, so a bare INSERT aborts the whole load on the first id this outlet
+does not hold. It is guarded by an EXISTS now — the mirror of the rule
+`dish_upsert` already keeps in the other direction, where an unknown add-on
+group is dropped rather than making a dish unsaveable.
+
+**`PRESET` is published in the bootstrap** (`presetCounts()`, counted from the
+file) so no screen needs a literal 112 to know whether an outlet is short of
+them, and the toast reports `links` — what actually **resolved at this outlet**,
+never what the catalogue ships.
+
+Measured by stripping outlet 39's add-ons and driving the shipped screen: Menu
+Master reads 0, the whole-catalogue loader is correctly absent, **Load the
+pre-set add-ons** lands 112 options in 112 groups with **1,334 links**, every
+dish row is untouched, the dish reads its four back, the header reads 112, and
+a second load converges.
+
 ### And the registry cannot be filed as one of its own customers
 
 Found while running the suite for those two: `/api/account/signup` answering

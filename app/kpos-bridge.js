@@ -369,7 +369,7 @@
     importSetup: function (file, parts) { return api.importSetup(file, parts); },
     /* The shipped catalogue, landed server-side and re-read whole — the same
        reason the setup import is not an outbox op. */
-    menuPreset: function () { return api.menuPreset(); },
+    menuPreset: function (part) { return api.menuPreset(part); },
     /* The log-out's cache clean — see wipeLocal() in the API client. */
     wipeLocal: function () { return api.wipeLocal(); },
     revokeMember: function (id) { return api.revokeMember(id); },

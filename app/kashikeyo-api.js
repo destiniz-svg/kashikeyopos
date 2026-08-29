@@ -700,9 +700,9 @@
        the same handlers a till write goes through. Not an outbox op: 430 rows
        is not a till op, and a half-applied menu behind a toast is the defect
        the holding pen exists to catch. Rank 5 at the door. */
-    menuPreset() {
+    menuPreset(part) {
       return this._fetch("/api/outlet/" + this.outletId + "/menu/preset",
-        { method: "POST", body: {} });
+        { method: "POST", body: { part: part || "all" } });
     }
     shareStatement(memberId, via, to, from, until) {
       return this._fetch("/api/outlet/" + this.outletId + "/member/"

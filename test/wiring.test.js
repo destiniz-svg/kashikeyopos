@@ -4930,6 +4930,74 @@ test('the pre-set menu resolves every reference it makes, in apply order', () =>
     'nothing rides the preset but what the counts describe');
 });
 
+/* ── AND THE ADD-ONS CAN BE LOADED WITHOUT THE 301 DISHES ────────────────────
+   Reported: "menu master ... addons is zero. I asked to bring all addons list
+   in that prot and add those."
+
+   The pre-set loader is drawn only while a store's menu is still small, and
+   rightly — it replays 301 `dish_upsert`s, which are exhaustive and would put
+   the shipped name, price and description back over whatever the store has
+   since typed. So a store that reached its menu ANY OTHER WAY (the CSV import,
+   or a build from before the add-ons were in this file) had no door to the 112
+   options at all, and Menu Master read "Add-ons · 0" for ever with nothing on
+   screen to do about it.
+
+   `part: 'addons'` is the additive half: the groups and options, plus the
+   links, and not one dish row. */
+test('the pre-set add-ons load on their own, links and all', () => {
+  const { presetOps } = require('../src/preset');
+  const P = require('../src/data/preset-menu.json');
+
+  const only = presetOps({ part: 'addons' });
+  assert.ok(only.length && only.every((o) => o.kind === 'modifier_update'),
+    'the add-ons part writes add-ons and nothing else');
+  assert.strictEqual(only.length, P.addons.length, 'every shipped option');
+  assert.ok(!only.some((o) => o.kind === 'dish_upsert'),
+    'NO DISH ROW — the whole reason this is a separate door from the catalogue');
+
+  // The links ride here and only here.
+  const links = only.reduce((n, o) => n + (o.payload.items || []).length, 0);
+  assert.ok(links > 1000, 'the links that attach them to the dishes ride along: ' + links);
+  const ids = new Set(P.addons.map((a) => a.id));
+  P.dishes.forEach((d) => (d.addons || []).forEach((a) =>
+    assert.ok(ids.has(a), d.name + ' names an add-on the file does not carry: ' + a)));
+
+  /* And NOT on the whole-catalogue load. There the add-ons are applied before
+     the dishes exist — they must be, or a dish naming a group that has not
+     landed loses the link — so a link written there would name a row that is
+     not there yet; the dishes write their own a moment later. */
+  const all = presetOps();
+  assert.ok(all.filter((o) => o.kind === 'modifier_update')
+    .every((o) => !(o.payload.items || []).length),
+    'the whole-catalogue load leaves the links to the dishes that follow it');
+
+  /* A link resolves by id and, failing that, by NAME. A store whose menu came
+     through the CSV import holds every dish under an id its own terminal
+     minted, so id alone attaches nothing — measured exactly that way against a
+     real outlet before this was written: 112 options landed and 0 links. */
+  const SRC_P = fs.readFileSync(path.join(__dirname, '..', 'src', 'preset.js'), 'utf8');
+  assert.ok(/byName/.test(SRC_P) && /itemResolver/.test(SRC_P),
+    'the resolver matches on the name as well as the id');
+  assert.ok(/byName\.has\(k\) \? null : r\.id/.test(SRC_P),
+    'and a name this outlet holds twice resolves to NOBODY, never to one of them');
+
+  // An unknown dish is dropped by the handler, not a refusal of the whole load.
+  const APPLY = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  assert.ok(/WHERE EXISTS \(SELECT 1 FROM item WHERE id = \$1\)/.test(APPLY),
+    'item_modifier is guarded, so one deleted dish cannot abort the load');
+
+  // The screen's gate is the shipped count, never a literal that would drift.
+  assert.ok(/\(K\(\)\.PRESET \|\| \{\}\)\.addons/.test(SRC),
+    'the add-ons screen reads what the catalogue actually holds');
+  assert.ok(!/mods\.length < 112/.test(SRC), 'no hardcoded 112 decides the gate');
+  assert.ok(/Load the pre-set add-ons/.test(SRC), 'and the door is on the add-ons screen');
+
+  // The route takes the two parts and refuses anything else by name.
+  const RT = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.ok(/part !== 'all' && part !== 'addons'/.test(RT),
+    'an unknown part is refused rather than rounded down to the destructive one');
+});
+
 /* ── THE OFFER BANNER REACHES A REAL PHONE, AND THE SLOTS ARE GUIDED ─────────
    The banner strip used to be "published" into this browser's localStorage
    (kashikeyo.promos.v1), which only a portal sharing the machine could read —
