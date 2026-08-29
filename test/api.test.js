@@ -1385,7 +1385,19 @@ test('an invitation records the channel, and refuses one with no address by name
       + '/invite', { via: 'viber' }, token);
     assert.strictEqual(v.status, 200, JSON.stringify(v.body));
     assert.strictEqual(v.body.to, phone, 'on the number already on file');
-    assert.strictEqual(v.body.sent, false, 'Viber is recorded, not wired');
+    assert.strictEqual(v.body.sent, false,
+      'no server posts to Viber, and `sent` is derived rather than assumed');
+
+    /* AND IT COMES BACK WITH SOMETHING TO SEND. `sent: false` on this channel
+       means the STAFF MEMBER's own app makes the send — so an answer with no
+       handoff is an answer with no delivery at all, which is what shipped:
+       Viber was the one channel offered in the list and given nothing, while
+       `kashikeyo-share.js` had composed `viber://forward?text=` for a RECEIPT
+       since it was written. Reported as "Viber does not work". */
+    assert.match(String(v.body.handoff || ''), /^viber:\/\/forward\?text=/,
+      'Viber comes back with the app handoff: ' + JSON.stringify(v.body.handoff));
+    assert.ok(decodeURIComponent(String(v.body.handoff)).indexOf(v.body.link) > -1,
+      'carrying the invitation link inside the message, not an empty compose box');
 
     const row = await one('SELECT invited_via, invited_to, invite_count, invited_by'
       + ' FROM chain.member WHERE id = $1', [id]);
@@ -1393,6 +1405,12 @@ test('an invitation records the channel, and refuses one with no address by name
     assert.strictEqual(row.invited_to, phone, 'with the address it went to');
     assert.strictEqual(row.invite_count, 1, 'and how many times');
     assert.ok(row.invited_by, 'and who handed it over');
+
+    // Counted after the row above, because a send raises invite_count.
+    const w = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'whatsapp' }, token);
+    assert.match(String(w.body.handoff || ''), /^https:\/\/wa\.me\/\d+\?text=/,
+      'and WhatsApp keeps its own: ' + JSON.stringify(w.body.handoff));
 
     // A channel this build has never heard of is refused before anything moves.
     const junk = await post('/api/outlet/' + outletId + '/member/' + id

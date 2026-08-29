@@ -15027,14 +15027,23 @@ class Component extends DCLogic {
     };
     el.click();
   }
+  /* ONE CLIPBOARD SEAM. A link and a whole message are copied the same way and
+     differ only in what the toast says, so they share a path rather than
+     growing a second one that forgets the try/catch. Where the clipboard is
+     refused — an insecure origin, a browser that will not — the text itself is
+     put on screen, because the operator can still read it out. */
+  copyOut(text, said) {
+    if (!text) return this.toast("There is nothing to copy", "warn");
+    try {
+      navigator.clipboard.writeText(text);
+      this.toast(said || "Copied");
+    } catch (e) {
+      this.toast(text, "warn");
+    }
+  }
   copyLink(link) {
     if (!link) return this.toast("There is no link to copy", "warn");
-    try {
-      navigator.clipboard.writeText(link);
-      this.toast("Link copied");
-    } catch (e) {
-      this.toast(link, "warn");
-    }
+    return this.copyOut(link, "Link copied");
   }
   /* THE POPUP THE ADDRESS COMES FROM. Typed once, saved onto the customer, and
      used for this send — so the next receipt needs no typing at all. It saves
@@ -15683,29 +15692,101 @@ class Component extends DCLogic {
       return this.toast("Sign in to the outlet first \u2014 the link is minted by the store, not by this device", "warn");
     }
     return B.inviteMember(c.id, chan, to).then((r) => {
-      const rows = [
-        ["Their link", r.link, "t"],
-        ["Sent to", (r.channel || ch.label) + " \u00b7 " + (r.to || to)],
-        ["Good for", (r.days || 7) + " days \u00b7 one use"],
-        ["Invitations", String(r.count || 1)]
-      ];
-      // The one channel a person can complete by hand: click-to-chat opens
-      // THEIR WhatsApp with the message already composed.
-      if (r.handoff) rows.push(["Open WhatsApp", r.handoff, "t"]);
-      this.info(
-        r.sent ? ch.label + " sent to " + (r.to || to) : "Hand this to " + c.name,
-        c.phone || "", rows,
-        (r.restored ? "This customer had been revoked; a fresh invitation restores their access, because a link that cannot work is not an invitation. " : "")
-        + "Sending again issues a fresh token and invalidates the previous one, so an "
-        + "invitation forwarded to the wrong person stops working. Tapping it opens their "
-        + "card and sends a four-digit code to the address on their membership \u2014 never "
-        + "one typed on that screen, so a forwarded link cannot sign anybody else in. "
-        + (r.sent ? "" : this.sentence(r.reason || "Nothing was sent") + "."));
       if (B.refresh) B.refresh();
-      this.setState({ modal: null });
+      return this.inviteResult(c, ch, r, to);
     }).catch((e) => {
       this.toast((e && e.message) ? e.message : "The outlet did not answer \u2014 no invitation was issued", "err");
     });
+  }
+  /* WHAT THE COUNTER IS LEFT HOLDING, and until now it was left holding
+     NOTHING. Reported as "customer invitations do not work \u2014 email, WhatsApp
+     and Viber", and the send was never the broken half: the outlet answered
+     200 and minted a token on every one of the three. What followed was
+
+         this.info(...);                 // opens the result
+         this.setState({ modal: null }); // and destroys it, same tick
+
+     \u2014 the line meant to close the FORM, written without noticing that
+     `info()` had already REPLACED the form with the result. So the operator
+     pressed Send, the screen closed, and that was the whole of it: no link,
+     no handoff, no reason, nothing to hand the guest. Worse than nothing,
+     because issuing a token invalidates the previous one \u2014 so a counter
+     pressing Send twice, looking for the thing that did not appear, killed a
+     link that may already have been sent.
+
+     Measured in a browser on the shipped build, all three channels: HTTP 200,
+     a token in `chain.member`, and `(nothing matching)` on screen.
+
+     It is the same defect this file already records twice \u2014 the share sheet
+     that threw the receipt away, and the wage-band warning overwritten by the
+     success toast in the same tick \u2014 which is why the fix is the shape those
+     took: the RESULT IS THE MODAL, and nothing closes it but the person
+     reading it.
+
+     And the result has to be TAPPABLE. `info()` renders a row's value as
+     right-aligned text, so even when it did paint, "Open WhatsApp" was a
+     400-character `wa.me` URL nobody could tap and "Their link" was a URL
+     nobody could copy \u2014 for the channel whose ONLY possible delivery is that
+     link being opened. So this is the share sheet the receipt already uses,
+     with actions that do what they say. */
+  inviteResult(c, ch, r, to) {
+    const addr = r.to || to;
+    const app = r.handoff ? (r.via === "viber" ? "Viber" : "WhatsApp") : "";
+    /* Attempted, not relied on. A popup opened from a promise callback rather
+       than from the tap itself is blocked by some browsers, and a blocked
+       popup with nothing on screen is exactly the "nothing happened" being
+       reported. So the sheet is shown WHATEVER this returns, and its first
+       action is a real tap that cannot be blocked. */
+    if (r.handoff) this.openHandoff(r.handoff);
+
+    const btn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px";
+    const acts = [];
+    if (r.handoff) {
+      acts.push({
+        head: "Send it", label: "Open " + app + " with the message", style: btn,
+        sub: app + " opens on this device with the whole invitation composed \u2014 "
+          + "you pick the chat and press send. Nothing leaves this till by itself.",
+        go: () => {
+          if (!this.openHandoff(r.handoff)) {
+            this.copyOut(r.body, "Message copied \u2014 " + app + " would not open here");
+          }
+        }
+      });
+    }
+    acts.push({
+      head: r.handoff ? "Or hand it over yourself" : "Hand it over",
+      label: "Copy the link", style: btn,
+      sub: "Paste it anywhere. Tapping it opens their card and sends a four-digit "
+        + "code to the address on their membership \u2014 never one typed on that "
+        + "screen, so a forwarded link cannot sign anybody else in.",
+      go: () => this.copyOut(r.link, "Link copied")
+    });
+    acts.push({
+      label: "Copy the message", style: btn,
+      sub: "The whole invitation, wording and link, ready to paste",
+      go: () => this.copyOut(r.body, "Message copied")
+    });
+
+    const facts = [c.name, addr, (r.days || 7) + " days \u00b7 one use",
+      (+r.count || 1) > 1 ? r.count + " invitations sent" : "first invitation"]
+      .filter(Boolean).join(" \u00b7 ");
+    this.setState({ modal: { kind: "share",
+      title: r.sent ? ch.label + " sent to " + addr
+        : (app ? app + " is ready to send" : "Not sent \u2014 hand this over"),
+      /* NOT SENT IS NEITHER A FAILURE NOR A SUCCESS, and it is the ordinary
+         answer on the two app channels. The reason is the install's, never
+         this guest's, and it is said here rather than swallowed \u2014 which is
+         what the destroyed modal was doing to a mail transport's refusal. */
+      sub: facts + (r.restored ? " \u00b7 access restored" : "")
+        + (r.sent || app ? "" : " \u00b7 " + this.sentence(r.reason || "Nothing was sent")),
+      acts: acts } });
+  }
+  // Opened rather than navigated to, so the till keeps its place. Returns the
+  // window, or null where the browser refused \u2014 the caller decides what to do
+  // about that rather than assuming it worked.
+  openHandoff(url) {
+    if (!url) return null;
+    try { return window.open(url, "_blank", "noopener"); } catch (e) { return null; }
   }
   // What the row says about their access, in one line. "Revoked" and "Not
   // invited" are different answers and both have to survive being read.

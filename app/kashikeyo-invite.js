@@ -119,16 +119,39 @@
     return { subject: "", body: body, link: link };
   }
 
-  /* WhatsApp's click-to-chat: the only WhatsApp send this build can honestly
-     make, because it is the STAFF MEMBER's own app that sends it. A server
-     cannot post to it, and pretending otherwise is the defect this build keeps
-     refusing to ship. Viber's equivalent (`viber://`) only works from a device
-     that already has the app, so a server-composed Viber invite has no link
-     form at all and the message is handed over instead. */
+  /* THE HANDOFF: the only send this build can honestly make on a messaging
+     app, because it is the STAFF MEMBER's own app that sends it. A server
+     cannot post to either of these, and a screen claiming otherwise is the
+     defect this build keeps refusing to ship.
+
+     VIBER HAS ONE TOO, and leaving it out was a defect rather than a scruple.
+     `viber://forward?text=` is exactly what `kashikeyo-share.js` already
+     composes so a cashier can send a RECEIPT on Viber — so the invitation,
+     offering the same channel in the same list, delivered nothing at all
+     while the receipt beside it delivered fine. Reported as "Viber does not
+     work", and it did not.
+
+     What is true of `viber://` is that it needs Viber on the device the till
+     is running on, where `wa.me` falls back to a web page. That is a fact for
+     the screen to state, not a reason to withhold the channel — and the link
+     is copied either way, so the send can always be completed by hand. */
+  function handoff(chan, phone, body) {
+    const text = encodeURIComponent(String(body || ""));
+    if (chan === "viber") return "viber://forward?text=" + text;
+    if (chan === "whatsapp") {
+      const digits = String(phone || "").replace(/\D/g, "");
+      // No number is a valid answer: `wa.me/?text=` opens WhatsApp with the
+      // message composed and lets the sender pick the chat, which is the rule
+      // `kashikeyo-share.js` already keeps for a walk-in's receipt.
+      return "https://wa.me/" + digits + "?text=" + text;
+    }
+    return "";
+  }
+  // Kept as the name the rest of the build already calls; one definition under
+  // it, so a second spelling of a wa.me link cannot drift from this one.
   function whatsappHandoff(phone, body) {
-    const digits = String(phone || "").replace(/\D/g, "");
-    if (!digits) return "";
-    return "https://wa.me/" + digits + "?text=" + encodeURIComponent(String(body || ""));
+    return String(phone || "").replace(/\D/g, "")
+      ? handoff("whatsapp", phone, body) : "";
   }
 
   return {
@@ -140,6 +163,7 @@
     figure: figure,
     firstNameOf: firstNameOf,
     compose: compose,
+    handoff: handoff,
     whatsappHandoff: whatsappHandoff
   };
 }));

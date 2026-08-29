@@ -3300,6 +3300,78 @@ The whole of that was missing, and each piece failed silently:
 Points are awarded by the outlet from its own earn rate (`chain.setting`
 `loyalty.pointsPer`), never from a number the terminal sent.
 
+### And the send destroyed the thing it had just made
+
+Reported as *"customer invitations does not work. Email, WhatsApp and Viber.
+Send fresh invitation as well"* — all three channels and the resend, which is
+the whole feature, and the SEND was never the broken half. Driven in a browser
+on the shipped build: the form composed correctly, the outlet answered **HTTP
+200**, a token landed in `chain.member` — and the screen showed **nothing at
+all**. Press Send, the sheet closes, the counter is holding air.
+
+```js
+this.info(…);                    // opens the result
+if (B.refresh) B.refresh();
+this.setState({ modal: null });  // and destroys it, same tick
+```
+
+The last line was meant to close the FORM. By the time it ran, `info()` had
+already REPLACED the form with the result — the link, the expiry, the handoff,
+the reason — so what it actually closed was the answer. It is the third time
+this build has paid for that shape: the share sheet that threw the settled
+receipt away, and the wage-band warning overwritten by a success toast in the
+same tick. **The result is the modal, and nothing closes it but the person
+reading it.**
+
+Worse than nothing, and this is why the report says all three: issuing a token
+INVALIDATES the previous one. So a counter pressing Send again, looking for the
+thing that did not appear, killed the link from the press before it.
+
+**And the result has to be TAPPABLE.** `info()` renders a row's value as
+right-aligned text, so even on the tick it existed, "Open WhatsApp" was a
+400-character `wa.me` URL nobody could tap and "Their link" was a URL nobody
+could copy — on the two channels whose ONLY possible delivery is that link
+being opened. So the result is the **share sheet the receipt already uses**,
+with actions that do what they say: open the app, copy the link, copy the
+message. Same seam, one clipboard path (`copyOut()`), and the window is
+*attempted* on the send but never relied on — a popup opened from a promise
+callback is blocked by some browsers, and a blocked popup with nothing on
+screen is exactly the defect being reported, so the sheet's own button is the
+tap that cannot be blocked.
+
+**Viber had no handoff at all**, which is why it was named. The invite route
+composed one for `whatsapp` and answered Viber *"recorded, not wired … handed
+over at the counter"* — while `kashikeyo-share.js`, one router along, has
+composed `viber://forward?text=` so a cashier can send a RECEIPT on Viber since
+it was written. A store could Viber a bill and not an invitation, from a list
+offering both. `INVITE.handoff(chan, phone, body)` is one definition in the
+module both runtimes read, `whatsappHandoff()` delegates to it so a second
+`wa.me` composer cannot drift, and the door hands back whichever the channel
+has rather than testing for one by name. What is true of `viber://` — it needs
+Viber on the device the till runs on, where `wa.me` falls back to a web page —
+is a sentence for the screen, not a reason to withhold the channel; the link is
+copied either way.
+
+**And an unsent email now says so.** `sent` was already derived from what the
+transport answered; the destroyed modal was swallowing that answer along with
+everything else, so a mail provider's refusal was indistinguishable from a
+send. The sheet's own middle temperature: *"Not sent — hand this over"* with
+the reason, which is the INSTALL's and never this guest's.
+
+Measured through the shipped screens on all three channels: the sheet stays,
+`wa.me/9607793216?text=…` and `viber://forward?text=…` both carry the whole
+message with the `/join/MV-…` link inside it, **Copy the link** puts the real
+invitation on the clipboard, and `chain.member` records the channel each time.
+`test/wiring.test.js` pins the result surviving its own tick, the actions, both
+handoffs and the one definition — and bans the shape itself; `test/api.test.js`
+pins the door returning a handoff on both app channels. All three fail against
+the version that shipped.
+
+**What is NOT tested here**: whether the live install's mail transport actually
+delivers. Production holds `RESEND_API_KEY` and `EMAIL_FROM`, its logs show no
+refusal, and this session cannot reach the install to send one — so the email
+channel is proven only as far as the honest answer on screen.
+
 ## The portals, driven as the people who use them
 
 Asked directly — *do the customer and guest portals work end to end?* — so both
@@ -5449,7 +5521,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 562 tests
+npm test                          # 565 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

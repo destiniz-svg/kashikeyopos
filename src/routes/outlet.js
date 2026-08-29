@@ -706,18 +706,23 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
         } catch (e) {
           delivery = { sent: false, via: 'none', reason: e.message || 'the transport refused' };
         }
-      } else if (via === 'whatsapp') {
-        // The only WhatsApp send this build can honestly make is the staff
-        // member's own: click-to-chat opens THEIR WhatsApp with the message
-        // composed. A server cannot post to it, and a screen claiming
-        // otherwise is the defect this build keeps refusing to ship.
-        delivery = { sent: false, via: 'handoff',
-          reason: 'WhatsApp has no server transport here — open the link below '
-            + 'and WhatsApp will have the message ready to send' };
       } else {
-        delivery = { sent: false, via: 'none',
-          reason: 'Viber is recorded, not wired: this build has no Viber '
-            + 'business API configured, so the message is handed over at the counter' };
+        /* THE TWO MESSAGING APPS ARE ONE CASE, and treating them as two is
+           what left Viber with nothing to deliver. Neither has a server
+           transport here — the only send either can honestly make is the
+           STAFF MEMBER's own app, opened with the message already composed —
+           so both answer `sent: false` and both carry a handoff. `sent` stays
+           derived from what actually happened, never assumed.
+
+           Viber used to answer "recorded, not wired ... handed over at the
+           counter" and carry no handoff at all, while the RECEIPT share one
+           router along composed `viber://forward?text=` for the same channel.
+           So a cashier could send a bill on Viber and not an invitation. */
+        delivery = { sent: false, via: 'handoff',
+          reason: (via === 'viber' ? 'Viber' : 'WhatsApp')
+            + ' has no server transport here — opening it on this device with '
+            + 'the message already composed is the send, and the link is yours '
+            + 'to paste if the app is not installed here' };
       }
 
       await withOutlet(req.ctx, async function (c) {
@@ -746,9 +751,9 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
         // The invitation itself: one link, whichever channel carries it.
         link: out.msg.link, expires: out.m.token_exp, days: TOKEN_DAYS,
         subject: out.msg.subject, body: out.msg.body,
-        // Click-to-chat, for the one channel a person can complete by hand.
-        handoff: via === 'whatsapp'
-          ? INVITE.whatsappHandoff(out.m.invited_to, out.msg.body) : '',
+        // The app opened with the message composed — for BOTH channels a
+        // person completes by hand, not only WhatsApp.
+        handoff: INVITE.handoff(via, out.m.invited_to, out.msg.body),
         via: via, channel: CHANNELS[via], to: out.m.invited_to,
         count: out.m.invite_count, restored: out.m.was_revoked === true,
         sent: delivery.sent === true, reason: delivery.reason || ''

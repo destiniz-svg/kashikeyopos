@@ -5758,3 +5758,138 @@ test('units per pack can be cleared and retyped', () => {
   assert.ok(!/dbBuyPack: String\([^)]*\|\| *1\)/.test(SRC),
     'the default is back in the rendered value, and the field cannot be cleared again');
 });
+
+/* ═══ AN INVITATION THAT LEAVES THE COUNTER SOMETHING TO HAND OVER ═════════
+   Reported as "customer invitations do not work — email, WhatsApp and Viber",
+   and the SEND was never the broken half: the outlet answered 200 and minted
+   a token on all three. What followed was `this.info(...)` immediately
+   undone by `this.setState({ modal: null })` — the line meant to close the
+   form, written without noticing that info() had already replaced the form
+   with the result. Press Send, screen closes, nothing to give the guest.
+
+   Both halves are pinned here because both are invisible from the server:
+   the result must SURVIVE the tick that created it, and it must be tappable,
+   since a `wa.me` URL rendered as right-aligned text is not a way to open
+   WhatsApp. */
+test('a sent invitation leaves a result on screen, and it can be acted on', async () => {
+  const H = require('./harness');
+  const INVITE = require('../app/kashikeyo-invite.js');
+
+  for (const chan of ['email', 'whatsapp', 'viber']) {
+    const F = H.makeInstance({ role: 'SuperAdmin' });
+    const cust = { id: 'm1', name: 'Hassan Moosa', phone: '+960 7793216',
+      email: 'hassan@example.mv' };
+    const body = 'Loy Cafe here, Hassan — open it here: https://x.test/join/MV-aaa-1';
+    let asked = null;
+    F.__win.KPOS_BRIDGE = {
+      inviteMember: (id, via, to) => {
+        asked = { id: id, via: via, to: to };
+        return Promise.resolve({
+          member: cust, link: 'https://x.test/join/MV-aaa-1', body: body,
+          days: 7, count: 2, via: via, channel: via, to: to,
+          handoff: INVITE.handoff(via, cust.phone, body),
+          sent: false, reason: 'No email transport is configured on this install'
+        });
+      },
+      refresh: () => {}
+    };
+
+    await F.sendInvite(cust, chan);
+
+    assert.strictEqual(asked.via, chan, chan + ': the channel reaches the outlet');
+    const m = F.state.modal;
+    /* THE WHOLE DEFECT, IN ONE ASSERTION. */
+    assert.ok(m, chan + ': the result is still on screen — a null modal here is'
+      + ' the send closing the screen and handing the counter nothing');
+    assert.ok(Array.isArray(m.acts) && m.acts.length,
+      chan + ': and it carries actions, not right-aligned text');
+
+    const labels = m.acts.map((a) => a.label);
+    assert.ok(labels.some((l) => /Copy the link/.test(l)),
+      chan + ': the link can be copied — ' + JSON.stringify(labels));
+    assert.ok(labels.some((l) => /Copy the message/.test(l)),
+      chan + ': and so can the message');
+
+    if (chan === 'email') {
+      assert.ok(!labels.some((l) => /^Open /.test(l)),
+        'email opens no messaging app');
+      /* NOT SENT IS NEITHER A FAILURE NOR A SUCCESS, and the destroyed modal
+         was swallowing a mail transport's own refusal along with everything
+         else. */
+      assert.match(m.title, /Not sent/, 'and an unsent email says so plainly');
+      assert.match(m.sub, /No email transport/, 'with the reason, which is the install\'s');
+    } else {
+      const app = chan === 'viber' ? 'Viber' : 'WhatsApp';
+      const open = m.acts.find((a) => /^Open /.test(a.label));
+      assert.ok(open, chan + ': the one delivery this channel can make is offered');
+      assert.match(open.label, new RegExp(app));
+      assert.match(m.title, new RegExp(app + ' is ready'));
+      // and tapping it is a real act, not a label
+      let went = null;
+      F.__win.open = (u) => { went = u; return {}; };
+      open.go();
+      assert.ok(went, chan + ': tapping it opens the app');
+      assert.ok(went.indexOf('join') > -1 || decodeURIComponent(went).indexOf('join') > -1,
+        chan + ': carrying the invitation, not an empty compose window');
+    }
+  }
+});
+
+/* VIBER HAD NO HANDOFF AT ALL, which is why the channel was named in the
+   report. `kashikeyo-share.js` has composed `viber://forward?text=` for a
+   RECEIPT since it was written — so a cashier could send a bill on Viber and
+   not an invitation, from a list offering both. One definition now, in the
+   module both runtimes read. */
+test('both messaging channels have a handoff, and it is one definition', () => {
+  const INVITE = require('../app/kashikeyo-invite.js');
+  const body = 'hello https://x.test/join/MV-aaa-1';
+
+  assert.match(INVITE.handoff('whatsapp', '+960 779 3216', body),
+    /^https:\/\/wa\.me\/9607793216\?text=/, 'WhatsApp click-to-chat, digits only');
+  assert.match(INVITE.handoff('viber', '+960 7793216', body),
+    /^viber:\/\/forward\?text=/, 'and Viber, which had nothing at all');
+  assert.strictEqual(INVITE.handoff('email', '7793216', body), '',
+    'email is a transport, not a handoff');
+
+  // The message rides inside both, or the app opens on an empty compose box.
+  ['whatsapp', 'viber'].forEach((c) => {
+    assert.ok(decodeURIComponent(INVITE.handoff(c, '7793216', body)).indexOf(body) > -1,
+      c + ' carries the whole message');
+  });
+
+  /* ONE SPELLING. whatsappHandoff is the name the rest of the build calls;
+     a second wa.me composer under it is how two links drift apart. */
+  assert.strictEqual(INVITE.whatsappHandoff('+960 7793216', body),
+    INVITE.handoff('whatsapp', '+960 7793216', body));
+
+  /* And the door hands back whichever the channel has, rather than testing
+     for one channel by name. */
+  const OUT = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.ok(!/handoff:\s*via === 'whatsapp'/.test(OUT),
+    'the invite answer no longer serves one channel and drops the other');
+  assert.match(OUT, /handoff:\s*INVITE\.handoff\(via,/);
+});
+
+/* THE SHAPE ITSELF, because this is the third time this build has paid for
+   it: the share sheet that threw the receipt away, the wage-band warning
+   overwritten by a success toast, and now an invitation. Composing a result
+   and then clearing the modal in the same tick is never right. */
+test('nothing composes a result and then clears the modal in the same tick', () => {
+  const i = SRC.indexOf('inviteResult(c, ch, r, to) {');
+  assert.ok(i > 0, 'the invitation result has a seam of its own');
+  /* Block comments come out first. The comment above `inviteResult` QUOTES the
+     line being banned, because a defect worth a fence is worth explaining —
+     and a check that cannot tell code from the prose about it would fail on
+     its own documentation. */
+  const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const fn = code(SRC.slice(i, SRC.indexOf('\n  openHandoff(url)', i)));
+  assert.ok(!/setState\(\{\s*modal:\s*null\s*\}\)/.test(fn),
+    'the result must not close itself');
+
+  const send = code(SRC.slice(SRC.indexOf('sendInvite(c, chan) {'),
+    SRC.indexOf('inviteResult(c, ch, r, to) {')));
+  assert.ok(!/setState\(\{\s*modal:\s*null\s*\}\)/.test(send),
+    'and neither must the send that produced it — this exact line is what made'
+    + ' every invitation on every channel look like nothing had happened');
+});
