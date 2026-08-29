@@ -1356,6 +1356,61 @@ prints a dry run, because a plan that describes this is a plan somebody then
 runs with `--apply`. `test/tenancy.test.js` asserts the refusal, that nothing
 was written on the way to it, and that the CLI's guard precedes its own output.
 
+## A reset names its customer, and never reaches another
+
+Asked plainly — *how does reset work* — and answering it honestly meant reading
+the code rather than the card, which found three things.
+
+**The button files a request and erases nothing**, which is correct and says so:
+`store_reset` is in `AUDIT_ONLY`, so Settings → **Ask for a reset…** records who
+asked, when and why, on the trail. The erase is
+`npm run reset:database`, run against the database by whoever holds it — who is
+also the only one who can take a copy first.
+
+**The card claimed staff survive. They do not.** It read "Would keep: sign-ins ·
+staff", and `chain.staff` sits in the `chain` schema the reset drops, along with
+the sessions, the devices and the outlets. What lives through a reset is what is
+in ANOTHER DATABASE: the account plane and the handle registry, both in the
+registry. So the card says "erases menu · sales · stock · staff" and "keeps your
+account · this business · its address" now — the copy-versus-behaviour defect
+this build refuses by name, on the one screen where believing it costs a store.
+
+**The script predated one-database-per-business**, and that made its DEFAULT the
+dangerous one: it reset whatever `DATABASE_URL` pointed at, with no way to name
+a customer. On a registry install the process's own database is one nobody
+trades in, so a reset would have dropped the REGISTRY's `chain` schema — every
+account and the whole business directory — and left the store the operator
+meant to clear untouched. `--business <id>` resolves the customer through the
+registry; with a registry configured and no `--business` the run is refused by
+name with the remedy; a business row naming the registry is refused too, the
+destructive twin of `refuseRegistry()`.
+
+### And it reached across the whole cluster
+
+Found by RUNNING it, which is the only way this one could have been found. The
+role loop was `pg_roles ~ '^outlet_[0-9]+_app$'` — every outlet role belonging
+to every customer on the cluster — and **`DROP OWNED BY` revokes privileges on
+SHARED objects**, databases included, from whichever database it runs in. So
+resetting one scratch business stripped every other customer's CONNECT on their
+own database:
+
+```
+/readyz → "10 of 10 outlet(s) cannot be reached with their own login role"
+has_database_privilege('outlet_39_app','kashikeyo_biz_68','CONNECT') → false
+```
+
+Every till on the estate, off the air, from a reset of somebody else's store.
+Migration 039 had already settled the right rule for the same question: derive
+the roles from the `outlet_%` SCHEMAS actually present — here, of the database
+being reset. A role that serves no schema in this database is not this reset's
+to touch. Measured after: `roles: 0` instead of 56, the bystander's CONNECT
+intact, the registry's account plane intact.
+
+`test/tenancy.test.js` owns the pin, because a destructive check must own what
+it destroys: it makes its own two businesses, resets one, and asserts the
+other's outlet role still opens its own database. It fails against the
+cluster-wide loop.
+
 ## One table is one ticket, however it is spelled
 
 Reported: *"kitchen tab does not show portal orders and other orders."* The

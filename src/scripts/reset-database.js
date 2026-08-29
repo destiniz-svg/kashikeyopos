@@ -19,14 +19,62 @@
 
    Run it as a one-shot (a pre-deploy command, or `npm run reset:database`),
    never as part of the start path.
+
+   WHICH DATABASE — and this predated one-database-per-business, which made the
+   default the dangerous one. It reset whatever DATABASE_URL points at, with no
+   way to name a customer. On a registry install the process's own database is
+   one NOBODY TRADES IN: resetting it drops the registry's `chain` schema, which
+   is where every account, every business row and the whole handle registry
+   live. The store the operator meant to clear would not be touched, and the
+   install would lose the record of who owns what.
+
+   So: `--business <id>` resolves the customer's own database through the
+   registry and resets that. With a registry configured and no `--business`,
+   the run is REFUSED BY NAME rather than falling back to the process's own
+   database — the same doctrine `control()` keeps about never guessing which
+   database is the registry, and `refuseRegistry()` about never filing it as a
+   customer. Without a registry there is one database and it is the business's,
+   which is the single-install case this was written for.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const { owner, shutdown } = require('../db');
+const { owner, ownerFor, control, CONTROL_DB, shutdown } = require('../db');
 
 const CONFIRM = 'yes-i-mean-it';
 
-async function run(say) {
+/* Where the reset is aimed. Returns a pool and the name it belongs to, or
+   throws with the remedy. */
+async function target(businessId, log) {
+  const reg = CONTROL_DB();
+  if (!reg) {
+    if (businessId) {
+      throw new Error('refusing: --business needs a registry — CONTROL_DB is not set');
+    }
+    return { pool: owner(), named: null };
+  }
+  if (!businessId) {
+    throw new Error('refusing: this install has a registry (' + reg + '), so the'
+      + ' database this process dialled is not any business\'s. Name the customer:'
+      + ' npm run reset:database -- --business <id>   (npm run migrate -- --dry-run'
+      + ' lists them)');
+  }
+  const q = await control().query(
+    'SELECT id, name, db_name FROM chain.business WHERE id = $1', [Number(businessId)]);
+  if (!q.rows.length) throw new Error('refusing: no business ' + businessId + ' in the registry');
+  const b = q.rows[0];
+  /* The registry is not one of its own customers, and a row that says otherwise
+     is the defect refuseRegistry() exists to stop. Refused here too, because
+     this is the one script that would act on it destructively. */
+  if (String(b.db_name) === String(reg)) {
+    throw new Error('refusing: business ' + b.id + ' names the REGISTRY (' + reg
+      + '). Resetting it would drop every account on this install.');
+  }
+  log('[reset] business : ' + b.id + ' "' + b.name + '"');
+  return { pool: ownerFor(b.db_name), named: b.db_name };
+}
+
+async function run(say, opts) {
   const log = say || console.log;                       // eslint-disable-line no-console
+  const businessId = (opts && opts.business) || null;
 
   if (process.env.RESET_DATABASE !== CONFIRM) {
     throw new Error('refusing: set RESET_DATABASE="' + CONFIRM + '" to confirm');
@@ -36,7 +84,8 @@ async function run(say) {
     throw new Error('refusing: RAILWAY_ENVIRONMENT_NAME is "production"');
   }
 
-  const pool = owner();
+  const aimed = await target(businessId, log);
+  const pool = aimed.pool;
   const who = await pool.query('SELECT current_database() AS db, current_user AS usr,'
     + ' inet_server_addr()::text AS host, version() AS v');
   const db = who.rows[0].db;
@@ -49,8 +98,29 @@ async function run(say) {
   const before = await pool.query(
     "SELECT nspname FROM pg_namespace WHERE nspname = 'public'"
     + " OR nspname IN ('chain','app') OR nspname ~ '^outlet_[0-9]+$' ORDER BY nspname");
+  /* THE ROLES OF *THIS* BUSINESS, DERIVED FROM ITS OWN SCHEMAS — never from
+     pg_roles, which is CLUSTER-WIDE.
+
+     `pg_roles ~ '^outlet_[0-9]+_app$'` returns every outlet role belonging to
+     every customer on the cluster, and the loop below runs DROP OWNED BY on
+     each. DROP OWNED BY revokes privileges on SHARED objects — databases and
+     tablespaces — from whichever database it is run in, so resetting ONE
+     customer stripped every other customer's CONNECT on their own database.
+     Found by running it: one scratch business reset, and `/readyz` went to
+     "10 of 10 outlet(s) cannot be reached with their own login role", with
+     `has_database_privilege('outlet_39_app','kashikeyo_biz_68','CONNECT')`
+     false on a business the reset had never been aimed at. Every till on the
+     cluster, off the air, from a reset of somebody else's store.
+
+     Migration 039 already settled the right rule for the same question:
+     discover the roles from the `outlet_%` SCHEMAS actually present, rather
+     than from a list — here, the schemas of the database being reset. A role
+     that serves no schema in this database is not this reset's to touch. */
   const roles = await pool.query(
-    "SELECT rolname FROM pg_roles WHERE rolname ~ '^outlet_[0-9]+_app$' ORDER BY rolname");
+    "SELECT DISTINCT nspname || '_app' AS rolname FROM pg_namespace"
+    + " WHERE nspname ~ '^outlet_[0-9]+$'"
+    + " AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = nspname || '_app')"
+    + ' ORDER BY 1');
   log('[reset] schemas  : ' + (before.rows.map((r) => r.nspname).join(', ') || 'none'));
   log('[reset] roles    : ' + (roles.rows.map((r) => r.rolname).join(', ') || 'none'));
 
@@ -114,7 +184,12 @@ function ident(s) {
 }
 
 if (require.main === module) {
-  run().then(() => shutdown()).then(() => process.exit(0))
+  const argv = process.argv.slice(2);
+  const flag = (k) => {
+    const i = argv.indexOf('--' + k);
+    return i >= 0 ? (argv[i + 1] && argv[i + 1].indexOf('--') !== 0 ? argv[i + 1] : true) : null;
+  };
+  run(null, { business: flag('business') }).then(() => shutdown()).then(() => process.exit(0))
     .catch((e) => {
       console.error('[reset] ' + e.message);            // eslint-disable-line no-console
       process.exit(1);

@@ -18335,7 +18335,7 @@ class Component extends DCLogic {
       resetStore: {
         title: "Ask for this store to be reset", sub: "Files a request \u2014 it does not erase",
         save: "File the request",
-        foot: "A reset erases menu, sales, orders, customers and inventory and keeps the sign-ins, staff and outlets. This app cannot do it: it is run against the database by whoever holds it, who is also the only one who can take a copy first. Pressing this records the request, who made it and when, on the audit trail, so there is something to point at.",
+        foot: "A reset erases the STORE — its menu, sales, orders, customers, inventory, outlets and STAFF, who are in the same schema. What survives is on the other side of the tenancy boundary: your account and password, this business, and the store address nobody else can claim. This app cannot do it: it is run against the database by whoever holds it, who is also the only one who can take a copy first. Pressing this records the request, who made it and when, on the audit trail, so there is something to point at.",
         fields: [
           { k: "why", label: "Why", v: "", full: 1 },
           { k: "confirm", label: "Type RESET to confirm", v: "", full: 1 }
@@ -21146,8 +21146,15 @@ class Component extends DCLogic {
             }
           }) : null },
         { title: "Reset this store", sub: "Asks for it \u2014 the app cannot do it", chip: "Owner only", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
-          rows: [["Would erase", "menu · sales · stock"], ["Would keep", "sign-ins · staff"], ["Run by", "whoever holds the database"], ["This button", "files the request"]],
-          foot: "The way out of a store set up wrong without losing the account. The erase itself is run against the database, not from here, so this records the request — who asked, when and why — for whoever carries it out. Everything rung is gone afterwards and only a backup taken beforehand brings it back.",
+          /* WHAT SURVIVES IS WHAT IS IN ANOTHER DATABASE. This read "Would keep:
+             sign-ins · staff", and staff do not survive: chain.staff sits in the
+             `chain` schema the reset drops, along with the sessions, the devices
+             and the outlets. What lives through it is the account plane and the
+             handle registry, which are in the REGISTRY — a different database the
+             reset never touches. Saying "staff" here is the copy-versus-behaviour
+             defect this build refuses by name. */
+          rows: [["Would erase", "menu · sales · stock · staff"], ["Would keep", "your account · this business · its address"], ["Run by", "whoever holds the database"], ["This button", "files the request"]],
+          foot: "The way out of a store set up wrong without losing the account. Your sign-in, the business and the store address survive because they live in the registry, not in the store; everything inside the store — including the staff records and their PINs — does not. The erase itself is run against the database, not from here, so this records the request — who asked, when and why — for whoever carries it out. Only a backup taken beforehand brings any of it back.",
           danger: 1, goLabel: "Ask for a reset…", go: () => this.openForm("resetStore") },
         { title: "Theme", sub: "Stored per user as ThemeMode + CustomColors", chip: mode, chipBg: "var(--amber-dim)", chipFg: "var(--amber-bright)",
           picks: [

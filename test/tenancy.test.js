@@ -443,6 +443,85 @@ test('onboarding refuses an account with no business, rather than using the shar
     }
   });
 
+/* ── A RESET IS ONE CUSTOMER'S, AND IT IS NAMED ──────────────────────────────
+   `npm run reset:database` predated one-database-per-business: it reset
+   whatever DATABASE_URL pointed at, with no way to name a customer. On a
+   registry install the process's own database is one NOBODY TRADES IN, so the
+   default was the dangerous one — it would drop the registry's `chain` schema,
+   where every account and the whole business directory live, while leaving the
+   store the operator meant to clear untouched.
+
+   AND IT REACHED ACROSS THE WHOLE CLUSTER. The role loop was
+   `pg_roles ~ '^outlet_[0-9]+_app$'`, which is every outlet role belonging to
+   every customer, and `DROP OWNED BY` revokes privileges on SHARED objects —
+   databases — from whichever database it runs in. Found by running it: one
+   scratch business reset, and `/readyz` answered "10 of 10 outlet(s) cannot be
+   reached with their own login role", with
+   `has_database_privilege('outlet_39_app', <another business>, 'CONNECT')`
+   false on businesses the reset had never been aimed at. Every till on the
+   estate, off the air, from a reset of somebody else's store. Migration 039
+   settled the right rule for the same question: derive the roles from the
+   `outlet_%` SCHEMAS actually present — here, of the database being reset. */
+test('a reset names its customer, and never reaches another', opts, async () => {
+  const RESET = require('../src/scripts/reset-database');
+  const prev = process.env.RESET_DATABASE;
+  process.env.RESET_DATABASE = 'yes-i-mean-it';
+  const quiet = () => {};
+  const said = (e) => String((e && e.message) || e);
+  try {
+    // With a registry and no --business, it refuses rather than falling back to
+    // the database this process dialled.
+    await assert.rejects(() => RESET.run(quiet, {}), (e) => {
+      assert.match(said(e), /--business/, 'and names the remedy: ' + said(e));
+      return true;
+    });
+    const acct = await db.control().query(
+      "SELECT to_regclass('chain.account') IS NOT NULL AS ok");
+    assert.strictEqual(acct.rows[0].ok, true, 'nothing was dropped on the way to refusing');
+
+    // A row naming the REGISTRY is refused by name — the destructive twin of
+    // refuseRegistry() above.
+    const bogus = await db.control().query(
+      "INSERT INTO chain.business (name, db_name, status) VALUES ($1,$2,'live')"
+      + ' RETURNING id', ['Bogus', db.CONTROL_DB()]);
+    await assert.rejects(() => RESET.run(quiet, { business: bogus.rows[0].id }),
+      (e) => { assert.match(said(e), /REGISTRY/i); return true; });
+    await db.control().query('DELETE FROM chain.business WHERE id = $1', [bogus.rows[0].id]);
+
+    await assert.rejects(() => RESET.run(quiet, { business: 999999 }),
+      (e) => { assert.match(said(e), /no business 999999/); return true; });
+
+    /* And the real thing, on two businesses this test makes itself — the ones
+       above are mutated by earlier tests, and a destructive check must own
+       what it destroys. `keep` is the bystander: its outlet role has to open
+       its own database after `wipe` has been reset. */
+    const keep = await BIZ.createBusiness({ name: 'Bystander Cafe' });
+    const wipe = await BIZ.createBusiness({ name: 'Reset Me' });
+    const oid = await BIZ.nextOutletId(keep.id);
+    // The database rides in opts.db — provisionOutlet takes ONE argument.
+    await require('../src/provision').provisionOutlet(
+      { id: oid, name: 'Bystander', code: 'BYS', db: keep.db_name });
+    const can = () => db.owner().query("SELECT has_database_privilege($1,$2,'CONNECT') AS ok",
+      ['outlet_' + oid + '_app', keep.db_name]).then((r) => r.rows[0].ok);
+    assert.strictEqual(await can(), true, 'the bystander can reach its database before');
+
+    const out = await RESET.run(quiet, { business: wipe.id });
+    assert.strictEqual(out.database, wipe.db_name, 'the reset lands on the named customer');
+    const left = await db.ownerFor(wipe.db_name).query(
+      "SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN ('chain','app')");
+    assert.strictEqual(left.rows[0].n, 0, 'that store is gone');
+
+    assert.strictEqual(await can(), true,
+      "AND THE BYSTANDER STILL CAN — one customer's reset never touches another's roles");
+    const acct2 = await db.control().query(
+      "SELECT to_regclass('chain.account') IS NOT NULL AS ok");
+    assert.strictEqual(acct2.rows[0].ok, true, 'and the registry keeps every account');
+  } finally {
+    if (prev === undefined) delete process.env.RESET_DATABASE;
+    else process.env.RESET_DATABASE = prev;
+  }
+});
+
 test('the cluster is left clean', opts, async () => {
   await db.shutdown();
   const n = await DB.dropBusinessDatabases();
