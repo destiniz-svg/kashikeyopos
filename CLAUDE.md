@@ -1356,6 +1356,51 @@ prints a dry run, because a plan that describes this is a plan somebody then
 runs with `--apply`. `test/tenancy.test.js` asserts the refusal, that nothing
 was written on the way to it, and that the CLI's guard precedes its own output.
 
+## A call the floor answers has to stop coming back
+
+Reported: *"the outlet keeps refusing, acknowledging… outlet keeps refusing
+portal calls … those calls stay on the floor with new sessions."* Every clause
+of that was one defect.
+
+`guest_request.id` is a **uuid**, and `H.flag_ack` compared it to `text[]`:
+
+```sql
+UPDATE guest_request SET ack_at = now() WHERE id = ANY($1::text[])
+```
+
+Postgres has no `uuid = text` operator, so that did not quietly match nothing —
+it **RAISED**, on every acknowledgement, on every outlet, since the handler was
+written:
+
+```
+operator does not exist: uuid = text
+```
+
+So the op was refused, retried eight times and parked — which is the "keeps
+refusing" the operator was watching. `ack_at` stayed NULL, and BOTH reads
+(`bootstrap` and the five-second poll) filter `ack_at IS NULL`, so the outlet
+went on publishing the same call to every terminal for its full forty-five
+minutes. And the till's own `_ackedSig` is held in MEMORY, so a reload — which
+is what a new sitting looks like — brought back every call somebody had
+already answered.
+
+`linesOf()` two handlers up already spells it the right way round. **Cast the
+COLUMN, not the array** (`id::text = ANY($1::text[])`): a text comparison is
+defined for every id an op can carry, including a malformed one, which then
+matches nothing instead of aborting the batch — proved with `not-a-uuid`.
+
+A sweep of every `= ANY($n::text[])` in `src/apply.js` against the real column
+types found `guest_request` was the only uuid one; `modifier_group.id`,
+`recipe_line.item_id` and `ticket_line.client_id` are all text.
+
+**`test/api.test.js` is the only place this could ever have been caught.** A
+type mismatch is invisible to the vm harness and to every static pin: it needs
+a real Postgres and an op actually applied, and nothing had ever acknowledged
+a call against a database. The test now raises a call, acknowledges it, and
+asserts the poll and the bootstrap both stop carrying it; that a replay clears
+none rather than erroring; that "Acknowledge all" clears several; and that a
+malformed id is not a database error.
+
 ## The minimum wage is a band, and the business says which
 
 Reported: *"an employee could not be added. not showing."* Two defects, one on

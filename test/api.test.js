@@ -859,6 +859,82 @@ test('the bill ask carries the pay intent, and the projection sells with', opts,
   });
 });
 
+/* ── ACKNOWLEDGING A CALL CLEARS IT, AND THE CALL DOES NOT COME BACK ─────────
+   Reported: "the outlet keeps refusing, acknowledging… outlet keeps refusing
+   portal calls … those calls stay on the floor with new sessions."
+
+   `guest_request.id` is a UUID and `H.flag_ack` compared it to `text[]`.
+   Postgres has no `uuid = text` operator, so the acknowledgement did not
+   quietly match nothing — it RAISED, on every call, on every outlet, since the
+   handler was written:
+
+       operator does not exist: uuid = text
+
+   The op was refused, retried eight times and parked; `ack_at` stayed NULL, so
+   both reads (`bootstrap` and the five-second poll, which filter
+   `ack_at IS NULL`) went on publishing the same call to every terminal for its
+   full forty-five minutes — and the till's own acked map is in MEMORY, so a
+   reload brought back every call somebody had already answered. That is the
+   whole report, including "with new sessions".
+
+   THIS SUITE IS THE ONLY PLACE IT COULD HAVE BEEN CAUGHT. A type mismatch is
+   invisible to the vm harness and to every static pin: it needs a real
+   Postgres and an op actually applied. Nothing had ever acknowledged a call
+   against a database. */
+test('a portal call is acknowledged, and does not return to the floor', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T09');
+  const table = { 'x-table-token': t.body.token };
+
+  const ask = await postWith('/api/g/' + slug + '/request',
+    { kind: 'assist', detail: 'Please come to the table' }, table);
+  assert.strictEqual(ask.status, 201, JSON.stringify(ask.body));
+  const id = ask.body.id;
+
+  const before = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  assert.ok(((before.body.state || {}).guestRequests || []).some((g) => g.id === id),
+    'the call is on the floor');
+
+  const res = await push([{ opId: uuid(), kind: 'flag_ack', payload: { id: id } }]);
+  const r0 = (res.body.results || [])[0] || {};
+  assert.ok(!r0.error, 'THE ACKNOWLEDGEMENT IS NOT REFUSED: ' + JSON.stringify(r0));
+  assert.strictEqual(r0.result.acknowledged, 1, 'and it cleared exactly one call');
+
+  const row = await one("SELECT ack_at, ack_by FROM guest_request WHERE id = $1", [id]);
+  assert.ok(row.ack_at, 'the OUTLET marks it answered, so every terminal agrees');
+  assert.ok(row.ack_by, 'and records who answered it');
+
+  const after = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  assert.ok(!((after.body.state || {}).guestRequests || []).some((g) => g.id === id),
+    'and the poll stops publishing it — which is what "with new sessions" needed');
+  const boot2 = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const raw = JSON.stringify(boot2.body.state || {});
+  assert.ok(raw.indexOf(id) < 0, 'a terminal coming up fresh does not see it either');
+
+  // Acknowledging the same call twice is a no-op, not an error — the outbox
+  // replays, and a second ack must not look like a failure.
+  const again = await push([{ opId: uuid(), kind: 'flag_ack', payload: { id: id } }]);
+  const r1 = (again.body.results || [])[0] || {};
+  assert.ok(!r1.error, 'a replayed acknowledgement is not an error');
+  assert.strictEqual(r1.result.acknowledged, 0, 'and honestly reports it cleared none');
+
+  // Many at once — the "Acknowledge all N" control sends `ids`.
+  const a1 = await postWith('/api/g/' + slug + '/request', { kind: 'assist', detail: 'one' }, table);
+  const a2 = await postWith('/api/g/' + slug + '/request', { kind: 'assist', detail: 'two' }, table);
+  const many = await push([{ opId: uuid(), kind: 'flag_ack',
+    payload: { ids: [a1.body.id, a2.body.id] } }]);
+  assert.strictEqual(((many.body.results || [])[0] || {}).result.acknowledged, 2,
+    'and clearing several at once clears several');
+
+  // An id that is not a uuid matches nothing rather than aborting the batch —
+  // the reason the COLUMN is cast and not the array.
+  const junk = await push([{ opId: uuid(), kind: 'flag_ack', payload: { id: 'not-a-uuid' } }]);
+  const r2 = (junk.body.results || [])[0] || {};
+  assert.ok(!r2.error, 'a malformed id is not a database error: ' + JSON.stringify(r2));
+  assert.strictEqual(r2.result.acknowledged, 0);
+});
+
 /* ═══ THE BUSINESS DATE IS THE OUTLET'S ═════════════════════════════════════
    `current_date` and `toISOString()` are both UTC, and Malé is UTC+5. So from
    19:00 local — most of a restaurant's trading — every business date, document

@@ -2667,8 +2667,28 @@ H.flag_ack = async (c, p, ctx) => {
     throw Object.assign(new Error('this acknowledgement named no flag, so nothing was'
       + ' cleared — acknowledge it again on the till'), { status: 400 });
   }
+  /* `id::text`, NEVER `id = ANY($1::text[])`. `guest_request.id` is a UUID and
+     Postgres has no `uuid = text` operator, so that comparison did not find no
+     rows — it RAISED, on every acknowledgement, on every outlet, since the
+     handler was written:
+
+         operator does not exist: uuid = text
+
+     Which is the whole of the report: "the outlet keeps refusing,
+     acknowledging… outlet keeps refusing portal calls", and the calls staying
+     on the floor across new sittings. The op was refused, retried eight times
+     and parked; `ack_at` stayed NULL, so the outlet went on publishing the
+     same call to every terminal for its full forty-five minutes, and the
+     till's own `_ackedSig` is in memory — so a reload brought back every call
+     somebody had already answered.
+
+     `linesOf()` two handlers up already spells it the right way round. Cast
+     the COLUMN, not the array: a text comparison is defined for every id an
+     op can carry, including a malformed one, which then simply matches
+     nothing instead of aborting the batch. */
   const r = await c.query('UPDATE guest_request SET ack_at = now(), ack_by = $2'
-    + ' WHERE id = ANY($1::text[]) AND ack_at IS NULL', [ids, ctx.actor]);
+    + ' WHERE id::text = ANY($1::text[]) AND ack_at IS NULL',
+  [ids.map(String), ctx.actor]);
   return { acknowledged: r.rowCount };
 };
 
