@@ -837,11 +837,40 @@ H.line_note = async (c, p) => {
    somebody else's hand. Every ticket operation therefore resolves by id when
    there is one and by table otherwise, so an outlet's open bills are the
    outlet's — visible at the counter, on the tablet and on the pass alike. */
+/* WHICH TICKET A TABLE MEANS — and "6" and "T06" are ONE TABLE.
+
+   This matched the spelling exactly, and the phone and the floor do not spell a
+   table the same way: a QR link carries `?t=6` because that is what is printed
+   on the card, while the floor plan labels it "T06". So a guest's round was
+   ingested with the floor's label and `add_line` found no ticket called T06 —
+   and find-or-create DID WHAT IT SAYS: it opened a SECOND ticket beside the
+   counter's. Measured on a real outlet, one physical table:
+
+       ticket "6"    Aluvi Mashuni    (rung at the counter)
+       ticket "T06"  Valhomas Rice    (the guest's round)
+
+   Which is the reported "kitchen tab does not show portal orders": the round
+   was on a ticket nobody was looking at. Worse than invisible — the counter
+   settles one of those two bills and the guest's food is on the other.
+
+   `H.qr_order` has always known the rule and spells it out: compare BY THE
+   DIGITS, because the phone says "5" where the floor's label is "T05". It just
+   was not the rule the ticket lookup used. One definition now.
+
+   EXACT WINS FIRST, so a floor that genuinely carries both "6" and "T06" as
+   different tables keeps them apart when a caller names one precisely; the
+   digits are the fallback, which is the case that was broken. A label with no
+   leading T or zeros ("W1", "Cabana 1") compares as itself and can never
+   collide with a numbered table. */
+const TABLE_KEY = "regexp_replace(upper(%s), '^T0*', '')";
 async function ticketRef(c, p) {
   if (p.ticketId) return p.ticketId;
   if (p.table == null) return null;
-  const t = await one(c, "SELECT id FROM ticket WHERE table_no = $1 AND split = $2"
-    + " AND status <> 'closed' ORDER BY opened_at DESC LIMIT 1",
+  const t = await one(c, "SELECT id FROM ticket WHERE split = $2"
+    + " AND status <> 'closed'"
+    + " AND (table_no = $1 OR " + TABLE_KEY.replace('%s', 'table_no')
+    + ' = ' + TABLE_KEY.replace('%s', '$1') + ')'
+    + ' ORDER BY (table_no = $1) DESC, opened_at DESC LIMIT 1',
   [String(p.table), num(p.split)]);
   return t ? t.id : null;
 }
@@ -3121,8 +3150,15 @@ async function openTicket(c, ctx, p) {
   const table = p.table == null ? null : String(p.table);
   const split = num(p.split);
   if (table) {
-    const has = await one(c, "SELECT id FROM ticket WHERE table_no = $1 AND split = $2"
-      + " AND status = 'open'", [table, split]);
+    /* Find-or-create, and it did what it says: the phone's "T06" found no
+       ticket called T06 and OPENED A SECOND ONE beside the counter's "6".
+       Same rule as ticketRef above — exact first, then by the digits — because
+       this is the half that actually creates the duplicate. */
+    const has = await one(c, "SELECT id FROM ticket WHERE split = $2"
+      + " AND status = 'open'"
+      + " AND (table_no = $1 OR " + TABLE_KEY.replace('%s', 'table_no')
+      + ' = ' + TABLE_KEY.replace('%s', '$1') + ')'
+      + ' ORDER BY (table_no = $1) DESC, opened_at DESC LIMIT 1', [table, split]);
     if (has) {
       if (p.party) {
         await c.query('UPDATE ticket SET party = greatest(party, $2),'

@@ -10004,6 +10004,31 @@ class Component extends DCLogic {
           channel: "qr"
         });
       });
+      /* AND ACCEPTING A GUEST'S ROUND IS THE DECISION TO COOK IT.
+
+         The lines landed on the ticket UNFIRED and nothing ever fired them, so
+         a round a guest sent from their own phone reached the counter and then
+         stopped: never on the Kitchen Display, and the guest's own tracker sat
+         on "Received" while the kitchen had never been told. Reported as "the
+         kitchen tab does not show portal orders", and it is the other half of
+         that — the first being the round landing on a ticket nobody was
+         looking at.
+
+         A waiter's order is fired by a person because a person is standing at
+         the table still taking it. A QR round is not: the guest pressed send,
+         and the counter accepting it is the only decision left. So the fire
+         rides the same batch, after the lines — lamport order is queue order,
+         so `fire_course` resolves lids the add_lines have just created. */
+      const lids = cur.lines.filter((l) => l.sig === x.id).map((l) => l.lid);
+      if (lids.length) {
+        cur.lines.forEach((l) => { if (l.sig === x.id) { l.fired = true; l.firedAt = Date.now(); } });
+        this.queue("fire_course", lids.length + " item" + (lids.length === 1 ? "" : "s")
+          + " fired from the QR round · " + this.slotName(x.table), "order_lines", {
+          table: this.slotName(x.table), split: 0, lids: lids,
+          station: this.dishStation((K().MENU || []).find((y) => y.id === x.lines[0].id) || {}),
+          course: "", target: 12
+        });
+      }
       touched = true;
       // A promo the guest entered on their phone is an offer, not a decision:
       // it rides in on the ticket so the server settles on the figure the guest

@@ -859,6 +859,57 @@ test('the bill ask carries the pay intent, and the projection sells with', opts,
   });
 });
 
+/* ── ONE TABLE IS ONE TICKET, HOWEVER IT IS SPELLED ─────────────────────────
+   Reported: "kitchen tab does not show portal orders."
+
+   The ticket lookup matched the table's SPELLING exactly, and the phone and
+   the floor do not spell a table the same way: a QR card is printed `?t=6`
+   while the floor plan labels it "T06". So a guest's round found no ticket
+   called T06 and find-or-create did what it says — it opened a SECOND ticket
+   beside the counter's. Measured on a real outlet, one physical table:
+
+       ticket "6"    Aluvi Mashuni    (rung at the counter)
+       ticket "T06"  Valhomas Rice    (the guest's round)
+
+   The round was on a ticket nobody was looking at. Worse than invisible: the
+   counter settles one of those bills and the guest's food is on the other.
+   `H.qr_order` has always compared BY THE DIGITS for exactly this reason; the
+   ticket lookup just did not use the same rule. */
+test('a table spelled two ways is one ticket, and the round joins it', opts, async () => {
+  const T = 'T77';
+  const many = (sql, params) => db.withOutlet({ outletId, rank: 5, actor: null },
+    (c) => c.query(sql, params || []).then((q) => q.rows));
+  await many("UPDATE ticket SET status = 'closed'"
+    + " WHERE regexp_replace(upper(table_no),'^T0*','') = '77' AND status <> 'closed'");
+
+  const dish = await one('SELECT id, name FROM item WHERE active AND NOT is_batch LIMIT 1');
+  await push([{ opId: uuid(), kind: 'add_line', payload: { table: T, split: 0,
+    item: dish.id, name: dish.name, qty: 1, price: 10, guest: 0, lid: uuid() } }]);
+
+  // The phone's spelling — bare digits, as the printed card carries it.
+  const res = await push([{ opId: uuid(), kind: 'add_line', payload: { table: '77',
+    split: 0, item: dish.id, name: dish.name, qty: 2, price: 10, guest: 0, lid: uuid() } }]);
+  assert.ok(!((res.body.results || [])[0] || {}).error, JSON.stringify(res.body));
+
+  const tks = await many("SELECT id, table_no FROM ticket WHERE status <> 'closed'"
+    + " AND regexp_replace(upper(table_no),'^T0*','') = '77'");
+  assert.strictEqual(tks.length, 1, 'ONE ticket for one table: ' + JSON.stringify(tks));
+  assert.strictEqual(tks[0].table_no, T,
+    'and it keeps the label the floor opened it under');
+
+  const n = await one('SELECT count(*)::int AS n FROM ticket_line WHERE ticket_id = $1',
+    [tks[0].id]);
+  assert.strictEqual(n.n, 2, 'both rounds are on it');
+
+  /* A label that is not a numbered table compares as ITSELF and can never be
+     folded into one — "W77" is not table 77. */
+  await push([{ opId: uuid(), kind: 'add_line', payload: { table: 'W77', split: 0,
+    item: dish.id, name: dish.name, qty: 1, price: 10, guest: 0, lid: uuid() } }]);
+  const w = await one("SELECT count(*)::int AS n FROM ticket"
+    + " WHERE table_no = 'W77' AND status <> 'closed'");
+  assert.strictEqual(w.n, 1, 'W77 is its own table, not table 77');
+});
+
 /* ── ACKNOWLEDGING A CALL CLEARS IT, AND THE CALL DOES NOT COME BACK ─────────
    Reported: "the outlet keeps refusing, acknowledging… outlet keeps refusing
    portal calls … those calls stay on the floor with new sessions."

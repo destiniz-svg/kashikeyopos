@@ -4998,6 +4998,54 @@ test('the pre-set add-ons load on their own, links and all', () => {
     'an unknown part is refused rather than rounded down to the destructive one');
 });
 
+/* ── ACCEPTING A GUEST'S ROUND IS THE DECISION TO COOK IT ────────────────────
+   The other half of "kitchen tab does not show portal orders". `ingestQr()`
+   put the round's lines on the ticket UNFIRED and nothing ever fired them, so
+   a round a guest sent from their own phone reached the counter and stopped:
+   never on the Kitchen Display, and the guest's own tracker sitting on
+   "Received" while the kitchen had never been told.
+
+   A waiter's order is fired by a person because a person is still standing at
+   the table taking it. A QR round is not — the guest pressed send, and the
+   counter accepting it is the only decision left. */
+test('a QR round is fired when it is accepted, not left off the pass', () => {
+  const K = FX.kpos();
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const dish = (K.MENU || [])[0];
+  assert.ok(dish, 'the fixture has a menu');
+  F.__win.KPOS_REAL = { state: { guestOrders: [{ id: 'g1', table: '9', at: Date.now(),
+    lines: [{ id: dish.id, qty: 2 }] }], guestRequests: [] } };
+  F.state.outletId = F.state.outletId || 1;
+
+  F.ingestQr();
+
+  const adds = queued.filter((x) => x.kind === 'add_line');
+  assert.strictEqual(adds.length, 1, 'the round becomes a line on the outlet\'s ticket');
+  const fire = queued.filter((x) => x.kind === 'fire_course');
+  assert.strictEqual(fire.length, 1, 'AND IT IS FIRED — otherwise the pass never sees it');
+  assert.ok(Array.isArray(fire[0].payload.lids) && fire[0].payload.lids.length === 1,
+    'the fire names the lines the add_lines just created: '
+    + JSON.stringify(fire[0].payload));
+  assert.strictEqual(fire[0].payload.lids[0], adds[0].payload.lid,
+    'by the SAME lid, or fire_course resolves nothing');
+
+  /* Order is not negotiable: lamport order is queue order, so the fire has to
+     be queued AFTER the lines it names or it resolves against a ticket that
+     has none of them yet. */
+  assert.ok(queued.indexOf(adds[0]) < queued.indexOf(fire[0]),
+    'the lines are queued before the fire that names them');
+
+  // And the local copy shows it as fired at once, so the pass is not waiting
+  // on a round trip to draw the docket.
+  const key = F.state.outletId + ':' + F.tableSlot('9');
+  const tk = F.state.tickets[key];
+  assert.ok(tk && tk.lines.length === 1 && tk.lines[0].fired,
+    'the terminal draws it on the pass immediately: ' + JSON.stringify(tk && tk.lines));
+});
+
 /* ── A REFUSAL THE OUTLET CANNOT EXPLAIN REACHES THE OPERATOR'S LOG ──────────
    `flag_ack` compared a uuid column to text[] and raised
    `operator does not exist: uuid = text` on EVERY acknowledgement since it was

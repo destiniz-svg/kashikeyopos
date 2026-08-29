@@ -1356,6 +1356,51 @@ prints a dry run, because a plan that describes this is a plan somebody then
 runs with `--apply`. `test/tenancy.test.js` asserts the refusal, that nothing
 was written on the way to it, and that the CLI's guard precedes its own output.
 
+## One table is one ticket, however it is spelled
+
+Reported: *"kitchen tab does not show portal orders and other orders."* The
+till's own orders were fine — a line rung at the counter and FIRED is on the
+pass, driven and confirmed. The portal half was two defects.
+
+**The ticket lookup matched the table's SPELLING**, and the phone and the floor
+do not spell a table the same way: a QR card is printed `?t=6` because that is
+what a guest reads off it, while the floor plan labels it `T06`. So a guest's
+round found no ticket called `T06` and find-or-create **did what it says** — it
+opened a SECOND ticket beside the counter's. Measured on a real outlet, one
+physical table:
+
+```
+ticket "6"    Aluvi Mashuni    (rung at the counter)
+ticket "T06"  Valhomas Rice    (the guest's round)
+```
+
+The round was on a ticket nobody was looking at. Worse than invisible: the
+counter settles one of those two bills and the guest's food is on the other.
+
+`H.qr_order` has always compared **by the DIGITS** for exactly this reason —
+"the phone says 5 where the floor's label is T05" — it simply was not the rule
+`ticketRef()` and `openTicket()` used. One definition now, and **exact wins
+first**, so a floor that genuinely carries both `6` and `T06` as different
+tables keeps them apart when a caller names one precisely; the digits are the
+fallback, which is the case that was broken. A label with no leading T or zeros
+(`W1`, `Cabana 1`) compares as itself and can never collide with a numbered
+table.
+
+**And accepting a guest's round is the decision to cook it.** `ingestQr()` put
+the lines on the ticket UNFIRED and nothing ever fired them, so a round reached
+the counter and stopped: never on the Kitchen Display, and the guest's own
+tracker sitting on "Received" while the kitchen had never been told. A waiter's
+order is fired by a person because a person is still standing at the table
+taking it; a QR round is not — the guest pressed send, and accepting is the
+only decision left. The fire rides the same batch, after the lines, because
+lamport order is queue order and `fire_course` resolves the lids the
+`add_line`s have just created.
+
+Measured through the shipped screens: the counter opens `T08`, the phone sends
+two of a dish for table `8`, and the outlet holds **one** ticket carrying both
+lines — the guest's fired, the counter's not — with the Kitchen Display drawing
+`T08 · QR self-order · ×2 Valhomas Rice · HOT PASS` and the ticket at rung 1.
+
 ## A call the floor answers has to stop coming back
 
 Reported: *"the outlet keeps refusing, acknowledging… outlet keeps refusing
