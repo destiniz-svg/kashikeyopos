@@ -704,6 +704,17 @@
       return this._fetch("/api/outlet/" + this.outletId + "/menu/preset",
         { method: "POST", body: { part: part || "all" } });
     }
+    /* CLEARING WHAT THE STORE TRADED. Not an outbox op and never offline: 42
+       tables is not a till write, and a half-applied reset behind a toast is
+       the defect the holding pen exists to catch. Rank 5 at the door, and the
+       door asks for the confirmation too. */
+    tradeCensus() {
+      return this._fetch("/api/outlet/" + this.outletId + "/reset/trade");
+    }
+    resetTrade(why) {
+      return this._fetch("/api/outlet/" + this.outletId + "/reset/trade",
+        { method: "POST", body: { confirm: "RESET", why: why || "" } });
+    }
     shareStatement(memberId, via, to, from, until) {
       return this._fetch("/api/outlet/" + this.outletId + "/member/"
         + encodeURIComponent(memberId) + "/statement",

@@ -3283,13 +3283,43 @@ test('no screen claims an action this build only records', () => {
   const bs = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
   assert.match(bs, /APPVER: APP_VERSION/, 'read from package.json, the one place it is stated');
 
-  /* The reset still exists — it is a real thing an owner needs — but it now
-     files a REQUEST, and the wording says so on the card, in the form and in
-     the toast. */
-  assert.ok(/store_reset", "Store reset REQUESTED/.test(SRC),
-    'the reset records a request rather than claiming an erase');
-  assert.ok(/nothing has been erased/.test(SRC),
-    'and the toast says plainly that nothing was erased');
+  /* AND THE RESET IS NOW THE OTHER DIRECTION OF THE SAME RULE. It used to
+     file a REQUEST and say so, which was the honest thing to do while nothing
+     behind it erased anything. `src/reset.js` erases, so the copy states an
+     erase — and the rule holds because the control and the sentence moved
+     TOGETHER. What must never come back is the pairing that failed the rule:
+     the audit-only op under a screen reporting the deed.
+
+     It is a CALL, not an outbox op, for the same reason signing out everywhere
+     is: a half-applied reset behind a toast is precisely the defect the
+     holding pen exists to catch, and 42 tables is not a till write. */
+  assert.ok(!/queue\(\s*"store_reset"/.test(SRC),
+    'the reset is a call to the outlet, never an op queued behind a toast');
+  assert.match(SRC, /B\.resetTrade\(/,
+    'the control calls POST /api/outlet/:id/reset/trade');
+  assert.ok(SRC.indexOf('nothing has been erased') < 0,
+    'the request-only wording outlived the request-only behaviour');
+
+  /* THE CONFIRMATION STATES A FIGURE, NOT A PROMISE. The census is fetched
+     before the form opens — "this erases your trading" is a sentence somebody
+     skims; the bill count and the money are what stop them if it is the wrong
+     store. A form that gains that fact after opening is a form nobody reads it
+     in, which is the lesson the setup export already paid for. */
+  assert.match(SRC, /B\.tradeCensus\(\)/, 'the card asks the outlet what is there');
+  assert.ok(SRC.indexOf('B.tradeCensus()') < SRC.indexOf('this.openForm("resetStore")'),
+    'and it asks BEFORE the form opens');
+  assert.match(SRC, /This store holds/, 'the foot leads with the count');
+  assert.match(SRC, /has not traded yet/,
+    'and an untraded store is told there is nothing to clear rather than shown a zero');
+
+  /* THE WORD IS ASKED FOR AT BOTH ENDS. A screen is not the only caller a door
+     can have, so the door asks too — this is the most destructive thing in the
+     product and a client-side guard is a courtesy, never a gate. */
+  assert.match(SRC, /toUpperCase\(\) !== "RESET"/, 'the screen holds out for the word');
+  const rt = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(rt, /confirm[^\n]*RESET/, 'and so does the route');
+  assert.match(rt, /'\/reset\/trade', sameOutlet, atLeast\('owner'\)/,
+    'at rank 5, because this is the whole of what the store traded leaving the building');
 
   // Sessions: a measured count, and the real endpoint.
   assert.ok(SRC.indexOf('"3 active"') < 0 && SRC.indexOf('"2 active"') < 0,

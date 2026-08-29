@@ -30,6 +30,7 @@ src/revoked.js         a revoked session or device is refused, not just recorded
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
 src/routes/doc.js      a receipt or a statement, read by whoever was handed the link
 src/setup.js           a store's setup, in a file its owner holds
+src/reset.js           clearing what a store traded, keeping what it is
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
@@ -213,7 +214,10 @@ pooled connection cannot carry one request's identity into the next.
 The owner connection (`owner()`) bypasses both belts, so where a request
 handler reaches for it is a list, not a habit. There are six situations, and
 every one of them is a question that CANNOT be asked from inside a single
-outlet:
+outlet — plus a seventh, `src/reset.js`, which is on the list for the OPPOSITE
+reason and says so in its own section: the act must not be performable from
+inside one, because an outlet role deliberately holds no DELETE and no TRUNCATE
+on its own trade tables:
 
 | Where | Why no outlet role can answer it |
 | --- | --- |
@@ -3884,6 +3888,107 @@ else in this build; not a unique index, because an install may already hold two
 rows under one name and a migration that refuses to apply is worse than a
 handler that converges.
 
+## Clearing what a store traded, and keeping what it is
+
+Asked in one sentence: *"resetting does not reset the store data. reset only
+data. not menu. reset to the state where a new outlet is created. keep a record
+of the data and delete data."*
+
+There were two resets in this build and neither was that one.
+`npm run reset:database` drops the whole schema — the way out of a store set up
+WRONG, and it takes the menu, the recipes, the floor plan and the staff with
+it. The app's own "Reset this store" card filed a REQUEST and said so, which
+was the honest thing to do while nothing behind it erased anything. What an
+owner actually needs sits between them: the way out of a store set up RIGHT
+that has been traded on — a shop that spent a fortnight in training, a demo
+becoming a real business. Its menu is the work; its takings are the thing to be
+rid of.
+
+`src/reset.js` is that act, and four properties carry it.
+
+**THE LINE IS DRAWN BY THE SCHEMA, NOT BY A LIST SOMEBODY MAINTAINS.** 42 trade
+tables, 22 setup tables, and `test/reset.test.js` asserts the two against the
+CATALOG on every run — so a table a later migration adds, named on neither
+side, FAILS the test rather than being silently kept (a store's old sales
+surviving a reset that told the owner they were gone) or silently dropped (a
+store's setup going with the takings). Proved by removing one name: the test
+fails and prints it.
+
+**ONE TRUNCATE, WITHOUT CASCADE**, so Postgres checks the classification too:
+if any table NOT on the trade list references one that is, the statement is
+refused and nothing is destroyed. CASCADE would paper over exactly the mistake
+worth catching — it would follow that reference out into a setup table and
+empty it.
+
+**THE RECORD IS WRITTEN BEFORE THE DELETE**, to `chain.audit`, which this build
+never prunes. That is the whole of "keep a record of the data and delete data":
+afterwards nobody can count what was there, so the count is taken while it
+still exists — every table's rows, the trading period, the gross and the number
+of bills, through `chain.log()` so the actor, the rank and the device land in
+the columns a trail is read by rather than only in a payload.
+
+**A TILL CANNOT DESTROY ITS OWN SALES, AND THAT IS THE POINT.** This is the
+SEVENTH entry on the owner-connection list, and it justifies itself differently
+from the other six: they are there because they ask a question no outlet role
+can answer; this one is there because an outlet's login role holds SELECT,
+INSERT and UPDATE on its trade tables and **no DELETE and no TRUNCATE** —
+measured, not assumed, and now pinned — so a compromised terminal cannot empty
+a store's sales and a void is a row it UPDATES rather than removes. Granting
+TRUNCATE to make the handler convenient would spend that property on every
+outlet on the estate, permanently, to serve one act an owner performs once.
+Same doctrine as `chain.licence`: the protection IS the absent grant. The
+bypass then carries its own two fences rather than inheriting them — every name
+is schema-qualified (an unqualified one on a connection that can reach every
+schema is the mistake worth making unavailable, and the outlet role's pinned
+`search_path` is not there to catch it), and the address is `ownerForOutlet()`,
+never `owner()`, which in a registry install is a database nobody trades in.
+
+Three consequences follow from the rows going, and each is a decision rather
+than tidiness:
+
+- **the shelf is emptied.** `on_hand` and `avg_cost` are traded figures and the
+  moves that made them have just gone; leaving them would leave a store
+  believing in stock no delivery in its records ever brought in;
+- **document series start at one again.** A series that has issued a number can
+  never be RENUMBERED — that rule is about the prefix and it stands — but every
+  document this series issued has just been destroyed, so continuing from 4,312
+  would number the first receipt of a store with no receipts;
+- **points and credit are chain-wide, so clearing them is CONDITIONAL.** A
+  member's balance is one figure across every outlet the business has. Where
+  this outlet is the whole business it is zeroed with the 2350 liability that
+  no longer ties; where a sister store is still trading against it, the balance
+  is KEPT and the answer says so (`loyaltyKept`) — taking away points a guest
+  earned somewhere this reset never touched would be worse than the
+  discrepancy, and a named discrepancy beats a discovered one.
+
+**The confirmation states a figure, not a promise.** The card fetches the
+census before the form opens, so what an owner reads is *"This store holds
+116,454 records across 17 tables, including 10,235 bills worth MVR 3,309,991.14
+taken between 2026-08-27 and 2026-08-29. All of it goes."* — the sentence that
+stops somebody if it is the wrong store. Fetched BEFORE, because a form that
+gains a fact after opening is a form nobody reads it in, which the setup export
+already paid for once. An outlet that cannot be reached opens the form without
+the figure: the count makes the decision informed, not possible.
+
+**Rank 5, no offline path, no outbox op, and the word at both ends.** A
+half-applied reset behind a toast is precisely the defect the holding pen
+exists to catch, and 42 tables is not a till write. `confirm: "RESET"` is asked
+for by the door as well as by the screen, because a screen is not the only
+caller a door can have. `store_reset` keeps its `AUDIT_ONLY` handler for a
+device still holding one in its outbox, exactly like `ticket_status`.
+
+Measured against a real store of 10,235 bills: the trading gone across all 42
+tables, the menu (304 dishes, 11 sections), recipes, floor plan, staff and
+customers untouched, the shelf at zero, every series back to 1, the census on
+the trail with its per-table counts, and the till taking an order again on the
+same menu with receipt number 1. Then driven through the shipped card in
+Chromium — Settings → Device & data → Clear the trading… — where a
+confirmation that is not the word cleared nothing and the word cleared
+everything. `test/reset.test.js` runs the whole thing on a business of its own
+with a SECOND store that is never named and is counted afterwards; the door's
+rank gate and its refusal without the word are in `test/api.test.js`, on the
+shared fixture, because proving who may knock does not require opening.
+
 ## The navigation is a rail
 
 A **60px icon rail** at every width above a phone. Opening it floats a **236px
@@ -5197,7 +5302,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 498 tests
+npm test                          # 556 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

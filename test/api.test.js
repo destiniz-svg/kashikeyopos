@@ -4097,6 +4097,63 @@ test('renaming a store is the owner\'s, and nobody else\'s', opts, async () => {
   assert.notStrictEqual(now.rows[0].slug, 'nice-try', 'and nothing moved');
 });
 
+/* ═══ THE MOST DESTRUCTIVE DOOR IN THE PRODUCT ═════════════════════════════
+   `POST /reset/trade` clears everything the store traded. What it DOES is
+   proved in test/reset.test.js, on a business of its own — this suite's
+   fixture has to survive, and a test that resets it would take every later
+   assertion in this file with it. What is proved HERE is the door: who may
+   knock, and that a knock without the word never reaches the handler.
+
+   Both matter separately. The rank gate is the only thing between a cashier
+   and a store's whole trading history; the confirmation is the only thing
+   between a mis-aimed script and the same. A screen holding out for the word
+   is a courtesy, never a gate — a door has callers other than the screen. */
+test('clearing a store\'s trading is the owner\'s, and never a bare POST',
+  opts, async () => {
+    const till = await post('/api/auth/pin', { outletId, pin: '6520' });
+    const mgr = await post('/api/auth/pin', { outletId, pin: '7364' });
+    const before = await db.owner().query(
+      'SELECT count(*)::int AS n FROM outlet_' + outletId + '.sale');
+
+    for (const t of [till.body.token, mgr.body.token]) {
+      const r = await post('/api/outlet/' + outletId + '/reset/trade',
+        { confirm: 'RESET' }, t);
+      assert.strictEqual(r.status, 403, 'a rank below owner cannot clear a store');
+      assert.match(r.body.error, /Rank 5 required — Owner/, r.body.error);
+      const c = await get('/api/outlet/' + outletId + '/reset/trade', t);
+      assert.strictEqual(c.status, 403,
+        'and cannot read the count either — it is the store\'s whole trading'
+        + ' history in one line');
+    }
+
+    /* AND THE OWNER'S OWN PRESS IS REFUSED WITHOUT THE WORD. The refusal has
+       to name what the word is, or it is a 400 nobody can act on. */
+    const bare = await post('/api/outlet/' + outletId + '/reset/trade', {}, token);
+    assert.strictEqual(bare.status, 400);
+    assert.match(bare.body.error, /confirm: "RESET"/, bare.body.error);
+    const wrong = await post('/api/outlet/' + outletId + '/reset/trade',
+      { confirm: 'yes' }, token);
+    assert.strictEqual(wrong.status, 400, 'and a different word is not the word');
+
+    const after = await db.owner().query(
+      'SELECT count(*)::int AS n FROM outlet_' + outletId + '.sale');
+    assert.strictEqual(after.rows[0].n, before.rows[0].n,
+      'and four refusals later the store has lost nothing: ' + before.rows[0].n
+      + ' bills');
+    assert.ok(before.rows[0].n > 0, 'on a store that had bills to lose');
+
+    /* The count the screen reads IS the outlet's own rows, so an owner sees a
+       figure rather than a promise. */
+    const cen = await get('/api/outlet/' + outletId + '/reset/trade', token);
+    assert.strictEqual(cen.status, 200);
+    assert.strictEqual(cen.body.bills, before.rows[0].n
+      - (await db.owner().query('SELECT count(*)::int AS n FROM outlet_' + outletId
+        + '.sale WHERE voided_at IS NOT NULL')).rows[0].n,
+      'the census counts the bills that stand, not the voided ones');
+    assert.ok(cen.body.rows && cen.body.rows.sale === before.rows[0].n,
+      'and every table\'s own count is in it');
+  });
+
 test('a renamed store keeps the address it left', opts, async () => {
   process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
   const before = (await db.owner().query(

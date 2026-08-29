@@ -15,6 +15,7 @@ const { gate } = require('../limit');
 const setup = require('../setup');
 const { applyOp } = require('../apply');
 const { presetCounts, applyPreset } = require('../preset');
+const { resetTrade, census } = require('../reset');
 
 const r = express.Router({ mergeParams: true });
 
@@ -506,6 +507,49 @@ r.post('/menu/preset', sameOutlet, atLeast('owner'),
       next(e);
     }
   });
+
+/* ── CLEAR WHAT THIS STORE TRADED, AND KEEP WHAT IT IS ───────────────────────
+   The reset an owner actually wants: sales, payments, journal, stock movements,
+   tickets, orders and the rest gone; menu, recipes, floor plan, staff, settings
+   and customers kept. Back to the state a new outlet is in, without retyping
+   the shop.
+
+   Rank 5, like the setup import and the pre-set menu, because this is the whole
+   of what the store traded leaving the building. No offline path and no outbox
+   op: a half-applied reset behind a toast is exactly the defect the holding pen
+   exists to catch, and 42 tables is not a till write. `confirm: "RESET"` is
+   asked for at the door as well as on the screen, because a screen is not the
+   only caller a door can have. Audited by src/reset.js BEFORE anything goes —
+   chain.audit is never pruned, and this is the one act after which the evidence
+   cannot be re-read. */
+r.post('/reset/trade', sameOutlet, atLeast('owner'),
+  gate('trade-reset', { id: [5, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    try {
+      const b = req.body || {};
+      if (String(b.confirm || '').trim().toUpperCase() !== 'RESET') {
+        return res.status(400).json({ error: 'this clears everything the store has'
+          + ' traded — send confirm: "RESET" to mean it' });
+      }
+      const out = await resetTrade(req.ctx, { why: b.why });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) {
+      if (e && e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* What it WOULD clear, counted from the outlet's own rows — so the screen that
+   offers it states a figure rather than a promise. Rank 5: the counts are the
+   store's whole trading history in one line. */
+r.get('/reset/trade', sameOutlet, atLeast('owner'), async function (req, res, next) {
+  try {
+    /* The COUNT is read under the outlet's own role — it is a read of the
+       outlet's own rows, and the bypass below exists for the write alone. */
+    const out = await withOutletRead(req.ctx, (c) => census(c, req.ctx.outletId));
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
 
 /* What the choice would land — for the screen that offers it. */
 r.get('/menu/preset', sameOutlet, atLeast('manager'), function (req, res) {

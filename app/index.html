@@ -18325,27 +18325,81 @@ class Component extends DCLogic {
             { member: c.id, amt: amt, method: v.tender, ref: v.ref || "" });
         }
       },
-      /* This never erased anything: `store_reset` is audit-only, so the form
-         took a typed RESET, promised a pre-reset backup this build cannot
-         take, and toasted "tills lock while it runs, then boot empty" over an
-         op that only recorded the press. It files the request now, and says
-         that is what it does \u2014 the erase is `npm run reset:database`, run by
-         whoever holds the database, which is also the only place a copy could
-         be taken first. */
+      /* ── CLEAR WHAT THE STORE TRADED, AND KEEP WHAT IT IS ─────────────────
+         Asked for exactly: "reset only data. not menu. reset to the state where
+         a new outlet is created. keep a record of the data and delete data."
+
+         That is a DIFFERENT act from the whole-schema wipe, which takes the
+         menu, the recipes, the floor plan and the staff with it — the way out
+         of a store set up WRONG. This is the way out of a store set up RIGHT
+         and then traded on: a fortnight of training, or a demo about to become
+         a real business. The menu is the work; the takings are the thing to be
+         rid of.
+
+         It is a SERVER act (rank 5, one transaction), never an outbox op: 42
+         tables is not a till write, and a half-applied reset behind a toast is
+         the defect the holding pen exists to catch. What it is about to destroy
+         is counted and written to the trail BEFORE it goes — chain.audit is
+         never pruned, and this is the one act after which the evidence cannot
+         be re-read. */
       resetStore: {
-        title: "Ask for this store to be reset", sub: "Files a request \u2014 it does not erase",
-        save: "File the request",
-        foot: "A reset erases the STORE — its menu, sales, orders, customers, inventory, outlets and STAFF, who are in the same schema. What survives is on the other side of the tenancy boundary: your account and password, this business, and the store address nobody else can claim. This app cannot do it: it is run against the database by whoever holds it, who is also the only one who can take a copy first. Pressing this records the request, who made it and when, on the audit trail, so there is something to point at.",
+        title: "Clear this store's trading", sub: "Keeps the menu \u2014 erases what was rung",
+        save: "Clear it",
+        /* THE FIGURE, NOT THE PROMISE. "This erases your trading" is a sentence
+           somebody skims; "10,235 bills worth MVR 3,309,991.14, taken between
+           27 and 29 August" is a sentence that stops them if it is the wrong
+           store. It is the outlet's own count, read a moment ago by the card
+           that opened this — not derived from whatever this browser is holding,
+           which after an evening offline is not what is about to be deleted. */
+        foot: () => {
+          const c = this.state.tradeCensus;
+          const n = (x) => Number(x || 0).toLocaleString("en-US");
+          let lead = "";
+          if (c && c.rows) {
+            const rows = Object.keys(c.rows).reduce((a, k) => a + c.rows[k], 0);
+            lead = rows
+              ? "This store holds " + n(rows) + " record" + (rows === 1 ? "" : "s")
+                + " across " + Object.keys(c.rows).length + " table"
+                + (Object.keys(c.rows).length === 1 ? "" : "s")
+                + (c.bills ? ", including " + n(c.bills) + " bill"
+                  + (c.bills === 1 ? "" : "s") + " worth " + MVR(c.gross)
+                  + (c.from ? " taken between " + c.from + " and " + c.to : "") : "")
+                + ". All of it goes. "
+              : "This store has not traded yet — there is nothing to clear. ";
+          }
+          return lead + "Everything the store TRADED goes: sales, payments, the "
+            + "journal, stock movements, tickets, orders, deliveries, shifts and "
+            + "the document numbering, which starts at one again. Everything the "
+            + "store IS stays: the menu, its sections and add-ons, recipes, the "
+            + "item master, the floor plan, customers, suppliers, staff and every "
+            + "setting. What is about to be deleted is counted and written to the "
+            + "audit trail first, so there is a record of it afterwards. There is "
+            + "no undo.";
+        },
         fields: [
           { k: "why", label: "Why", v: "", full: 1 },
           { k: "confirm", label: "Type RESET to confirm", v: "", full: 1 }
         ],
-        onSave: (v) => {
-          if (this.state.roleKey !== "SuperAdmin" && this.state.roleKey !== "ChainAdmin") return this.toast("Only an owner or administrator can ask for a reset", "err");
+        onSave: async (v) => {
+          if (this.rank() < 5) return this.toast("Clearing a store's trading is the owner's decision", "err");
           if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("Type RESET exactly to confirm", "warn");
-          this.queue("store_reset", "Store reset REQUESTED \u00b7 " + this.outlet().name + " \u00b7 by " + this.me() + (v.why ? " \u00b7 " + v.why : ""), "settings");
+          const B = window.KPOS_BRIDGE;
+          if (!B || !B.resetTrade) return this.toast("This needs the outlet \u2014 the terminal is not connected to one", "warn");
           this.setState({ modal: null });
-          this.toast("Request filed \u2014 nothing has been erased. Whoever holds the database runs the reset.", "warn");
+          this.toast("Clearing the store\u2019s trading\u2026");
+          try {
+            const r = await B.resetTrade(v.why || "");
+            if (B.refresh) await B.refresh();
+            const grp = (x) => Number(x || 0).toLocaleString("en-US");
+            this.toast("Cleared \u2014 " + grp(r.rows) + " record" + (r.rows === 1 ? "" : "s")
+              + " across " + r.tables + " table" + (r.tables === 1 ? "" : "s")
+              + (r.bills ? " · " + grp(r.bills) + " bill" + (r.bills === 1 ? "" : "s")
+                + " worth " + MVR(r.gross) : "")
+              + (r.loyaltyKept ? " · points and credit kept, this business has other outlets" : "")
+              + ". The menu is untouched.", "warn");
+          } catch (e) {
+            this.toast((e && e.message) || "The outlet refused the reset", "warn");
+          }
         }
       },
       tableEdit: (() => {
@@ -21145,17 +21199,26 @@ class Component extends DCLogic {
               this.toast((e && e.message) || "The outlet refused the sign-out", "err");
             }
           }) : null },
-        { title: "Reset this store", sub: "Asks for it \u2014 the app cannot do it", chip: "Owner only", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
-          /* WHAT SURVIVES IS WHAT IS IN ANOTHER DATABASE. This read "Would keep:
-             sign-ins · staff", and staff do not survive: chain.staff sits in the
-             `chain` schema the reset drops, along with the sessions, the devices
-             and the outlets. What lives through it is the account plane and the
-             handle registry, which are in the REGISTRY — a different database the
-             reset never touches. Saying "staff" here is the copy-versus-behaviour
-             defect this build refuses by name. */
-          rows: [["Would erase", "menu · sales · stock · staff"], ["Would keep", "your account · this business · its address"], ["Run by", "whoever holds the database"], ["This button", "files the request"]],
-          foot: "The way out of a store set up wrong without losing the account. Your sign-in, the business and the store address survive because they live in the registry, not in the store; everything inside the store — including the staff records and their PINs — does not. The erase itself is run against the database, not from here, so this records the request — who asked, when and why — for whoever carries it out. Only a backup taken beforehand brings any of it back.",
-          danger: 1, goLabel: "Ask for a reset…", go: () => this.openForm("resetStore") },
+        { title: "Clear this store's trading", sub: "Keeps the menu \u00b7 erases what was rung", chip: "Owner only", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "device",
+          rows: [["Erases", "sales · journal · stock · tickets · orders"], ["Keeps", "menu · recipes · floor · staff · customers"], ["Leaves it", "as a new outlet, already set up"], ["Before deleting", "counts it onto the audit trail"]],
+          foot: "The way out of a store that has been traded on in training, or a demo becoming a real business: the takings go and the shop stays. Document numbering starts at one again, because every document it issued has just gone. There is no undo, and only a backup taken beforehand brings the trading back — the menu, recipes, floor plan, staff and customers are never touched, so there is nothing to retype.",
+          /* The count is fetched BEFORE the form opens, so the confirmation
+             states what would go rather than describing it. Same reason the
+             setup export fetches its parts first: a form that gains a fact
+             after it has opened is a form nobody reads that fact in. An outlet
+             that cannot be reached opens the form anyway, without the figure \u2014
+             the count is what makes the decision informed, not what makes it
+             possible, and the server counts again for the record either way. */
+          danger: 1, goLabel: "Clear the trading\u2026", go: async () => {
+            if (this.rank() < 5) return this.toast("Clearing a store's trading is the owner's decision", "warn");
+            const B = window.KPOS_BRIDGE;
+            this.setState({ tradeCensus: null });
+            if (B && B.tradeCensus) {
+              try { this.setState({ tradeCensus: await B.tradeCensus() }); }
+              catch (e) { /* the form still opens; it just cannot lead with a figure */ }
+            }
+            this.openForm("resetStore");
+          } },
         { title: "Theme", sub: "Stored per user as ThemeMode + CustomColors", chip: mode, chipBg: "var(--amber-dim)", chipFg: "var(--amber-bright)",
           picks: [
             { label: "Mode", opts: [{ label: "Dark", on: mode === "dark", go: () => this.setState({ theme: "dark" }) }, { label: "Light", on: mode === "light", go: () => this.setState({ theme: "light" }) }] },
