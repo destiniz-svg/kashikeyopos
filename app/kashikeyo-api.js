@@ -666,6 +666,14 @@
       return this._fetch("/api/outlet/" + this.outletId + "/setup/import",
         { method: "POST", body: { file: file, parts: parts || null } });
     }
+    /* THE PRE-SET MENU — the shipped catalogue, landed by the server through
+       the same handlers a till write goes through. Not an outbox op: 430 rows
+       is not a till op, and a half-applied menu behind a toast is the defect
+       the holding pen exists to catch. Rank 5 at the door. */
+    menuPreset() {
+      return this._fetch("/api/outlet/" + this.outletId + "/menu/preset",
+        { method: "POST", body: {} });
+    }
     shareStatement(memberId, via, to, from, until) {
       return this._fetch("/api/outlet/" + this.outletId + "/member/"
         + encodeURIComponent(memberId) + "/statement",

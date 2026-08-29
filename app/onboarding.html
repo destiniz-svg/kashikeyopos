@@ -167,6 +167,20 @@ input.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
   padding:11px 13px;text-wrap:pretty}
 .foot{font-size:11.5px;color:var(--text-muted);margin-top:20px;padding-top:16px;
   border-top:1px solid var(--line-soft);text-wrap:pretty;line-height:1.6}
+/* ── the menu choice: two ways to start, one decision ───────────────────── */
+.pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;
+  margin-bottom:18px}
+.pick button{display:block;text-align:left;background:var(--bg-2);
+  border:2px solid var(--line-2);border-radius:14px;padding:15px 16px;color:inherit;
+  transition:border-color .14s,background .14s}
+.pick button:hover{border-color:var(--line-3)}
+.pick button[aria-pressed="true"]{border-color:var(--amber);background:var(--bg-1);
+  box-shadow:0 0 0 3px var(--amber-dim)}
+.pick b{display:block;font-size:13.5px;font-weight:700;letter-spacing:-.01em}
+.pick small{display:block;font-size:11.5px;color:var(--text-muted);margin-top:5px;
+  line-height:1.5;text-wrap:pretty}
+.pick .mark{float:right;font-size:10px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--amber-bright)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
@@ -688,11 +702,15 @@ button.go.ok{background:var(--go);color:var(--on-go);
     },
     {
       key: "menu", label: "Menu",
-      sub: "Sections, dishes, then the recipe on each",
+      sub: "Start with the full catalogue, or type your own",
       title: "What you sell",
       lede: "A dish carries a price and a recipe. The price is what the guest pays; the recipe is what leaves the kitchen when they do — and it is what turns a sale into a stock movement and a cost of sales at the moment of sale, rather than in a nightly batch.",
-      why: "A dish with no recipe can still sell, but it cannot be costed, and the app will say so rather than silently reporting a 100% margin.",
+      why: "Two ways to start. The pre-set menu lands a complete Maldivian café catalogue — every section, every dish, and the add-on options a guest picks when a dish is ordered — ready to reprice, trim or rename in Menu Master. Starting empty is the same store with the typing still to do.",
       edit: "Menu Master",
+      /* Saved once and re-saveable: an owner who started empty and thought
+         better of it must be able to come back and load the catalogue — every
+         write on this step is an upsert, so re-saving converges. */
+      rewritable: true,
       table: {
         rows: "dishes",
         cols: [
@@ -708,6 +726,12 @@ button.go.ok{background:var(--go);color:var(--on-go);
       },
       foot: "Saving writes the sections, the dishes and the recipe lines. Price is exclusive of GST — the tax is added and shown as its own line.",
       write: function (v) {
+        /* THE PRE-SET MENU. One request; the server replays the shipped
+           catalogue through the same handlers a till write goes through, so a
+           preset dish and a typed one are the same kind of row. The add-on
+           links ride with the dishes — pick a dish at the till or on the QR
+           menu and its options come up. */
+        if (v.mode !== "empty") return post("menu-preset", {});
         var dishes = v.dishes.filter(function (d) { return d.name && d.price; });
         var cats = [];
         dishes.forEach(function (d) {
@@ -997,6 +1021,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
       state.next = r.next;
       state.counts = r.counts || {};
       state.gst = r.gstRegistered;
+      state.preset = r.preset || null;
       state.claimWanted = !!r.claimRequired;
       state.business = r.business || "";
       state.businessId = r.businessId || state.businessId || null;
@@ -1113,7 +1138,13 @@ button.go.ok{background:var(--go);color:var(--on-go);
       ];
     }
     if (step.key === "items") v.items = [blank(step), blank(step), blank(step)];
-    if (step.key === "menu") v.dishes = [blank(step), blank(step)];
+    if (step.key === "menu") {
+      /* The catalogue is the ordinary answer — a store types 300 dishes once
+         in its life and edits them for ever — so it opens selected. Starting
+         empty is one tap away and nothing is written until Continue. */
+      v.mode = "preset";
+      v.dishes = [blank(step), blank(step)];
+    }
     if (step.key === "floor") {
       v.tables = [];
       for (var i = 1; i <= 6; i++) {
@@ -1252,7 +1283,14 @@ button.go.ok{background:var(--go);color:var(--on-go);
     if (step.apply) h.insertBefore(renderPills(), h.firstChild);
 
     var card = el("div", { class: "card" });
-    if (step.table) card.appendChild(renderTable(step, v));
+    /* The menu step leads with a DECISION, not a table: the full catalogue or
+       an empty one. The table appears only once "start empty" is the answer,
+       because a grid of blank rows under a pre-set the owner has already
+       chosen is a form asking to be filled in for no reason. */
+    if (step.key === "menu") {
+      card.appendChild(renderMenuChoice(v));
+      if (v.mode === "empty") card.appendChild(renderTable(step, v));
+    } else if (step.table) card.appendChild(renderTable(step, v));
     else card.appendChild(renderFields(step, v));
     if (step.key === "chart") card.appendChild(renderChartSummary());
     if (step.summary) card.appendChild(renderApplicationSummary());
@@ -1623,6 +1661,41 @@ button.go.ok{background:var(--go);color:var(--on-go);
     wrap.appendChild(box);
     wrap.appendChild(hidden);
     return hidden;
+  }
+
+  /* Two ways to start a menu, as two cards the owner picks between. The
+     counts come from the server's own reading of the shipped file — never
+     typed here, so the sentence cannot drift from what Continue would write. */
+  function renderMenuChoice(v) {
+    var p = state.preset || {};
+    var wrap = el("div", { class: "pick", role: "radiogroup",
+      "aria-label": "How the menu starts" });
+    function opt(mode, title, body, mark) {
+      var b = el("button", { type: "button",
+        "aria-pressed": v.mode === mode ? "true" : "false" });
+      if (mark) b.appendChild(el("span", { class: "mark" }, mark));
+      b.appendChild(el("b", {}, title));
+      b.appendChild(el("small", {}, body));
+      b.addEventListener("click", function () {
+        if (v.mode === mode) return;
+        v.mode = mode;
+        render();
+      });
+      return b;
+    }
+    wrap.appendChild(opt("preset", "Start with the pre-set menu",
+      (p.dishes ? p.dishes + " dishes in " + p.sections + " sections, with "
+        + p.addons + " add-on options and " + (p.counter || 0)
+        + " bought-in counter items"
+        : "The full shipped catalogue")
+      + " — every dish carries the add-on choices a guest picks when it is"
+      + " ordered. Reprice, rename or remove anything in Menu Master.",
+      "Recommended"));
+    wrap.appendChild(opt("empty", "Start empty",
+      "Type your own sections and dishes below — or import a CSV from Menu"
+      + " Master later. The pre-set menu stays one tap away in Menu Master"
+      + " if you change your mind."));
+    return wrap;
   }
 
   function renderTable(step, v) {""

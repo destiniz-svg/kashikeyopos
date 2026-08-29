@@ -367,6 +367,9 @@
     setupParts: function () { return api.setupParts(); },
     exportSetup: function (parts) { return api.exportSetup(parts); },
     importSetup: function (file, parts) { return api.importSetup(file, parts); },
+    /* The shipped catalogue, landed server-side and re-read whole — the same
+       reason the setup import is not an outbox op. */
+    menuPreset: function () { return api.menuPreset(); },
     revokeMember: function (id) { return api.revokeMember(id); },
     /* Ending every other session is a real call, and it answers with a real
        count. The old control queued an audit-only op and toasted a number it

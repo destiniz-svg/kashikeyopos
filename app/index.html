@@ -11319,9 +11319,33 @@ class Component extends DCLogic {
         /* "Import CSV" opens the import TAB, not the export one a spreadsheet
            in hand has no use for; the export stays one tap away inside. */
         { label: "Import CSV", go: () => this.openMenuIO("import") },
-        { label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) },
+        { label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }
+      ].concat(
+        /* THE PRE-SET MENU, for a store that started empty and thought better
+           of it \u2014 the promise the onboarding choice makes. Drawn only while
+           the menu is still small, because on a mature store a 300-dish load
+           is a decision for the import screen, not a header tap; and only for
+           the owner, because the server refuses anybody else. Landing it is a
+           server act (rank 5, one transaction), then a re-read \u2014 the same
+           road the setup import takes. */
+        K0.MENU.length < 10 && this.rank() >= 5 ? [{
+          label: "Load the pre-set menu", go: async () => {
+            const B = window.KPOS_BRIDGE;
+            if (!B || !B.menuPreset) return this.toast("Loading the pre-set menu needs the outlet \u2014 this terminal is not connected to one", "warn");
+            this.toast("Loading the pre-set menu\u2026");
+            try {
+              const r = await B.menuPreset();
+              await B.refresh();
+              this.toast("Pre-set menu loaded \u2014 " + r.dishes + " dishes in "
+                + r.sections + " sections, with " + r.addons + " add-on options");
+            } catch (e) {
+              this.toast((e && e.message) || "The outlet refused the pre-set menu", "warn");
+            }
+          }
+        }] : []
+      ).concat([
         { label: "New dish", primary: true, go: () => this.openDish(null) }
-      ],
+      ]),
       cols: [
         { label: "Dish", w: "2.1fr" }, { label: "Section", w: ".9fr" }, { label: "Tags & heat", w: "1.3fr" },
         { label: "Station", w: ".9fr" }, { label: "Portions", w: ".7fr", a: "right", mono: 1 },

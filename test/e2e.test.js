@@ -225,6 +225,70 @@ test('the owner signs in at the till with four digits', opts, async () => {
   assert.strictEqual(alsoWrong.status, 401, 'and a till session is not an account');
 });
 
+test('the pre-set menu lands whole — add-ons and buy links included', opts, async () => {
+  /* The panel carries both credentials past step 3: the account that owns the
+     business and the staff session the owner just created. */
+  const hdr = { 'x-account-token': accountToken, authorization: 'Bearer ' + tillToken };
+
+  /* The choice screen is told what it is choosing, counted from the shipped
+     file — never typed into the page. */
+  const st = await call('GET', '/api/onboarding/state', undefined, hdr);
+  const preset = st.body.preset;
+  assert.ok(preset && preset.dishes >= 300 && preset.addons >= 100,
+    'the state carries the preset counts: ' + JSON.stringify(preset));
+
+  const r = await call('POST', '/api/onboarding/menu-preset', {}, hdr);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.dishes, preset.dishes, 'it landed what it promised');
+
+  const n = await inBiz('SELECT'
+    + ' (SELECT count(*) FROM item WHERE active) AS dishes,'
+    + ' (SELECT count(*) FROM menu_category) AS sections,'
+    + ' (SELECT count(*) FROM modifier_group) AS groups,'
+    + ' (SELECT count(*) FROM item_modifier) AS links,'
+    + ' (SELECT count(*) FROM item WHERE buy_item IS NOT NULL) AS bought,'
+    + ' (SELECT count(*) FROM chain.supplier) AS suppliers');
+  assert.ok(Number(n.dishes) >= preset.dishes, n.dishes + ' dishes');
+  assert.strictEqual(Number(n.sections), preset.sections);
+  assert.strictEqual(Number(n.groups), preset.addons);
+  assert.ok(Number(n.links) >= preset.dishes,
+    'the add-on links rode with the dishes: ' + n.links);
+  assert.strictEqual(Number(n.bought), preset.counter,
+    'the bought-in trays carry their links');
+  assert.ok(Number(n.suppliers) >= preset.suppliers);
+
+  // A bought-in tray resolved its supplier and cleared any recipe.
+  const tray = await inBiz('SELECT i.buy_item, i.buy_pack, i.station, s.name AS vendor'
+    + ' FROM item i JOIN chain.supplier s ON s.id = i.buy_vendor'
+    + ' WHERE i.buy_item IS NOT NULL LIMIT 1');
+  assert.ok(tray && tray.buy_item && tray.buy_pack >= 1 && tray.vendor,
+    JSON.stringify(tray));
+  assert.strictEqual(tray.station, 'counter', 'nothing is cooked');
+
+  // Idempotent: choosing it twice converges rather than duplicating.
+  const again = await call('POST', '/api/onboarding/menu-preset', {}, hdr);
+  assert.strictEqual(again.status, 200, JSON.stringify(again.body));
+  const n2 = await inBiz('SELECT count(*)::int AS c FROM item WHERE active');
+  assert.strictEqual(Number(n2.c), Number(n.dishes), 'twice is once');
+
+  /* And the till reads it back whole: the bootstrap carries the dishes with
+     their buy links, and the add-on groups with the sections they publish
+     to — which is what makes the options come up when a dish is picked. */
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', tillToken);
+  assert.strictEqual(b.status, 200);
+  const K = b.body.kpos || {};
+  assert.ok((K.MENU || []).length >= preset.dishes, 'the menu reaches the till');
+  const withAddons = (K.MENU || []).filter((m) => Array.isArray(m.addons) && m.addons.length);
+  assert.ok(withAddons.length >= preset.dishes - 5,
+    'the dishes carry their add-on lists: ' + withAddons.length);
+  const bought = (K.MENU || []).find((m) => m.buy);
+  assert.ok(bought && bought.buy.item && bought.buy.pack >= 1,
+    'a bought-in dish rides the wire whole');
+  assert.ok((K.MODIFIERS || []).length >= preset.addons, 'every add-on option is published');
+  assert.strictEqual((K.MENU_CATEGORIES || []).length, preset.sections,
+    'the sections reach the till');
+});
+
 test('a bill with a member, a redemption and credit reaches the ledger',
   opts, async () => {
     const push = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, tillToken);

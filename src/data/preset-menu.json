@@ -1,0 +1,6405 @@
+{
+ "suppliers": [
+  {
+   "name": "General Food Supplies Co",
+   "terms": 30,
+   "lead": 2
+  },
+  {
+   "name": "Island Beverage Distributors",
+   "terms": 30,
+   "lead": 2
+  }
+ ],
+ "sections": [
+  {
+   "id": "breakfast",
+   "name": "Breakfast & Maldivian Specialties",
+   "icon": "salad",
+   "colour": null,
+   "station": null,
+   "pos": 0
+  },
+  {
+   "id": "shorteats",
+   "name": "Short Eats & Snacks",
+   "icon": "starter",
+   "colour": "#b7791f",
+   "station": null,
+   "pos": 1
+  },
+  {
+   "id": "mains",
+   "name": "Mains & Curries",
+   "icon": "main",
+   "colour": "var(--cat-mains)",
+   "station": "hot",
+   "pos": 2
+  },
+  {
+   "id": "rice",
+   "name": "Rice & Noodles",
+   "icon": "rice",
+   "colour": null,
+   "station": null,
+   "pos": 3
+  },
+  {
+   "id": "western",
+   "name": "Pizza, Burgers & Pasta",
+   "icon": "grill",
+   "colour": null,
+   "station": null,
+   "pos": 4
+  },
+  {
+   "id": "sides",
+   "name": "Sides & Add-ons",
+   "icon": "side",
+   "colour": null,
+   "station": null,
+   "pos": 5
+  },
+  {
+   "id": "desserts",
+   "name": "Desserts & Sweets",
+   "icon": "dessert",
+   "colour": null,
+   "station": null,
+   "pos": 6
+  },
+  {
+   "id": "hotdrinks",
+   "name": "Coffee & Tea",
+   "icon": "coffee",
+   "colour": null,
+   "station": null,
+   "pos": 7
+  },
+  {
+   "id": "colddrinks",
+   "name": "Cold Beverages",
+   "icon": "drink",
+   "colour": null,
+   "station": null,
+   "pos": 8
+  }
+ ],
+ "addons": [
+  {
+   "group": "ad_3_pcs",
+   "groupName": "3 pcs",
+   "min": 0,
+   "max": 1,
+   "id": "ad_3_pcs",
+   "name": "3 pcs",
+   "price": 0,
+   "pos": 0
+  },
+  {
+   "group": "ad_5_pcs",
+   "groupName": "5 pcs",
+   "min": 0,
+   "max": 1,
+   "id": "ad_5_pcs",
+   "name": "5 pcs",
+   "price": 0,
+   "pos": 1
+  },
+  {
+   "group": "ad_10_pcs",
+   "groupName": "10 pcs",
+   "min": 0,
+   "max": 1,
+   "id": "ad_10_pcs",
+   "name": "10 pcs",
+   "price": 0,
+   "pos": 2
+  },
+  {
+   "group": "ad_chili_sauce_5",
+   "groupName": "Chili Sauce",
+   "min": 0,
+   "max": 1,
+   "id": "ad_chili_sauce_5",
+   "name": "Chili Sauce",
+   "price": 5,
+   "pos": 3
+  },
+  {
+   "group": "ad_steamed_rice_20",
+   "groupName": "Steamed Rice",
+   "min": 0,
+   "max": 1,
+   "id": "ad_steamed_rice_20",
+   "name": "Steamed Rice",
+   "price": 20,
+   "pos": 4
+  },
+  {
+   "group": "ad_roshi_2_pcs_20",
+   "groupName": "Roshi (2 pcs)",
+   "min": 0,
+   "max": 1,
+   "id": "ad_roshi_2_pcs_20",
+   "name": "Roshi (2 pcs)",
+   "price": 20,
+   "pos": 5
+  },
+  {
+   "group": "ad_extra_curry_25",
+   "groupName": "Extra Curry",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_curry_25",
+   "name": "Extra Curry",
+   "price": 25,
+   "pos": 6
+  },
+  {
+   "group": "ad_extra_chili",
+   "groupName": "Extra Chili",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_chili",
+   "name": "Extra Chili",
+   "price": 0,
+   "pos": 7
+  },
+  {
+   "group": "ad_fried_egg_15",
+   "groupName": "Fried Egg",
+   "min": 0,
+   "max": 1,
+   "id": "ad_fried_egg_15",
+   "name": "Fried Egg",
+   "price": 15,
+   "pos": 8
+  },
+  {
+   "group": "ad_extra_beef_30",
+   "groupName": "Extra Beef",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_beef_30",
+   "name": "Extra Beef",
+   "price": 30,
+   "pos": 9
+  },
+  {
+   "group": "ad_extra_vegetables_15",
+   "groupName": "Extra Vegetables",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_vegetables_15",
+   "name": "Extra Vegetables",
+   "price": 15,
+   "pos": 10
+  },
+  {
+   "group": "ad_extra_portion_30",
+   "groupName": "Extra Portion",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_portion_30",
+   "name": "Extra Portion",
+   "price": 30,
+   "pos": 11
+  },
+  {
+   "group": "ad_extra_chicken_30",
+   "groupName": "Extra Chicken",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_chicken_30",
+   "name": "Extra Chicken",
+   "price": 30,
+   "pos": 12
+  },
+  {
+   "group": "ad_extra_beef_40",
+   "groupName": "Extra Beef",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_beef_40",
+   "name": "Extra Beef",
+   "price": 40,
+   "pos": 13
+  },
+  {
+   "group": "ad_extra_tuna_25",
+   "groupName": "Extra Tuna",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_tuna_25",
+   "name": "Extra Tuna",
+   "price": 25,
+   "pos": 14
+  },
+  {
+   "group": "ad_extra_valhomas_30",
+   "groupName": "Extra Valhomas",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_valhomas_30",
+   "name": "Extra Valhomas",
+   "price": 30,
+   "pos": 15
+  },
+  {
+   "group": "ad_extra_tuna_30",
+   "groupName": "Extra Tuna",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_tuna_30",
+   "name": "Extra Tuna",
+   "price": 30,
+   "pos": 16
+  },
+  {
+   "group": "ad_extra_beef_45",
+   "groupName": "Extra Beef",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_beef_45",
+   "name": "Extra Beef",
+   "price": 45,
+   "pos": 17
+  },
+  {
+   "group": "ad_raita_15",
+   "groupName": "Raita",
+   "min": 0,
+   "max": 1,
+   "id": "ad_raita_15",
+   "name": "Raita",
+   "price": 15,
+   "pos": 18
+  },
+  {
+   "group": "ad_extra_rice_30",
+   "groupName": "Extra Rice",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_rice_30",
+   "name": "Extra Rice",
+   "price": 30,
+   "pos": 19
+  },
+  {
+   "group": "ad_extra_chicken_35",
+   "groupName": "Extra Chicken",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_chicken_35",
+   "name": "Extra Chicken",
+   "price": 35,
+   "pos": 20
+  },
+  {
+   "group": "ad_extra_shot_15",
+   "groupName": "Extra Shot",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_shot_15",
+   "name": "Extra Shot",
+   "price": 15,
+   "pos": 21
+  },
+  {
+   "group": "ad_oat_milk_15",
+   "groupName": "Oat Milk",
+   "min": 0,
+   "max": 1,
+   "id": "ad_oat_milk_15",
+   "name": "Oat Milk",
+   "price": 15,
+   "pos": 22
+  },
+  {
+   "group": "ad_vanilla_10",
+   "groupName": "Vanilla",
+   "min": 0,
+   "max": 1,
+   "id": "ad_vanilla_10",
+   "name": "Vanilla",
+   "price": 10,
+   "pos": 23
+  },
+  {
+   "group": "ad_caramel_10",
+   "groupName": "Caramel",
+   "min": 0,
+   "max": 1,
+   "id": "ad_caramel_10",
+   "name": "Caramel",
+   "price": 10,
+   "pos": 24
+  },
+  {
+   "group": "ad_cheese_15",
+   "groupName": "Cheese",
+   "min": 0,
+   "max": 1,
+   "id": "ad_cheese_15",
+   "name": "Cheese",
+   "price": 15,
+   "pos": 25
+  },
+  {
+   "group": "ad_extra_patty_45",
+   "groupName": "Extra Patty",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_patty_45",
+   "name": "Extra Patty",
+   "price": 45,
+   "pos": 26
+  },
+  {
+   "group": "ad_fries_30",
+   "groupName": "Fries",
+   "min": 0,
+   "max": 1,
+   "id": "ad_fries_30",
+   "name": "Fries",
+   "price": 30,
+   "pos": 27
+  },
+  {
+   "group": "ad_extra_egg_15",
+   "groupName": "Extra Egg",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_egg_15",
+   "name": "Extra Egg",
+   "price": 15,
+   "pos": 28
+  },
+  {
+   "group": "ad_sausage_20",
+   "groupName": "Sausage",
+   "min": 0,
+   "max": 1,
+   "id": "ad_sausage_20",
+   "name": "Sausage",
+   "price": 20,
+   "pos": 29
+  },
+  {
+   "group": "ad_toast_10",
+   "groupName": "Toast",
+   "min": 0,
+   "max": 1,
+   "id": "ad_toast_10",
+   "name": "Toast",
+   "price": 10,
+   "pos": 30
+  },
+  {
+   "group": "ad_hash_brown_20",
+   "groupName": "Hash Brown",
+   "min": 0,
+   "max": 1,
+   "id": "ad_hash_brown_20",
+   "name": "Hash Brown",
+   "price": 20,
+   "pos": 31
+  },
+  {
+   "group": "ad_honey_10",
+   "groupName": "Honey",
+   "min": 0,
+   "max": 1,
+   "id": "ad_honey_10",
+   "name": "Honey",
+   "price": 10,
+   "pos": 32
+  },
+  {
+   "group": "ad_maple_syrup_15",
+   "groupName": "Maple Syrup",
+   "min": 0,
+   "max": 1,
+   "id": "ad_maple_syrup_15",
+   "name": "Maple Syrup",
+   "price": 15,
+   "pos": 33
+  },
+  {
+   "group": "ad_vanilla_ice_cream_25",
+   "groupName": "Vanilla Ice Cream",
+   "min": 0,
+   "max": 1,
+   "id": "ad_vanilla_ice_cream_25",
+   "name": "Vanilla Ice Cream",
+   "price": 25,
+   "pos": 34
+  },
+  {
+   "group": "ad_banana_10",
+   "groupName": "Banana",
+   "min": 0,
+   "max": 1,
+   "id": "ad_banana_10",
+   "name": "Banana",
+   "price": 10,
+   "pos": 35
+  },
+  {
+   "group": "ad_small",
+   "groupName": "Small",
+   "min": 0,
+   "max": 1,
+   "id": "ad_small",
+   "name": "Small",
+   "price": 0,
+   "pos": 36
+  },
+  {
+   "group": "ad_large_15",
+   "groupName": "Large",
+   "min": 0,
+   "max": 1,
+   "id": "ad_large_15",
+   "name": "Large",
+   "price": 15,
+   "pos": 37
+  },
+  {
+   "group": "ad_iced_5",
+   "groupName": "Iced",
+   "min": 0,
+   "max": 1,
+   "id": "ad_iced_5",
+   "name": "Iced",
+   "price": 5,
+   "pos": 38
+  },
+  {
+   "group": "ad_sugar",
+   "groupName": "Sugar",
+   "min": 0,
+   "max": 1,
+   "id": "ad_sugar",
+   "name": "Sugar",
+   "price": 0,
+   "pos": 39
+  },
+  {
+   "group": "ad_milk_10",
+   "groupName": "Milk",
+   "min": 0,
+   "max": 1,
+   "id": "ad_milk_10",
+   "name": "Milk",
+   "price": 10,
+   "pos": 40
+  },
+  {
+   "group": "ad_decaf_10",
+   "groupName": "Decaf",
+   "min": 0,
+   "max": 1,
+   "id": "ad_decaf_10",
+   "name": "Decaf",
+   "price": 10,
+   "pos": 41
+  },
+  {
+   "group": "ad_soy_milk_15",
+   "groupName": "Soy Milk",
+   "min": 0,
+   "max": 1,
+   "id": "ad_soy_milk_15",
+   "name": "Soy Milk",
+   "price": 15,
+   "pos": 42
+  },
+  {
+   "group": "ad_hazelnut_10",
+   "groupName": "Hazelnut",
+   "min": 0,
+   "max": 1,
+   "id": "ad_hazelnut_10",
+   "name": "Hazelnut",
+   "price": 10,
+   "pos": 43
+  },
+  {
+   "group": "ad_chocolate_10",
+   "groupName": "Chocolate",
+   "min": 0,
+   "max": 1,
+   "id": "ad_chocolate_10",
+   "name": "Chocolate",
+   "price": 10,
+   "pos": 44
+  },
+  {
+   "group": "ad_cinnamon",
+   "groupName": "Cinnamon",
+   "min": 0,
+   "max": 1,
+   "id": "ad_cinnamon",
+   "name": "Cinnamon",
+   "price": 0,
+   "pos": 45
+  },
+  {
+   "group": "ad_double_shot_15",
+   "groupName": "Double Shot",
+   "min": 0,
+   "max": 1,
+   "id": "ad_double_shot_15",
+   "name": "Double Shot",
+   "price": 15,
+   "pos": 46
+  },
+  {
+   "group": "ad_hot_water",
+   "groupName": "Hot Water",
+   "min": 0,
+   "max": 1,
+   "id": "ad_hot_water",
+   "name": "Hot Water",
+   "price": 0,
+   "pos": 47
+  },
+  {
+   "group": "ad_extra_ice_cream_25",
+   "groupName": "Extra Ice Cream",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_ice_cream_25",
+   "name": "Extra Ice Cream",
+   "price": 25,
+   "pos": 48
+  },
+  {
+   "group": "ad_lime",
+   "groupName": "Lime",
+   "min": 0,
+   "max": 1,
+   "id": "ad_lime",
+   "name": "Lime",
+   "price": 0,
+   "pos": 49
+  },
+  {
+   "group": "ad_lonumirus_5",
+   "groupName": "Lonumirus",
+   "min": 0,
+   "max": 1,
+   "id": "ad_lonumirus_5",
+   "name": "Lonumirus",
+   "price": 5,
+   "pos": 50
+  },
+  {
+   "group": "ad_no_sugar",
+   "groupName": "No Sugar",
+   "min": 0,
+   "max": 1,
+   "id": "ad_no_sugar",
+   "name": "No Sugar",
+   "price": 0,
+   "pos": 51
+  },
+  {
+   "group": "ad_less_sugar",
+   "groupName": "Less Sugar",
+   "min": 0,
+   "max": 1,
+   "id": "ad_less_sugar",
+   "name": "Less Sugar",
+   "price": 0,
+   "pos": 52
+  },
+  {
+   "group": "ad_no_ice",
+   "groupName": "No Ice",
+   "min": 0,
+   "max": 1,
+   "id": "ad_no_ice",
+   "name": "No Ice",
+   "price": 0,
+   "pos": 53
+  },
+  {
+   "group": "ad_extra_ice",
+   "groupName": "Extra Ice",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_ice",
+   "name": "Extra Ice",
+   "price": 0,
+   "pos": 54
+  },
+  {
+   "group": "ad_no_egg",
+   "groupName": "No Egg",
+   "min": 0,
+   "max": 1,
+   "id": "ad_no_egg",
+   "name": "No Egg",
+   "price": 0,
+   "pos": 55
+  },
+  {
+   "group": "ad_salad_20",
+   "groupName": "Salad",
+   "min": 0,
+   "max": 1,
+   "id": "ad_salad_20",
+   "name": "Salad",
+   "price": 20,
+   "pos": 56
+  },
+  {
+   "group": "ad_garlic_butter_10",
+   "groupName": "Garlic Butter",
+   "min": 0,
+   "max": 1,
+   "id": "ad_garlic_butter_10",
+   "name": "Garlic Butter",
+   "price": 10,
+   "pos": 57
+  },
+  {
+   "group": "ad_extra_shot_20",
+   "groupName": "Extra Shot",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_shot_20",
+   "name": "Extra Shot",
+   "price": 20,
+   "pos": 58
+  },
+  {
+   "group": "ad_extra_espresso_shot_20",
+   "groupName": "Extra Espresso Shot",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_espresso_shot_20",
+   "name": "Extra Espresso Shot",
+   "price": 20,
+   "pos": 59
+  },
+  {
+   "group": "ad_whipped_cream_15",
+   "groupName": "Whipped Cream",
+   "min": 0,
+   "max": 1,
+   "id": "ad_whipped_cream_15",
+   "name": "Whipped Cream",
+   "price": 15,
+   "pos": 60
+  },
+  {
+   "group": "ad_less_sweet",
+   "groupName": "Less Sweet",
+   "min": 0,
+   "max": 1,
+   "id": "ad_less_sweet",
+   "name": "Less Sweet",
+   "price": 0,
+   "pos": 61
+  },
+  {
+   "group": "ad_extra_gravy_10",
+   "groupName": "Extra Gravy",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_gravy_10",
+   "name": "Extra Gravy",
+   "price": 10,
+   "pos": 62
+  },
+  {
+   "group": "ad_large_10",
+   "groupName": "Large",
+   "min": 0,
+   "max": 1,
+   "id": "ad_large_10",
+   "name": "Large",
+   "price": 10,
+   "pos": 63
+  },
+  {
+   "group": "ad_extra_mashuni_25",
+   "groupName": "Extra Mashuni",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_mashuni_25",
+   "name": "Extra Mashuni",
+   "price": 25,
+   "pos": 64
+  },
+  {
+   "group": "ad_butter_5",
+   "groupName": "Butter",
+   "min": 0,
+   "max": 1,
+   "id": "ad_butter_5",
+   "name": "Butter",
+   "price": 5,
+   "pos": 65
+  },
+  {
+   "group": "ad_mas_huni_25",
+   "groupName": "Mas Huni",
+   "min": 0,
+   "max": 1,
+   "id": "ad_mas_huni_25",
+   "name": "Mas Huni",
+   "price": 25,
+   "pos": 66
+  },
+  {
+   "group": "ad_curry_side_25",
+   "groupName": "Curry Side",
+   "min": 0,
+   "max": 1,
+   "id": "ad_curry_side_25",
+   "name": "Curry Side",
+   "price": 25,
+   "pos": 67
+  },
+  {
+   "group": "ad_extra_roshi_10",
+   "groupName": "Extra Roshi",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_roshi_10",
+   "name": "Extra Roshi",
+   "price": 10,
+   "pos": 68
+  },
+  {
+   "group": "ad_rihaakuru_10",
+   "groupName": "Rihaakuru",
+   "min": 0,
+   "max": 1,
+   "id": "ad_rihaakuru_10",
+   "name": "Rihaakuru",
+   "price": 10,
+   "pos": 69
+  },
+  {
+   "group": "ad_condensed_milk_10",
+   "groupName": "Condensed Milk",
+   "min": 0,
+   "max": 1,
+   "id": "ad_condensed_milk_10",
+   "name": "Condensed Milk",
+   "price": 10,
+   "pos": 70
+  },
+  {
+   "group": "ad_regular",
+   "groupName": "Regular",
+   "min": 0,
+   "max": 1,
+   "id": "ad_regular",
+   "name": "Regular",
+   "price": 0,
+   "pos": 71
+  },
+  {
+   "group": "ad_large",
+   "groupName": "Large",
+   "min": 0,
+   "max": 1,
+   "id": "ad_large",
+   "name": "Large",
+   "price": 0,
+   "pos": 72
+  },
+  {
+   "group": "ad_chocolate_sauce_10",
+   "groupName": "Chocolate Sauce",
+   "min": 0,
+   "max": 1,
+   "id": "ad_chocolate_sauce_10",
+   "name": "Chocolate Sauce",
+   "price": 10,
+   "pos": 73
+  },
+  {
+   "group": "ad_caramel_sauce_10",
+   "groupName": "Caramel Sauce",
+   "min": 0,
+   "max": 1,
+   "id": "ad_caramel_sauce_10",
+   "name": "Caramel Sauce",
+   "price": 10,
+   "pos": 74
+  },
+  {
+   "group": "ad_extra_lime_5",
+   "groupName": "Extra Lime",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_lime_5",
+   "name": "Extra Lime",
+   "price": 5,
+   "pos": 75
+  },
+  {
+   "group": "ad_extra_mint_5",
+   "groupName": "Extra Mint",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_mint_5",
+   "name": "Extra Mint",
+   "price": 5,
+   "pos": 76
+  },
+  {
+   "group": "ad_extra_fruit_10",
+   "groupName": "Extra Fruit",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_fruit_10",
+   "name": "Extra Fruit",
+   "price": 10,
+   "pos": 77
+  },
+  {
+   "group": "ad_extra_beef_35",
+   "groupName": "Extra Beef",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_beef_35",
+   "name": "Extra Beef",
+   "price": 35,
+   "pos": 78
+  },
+  {
+   "group": "ad_half_cup_m5",
+   "groupName": "Half Cup",
+   "min": 0,
+   "max": 1,
+   "id": "ad_half_cup_m5",
+   "name": "Half Cup",
+   "price": -5,
+   "pos": 79
+  },
+  {
+   "group": "ad_full_cup",
+   "groupName": "Full Cup",
+   "min": 0,
+   "max": 1,
+   "id": "ad_full_cup",
+   "name": "Full Cup",
+   "price": 0,
+   "pos": 80
+  },
+  {
+   "group": "ad_extra_sugar",
+   "groupName": "Extra Sugar",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_sugar",
+   "name": "Extra Sugar",
+   "price": 0,
+   "pos": 81
+  },
+  {
+   "group": "ad_extra_milk_10",
+   "groupName": "Extra Milk",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_milk_10",
+   "name": "Extra Milk",
+   "price": 10,
+   "pos": 82
+  },
+  {
+   "group": "ad_extra_cheese_15",
+   "groupName": "Extra Cheese",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_cheese_15",
+   "name": "Extra Cheese",
+   "price": 15,
+   "pos": 83
+  },
+  {
+   "group": "ad_garlic_bread_25",
+   "groupName": "Garlic Bread",
+   "min": 0,
+   "max": 1,
+   "id": "ad_garlic_bread_25",
+   "name": "Garlic Bread",
+   "price": 25,
+   "pos": 84
+  },
+  {
+   "group": "ad_12_inch_45",
+   "groupName": "12 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_12_inch_45",
+   "name": "12 inch",
+   "price": 45,
+   "pos": 85
+  },
+  {
+   "group": "ad_15_inch_90",
+   "groupName": "15 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_15_inch_90",
+   "name": "15 inch",
+   "price": 90,
+   "pos": 86
+  },
+  {
+   "group": "ad_extra_cheese_20",
+   "groupName": "Extra Cheese",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_cheese_20",
+   "name": "Extra Cheese",
+   "price": 20,
+   "pos": 87
+  },
+  {
+   "group": "ad_olives_15",
+   "groupName": "Olives",
+   "min": 0,
+   "max": 1,
+   "id": "ad_olives_15",
+   "name": "Olives",
+   "price": 15,
+   "pos": 88
+  },
+  {
+   "group": "ad_mushrooms_15",
+   "groupName": "Mushrooms",
+   "min": 0,
+   "max": 1,
+   "id": "ad_mushrooms_15",
+   "name": "Mushrooms",
+   "price": 15,
+   "pos": 89
+  },
+  {
+   "group": "ad_jalape_o_10",
+   "groupName": "Jalapeño",
+   "min": 0,
+   "max": 1,
+   "id": "ad_jalape_o_10",
+   "name": "Jalapeño",
+   "price": 10,
+   "pos": 90
+  },
+  {
+   "group": "ad_chili_flakes",
+   "groupName": "Chili Flakes",
+   "min": 0,
+   "max": 1,
+   "id": "ad_chili_flakes",
+   "name": "Chili Flakes",
+   "price": 0,
+   "pos": 91
+  },
+  {
+   "group": "ad_extra_sauce_10",
+   "groupName": "Extra Sauce",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_sauce_10",
+   "name": "Extra Sauce",
+   "price": 10,
+   "pos": 92
+  },
+  {
+   "group": "ad_12_inch_40",
+   "groupName": "12 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_12_inch_40",
+   "name": "12 inch",
+   "price": 40,
+   "pos": 93
+  },
+  {
+   "group": "ad_15_inch_80",
+   "groupName": "15 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_15_inch_80",
+   "name": "15 inch",
+   "price": 80,
+   "pos": 94
+  },
+  {
+   "group": "ad_12_inch_50",
+   "groupName": "12 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_12_inch_50",
+   "name": "12 inch",
+   "price": 50,
+   "pos": 95
+  },
+  {
+   "group": "ad_15_inch_100",
+   "groupName": "15 inch",
+   "min": 0,
+   "max": 1,
+   "id": "ad_15_inch_100",
+   "name": "15 inch",
+   "price": 100,
+   "pos": 96
+  },
+  {
+   "group": "ad_extra_seafood_45",
+   "groupName": "Extra Seafood",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_seafood_45",
+   "name": "Extra Seafood",
+   "price": 45,
+   "pos": 97
+  },
+  {
+   "group": "ad_extra_chicken_25",
+   "groupName": "Extra Chicken",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_chicken_25",
+   "name": "Extra Chicken",
+   "price": 25,
+   "pos": 98
+  },
+  {
+   "group": "ad_extra_sauce_5",
+   "groupName": "Extra Sauce",
+   "min": 0,
+   "max": 1,
+   "id": "ad_extra_sauce_5",
+   "name": "Extra Sauce",
+   "price": 5,
+   "pos": 99
+  },
+  {
+   "group": "ad_toasted",
+   "groupName": "Toasted",
+   "min": 0,
+   "max": 1,
+   "id": "ad_toasted",
+   "name": "Toasted",
+   "price": 0,
+   "pos": 100
+  },
+  {
+   "group": "ad_coleslaw_20",
+   "groupName": "Coleslaw",
+   "min": 0,
+   "max": 1,
+   "id": "ad_coleslaw_20",
+   "name": "Coleslaw",
+   "price": 20,
+   "pos": 101
+  },
+  {
+   "group": "ad_full_10",
+   "groupName": "Full",
+   "min": 0,
+   "max": 1,
+   "id": "ad_full_10",
+   "name": "Full",
+   "price": 10,
+   "pos": 102
+  },
+  {
+   "group": "ad_bileh_half_3",
+   "groupName": "Bileh Half",
+   "min": 0,
+   "max": 1,
+   "id": "ad_bileh_half_3",
+   "name": "Bileh Half",
+   "price": 3,
+   "pos": 103
+  },
+  {
+   "group": "ad_bileh_full_5",
+   "groupName": "Bileh Full",
+   "min": 0,
+   "max": 1,
+   "id": "ad_bileh_full_5",
+   "name": "Bileh Full",
+   "price": 5,
+   "pos": 104
+  },
+  {
+   "group": "ad_ice",
+   "groupName": "Ice",
+   "min": 0,
+   "max": 1,
+   "id": "ad_ice",
+   "name": "Ice",
+   "price": 0,
+   "pos": 105
+  },
+  {
+   "group": "ad_lemon_5",
+   "groupName": "Lemon",
+   "min": 0,
+   "max": 1,
+   "id": "ad_lemon_5",
+   "name": "Lemon",
+   "price": 5,
+   "pos": 106
+  },
+  {
+   "group": "ad_large_20",
+   "groupName": "Large",
+   "min": 0,
+   "max": 1,
+   "id": "ad_large_20",
+   "name": "Large",
+   "price": 20,
+   "pos": 107
+  },
+  {
+   "group": "ad_room_temperature",
+   "groupName": "Room Temperature",
+   "min": 0,
+   "max": 1,
+   "id": "ad_room_temperature",
+   "name": "Room Temperature",
+   "price": 0,
+   "pos": 108
+  },
+  {
+   "group": "ad_chilled",
+   "groupName": "Chilled",
+   "min": 0,
+   "max": 1,
+   "id": "ad_chilled",
+   "name": "Chilled",
+   "price": 0,
+   "pos": 109
+  },
+  {
+   "group": "ad_500_ml",
+   "groupName": "500 ml",
+   "min": 0,
+   "max": 1,
+   "id": "ad_500_ml",
+   "name": "500 ml",
+   "price": 0,
+   "pos": 110
+  },
+  {
+   "group": "ad_1_5_l_15",
+   "groupName": "1.5 L",
+   "min": 0,
+   "max": 1,
+   "id": "ad_1_5_l_15",
+   "name": "1.5 L",
+   "price": 15,
+   "pos": 111
+  }
+ ],
+ "stockItems": [
+  {
+   "id": "IT-0273",
+   "name": "GULHA (VENDOR)",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 2.5
+  },
+  {
+   "id": "IT-0274",
+   "name": "BAJIYA (VENDOR)",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 2.5
+  },
+  {
+   "id": "IT-0275",
+   "name": "FEHI BOAKIBAA TRAY",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 6
+  },
+  {
+   "id": "IT-0276",
+   "name": "FUH JEHI KAVAABU (VENDOR)",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 4
+  },
+  {
+   "id": "IT-0277",
+   "name": "FUH GULHA — BOX OF 24",
+   "base": "pkt",
+   "stock": "pkt",
+   "factor": 1,
+   "cost": 60
+  },
+  {
+   "id": "IT-0278",
+   "name": "COCA COLA 250ML CAN",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 12
+  },
+  {
+   "id": "IT-0279",
+   "name": "WATER — GLASS BOTTLE",
+   "base": "pcs",
+   "stock": "pcs",
+   "factor": 1,
+   "cost": 18
+  },
+  {
+   "id": "IT-0280",
+   "name": "WATER — SHRINK OF 12",
+   "base": "pkt",
+   "stock": "pkt",
+   "factor": 1,
+   "cost": 60
+  }
+ ],
+ "dishes": [
+  {
+   "id": "m19",
+   "name": "English Breakfast",
+   "cat": "breakfast",
+   "price": 120,
+   "station": "hot",
+   "pos": 0,
+   "desc": "Eggs, sausage, toast and classic breakfast sides.",
+   "addons": [
+    "ad_extra_egg_15",
+    "ad_hash_brown_20",
+    "ad_sausage_20",
+    "ad_toast_10"
+   ]
+  },
+  {
+   "id": "m20",
+   "name": "Pancakes",
+   "cat": "breakfast",
+   "price": 75,
+   "station": "hot",
+   "pos": 1,
+   "desc": "Soft breakfast pancakes served warm.",
+   "addons": [
+    "ad_banana_10",
+    "ad_honey_10",
+    "ad_maple_syrup_15",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm049",
+   "name": "Aluvi Mashuni",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 2,
+   "desc": "Traditional Maldivian aluvi mashuni prepared with fresh local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "lm085",
+   "name": "Barabo Mas Huni",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 3,
+   "desc": "Traditional Maldivian barabo mas huni prepared with fresh local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "lm022",
+   "name": "Chichanda Mashuni",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 4,
+   "desc": "Traditional Maldivian chichanda mashuni prepared with fresh local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "lm095",
+   "name": "Huni Roshi",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 5,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "addons": [
+    "ad_butter_5",
+    "ad_fried_egg_15",
+    "ad_mas_huni_25"
+   ]
+  },
+  {
+   "id": "lm052",
+   "name": "Kiru Folhi",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 6,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "addons": [
+    "ad_curry_side_25",
+    "ad_honey_10"
+   ]
+  },
+  {
+   "id": "lm050",
+   "name": "Kopeefathu Mas Huni",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 7,
+   "desc": "Traditional Maldivian kopeefathu mas huni prepared with fresh local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "m17",
+   "name": "Kulhimas",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 8,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm054",
+   "name": "Lonu Kandhi",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 9,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "m16",
+   "name": "Mas Huni",
+   "cat": "breakfast",
+   "price": 45,
+   "station": "hot",
+   "pos": 10,
+   "desc": "Tuna, coconut, onion and chili mixed for a classic Maldivian breakfast.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "lm030",
+   "name": "Raiy Mashuni",
+   "cat": "breakfast",
+   "price": 55,
+   "station": "hot",
+   "pos": 11,
+   "desc": "Traditional Maldivian raiy mashuni prepared with fresh local flavours.",
+   "spice": 3,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "m18",
+   "name": "Roshi (2 pcs)",
+   "cat": "breakfast",
+   "price": 20,
+   "station": "hot",
+   "pos": 12,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "addons": [
+    "ad_butter_5",
+    "ad_extra_roshi_10"
+   ]
+  },
+  {
+   "id": "lm021",
+   "name": "Baked Bean Curry",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 13,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm121",
+   "name": "Bambukeyo Sanneti",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 14,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_rihaakuru_10",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm016",
+   "name": "Hanaakuri Boava",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 15,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_lime",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm031",
+   "name": "Kulhi Roshi",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 16,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm006",
+   "name": "Maalhoskeylu Kandhi",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 17,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm036",
+   "name": "Majaa",
+   "cat": "breakfast",
+   "price": 65,
+   "station": "hot",
+   "pos": 18,
+   "desc": "Traditional Maldivian speciality prepared with familiar island flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm012",
+   "name": "Cake Folhi",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 19,
+   "desc": "Plain Maldivian tea pancake — soft, unsweetened and served without toppings.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm094",
+   "name": "Fehi Boakibaa",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "counter",
+   "pos": 20,
+   "desc": "Baked cake of ground rice, tuna and greens, cut into squares.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ],
+   "buy": {
+    "item": "IT-0275",
+    "vendorName": "General Food Supplies Co",
+    "pack": 1
+   }
+  },
+  {
+   "id": "m24",
+   "name": "Kulhi Boakibaa",
+   "cat": "shorteats",
+   "price": 15,
+   "station": "cold",
+   "pos": 21,
+   "desc": "Baked spicy cake of ground rice, tuna and coconut — the classic tea slice.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm092",
+   "name": "Masfathafolhi",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 22,
+   "desc": "Layered flatbread stuffed with spiced tuna and coconut.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "m25",
+   "name": "Masroshi",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 23,
+   "desc": "Roshi stuffed with tuna, coconut, onion and lime, griddled until blistered.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm159",
+   "name": "Oatmeal Kulhi Boakibaa",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 24,
+   "desc": "Kulhi boakibaa made with oats in place of part of the rice.",
+   "spice": 2,
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm143",
+   "name": "Riha Folhi",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 25,
+   "desc": "Folhi pocket filled with thick curry, folded and griddled.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm091",
+   "name": "Rihaakuru Boakibaa",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 26,
+   "desc": "Kulhi boakibaa deepened with rihaakuru for a darker, saltier note.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm117",
+   "name": "Rihaakuru Folhi",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 27,
+   "desc": "Thin folhi spread with rihaakuru and folded over.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm149",
+   "name": "Roast Paan",
+   "cat": "shorteats",
+   "price": 18,
+   "station": "cold",
+   "pos": 28,
+   "desc": "Bread roasted over heat and served hot with tea.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm113",
+   "name": "Aveli",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 29,
+   "desc": "Crisp fried island snack, light and lightly sweet.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "m21",
+   "name": "Bajiya",
+   "cat": "shorteats",
+   "price": 8,
+   "station": "counter",
+   "pos": 30,
+   "desc": "Triangular pastry of tuna, onion and coconut, deep fried.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ],
+   "buy": {
+    "item": "IT-0274",
+    "vendorName": "General Food Supplies Co",
+    "pack": 1
+   }
+  },
+  {
+   "id": "lm142",
+   "name": "Baked Beans Keemiya",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 31,
+   "desc": "Deep-fried pastry roll filled with baked beans, onion and cabbage.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm043",
+   "name": "Bis Cutlets",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 32,
+   "desc": "Crumbed and fried patty of boiled egg and potato.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm129",
+   "name": "Boakuri Falho",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 33,
+   "desc": "Soft sweet slice cut for the tea table.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm150",
+   "name": "Cream Jehi Banas",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 34,
+   "desc": "Soft bun split and filled with sweet cream.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm079",
+   "name": "Cutlets",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 35,
+   "desc": "Crumbed and fried patty of tuna and potato.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm135",
+   "name": "Dhonkeyo Kaju",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 36,
+   "desc": "Ripe banana fritters, crisp at the edge and soft inside.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm014",
+   "name": "Fihunu Atta Fuh Gulha",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "counter",
+   "pos": 37,
+   "desc": "Gulha grilled rather than fried, filled with smoked tuna and coconut.",
+   "spice": 1,
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ],
+   "buy": {
+    "item": "IT-0277",
+    "vendorName": "General Food Supplies Co",
+    "pack": 24
+   }
+  },
+  {
+   "id": "lm038",
+   "name": "Foni Biscoadhu",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 38,
+   "desc": "Sweet crisp biscuit baked for tea.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm111",
+   "name": "Fuh Gulha",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 39,
+   "desc": "Fried dough balls filled with smoked tuna, coconut, onion and chilli.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm062",
+   "name": "Fuh Jehi Kavaabu",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "counter",
+   "pos": 40,
+   "desc": "Deep-fried patty of tuna, rice and coconut, filled with smoked tuna.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ],
+   "buy": {
+    "item": "IT-0276",
+    "vendorName": "General Food Supplies Co",
+    "pack": 1
+   }
+  },
+  {
+   "id": "m22",
+   "name": "Gulha",
+   "cat": "shorteats",
+   "price": 8,
+   "station": "counter",
+   "pos": 41,
+   "desc": "Fried dough balls filled with tuna, coconut, onion and lime.",
+   "qrOff": true,
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ],
+   "buy": {
+    "item": "IT-0273",
+    "vendorName": "General Food Supplies Co",
+    "pack": 1
+   }
+  },
+  {
+   "id": "lm122",
+   "name": "Gulha Riha",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 42,
+   "desc": "Gulha simmered in curry and served in the sauce.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm039",
+   "name": "Handoo Gulha",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 43,
+   "desc": "Gulha made on a rice-flour dough, fried until golden.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm125",
+   "name": "Huni Gulha",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 44,
+   "desc": "Gulha heavy on grated coconut, fried to order.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm066",
+   "name": "Kaamaranga",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 45,
+   "desc": "Tart starfruit, cut and salted.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm134",
+   "name": "Kavaabu",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 46,
+   "desc": "Deep-fried patty of tuna, rice, coconut and spices.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "m23",
+   "name": "Keemia",
+   "cat": "shorteats",
+   "price": 10,
+   "station": "cold",
+   "pos": 47,
+   "desc": "Deep-fried pastry roll with egg, onion and cabbage.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm147",
+   "name": "Kulhi Faaroshi",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 48,
+   "desc": "Spiced tuna wrapped in dough and fried.",
+   "spice": 2,
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm114",
+   "name": "Maafuh",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 49,
+   "desc": "Soft fried dough, faintly sweet.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm020",
+   "name": "Muru Muru",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 50,
+   "desc": "Crisp fried nibble eaten by the handful.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm075",
+   "name": "Naanakataa",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 51,
+   "desc": "Hard coconut sweet, cut into pieces.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm033",
+   "name": "Oh Keemiya",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 52,
+   "desc": "Keemiya rolled around a shredded filling and deep fried.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm068",
+   "name": "Rolls",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 53,
+   "desc": "Crumbed and fried roll with a savoury filling.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm061",
+   "name": "Tuna Patties",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 54,
+   "desc": "Crisp pastry patty with a soft, spiced tuna filling.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm040",
+   "name": "Zileybi",
+   "cat": "shorteats",
+   "price": 12,
+   "station": "cold",
+   "pos": 55,
+   "desc": "Coiled batter fried and steeped in syrup.",
+   "addons": [
+    "ad_10_pcs",
+    "ad_3_pcs",
+    "ad_5_pcs",
+    "ad_chili_sauce_5"
+   ]
+  },
+  {
+   "id": "lm109",
+   "name": "Aluvi Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 56,
+   "desc": "Traditional Maldivian aluvi riha cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm107",
+   "name": "Bakari Riha",
+   "cat": "mains",
+   "price": 120,
+   "station": "hot",
+   "pos": 57,
+   "desc": "Traditional Maldivian bakari riha cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm056",
+   "name": "Bambukeyo Bongara",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 58,
+   "desc": "Traditional Maldivian bambukeyo bongara cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm078",
+   "name": "Banbukeylu Hithi",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 59,
+   "desc": "Traditional Maldivian banbukeylu hithi cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm119",
+   "name": "Bashi Hiki Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 60,
+   "desc": "Traditional Maldivian bashi hiki riha cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm084",
+   "name": "Bis Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 61,
+   "desc": "Traditional Maldivian bis riha cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm097",
+   "name": "Bisgandu Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 62,
+   "desc": "Traditional Maldivian bisgandu riha cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm154",
+   "name": "Chicken Liver Curry",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 63,
+   "desc": "Traditional Maldivian chicken liver curry cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm007",
+   "name": "Dhon Anbu Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 64,
+   "desc": "Traditional Maldivian dhon anbu riha cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm011",
+   "name": "Dhon Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 65,
+   "desc": "Traditional Maldivian dhon riha cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm133",
+   "name": "Easy Chicken Curry",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 66,
+   "desc": "Traditional Maldivian easy chicken curry cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm076",
+   "name": "Farumas Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 67,
+   "desc": "Traditional Maldivian farumas riha cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "m_641chnv",
+   "name": "Garudhiya",
+   "cat": "mains",
+   "price": 80,
+   "station": "hot",
+   "pos": 68,
+   "desc": "Traditional Maldivian clear tuna broth served with steamed rice, lime, and chili.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm059",
+   "name": "Hanaakuri Kukulhu",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 69,
+   "desc": "Traditional Maldivian hanaakuri kukulhu cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm034",
+   "name": "Hanaakuri Kukulhu Mey",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 70,
+   "desc": "Traditional Maldivian hanaakuri kukulhu mey cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm004",
+   "name": "Kandu Kukulhu",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 71,
+   "desc": "Traditional Maldivian tuna rolls simmered in a rich coconut curry.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm037",
+   "name": "Kukulhu Garudhiya",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 72,
+   "desc": "Traditional Maldivian kukulhu garudhiya cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm074",
+   "name": "Kukulhu Musamma",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 73,
+   "desc": "Traditional Maldivian kukulhu musamma cooked with aromatic spices and local flavours.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "m33",
+   "name": "Kukulhu Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 74,
+   "desc": "Traditional Maldivian chicken curry made with roasted spices.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm151",
+   "name": "Kulhi Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 75,
+   "desc": "Traditional Maldivian kulhi riha cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm137",
+   "name": "Maalhoskeylu Hiki Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 76,
+   "desc": "Traditional Maldivian maalhoskeylu hiki riha cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm032",
+   "name": "Maldivian Kulhi Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 77,
+   "desc": "Rich and spicy Maldivian tuna curry with coconut and spices.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "m32",
+   "name": "Mas Riha",
+   "cat": "mains",
+   "price": 90,
+   "station": "hot",
+   "pos": 78,
+   "desc": "Traditional Maldivian mas riha cooked with aromatic spices and local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm072",
+   "name": "Masburi Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 79,
+   "desc": "Traditional Maldivian masburi riha cooked with aromatic spices and local flavours.",
+   "spice": 3,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm158",
+   "name": "Miruhulee Kukulhu",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 80,
+   "desc": "Traditional Maldivian miruhulee kukulhu cooked with aromatic spices and local flavours.",
+   "spice": 3,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm160",
+   "name": "Muguriha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 81,
+   "desc": "Comforting Maldivian dhal curry, mild and creamy.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm141",
+   "name": "Muranga Fathu Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 82,
+   "desc": "Traditional Maldivian muranga fathu riha cooked with aromatic spices and local flavours.",
+   "tags": [
+    "veg"
+   ],
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm130",
+   "name": "Rihaakuru Dhiya",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 83,
+   "desc": "Traditional Maldivian rihaakuru dhiya cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm155",
+   "name": "Rihaakuru Garudhiya",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 84,
+   "desc": "Traditional Maldivian rihaakuru garudhiya cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm139",
+   "name": "Rihaakuru Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 85,
+   "desc": "Traditional Maldivian rihaakuru riha cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm136",
+   "name": "Theluli Rihaakuru",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 86,
+   "desc": "Traditional Maldivian theluli rihaakuru cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm101",
+   "name": "Valhomas Hiki Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 87,
+   "desc": "Traditional Maldivian valhomas hiki riha cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm042",
+   "name": "Valhomas Kulhi Riha",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 88,
+   "desc": "Traditional Maldivian valhomas kulhi riha cooked with aromatic spices and local flavours.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm041",
+   "name": "Easy Kulhi Mas",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 89,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 2,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm064",
+   "name": "Fihunu Mas",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 90,
+   "desc": "Maldivian spiced fish, baked or grilled until aromatic and tender.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm009",
+   "name": "Fish Curry",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 91,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm152",
+   "name": "Hanaakuri Mas",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 92,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 2,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm017",
+   "name": "Hanaakuri Masdhalhu",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 93,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 2,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm116",
+   "name": "Kandu Mahu Musamma",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 94,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm126",
+   "name": "Mas Fen",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 95,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm146",
+   "name": "Maskurolhi",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 96,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm118",
+   "name": "Theluli Mas",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 97,
+   "desc": "Maldivian fish speciality seasoned with aromatic spices and local ingredients.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm046",
+   "name": "Theluli Mushimas",
+   "cat": "mains",
+   "price": 95,
+   "station": "hot",
+   "pos": 98,
+   "desc": "Whole fish seasoned with spices and fried until crisp.",
+   "spice": 1,
+   "addons": [
+    "ad_lime",
+    "ad_lonumirus_5",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "m40",
+   "name": "Grilled Reef Fish",
+   "cat": "mains",
+   "price": 190,
+   "station": "hot",
+   "pos": 99,
+   "desc": "Reef fish grilled with Maldivian seasoning and lime.",
+   "addons": [
+    "ad_fries_30",
+    "ad_garlic_butter_10",
+    "ad_lime",
+    "ad_salad_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "bg03",
+   "name": "Beef Bami Goreng",
+   "cat": "rice",
+   "price": 140,
+   "station": "hot",
+   "pos": 100,
+   "desc": "Indonesian-style stir-fried noodles with beef, vegetables and savoury sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_vegetables_15",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "bg02",
+   "name": "Chicken Bami Goreng",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 101,
+   "desc": "Indonesian-style stir-fried noodles with chicken, vegetables and savoury sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_vegetables_15",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "bg05",
+   "name": "Mixed Bami Goreng",
+   "cat": "rice",
+   "price": 150,
+   "station": "hot",
+   "pos": 102,
+   "desc": "Indonesian-style stir-fried noodles with mixed, vegetables and savoury sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_extra_valhomas_30",
+    "ad_extra_vegetables_15",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "bg01",
+   "name": "Tuna Bami Goreng",
+   "cat": "rice",
+   "price": 115,
+   "station": "hot",
+   "pos": 103,
+   "desc": "Indonesian-style stir-fried noodles with tuna, vegetables and savoury sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_extra_vegetables_15",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "bg04",
+   "name": "Valhomas Bami Goreng",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 104,
+   "desc": "Indonesian-style stir-fried noodles with valhomas, vegetables and savoury sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_valhomas_30",
+    "ad_extra_vegetables_15",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "br03",
+   "name": "Beef Biryani",
+   "cat": "rice",
+   "price": 155,
+   "station": "hot",
+   "pos": 105,
+   "desc": "Aromatic spiced basmati rice layered with beef and traditional biryani seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_chili_sauce_5",
+    "ad_extra_beef_35",
+    "ad_extra_rice_30",
+    "ad_fried_egg_15",
+    "ad_raita_15"
+   ]
+  },
+  {
+   "id": "br02",
+   "name": "Chicken Biryani",
+   "cat": "rice",
+   "price": 135,
+   "station": "hot",
+   "pos": 106,
+   "desc": "Aromatic spiced basmati rice layered with chicken and traditional biryani seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_chili_sauce_5",
+    "ad_extra_chicken_25",
+    "ad_extra_rice_30",
+    "ad_fried_egg_15",
+    "ad_raita_15"
+   ]
+  },
+  {
+   "id": "br05",
+   "name": "Mixed Biryani",
+   "cat": "rice",
+   "price": 170,
+   "station": "hot",
+   "pos": 107,
+   "desc": "Aromatic spiced basmati rice layered with mixed and traditional biryani seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_chili_sauce_5",
+    "ad_extra_beef_35",
+    "ad_extra_chicken_25",
+    "ad_extra_rice_30",
+    "ad_extra_tuna_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_raita_15"
+   ]
+  },
+  {
+   "id": "br01",
+   "name": "Tuna Biryani",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 108,
+   "desc": "Aromatic spiced basmati rice layered with tuna and traditional biryani seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_chili_sauce_5",
+    "ad_extra_rice_30",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_raita_15"
+   ]
+  },
+  {
+   "id": "br04",
+   "name": "Valhomas Biryani",
+   "cat": "rice",
+   "price": 135,
+   "station": "hot",
+   "pos": 109,
+   "desc": "Aromatic spiced basmati rice layered with valhomas and traditional biryani seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_chili_sauce_5",
+    "ad_extra_rice_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_raita_15"
+   ]
+  },
+  {
+   "id": "fr03",
+   "name": "Beef Fried Rice",
+   "cat": "rice",
+   "price": 130,
+   "station": "hot",
+   "pos": 110,
+   "desc": "Wok-fried rice with beef, vegetables, egg and savoury seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "fr02",
+   "name": "Chicken Fried Rice",
+   "cat": "rice",
+   "price": 115,
+   "station": "hot",
+   "pos": 111,
+   "desc": "Wok-fried rice with chicken, vegetables, egg and savoury seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "fr04",
+   "name": "Mixed Fried Rice",
+   "cat": "rice",
+   "price": 145,
+   "station": "hot",
+   "pos": 112,
+   "desc": "Wok-fried rice with mixed, vegetables, egg and savoury seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "fr01",
+   "name": "Tuna Fried Rice",
+   "cat": "rice",
+   "price": 105,
+   "station": "hot",
+   "pos": 113,
+   "desc": "Wok-fried rice with tuna, vegetables, egg and savoury seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "lm128",
+   "name": "Valhomas Fried Rice",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 114,
+   "desc": "Wok-fried rice with smoked tuna, vegetables, egg and savoury seasoning.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "m31",
+   "name": "Beef Kottu Roshi",
+   "cat": "rice",
+   "price": 140,
+   "station": "hot",
+   "pos": 115,
+   "desc": "Chopped roshi stir-fried with beef, egg, vegetables and savoury spices.",
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_beef_35",
+    "ad_extra_chili",
+    "ad_extra_gravy_10",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "m30",
+   "name": "Chicken Kottu Roshi",
+   "cat": "rice",
+   "price": 120,
+   "station": "hot",
+   "pos": 116,
+   "desc": "Chopped roshi stir-fried with chicken, egg, vegetables and savoury spices.",
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_gravy_10",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "kt03",
+   "name": "Mixed Kottu Roshi",
+   "cat": "rice",
+   "price": 150,
+   "station": "hot",
+   "pos": 117,
+   "desc": "Chopped roshi stir-fried with mixed, egg, vegetables and savoury spices.",
+   "spice": 1,
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_beef_35",
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_gravy_10",
+    "ad_extra_tuna_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "kt01",
+   "name": "Tuna Kottu Roshi",
+   "cat": "rice",
+   "price": 110,
+   "station": "hot",
+   "pos": 118,
+   "desc": "Chopped roshi stir-fried with tuna, egg, vegetables and savoury spices.",
+   "spice": 1,
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_chili",
+    "ad_extra_gravy_10",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "kt02",
+   "name": "Valhomas Kottu Roshi",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 119,
+   "desc": "Chopped roshi stir-fried with valhomas, egg, vegetables and savoury spices.",
+   "spice": 1,
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_chili",
+    "ad_extra_gravy_10",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "ng03",
+   "name": "Beef Nasi Goreng",
+   "cat": "rice",
+   "price": 140,
+   "station": "hot",
+   "pos": 120,
+   "desc": "Indonesian-style fried rice with beef, vegetables, egg and aromatic seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "ng02",
+   "name": "Chicken Nasi Goreng",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 121,
+   "desc": "Indonesian-style fried rice with chicken, vegetables, egg and aromatic seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "m28",
+   "name": "Mixed Nasi Goreng",
+   "cat": "rice",
+   "price": 150,
+   "station": "hot",
+   "pos": 122,
+   "desc": "Indonesian-style fried rice with mixed proteins, vegetables, egg and aromatic seasoning.",
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_chicken_25",
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15"
+   ]
+  },
+  {
+   "id": "ng01",
+   "name": "Tuna Nasi Goreng",
+   "cat": "rice",
+   "price": 115,
+   "station": "hot",
+   "pos": 123,
+   "desc": "Indonesian-style fried rice with tuna, vegetables, egg and aromatic seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "ng04",
+   "name": "Valhomas Nasi Goreng",
+   "cat": "rice",
+   "price": 125,
+   "station": "hot",
+   "pos": 124,
+   "desc": "Indonesian-style fried rice with valhomas, vegetables, egg and aromatic seasoning.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_portion_30",
+    "ad_extra_valhomas_30",
+    "ad_fried_egg_15",
+    "ad_no_egg"
+   ]
+  },
+  {
+   "id": "lm002",
+   "name": "Bambukeyo Bondibaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 125,
+   "desc": "Comforting Maldivian bambukeyo bondibaiy prepared as a hearty rice or noodle dish.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm048",
+   "name": "Bambukeyolee Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 126,
+   "desc": "Comforting Maldivian bambukeyolee baiy prepared as a hearty rice or noodle dish.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm069",
+   "name": "Barabo Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 127,
+   "desc": "Comforting Maldivian barabo baiy prepared as a hearty rice or noodle dish.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm080",
+   "name": "Dhirifiyaalee Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 128,
+   "desc": "Comforting Maldivian dhirifiyaalee baiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm083",
+   "name": "Falholee Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 129,
+   "desc": "Comforting Maldivian falholee baiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm102",
+   "name": "Folaa",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 130,
+   "desc": "Comforting Maldivian folaa prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm019",
+   "name": "Huni Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 131,
+   "desc": "Comforting Maldivian huni baiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm087",
+   "name": "Kaaliyaa Birinjee",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 132,
+   "desc": "Comforting Maldivian kaaliyaa birinjee prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm005",
+   "name": "Kukulhu Biriyani",
+   "cat": "rice",
+   "price": 110,
+   "station": "hot",
+   "pos": 133,
+   "desc": "Fragrant Maldivian-style chicken biriyani with aromatic spices.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm157",
+   "name": "Masbaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 134,
+   "desc": "Comforting Maldivian masbaiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm089",
+   "name": "Masdhalhu Masbaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 135,
+   "desc": "Comforting Maldivian masdhalhu masbaiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "m29",
+   "name": "Mee Goreng",
+   "cat": "rice",
+   "price": 105,
+   "station": "hot",
+   "pos": 136,
+   "desc": "Stir-fried noodles with vegetables and savoury sauce.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm099",
+   "name": "Mugu Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 137,
+   "desc": "Comforting Maldivian mugu baiy prepared as a hearty rice or noodle dish.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm103",
+   "name": "Mugu Bondibaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 138,
+   "desc": "Comforting Maldivian mugu bondibaiy prepared as a hearty rice or noodle dish.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm023",
+   "name": "Raiy Bondibaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 139,
+   "desc": "Comforting Maldivian raiy bondibaiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm058",
+   "name": "Roosihaa Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 140,
+   "desc": "Comforting Maldivian roosihaa baiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm003",
+   "name": "Saagu Bondibaiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 141,
+   "desc": "Comforting Maldivian saagu bondibaiy prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm018",
+   "name": "Theyo Mirus Baiy",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 142,
+   "desc": "Comforting Maldivian theyo mirus baiy prepared as a hearty rice or noodle dish.",
+   "spice": 1,
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "lm132",
+   "name": "Tomato Rice",
+   "cat": "rice",
+   "price": 85,
+   "station": "hot",
+   "pos": 143,
+   "desc": "Comforting Maldivian tomato rice prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "m27",
+   "name": "Valhomas Rice",
+   "cat": "rice",
+   "price": 95,
+   "station": "hot",
+   "pos": 144,
+   "desc": "Comforting Maldivian valhomas rice prepared as a hearty rice or noodle dish.",
+   "addons": [
+    "ad_extra_portion_30",
+    "ad_fried_egg_15",
+    "ad_lonumirus_5",
+    "ad_rihaakuru_10"
+   ]
+  },
+  {
+   "id": "m35",
+   "name": "Beef Burger",
+   "cat": "western",
+   "price": 130,
+   "station": "grill",
+   "pos": 145,
+   "desc": "Grilled beef burger with fresh salad and house sauce.",
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_patty_45",
+    "ad_fried_egg_15",
+    "ad_fries_30"
+   ]
+  },
+  {
+   "id": "m38",
+   "name": "Chicken Alfredo",
+   "cat": "western",
+   "price": 150,
+   "station": "grill",
+   "pos": 146,
+   "desc": "Creamy Alfredo pasta with tender chicken.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_chicken_25",
+    "ad_garlic_bread_25"
+   ]
+  },
+  {
+   "id": "m39",
+   "name": "Spaghetti Bolognese",
+   "cat": "western",
+   "price": 145,
+   "station": "grill",
+   "pos": 147,
+   "desc": "Spaghetti with rich beef and tomato sauce.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_chicken_25",
+    "ad_garlic_bread_25"
+   ]
+  },
+  {
+   "id": "pz02",
+   "name": "BBQ Chicken Pizza",
+   "cat": "western",
+   "price": 175,
+   "station": "grill",
+   "pos": 148,
+   "desc": "BBQ chicken, mozzarella, onion and smoky sauce.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz06",
+   "name": "Beef Pepperoni Pizza",
+   "cat": "western",
+   "price": 190,
+   "station": "grill",
+   "pos": 149,
+   "desc": "Beef pepperoni, mozzarella and tomato sauce.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz05",
+   "name": "Beef Pizza",
+   "cat": "western",
+   "price": 185,
+   "station": "grill",
+   "pos": 150,
+   "desc": "Seasoned beef, mozzarella, onion and tomato sauce.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz01",
+   "name": "Chicken Pizza",
+   "cat": "western",
+   "price": 165,
+   "station": "grill",
+   "pos": 151,
+   "desc": "Chicken, tomato sauce, mozzarella and herbs.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz08",
+   "name": "Four Cheese Pizza",
+   "cat": "western",
+   "price": 180,
+   "station": "grill",
+   "pos": 152,
+   "desc": "A rich blend of four cheeses on tomato sauce.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "m36",
+   "name": "Margherita Pizza",
+   "cat": "western",
+   "price": 140,
+   "station": "grill",
+   "pos": 153,
+   "desc": "Classic tomato, mozzarella and herbs on a baked pizza base.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz09",
+   "name": "Mixed Pizza",
+   "cat": "western",
+   "price": 210,
+   "station": "grill",
+   "pos": 154,
+   "desc": "Chicken, beef, tuna, vegetables and mozzarella.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "m37",
+   "name": "Seafood Pizza",
+   "cat": "western",
+   "price": 180,
+   "station": "grill",
+   "pos": 155,
+   "desc": "Seafood, tomato sauce, mozzarella and herbs on a baked pizza base.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_seafood_45",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz04",
+   "name": "Spicy Tuna Pizza",
+   "cat": "western",
+   "price": 175,
+   "station": "grill",
+   "pos": 156,
+   "desc": "Tuna, chili, mozzarella, onion and tomato sauce.",
+   "spice": 1,
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz03",
+   "name": "Tuna Pizza",
+   "cat": "western",
+   "price": 165,
+   "station": "grill",
+   "pos": 157,
+   "desc": "Tuna, mozzarella, onion, tomato sauce and herbs.",
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pz07",
+   "name": "Vegetable Pizza",
+   "cat": "western",
+   "price": 145,
+   "station": "grill",
+   "pos": 158,
+   "desc": "Mixed vegetables, mozzarella, herbs and tomato sauce.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_12_inch_50",
+    "ad_15_inch_100",
+    "ad_chili_flakes",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_jalape_o_10",
+    "ad_mushrooms_15",
+    "ad_olives_15"
+   ]
+  },
+  {
+   "id": "pa02",
+   "name": "Chicken Panini",
+   "cat": "western",
+   "price": 110,
+   "station": "grill",
+   "pos": 159,
+   "desc": "Pressed panini filled with chicken, cheese, salad and house dressing.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_chicken_25",
+    "ad_extra_sauce_5",
+    "ad_fries_30",
+    "ad_jalape_o_10"
+   ]
+  },
+  {
+   "id": "sa01",
+   "name": "Chicken Sandwich",
+   "cat": "western",
+   "price": 95,
+   "station": "grill",
+   "pos": 160,
+   "desc": "Chicken sandwich with fresh salad and creamy house dressing.",
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_chicken_25",
+    "ad_fried_egg_15",
+    "ad_fries_30",
+    "ad_toasted"
+   ]
+  },
+  {
+   "id": "m34",
+   "name": "Club Sandwich",
+   "cat": "western",
+   "price": 110,
+   "station": "grill",
+   "pos": 161,
+   "desc": "Triple-layer chicken, egg and fresh salad sandwich served café style.",
+   "addons": [
+    "ad_cheese_15",
+    "ad_coleslaw_20",
+    "ad_extra_chicken_25",
+    "ad_fried_egg_15",
+    "ad_fries_30"
+   ]
+  },
+  {
+   "id": "pa01",
+   "name": "Tuna Panini",
+   "cat": "western",
+   "price": 100,
+   "station": "grill",
+   "pos": 162,
+   "desc": "Pressed panini filled with tuna, cheese, salad and house dressing.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_extra_tuna_30",
+    "ad_fries_30",
+    "ad_jalape_o_10"
+   ]
+  },
+  {
+   "id": "lm025",
+   "name": "Tuna Sandwich",
+   "cat": "western",
+   "price": 95,
+   "station": "grill",
+   "pos": 163,
+   "desc": "Tuna sandwich with fresh salad and creamy house dressing.",
+   "spice": 1,
+   "addons": [
+    "ad_cheese_15",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_fries_30",
+    "ad_toasted"
+   ]
+  },
+  {
+   "id": "su03",
+   "name": "Beef Submarine",
+   "cat": "western",
+   "price": 135,
+   "station": "grill",
+   "pos": 164,
+   "desc": "Toasted submarine roll filled with beef, fresh salad, cheese and house sauce.",
+   "addons": [
+    "ad_extra_beef_35",
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_fried_egg_15",
+    "ad_fries_30",
+    "ad_jalape_o_10"
+   ]
+  },
+  {
+   "id": "su02",
+   "name": "Chicken Submarine",
+   "cat": "western",
+   "price": 120,
+   "station": "grill",
+   "pos": 165,
+   "desc": "Toasted submarine roll filled with chicken, fresh salad, cheese and house sauce.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_chicken_25",
+    "ad_extra_sauce_5",
+    "ad_fried_egg_15",
+    "ad_fries_30",
+    "ad_jalape_o_10"
+   ]
+  },
+  {
+   "id": "su01",
+   "name": "Tuna Submarine",
+   "cat": "western",
+   "price": 105,
+   "station": "grill",
+   "pos": 166,
+   "desc": "Toasted submarine roll filled with tuna, fresh salad, cheese and house sauce.",
+   "addons": [
+    "ad_extra_cheese_20",
+    "ad_extra_sauce_5",
+    "ad_extra_tuna_30",
+    "ad_fried_egg_15",
+    "ad_fries_30",
+    "ad_jalape_o_10"
+   ]
+  },
+  {
+   "id": "lm045",
+   "name": "Aluvi Sambol",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 167,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm140",
+   "name": "Boashi",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 168,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm067",
+   "name": "Boashi Hikikoh",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 169,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm055",
+   "name": "Boashi Mas Huni",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 170,
+   "desc": "Traditional Maldivian boashi mas huni prepared with fresh local flavours.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_mashuni_25",
+    "ad_fried_egg_15",
+    "ad_roshi_2_pcs_20"
+   ]
+  },
+  {
+   "id": "lm028",
+   "name": "Carrot Asaara",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 171,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm057",
+   "name": "Fiyaa Satani",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 172,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm096",
+   "name": "Fundi Satani",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 173,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm053",
+   "name": "Hanaakuri Havaadhu",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 174,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm060",
+   "name": "Hanaakuri Huni Havaadhu",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 175,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm145",
+   "name": "Havaadhulee Bis",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 176,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm063",
+   "name": "Kopee Fathu Satani",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 177,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm112",
+   "name": "Kulhlhafilaafathu Satani",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 178,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm131",
+   "name": "Lonumirus",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 179,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm029",
+   "name": "Lonumirus Kukulhu Riha",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 180,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm073",
+   "name": "Lonumirus Rihaakuru",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 181,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm106",
+   "name": "Masmirus",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 182,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm008",
+   "name": "Masmirus Noodles",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 183,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 2,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm026",
+   "name": "Quick Anbu Asaara",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 184,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "spice": 1,
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "lm082",
+   "name": "Theluli Boashi",
+   "cat": "sides",
+   "price": 20,
+   "station": "cold",
+   "pos": 185,
+   "desc": "Traditional Maldivian accompaniment that adds extra flavour to local meals.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_large_20",
+    "ad_regular",
+    "ad_small"
+   ]
+  },
+  {
+   "id": "m_tt40yee",
+   "name": "Nuts",
+   "cat": "sides",
+   "price": 8,
+   "station": "cold",
+   "pos": 186,
+   "desc": "Dhufun consists areca nuts, betel leaves, green cardamoms, cloves & sometimes cinnamon & heera panna.",
+   "addons": [
+    "ad_bileh_full_5",
+    "ad_bileh_half_3",
+    "ad_full_10"
+   ]
+  },
+  {
+   "id": "lm065",
+   "name": "Aluvi Kirugarudhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 187,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm148",
+   "name": "Bambukeyo Bondibai",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 188,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm051",
+   "name": "Bambukeyo Kirugarudhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 189,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm120",
+   "name": "Boakuri Bambukeyo",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 190,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm010",
+   "name": "Caramel Folhi",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 191,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm088",
+   "name": "Cornflour Kiruboakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 192,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm105",
+   "name": "Custard",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 193,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm070",
+   "name": "Dhandi Aluvi Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 194,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm013",
+   "name": "Fehi Paan Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 195,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "m26",
+   "name": "Foni Boakibaa",
+   "cat": "desserts",
+   "price": 15,
+   "station": "pastry",
+   "pos": 196,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm104",
+   "name": "Fufoo Kan’dhi",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 197,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm047",
+   "name": "Gabulhi Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 198,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm077",
+   "name": "Githeyo Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 199,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm127",
+   "name": "Haluvidhaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 200,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm124",
+   "name": "Handulu Bondibai",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 201,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm081",
+   "name": "Juice Petty",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 202,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm093",
+   "name": "Kaashi Pudding",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 203,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm071",
+   "name": "Kashikeyo Kan’dhi",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 204,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm098",
+   "name": "Kiru",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 205,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm138",
+   "name": "Kiru Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 206,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm015",
+   "name": "Kiru Rihaakuru Dhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 207,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "spice": 2,
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm100",
+   "name": "Kirukeyo",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 208,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm123",
+   "name": "Murangatholhi Kirugarudhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 209,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm110",
+   "name": "Paan Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 210,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm156",
+   "name": "Pirini",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 211,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm108",
+   "name": "Rava Pirini",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 212,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm035",
+   "name": "Ravaa Boakibaa",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 213,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm115",
+   "name": "Saagu Fani",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 214,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm027",
+   "name": "Saagu Kan’dhi",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 215,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm153",
+   "name": "Saagu Pudding",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 216,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm144",
+   "name": "Suji",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 217,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "lm086",
+   "name": "Thoraa Kirugarudhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 218,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm090",
+   "name": "Valhomas Kirugarudhiya",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 219,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "addons": [
+    "ad_extra_chili",
+    "ad_extra_curry_25",
+    "ad_roshi_2_pcs_20",
+    "ad_steamed_rice_20"
+   ]
+  },
+  {
+   "id": "lm001",
+   "name": "Vanilla Juice Petty",
+   "cat": "desserts",
+   "price": 35,
+   "station": "pastry",
+   "pos": 220,
+   "desc": "Traditional Maldivian sweet treat, perfect with tea or after a meal.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_condensed_milk_10",
+    "ad_vanilla_ice_cream_25"
+   ]
+  },
+  {
+   "id": "m2",
+   "name": "Americano",
+   "cat": "hotdrinks",
+   "price": 35,
+   "station": "bar",
+   "pos": 221,
+   "desc": "Espresso lengthened with hot water for a clean, bold cup.",
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_iced_5",
+    "ad_large_20",
+    "ad_milk_10",
+    "ad_small",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "m4",
+   "name": "Caffè Latte",
+   "cat": "hotdrinks",
+   "price": 50,
+   "station": "bar",
+   "pos": 222,
+   "desc": "Espresso with silky steamed milk and a light layer of foam.",
+   "addons": [
+    "ad_caramel_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_iced_5",
+    "ad_large_20",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "cf04",
+   "name": "Caffè Mocha",
+   "cat": "hotdrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 223,
+   "desc": "Espresso, steamed milk and rich chocolate.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_sugar",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "m3",
+   "name": "Cappuccino",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 224,
+   "desc": "Espresso with steamed milk and a generous layer of velvety foam.",
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_cinnamon",
+    "ad_extra_shot_20",
+    "ad_large_20",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "cf05",
+   "name": "Cortado",
+   "cat": "hotdrinks",
+   "price": 50,
+   "station": "bar",
+   "pos": 225,
+   "desc": "Balanced espresso and steamed milk in a small cup.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "cf01",
+   "name": "Double Espresso",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 226,
+   "desc": "Two shots of espresso with a rich crema.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "m1",
+   "name": "Espresso",
+   "cat": "hotdrinks",
+   "price": 30,
+   "station": "bar",
+   "pos": 227,
+   "desc": "Single espresso with a rich crema.",
+   "addons": [
+    "ad_decaf_10",
+    "ad_double_shot_15",
+    "ad_extra_shot_20",
+    "ad_hot_water",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "cf02",
+   "name": "Espresso Macchiato",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 228,
+   "desc": "Espresso marked with a touch of steamed milk and foam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "cf03",
+   "name": "Flat White",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 229,
+   "desc": "Double espresso with silky microfoam milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_sugar",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "cf06",
+   "name": "Iced Americano",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 230,
+   "desc": "Espresso poured over chilled water and ice.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "cf07",
+   "name": "Iced Cappuccino",
+   "cat": "hotdrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 231,
+   "desc": "Chilled espresso and milk finished with creamy cold foam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_sugar",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "m5",
+   "name": "Iced Latte",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 232,
+   "desc": "Chilled espresso and milk poured over ice.",
+   "addons": [
+    "ad_caramel_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_large_20",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "cf08",
+   "name": "Affogato",
+   "cat": "hotdrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 233,
+   "desc": "Hot espresso poured over vanilla ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_extra_ice_cream_25",
+    "ad_extra_shot_20"
+   ]
+  },
+  {
+   "id": "il10",
+   "name": "illy Affogato",
+   "cat": "hotdrinks",
+   "price": 85,
+   "station": "bar",
+   "pos": 234,
+   "desc": "illy espresso poured over vanilla ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_extra_ice_cream_25",
+    "ad_extra_shot_20"
+   ]
+  },
+  {
+   "id": "il03",
+   "name": "illy Americano",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 235,
+   "desc": "illy espresso lengthened with hot water.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il06",
+   "name": "illy Caffè Latte",
+   "cat": "hotdrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 236,
+   "desc": "illy espresso with generous steamed milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il08",
+   "name": "illy Caffè Mocha",
+   "cat": "hotdrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 237,
+   "desc": "illy espresso, milk and chocolate.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il05",
+   "name": "illy Cappuccino",
+   "cat": "hotdrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 238,
+   "desc": "illy espresso with steamed milk and velvety foam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il02",
+   "name": "illy Double Espresso",
+   "cat": "hotdrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 239,
+   "desc": "Two shots of illy espresso with full aroma and crema.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hot_water",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "il01",
+   "name": "illy Espresso",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 240,
+   "desc": "illy espresso prepared as a concentrated single shot.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hot_water",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "il07",
+   "name": "illy Flat White",
+   "cat": "hotdrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 241,
+   "desc": "Double illy espresso with silky microfoam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il09",
+   "name": "illy Iced Latte",
+   "cat": "hotdrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 242,
+   "desc": "illy espresso with chilled milk and ice.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "il04",
+   "name": "illy Macchiato",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 243,
+   "desc": "illy espresso with a touch of steamed milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "ic01",
+   "name": "illy Crema",
+   "cat": "hotdrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 244,
+   "desc": "Cold, creamy illy coffee dessert drink with a smooth whipped texture.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_extra_espresso_shot_20",
+    "ad_less_sweet",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ic02",
+   "name": "illy Crema Caramel",
+   "cat": "hotdrinks",
+   "price": 90,
+   "station": "bar",
+   "pos": 245,
+   "desc": "Cold illy coffee crema finished with caramel.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_extra_espresso_shot_20",
+    "ad_less_sweet",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ic03",
+   "name": "illy Crema Chocolate",
+   "cat": "hotdrinks",
+   "price": 90,
+   "station": "bar",
+   "pos": 246,
+   "desc": "Cold illy coffee crema finished with chocolate.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_chocolate_10",
+    "ad_extra_espresso_shot_20",
+    "ad_less_sweet",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "lv03",
+   "name": "Lavazza Americano",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 247,
+   "desc": "Lavazza espresso lengthened with hot water.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv06",
+   "name": "Lavazza Caffè Latte",
+   "cat": "hotdrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 248,
+   "desc": "Lavazza espresso with smooth steamed milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv05",
+   "name": "Lavazza Cappuccino",
+   "cat": "hotdrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 249,
+   "desc": "Lavazza espresso, steamed milk and velvety foam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv11",
+   "name": "Lavazza Cremespresso",
+   "cat": "hotdrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 250,
+   "desc": "Creamy chilled espresso drink inspired by Lavazza café service.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv02",
+   "name": "Lavazza Double Espresso",
+   "cat": "hotdrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 251,
+   "desc": "Two shots of Lavazza espresso.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hot_water",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "lv01",
+   "name": "Lavazza Espresso",
+   "cat": "hotdrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 252,
+   "desc": "Classic Lavazza espresso with a rich aromatic crema.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hot_water",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "lv07",
+   "name": "Lavazza Flat White",
+   "cat": "hotdrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 253,
+   "desc": "Double Lavazza espresso with silky microfoam.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv09",
+   "name": "Lavazza Iced Americano",
+   "cat": "hotdrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 254,
+   "desc": "Lavazza espresso over chilled water and ice.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv10",
+   "name": "Lavazza Iced Latte",
+   "cat": "hotdrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 255,
+   "desc": "Lavazza espresso with chilled milk and ice.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv04",
+   "name": "Lavazza Macchiato",
+   "cat": "hotdrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 256,
+   "desc": "Lavazza espresso with a touch of steamed milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "lv08",
+   "name": "Lavazza Mocha",
+   "cat": "hotdrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 257,
+   "desc": "Lavazza espresso, steamed milk and chocolate.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_10",
+    "ad_decaf_10",
+    "ad_extra_shot_20",
+    "ad_hazelnut_10",
+    "ad_oat_milk_15",
+    "ad_soy_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "m7",
+   "name": "Kalhu Sai",
+   "cat": "hotdrinks",
+   "price": 15,
+   "station": "bar",
+   "pos": 258,
+   "desc": "Traditional Maldivian black tea.",
+   "addons": [
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "m8",
+   "name": "Kiru Sai",
+   "cat": "hotdrinks",
+   "price": 20,
+   "station": "bar",
+   "pos": 259,
+   "desc": "Traditional Maldivian milk tea.",
+   "addons": [
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ns01",
+   "name": "Nescafé Black",
+   "cat": "hotdrinks",
+   "price": 30,
+   "station": "bar",
+   "pos": 260,
+   "desc": "Classic instant black coffee prepared hot.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_sugar",
+    "ad_full_cup",
+    "ad_half_cup_m5",
+    "ad_milk_10",
+    "ad_sugar"
+   ]
+  },
+  {
+   "id": "ns02",
+   "name": "Nescafé Milk",
+   "cat": "hotdrinks",
+   "price": 40,
+   "station": "bar",
+   "pos": 261,
+   "desc": "Classic Nescafé prepared with hot milk.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_milk_10",
+    "ad_extra_sugar",
+    "ad_full_cup",
+    "ad_half_cup_m5",
+    "ad_less_sugar"
+   ]
+  },
+  {
+   "id": "m6",
+   "name": "Caramel Frappe",
+   "cat": "colddrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 262,
+   "desc": "Creamy blended coffee frappe with caramel.",
+   "addons": [
+    "ad_caramel_10",
+    "ad_extra_shot_20",
+    "ad_oat_milk_15",
+    "ad_vanilla_10"
+   ]
+  },
+  {
+   "id": "ju06",
+   "name": "Apple Juice",
+   "cat": "colddrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 263,
+   "desc": "Fresh apple juice blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju08",
+   "name": "Avocado Juice",
+   "cat": "colddrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 264,
+   "desc": "Creamy fresh avocado drink blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_milk_10",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju07",
+   "name": "Banana Juice",
+   "cat": "colddrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 265,
+   "desc": "Fresh banana blended into a smooth fruit drink.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_milk_10",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju10",
+   "name": "Dragon Fruit Juice",
+   "cat": "colddrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 266,
+   "desc": "Fresh dragon fruit blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju05",
+   "name": "Fresh Lemon Juice",
+   "cat": "colddrinks",
+   "price": 50,
+   "station": "bar",
+   "pos": 267,
+   "desc": "Fresh lemon juice served chilled.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju04",
+   "name": "Fresh Lime Juice",
+   "cat": "colddrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 268,
+   "desc": "Fresh lime juice served chilled.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju11",
+   "name": "Guava Juice",
+   "cat": "colddrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 269,
+   "desc": "Fresh guava juice blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju01",
+   "name": "Mango Juice",
+   "cat": "colddrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 270,
+   "desc": "Fresh mango juice blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju09",
+   "name": "Mixed Fruit Juice",
+   "cat": "colddrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 271,
+   "desc": "A refreshing blend of available seasonal fruits.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "m10",
+   "name": "Orange Juice",
+   "cat": "colddrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 272,
+   "desc": "Fresh orange juice blended to order.",
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "m11",
+   "name": "Papaya Juice",
+   "cat": "colddrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 273,
+   "desc": "Fresh papaya juice blended to order.",
+   "addons": [
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_milk_10",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju03",
+   "name": "Passion Fruit Juice",
+   "cat": "colddrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 274,
+   "desc": "Fresh passion fruit juice blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju02",
+   "name": "Pineapple Juice",
+   "cat": "colddrinks",
+   "price": 60,
+   "station": "bar",
+   "pos": 275,
+   "desc": "Fresh pineapple juice blended to order.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ju12",
+   "name": "Seasonal Fresh Juice",
+   "cat": "colddrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 276,
+   "desc": "Fresh juice prepared from the best seasonal fruit available.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "m9",
+   "name": "Watermelon Juice",
+   "cat": "colddrinks",
+   "price": 55,
+   "station": "bar",
+   "pos": 277,
+   "desc": "Fresh watermelon juice blended to order.",
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_ice",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "ms04",
+   "name": "Banana Milkshake",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 278,
+   "desc": "Creamy banana milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms08",
+   "name": "Caramel Milkshake",
+   "cat": "colddrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 279,
+   "desc": "Creamy caramel milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms02",
+   "name": "Chocolate Milkshake",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 280,
+   "desc": "Creamy chocolate milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms07",
+   "name": "Coffee Milkshake",
+   "cat": "colddrinks",
+   "price": 85,
+   "station": "bar",
+   "pos": 281,
+   "desc": "Creamy coffee milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms05",
+   "name": "Mango Milkshake",
+   "cat": "colddrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 282,
+   "desc": "Creamy mango milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms06",
+   "name": "Oreo Milkshake",
+   "cat": "colddrinks",
+   "price": 85,
+   "station": "bar",
+   "pos": 283,
+   "desc": "Creamy oreo milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms03",
+   "name": "Strawberry Milkshake",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 284,
+   "desc": "Creamy strawberry milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "ms01",
+   "name": "Vanilla Milkshake",
+   "cat": "colddrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 285,
+   "desc": "Creamy vanilla milkshake blended with chilled milk and ice cream.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_caramel_sauce_10",
+    "ad_chocolate_sauce_10",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_vanilla_ice_cream_25",
+    "ad_whipped_cream_15"
+   ]
+  },
+  {
+   "id": "m13",
+   "name": "Blue Lagoon",
+   "cat": "colddrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 286,
+   "desc": "Refreshing citrus-blue mocktail served over ice.",
+   "addons": [
+    "ad_extra_lime_5",
+    "ad_large_20",
+    "ad_less_sweet"
+   ]
+  },
+  {
+   "id": "mj07",
+   "name": "Blue Mojito",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 287,
+   "desc": "Refreshing blue mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "m12",
+   "name": "Classic Virgin Mojito",
+   "cat": "colddrinks",
+   "price": 65,
+   "station": "bar",
+   "pos": 288,
+   "desc": "Fresh lime and mint muddled with ice and sparkling soda.",
+   "addons": [
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj05",
+   "name": "Green Apple Mojito",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 289,
+   "desc": "Refreshing green apple mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj03",
+   "name": "Mango Mojito",
+   "cat": "colddrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 290,
+   "desc": "Refreshing mango mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj02",
+   "name": "Passion Fruit Mojito",
+   "cat": "colddrinks",
+   "price": 80,
+   "station": "bar",
+   "pos": 291,
+   "desc": "Refreshing passion fruit mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj06",
+   "name": "Pineapple Mojito",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 292,
+   "desc": "Refreshing pineapple mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj01",
+   "name": "Strawberry Mojito",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 293,
+   "desc": "Refreshing strawberry mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "mj04",
+   "name": "Watermelon Mojito",
+   "cat": "colddrinks",
+   "price": 75,
+   "station": "bar",
+   "pos": 294,
+   "desc": "Refreshing watermelon mojito with fresh lime, mint, ice and sparkling soda.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_fruit_10",
+    "ad_extra_lime_5",
+    "ad_extra_mint_5",
+    "ad_large_20",
+    "ad_less_sweet",
+    "ad_no_ice"
+   ]
+  },
+  {
+   "id": "m14",
+   "name": "Mango Smoothie",
+   "cat": "colddrinks",
+   "price": 70,
+   "station": "bar",
+   "pos": 295,
+   "desc": "Creamy blended mango smoothie.",
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "m15",
+   "name": "Coca Cola",
+   "cat": "colddrinks",
+   "price": 25,
+   "station": "counter",
+   "pos": 296,
+   "desc": "Chilled carbonated soft drink.",
+   "addons": [
+    "ad_ice",
+    "ad_lemon_5"
+   ],
+   "buy": {
+    "item": "IT-0278",
+    "vendorName": "Island Beverage Distributors",
+    "pack": 1
+   }
+  },
+  {
+   "id": "lm024",
+   "name": "Karaa Fani",
+   "cat": "colddrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 297,
+   "desc": "Traditional chilled watermelon drink.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "lm044",
+   "name": "Kashikeyo Fani",
+   "cat": "colddrinks",
+   "price": 45,
+   "station": "bar",
+   "pos": 298,
+   "desc": "Refreshing traditional screwpine fruit juice.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_extra_ice",
+    "ad_large_20",
+    "ad_less_sugar",
+    "ad_no_sugar"
+   ]
+  },
+  {
+   "id": "wa01",
+   "name": "Water - Glass Bottle",
+   "cat": "colddrinks",
+   "price": 35,
+   "station": "counter",
+   "pos": 299,
+   "desc": "Chilled drinking water served in a glass bottle.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_chilled",
+    "ad_large_20",
+    "ad_room_temperature",
+    "ad_small"
+   ],
+   "buy": {
+    "item": "IT-0279",
+    "vendorName": "Island Beverage Distributors",
+    "pack": 1
+   }
+  },
+  {
+   "id": "wa02",
+   "name": "Water - Plastic Bottle",
+   "cat": "colddrinks",
+   "price": 15,
+   "station": "counter",
+   "pos": 300,
+   "desc": "Chilled bottled drinking water in a plastic bottle.",
+   "tags": [
+    "veg"
+   ],
+   "addons": [
+    "ad_1_5_l_15",
+    "ad_500_ml",
+    "ad_chilled",
+    "ad_room_temperature"
+   ],
+   "buy": {
+    "item": "IT-0280",
+    "vendorName": "Island Beverage Distributors",
+    "pack": 12
+   }
+  }
+ ]
+}

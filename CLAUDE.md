@@ -3240,6 +3240,41 @@ OUTLET like the invitation — this is about spend, not identity — and both la
 on the trail.
 
 
+## A store starts with a menu, or with the typing still to do
+
+The onboarding menu step leads with a DECISION, not a table: **start with the
+pre-set menu** (recommended) or **start empty**. The pre-set is the full
+Maldivian café catalogue — 9 sections, 112 add-on options, 8 bought-in counter
+items with their two suppliers, and 301 dishes carrying their tags, heat,
+add-on links and buy links — so a dish picked at the till or on the QR menu
+offers its add-on choices from the first order.
+
+**The data is `src/data/preset-menu.json`, extracted from a real outlet's own
+tables AFTER the catalogue had been driven through the shipped CSV import** —
+what ships is the state the import provably lands, not a second reading of the
+source file. `src/preset.js` replays it through the SAME handlers in
+`src/apply.js` every till write goes through (one direction of truth, the
+setup-file rule), in the order the FKs force: suppliers, sections, add-on
+groups, stock items, dishes. Idempotent by construction — every kind is an
+upsert keyed by the row's own id — so choosing it twice converges, which is
+what makes the menu step `rewritable`.
+
+Three doors, one apply: the onboarding panel's choice (`POST
+/api/onboarding/menu-preset`; `/state` carries `preset` counts so the card's
+sentence is counted, never typed), Menu Master's **Load the pre-set menu**
+(`POST /api/outlet/:id/menu/preset`, rank 5, gated, on the trail as
+`menu_preset_loaded` — drawn only while the menu holds fewer than ten dishes,
+because on a mature store a 300-dish load is a decision for the import screen,
+not a header tap), and the same road for a later outlet. The chooser's blank
+dish grid is hidden while the pre-set is selected — a form asking to be filled
+in under a decision already made.
+
+`test/wiring.test.js` pins the file's internal references (every dish's
+section, add-on group, stock item and supplier resolves) and the op order;
+`test/e2e.test.js` lands it on a brand-new business over HTTP and proves the
+idempotency and the bootstrap read-back; the Chromium drive proves both
+shipped screens against real databases.
+
 ## The onboarding panel asks one fact once
 
 Reported as *"onboarding has some repetitive fields"*, and the repetition was

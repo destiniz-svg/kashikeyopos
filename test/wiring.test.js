@@ -4777,3 +4777,51 @@ test('an add-on edited on the till goes out whole, and a removed one is removed'
   assert.ok(!/this\.queue\("modifier_update", line/.test(SRC),
     'no modifier_update is queued without its payload');
 });
+
+/* ── THE PRE-SET MENU IS INTERNALLY WHOLE ─────────────────────────────────────
+   The onboarding choice and the Menu Master action both replay
+   src/data/preset-menu.json through the ordinary handlers. A reference that
+   does not resolve — a dish naming a section, add-on group or stock item the
+   file does not carry — would be refused at apply time on a customer's very
+   first screen, so the file is held to its own references here, statically,
+   and the op order is pinned: suppliers, then sections, then add-on groups,
+   then stock items, then dishes — the apply order the FKs force. */
+test('the pre-set menu resolves every reference it makes, in apply order', () => {
+  const { presetOps, presetCounts } = require('../src/preset');
+  const P = require('../src/data/preset-menu.json');
+
+  const counts = presetCounts();
+  assert.ok(counts.dishes >= 300, counts.dishes + ' dishes shipped');
+  assert.ok(counts.addons >= 100, counts.addons + ' add-on options');
+  assert.ok(counts.sections >= 5 && counts.counter >= 5 && counts.suppliers >= 1);
+
+  const secs = new Set(P.sections.map((s) => s.id));
+  const grps = new Set(P.addons.map((a) => a.group));
+  const stock = new Set(P.stockItems.map((s) => s.id));
+  const sups = new Set(P.suppliers.map((s) => s.name));
+  const ids = new Set();
+  P.dishes.forEach((d) => {
+    assert.ok(!ids.has(d.id), 'dish id ' + d.id + ' appears once');
+    ids.add(d.id);
+    assert.ok(secs.has(d.cat), d.name + ' sits in a section the file defines');
+    (d.addons || []).forEach((a) =>
+      assert.ok(grps.has(a), d.name + ' names add-on group ' + a + ' the file defines'));
+    if (d.buy) {
+      assert.ok(stock.has(d.buy.item), d.name + ' buys a stock item the file defines');
+      assert.ok(sups.has(d.buy.vendorName), d.name + ' names a supplier the file defines');
+      assert.ok(d.buy.pack >= 1, d.name + ' has a pack that serves');
+    }
+    assert.ok(typeof d.price === 'number' && d.price >= 0, d.name + ' has a price');
+  });
+
+  const kinds = presetOps().map((o) => o.kind);
+  const first = (k) => kinds.indexOf(k), last = (k) => kinds.lastIndexOf(k);
+  assert.ok(last('vendor_upsert') < first('dish_upsert'), 'suppliers before dishes');
+  assert.ok(last('menu_category_insert') < first('dish_upsert'), 'sections before dishes');
+  assert.ok(last('modifier_update') < first('dish_upsert'), 'add-on groups before dishes');
+  assert.ok(last('item_upsert') < first('dish_upsert'), 'stock items before the buy links');
+  assert.strictEqual(kinds.length,
+    counts.suppliers + counts.sections + counts.addons + counts.stockItems
+    + counts.dishes,
+    'nothing rides the preset but what the counts describe');
+});

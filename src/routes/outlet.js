@@ -13,6 +13,8 @@ const INVITE = require('../../app/kashikeyo-invite.js');
 const SHARE = require('../../app/kashikeyo-share.js');
 const { gate } = require('../limit');
 const setup = require('../setup');
+const { applyOp } = require('../apply');
+const { presetCounts, applyPreset } = require('../preset');
 
 const r = express.Router({ mergeParams: true });
 
@@ -467,6 +469,35 @@ r.post('/setup/import', sameOutlet, atLeast('owner'),
       next(e);
     }
   });
+
+/* ── THE PRE-SET MENU, for a store that already exists. The same catalogue the
+   onboarding choice offers a brand-new store (src/preset.js), through the same
+   handlers, so an outlet added later — or one that chose "empty" and thought
+   better of it — gets it in one act. Rank 5 like the setup import, because
+   this writes the whole of what the store sells; no offline path, because
+   landing 430 rows is not a till op and a half-applied menu behind a toast is
+   the defect the holding pen exists to catch. Idempotent: every kind is an
+   upsert keyed by the row's own id, so a retry converges. */
+r.post('/menu/preset', sameOutlet, atLeast('owner'),
+  gate('menu-preset', { id: [10, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, (c) => applyPreset(c, req.ctx, applyOp));
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'menu_preset_loaded','outlet',$2,$3)",
+        [req.ctx.outletId, String(req.ctx.outletId), JSON.stringify({
+          by: req.ctx.actor, applied: out.applied })]));
+      res.set('cache-control', 'no-store').json(Object.assign({ ok: true }, out));
+    } catch (e) {
+      if (e && e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* What the choice would land — for the screen that offers it. */
+r.get('/menu/preset', sameOutlet, atLeast('manager'), function (req, res) {
+  res.json(presetCounts());
+});
 
 /* A STATEMENT is a PERIOD, so it names one — an account summary with no dates
    is a figure the customer cannot check against anything. Signed rather than

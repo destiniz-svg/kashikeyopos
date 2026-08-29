@@ -69,6 +69,7 @@ const { normalise, shapeError, baseDomain, storeUrl, memberUrl } = require('../h
 const { hashPin, sign, verifyAccount } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { applyOp } = require('../apply');
+const { presetCounts, applyPreset } = require('../preset');
 const { gate } = require('../limit');
 
 const r = express.Router();
@@ -400,6 +401,10 @@ r.get('/state', async function (req, res, next) {
          working title. */
       business: req.bizName || null,
       businessId: req.bizId || null,
+      /* WHAT THE PRE-SET MENU HOLDS, counted from the shipped file rather than
+         typed here, so the choice screen's sentence cannot drift from what
+         POST /menu-preset would actually write. */
+      preset: presetCounts(),
       /* WHERE THE LEGAL PAGES LIVE. The website owns the apex, so the terms
          and privacy the application's foot links to are absolute addresses on
          the base domain — or nothing, the same rule joinUrl() keeps: a
@@ -815,6 +820,21 @@ Object.keys(BULK).forEach(function (path) {
       res.json({ ok: true, written: results.length, results });
     } catch (e) { next(e); }
   });
+});
+
+/* ── 10b · The PRE-SET MENU. The owner's other answer to the menu step: the
+      whole shipped catalogue — suppliers, sections, add-on groups, bought-in
+      stock items and the dishes carrying their add-on and buy links — replayed
+      through the SAME handlers a till write goes through (src/preset.js). One
+      transaction: a store gets all of it or none of it, never half a menu.
+      Idempotent, because every kind is an upsert keyed by the row's own id,
+      so pressing it twice converges rather than duplicating. */
+r.post('/menu-preset', async function (req, res, next) {
+  try {
+    const out = await withOutlet(req.ctx,
+      (c) => applyPreset(c, req.ctx, applyOp));
+    res.json(Object.assign({ ok: true, step: 'menu' }, out));
+  } catch (e) { next(e); }
 });
 
 /* ── 12 · Staff. Rank-gated the same way the running app gates it. ──────── */
