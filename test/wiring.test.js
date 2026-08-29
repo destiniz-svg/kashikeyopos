@@ -4998,6 +4998,93 @@ test('the pre-set add-ons load on their own, links and all', () => {
     'an unknown part is refused rather than rounded down to the destructive one');
 });
 
+/* ── THE MINIMUM WAGE IS A BAND, AND THE BUSINESS SAYS WHICH ─────────────────
+   Reported: "an employee could not be added. not showing."
+
+   Two defects, one on top of the other.
+
+   `rules()` returned `K().PAYROLL_RULES` raw — and there were TWO KEY SETS for
+   the same facts. Migration 006 seeds `payroll_rules` with `otMultiplier`,
+   `standardHours` and the pension percentages and NO minimum wage at all;
+   every reader in the terminal asks for `week_hours`, `ot_weekday` and three
+   `min_wage_*` bands. Not one key in common, on every install since the schema
+   was written — the allergen-vocabulary defect one module over. So the three
+   wage bands `kashikeyo-data.js` has always shipped were unreachable from any
+   screen.
+
+   And the hiring form read ONE of them, `min_wage_medium || 6000`, for every
+   business. A small café paying a lawful MVR 5,000 could not add that employee
+   at all: the sheet stayed open, no op was queued, and the only thing said was
+   "Below the MVR 6000 sector minimum wage" — a band nobody had chosen. A large
+   business had the mirror: 7,000 sailed through, below its own floor, silently. */
+test('the wage floor is the business\'s own band, and unset is a real answer', () => {
+  const BR = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  const DATA = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-data.js'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+
+  // All three bands ship, and the shipped table survives the bootstrap that
+  // replaces the key — the same stash the guest bridge keeps for TIERS_SHIPPED.
+  assert.ok(/min_wage_small:\s*4500/.test(DATA) && /min_wage_medium:\s*6000/.test(DATA)
+    && /min_wage_large:\s*8000/.test(DATA), 'the statutory bands ship');
+  assert.ok(/PAYROLL_RULES_SHIPPED\s*=\s*K\.PAYROLL_RULES/.test(BR),
+    'and the bridge stashes them before the bootstrap replaces the key');
+  assert.ok(/RULE_ALIAS/.test(SRC) && /otMultiplier:\s*"ot_weekday"/.test(SRC),
+    'rules() normalises the outlet\'s vocabulary onto the shipped one');
+  assert.ok(/PAYROLL_RULES_SHIPPED \|\| \{\}/.test(SRC),
+    'and layers the outlet over the shipped table rather than replacing it');
+  // `{}` is an opinion; undefined is "the server has no opinion".
+  assert.ok(/PAYROLL_RULES: setting\.payroll_rules \|\| undefined/.test(BOOT),
+    'an outlet with no row leaves the shipped structure standing');
+
+  // The behaviour, on the shipped logic class.
+  const K = FX.kpos();
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real() });
+  F.__win.KPOS.PAYROLL_RULES_SHIPPED = { min_wage_small: 4500,
+    min_wage_medium: 6000, min_wage_large: 8000, week_hours: 48, ot_weekday: 1.25 };
+  F.__win.KPOS.PAYROLL_RULES = { otMultiplier: 1.25, standardHours: 48 };
+
+  const R = F.rules();
+  assert.strictEqual(R.min_wage_small, 4500, 'the shipped band survives');
+  assert.strictEqual(R.ot_weekday, 1.25, 'and the outlet\'s figure lands on the till\'s key');
+  assert.strictEqual(R.week_hours, 48);
+
+  // NO BAND SET — refuse only what is unlawful whichever band applies.
+  F.state.prefs = {};
+  assert.strictEqual(F.wageFloor().band, null, 'unset is a real answer');
+  assert.ok(F.wageCheck(3000).refuse, 'below every floor is refused');
+  assert.strictEqual(F.wageCheck(5000).refuse, null,
+    'THE REPORTED CASE: a lawful small-business wage is not refused on a guess');
+  assert.ok(F.wageCheck(5000).note,
+    'it is noted instead, so nothing is silently unchecked');
+  /* And the note is a NOTE, never a toast of its own: the save that follows
+     toasts in the same tick and would overwrite it unseen. Measured — the
+     first version of this fix did exactly that. */
+  assert.ok(!/wageCheck[\s\S]{0,600}?this\.toast\([\s\S]{0,80}?size band/.test(SRC),
+    'the warning rides on the one message the operator reads');
+
+  // A BAND SET — that band's floor, in both directions.
+  F.state.prefs = { wageBand: 'large' };
+  assert.strictEqual(F.wageFloor().floor, 8000);
+  assert.ok(F.wageCheck(7000).refuse, 'a large business is held to its own floor');
+  assert.strictEqual(F.wageCheck(8000).refuse, null);
+  F.state.prefs = { wageBand: 'small' };
+  assert.strictEqual(F.wageCheck(5000).refuse, null,
+    'and a small one is not held to somebody else\'s');
+  assert.strictEqual(F.wageCheck(5000).note, null, 'with nothing left to note');
+
+  // The band is a POLICY, so it travels — never a device preference.
+  assert.ok(!/wageBand/.test(SRC.slice(SRC.indexOf('DEVICE_PREFS ='),
+    SRC.indexOf('DEVICE_PREFS =') + 900)),
+    'the band is not on the list of things that stay on one browser');
+  assert.ok(/key: "wageBand", value: band/.test(SRC),
+    'it goes out as a setting_change carrying its value');
+  /* The literal that caused it must not come back. Matched on the two CALL
+     forms it took, not the phrase — the paragraph above quotes it. */
+  assert.ok(!/this\.rules\(\)\.min_wage_medium/.test(SRC)
+    && !/\bR\.min_wage_medium/.test(SRC),
+    'no screen reads the medium band as though it were every business\'s');
+});
+
 /* ── THE OFFER BANNER REACHES A REAL PHONE, AND THE SLOTS ARE GUIDED ─────────
    The banner strip used to be "published" into this browser's localStorage
    (kashikeyo.promos.v1), which only a portal sharing the machine could read —

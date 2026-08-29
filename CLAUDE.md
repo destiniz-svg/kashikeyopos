@@ -1356,6 +1356,60 @@ prints a dry run, because a plan that describes this is a plan somebody then
 runs with `--apply`. `test/tenancy.test.js` asserts the refusal, that nothing
 was written on the way to it, and that the CLI's guard precedes its own output.
 
+## The minimum wage is a band, and the business says which
+
+Reported: *"an employee could not be added. not showing."* Two defects, one on
+top of the other, and the add path itself was fine — a valid hire pushes,
+lands and shows, proved by driving the shipped screen.
+
+**There were two key vocabularies for the statutory table.** Migration 006
+seeds `chain.setting` `payroll_rules` with `otMultiplier`, `standardHours` and
+the pension percentages — and **no minimum wage at all**. Every reader in the
+terminal asks for `week_hours`, `ot_weekday` and three `min_wage_*` bands. Not
+one key in common, on every install since the schema was written, so `rules()`
+fell through to a literal every single time it was asked. It is the allergen
+table's defect one module over, and it meant the three wage bands
+`app/kashikeyo-data.js` has always shipped — MVR 4,500 small · 6,000 medium ·
+8,000 large — were unreachable from any screen. Measured on a live outlet:
+`{"otMultiplier":1.25,"standardHours":48,…}` and nothing else.
+
+`rules()` layers now, the same three-source order a measured yield and a
+published programme already keep: the shipped statutory table underneath, the
+outlet's own row on top, accepted in **either** vocabulary and normalised to
+one. The bridge stashes `PAYROLL_RULES_SHIPPED` before the bootstrap replaces
+the key — the stash `TIERS_SHIPPED` already exists for, and for the same
+reason. And the bootstrap publishes `undefined` rather than `{}` where the
+outlet has no row: **an empty object is an opinion**, and the hydrate rule
+that keeps a shipped structure alive only recognises `undefined`.
+
+**And the hiring form held every business to the MEDIUM band.** `min_wage_medium
+|| 6000`, for a café and a resort alike. So a small business paying a perfectly
+lawful MVR 5,000 **could not add that employee at all**: the sheet stayed open,
+no op was queued, and the only thing on screen was *"Below the MVR 6000 sector
+minimum wage"* — a band nobody had chosen. Reproduced exactly. A large business
+had the mirror of it: 7,000 sailed through, below its own floor, silently.
+
+The band is the business's own answer (`prefs().wageBand`), set on People &
+Payroll at rank 4, and a **policy** — so it travels to every terminal rather
+than sitting in one browser. **Unset is a real answer**, which is what stops
+this being the same defect wearing a new default: with no band chosen only a
+wage below the SMALLEST floor is refused — unlawful whichever band applies —
+and anything between the floors is NOTED. Refusing a lawful hire on a guess is
+precisely what was reported.
+
+**The note rides on the one message, never a toast of its own.** The first
+version raised a `warn` toast and then let the save proceed, which toasts
+"Employee added" in the same tick — so the warning was overwritten before it
+painted. A warning nobody can see is the defect this file refuses by name, and
+it was caught by driving it rather than by reading it.
+
+Measured through the shipped screen: MVR 5,000 lands and the message reads
+*"Employee added · … · MVR 5,000 · MRPS · minimum wage not checked — nobody has
+set the business size band (MVR 4,500 small · MVR 6,000 medium · MVR 8,000
+large)"*; MVR 3,000 is still refused by name; setting the band to Large refuses
+MVR 7,000 naming that band; and `outlet_39.setting` holds `wageBand`, so every
+terminal reads one answer.
+
 ## A row added on the till, and the bootstrap that ate it
 
 Reported from a live store: a menu item added on the till disappeared from the

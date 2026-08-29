@@ -47,6 +47,21 @@
        version is known rather than threaded through every call site. */
     if (live.APPVER) api.appVersion = live.APPVER;
 
+    /* THE STATUTORY TABLE IS SHIPPED, AND THE OUTLET LAYERS OVER IT — so the
+       shipped copy has to survive the bootstrap that replaces it. Same stash
+       the guest bridge already keeps for TIERS_SHIPPED, and for the same
+       reason: this key is REPLACED wholesale below, and what it is replaced
+       with is written in a different vocabulary.
+
+       Migration 006 seeds `payroll_rules` with pension percentages,
+       `otMultiplier` and `standardHours` — and no minimum wage at all — while
+       the terminal reads `week_hours`, `ot_weekday` and three `min_wage_*`
+       bands. Not one key in common, on every install since the schema was
+       written, so `rules()` fell through to a literal every time it was asked.
+       Measured on a live outlet. rules() layers the two now; this is what it
+       layers over. */
+    if (!K.PAYROLL_RULES_SHIPPED) K.PAYROLL_RULES_SHIPPED = K.PAYROLL_RULES;
+
     // Replace only what the server actually sent. A key the server has no
     // opinion on keeps the shipped structure — which is how the labels, the
     // reason codes and the chart survive a bootstrap that carries no trade.

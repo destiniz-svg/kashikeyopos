@@ -9654,7 +9654,97 @@ class Component extends DCLogic {
   // ── People: time clock, labour cost, payroll ─────────────────────────────
   staffAll() { return (K().STAFF || []); }
   staffFor(id) { return this.staffAll().find((x) => x.id === id) || {}; }
-  rules() { return (K().PAYROLL_RULES || {}); }
+  /* ── ONE STATUTORY VOCABULARY, AND THE OUTLET LAYERS OVER THE SHIPPED ONE ─
+     This returned `K().PAYROLL_RULES` raw, and there were TWO KEY SETS for the
+     same facts — the allergen-table defect one module over. Migration 006 seeds
+     `payroll_rules` with `otMultiplier`, `standardHours` and the pension
+     percentages and NO minimum wage at all; every reader here asks for
+     `week_hours`, `ot_weekday` and three `min_wage_*` bands. Not one key in
+     common, on every install since the schema was written — so every call fell
+     through to a literal, and the three wage bands `kashikeyo-data.js` has
+     always shipped were unreachable from any screen. Measured on a live
+     outlet: `{"otMultiplier":1.25,"standardHours":48,…}` and nothing else.
+
+     Three sources, the order every other layered read in this build keeps: the
+     shipped statutory table underneath (the bridge stashes it before the
+     bootstrap replaces the key), then the OUTLET's own row on top, accepted in
+     either vocabulary and normalised to one. A figure the outlet does not
+     carry leaves the shipped one standing rather than becoming undefined. */
+  RULE_ALIAS = { otMultiplier: "ot_weekday", standardHours: "week_hours",
+    otHoliday: "ot_holiday", minWageSmall: "min_wage_small",
+    minWageMedium: "min_wage_medium", minWageLarge: "min_wage_large" };
+  rules() {
+    const k = K();
+    const out = Object.assign({}, k.PAYROLL_RULES_SHIPPED || {});
+    const live = k.PAYROLL_RULES || {};
+    Object.keys(live).forEach((key) => {
+      const to = this.RULE_ALIAS[key] || key;
+      if (live[key] !== undefined && live[key] !== null) out[to] = live[key];
+    });
+    return out;
+  }
+  /* ── THE MINIMUM WAGE IS A BAND, AND THE BUSINESS SAYS WHICH ─────────────
+     Reported: "an employee could not be added. not showing."
+
+     The Maldives minimum wage has three floors by business size — MVR 4,500
+     small, 6,000 medium, 8,000 large — and `kashikeyo-data.js` has shipped all
+     three since it was written. The employee form read ONE of them,
+     `rules().min_wage_medium || 6000`, for every business on every install,
+     and refused the save below it. So a small café paying a perfectly lawful
+     MVR 5,000 could not add that employee AT ALL: the sheet stayed open, no op
+     was queued, and the only thing on screen was "Below the MVR 6000 sector
+     minimum wage" — a band nobody had chosen. Measured exactly that way.
+     A large business had the mirror of it: 7,000 sailed through, below its own
+     floor, with nothing said.
+
+     So the band is the business's own answer (`prefs().wageBand`) — a policy,
+     so it travels to every terminal rather than sitting in one browser.
+
+     AND UNSET IS A REAL ANSWER, which is what stops this being the same defect
+     wearing a new default. With no band chosen, only a wage below the SMALLEST
+     floor is refused — that one is unlawful whichever band the business is in
+     — and anything between the floors is a WARNING naming them. Refusing a
+     lawful hire on a guess is precisely what was reported. */
+  WAGE_BANDS = [["small", "Small business", "min_wage_small", 4500],
+    ["medium", "Medium business", "min_wage_medium", 6000],
+    ["large", "Large business", "min_wage_large", 8000]];
+  wageFloor() {
+    const R = this.rules();
+    const bands = {};
+    this.WAGE_BANDS.forEach((b) => { bands[b[0]] = +R[b[2]] || b[3]; });
+    const key = String(this.prefs().wageBand || "");
+    const band = bands[key] === undefined ? null : key;
+    return { band: band, floor: band ? bands[band] : null, bands: bands,
+      lowest: Math.min.apply(null, this.WAGE_BANDS.map((b) => bands[b[0]])),
+      highest: Math.max.apply(null, this.WAGE_BANDS.map((b) => bands[b[0]])),
+      label: band ? this.WAGE_BANDS.filter((b) => b[0] === band)[0][1] : null };
+  }
+  /* Refuse only what is unlawful under EVERY reading; NOTE where it depends on
+     a fact nobody has told us. Two fields, never a toast of its own: a save
+     that proceeds ends in its own "Employee added" toast in the same tick, so
+     a warning raised here would be overwritten before it painted — a warning
+     nobody can see, which is the defect this file refuses by name. Measured:
+     the first version of this did exactly that. The note rides ON the one
+     message the operator actually reads. */
+  wageCheck(basic) {
+    const W = this.wageFloor();
+    if (W.floor) {
+      return { refuse: basic < W.floor
+        ? "Below the " + MVRc(W.floor) + " minimum wage for a "
+          + W.label.toLowerCase() + " — change the wage, or the business size"
+          + " band in People & Payroll if that band is wrong"
+        : null, note: null };
+    }
+    if (basic < W.lowest) {
+      return { refuse: "Below " + MVRc(W.lowest) + ", which is under the minimum"
+        + " wage for a business of any size", note: null };
+    }
+    return { refuse: null, note: basic < W.highest
+      ? " · minimum wage not checked — nobody has set the business size band"
+        + " (" + MVRc(W.bands.small) + " small · " + MVRc(W.bands.medium)
+        + " medium · " + MVRc(W.bands.large) + " large)"
+      : null };
+  }
   /* ── a setting is the OUTLET's, unless it is this terminal's ──────────────
      Three sources, in the order that settles a disagreement between two tills:
      this device's own un-synced edit, then what the OUTLET published, then the
@@ -10444,6 +10534,15 @@ class Component extends DCLogic {
       actions: [
         { label: "Clock someone in", primary: 1, go: () => this.openForm("clockin") },
         { label: "Add employee", go: () => this.can("payroll", "a") ? this.openForm("staffedit") : this.toast("Hiring needs payroll rights", "warn") },
+        /* WHICH MINIMUM WAGE APPLIES IS A FACT ABOUT THE BUSINESS, and until
+           somebody says it, no wage between the floors can be checked. It sat
+           nowhere at all, and the hiring form silently assumed MEDIUM — which
+           is what refused a lawful small-business wage. A policy, so it travels
+           to every terminal; rank 4, because it decides what payroll refuses. */
+        { label: "Business size · " + (this.wageFloor().label || "not set"),
+          go: () => this.can("payroll", "e")
+            ? this.openForm("wageband")
+            : this.toast("Setting the business size band needs payroll rights", "warn") },
         { label: "Export timesheet", go: () => this.csv("timesheet", ["Staff", "Job", "Outlet", "In", "Out", "Hours", "Cost MVR"], rows.map((c) => { const st = this.staffFor(c.staff); const h = this.clockHours(c); return [st.name, st.job, this.locName(c.outlet), this.hhmm(c.in), c.out ? this.hhmm(c.out) : "on shift", h.toFixed(2), (h * this.rate(st)).toFixed(2)]; })) }
       ]
     };
@@ -17719,20 +17818,19 @@ class Component extends DCLogic {
           const basic = +v.basic || 0;
           if (!v.name || !v.job) return this.toast("Name and job title are required", "warn");
           if (basic <= 0) return this.toast("A basic salary is required", "warn");
-          const R = this.rules();
-          const floor = R.min_wage_medium || 6000;
-          if (basic < floor) return this.toast("Below the MVR " + floor + " sector minimum wage — check the business-size band before saving", "warn");
+          const W = this.wageCheck(basic);
+          if (W.refuse) return this.toast(W.refuse, "warn");
           const local = v.kind === "local";
           const mrps = v.pension === "auto" ? local : v.pension === "yes";
           if (v.svc === "no" && st.svc !== false) this.toast("Excluding an employee from service charge — the Act requires an equal split among all employees, so confirm the contract supports it", "warn");
           this.patchRows("staff", [st.id], { name: v.name, job: v.job, outlet: +v.outlet || st.outlet, basic: basic, kind: v.kind, mrps: mrps, ot: v.ot !== "no", svc: v.svc !== "no", type: v.type, sex: v.sex, photo: v.photo || "" },
-            st.name + " updated" + (basic !== st.basic ? " · basic " + MVRc(st.basic) + " to " + MVRc(basic) : "") + (local !== st.mrps ? " · pension class now " + (local ? "mandatory" : "voluntary") : ""), "staff");
+            st.name + " updated" + (basic !== st.basic ? " · basic " + MVRc(st.basic) + " to " + MVRc(basic) : "") + (local !== st.mrps ? " · pension class now " + (local ? "mandatory" : "voluntary") : "") + (W.note || ""), "staff");
         },
         onSave: (v) => {
           const basic = +v.basic || 0;
           if (!v.name || !v.job) return this.toast("Name and job title are required", "warn");
-          const floor = this.rules().min_wage_medium || 6000;
-          if (basic < floor) return this.toast("Below the MVR " + floor + " sector minimum wage", "warn");
+          const W = this.wageCheck(basic);
+          if (W.refuse) return this.toast(W.refuse, "warn");
           const local = v.kind === "local";
           const id = this.newId("s");
           const mrps = v.pension === "auto" ? local : v.pension === "yes";
@@ -17742,7 +17840,38 @@ class Component extends DCLogic {
             mrps: mrps, ot: v.ot !== "no", svc: v.svc !== "no",
             type: v.type || "fulltime", sex: v.sex || "m", photo: v.photo || ""
           }, "Employee added · " + v.name + " · " + v.job + " · " + MVRc(basic)
-            + (mrps ? " · MRPS" : " · no pension") + (v.ot === "no" ? " · no OT" : "") + (v.svc === "no" ? " · no service charge" : ""), "staff");
+            + (mrps ? " · MRPS" : " · no pension") + (v.ot === "no" ? " · no OT" : "") + (v.svc === "no" ? " · no service charge" : "") + (W.note || ""), "staff");
+        }
+      },
+      /* The band decides which minimum wage payroll enforces. Deliberately
+         offers "Not set" as a real choice rather than defaulting to one: a
+         guessed band is what refused a lawful hire, and a business that has
+         not answered should be warned, not blocked. */
+      wageband: {
+        title: "Business size", sub: "Which minimum wage this business is held to",
+        save: "Set the band",
+        fields: [{ k: "band", label: "Size band", full: 1, options: [{ v: "", l: "Not set — warn, do not block" }]
+          .concat(this.WAGE_BANDS.map((b) => ({ v: b[0],
+            l: b[1] + " · " + MVRc(this.wageFloor().bands[b[0]]) + " a month" }))) }],
+        pre: () => ({ band: String(this.prefs().wageBand || "") }),
+        foot: "The Maldives minimum wage is set by business size, so the same"
+          + " wage is lawful for one shop and not for another. Until this is"
+          + " answered the hiring form warns instead of refusing — except below"
+          + " the smallest floor, which is under the wage for a business of any"
+          + " size. It reaches every terminal here.",
+        onSave: (v) => {
+          const band = String(v.band || "");
+          const held = Object.assign({}, this.state.prefs || {});
+          held.wageBand = band;
+          this.setState({ prefs: held, modal: null });
+          // A policy about the business, so it goes out — never a device pref.
+          this.queue("setting_change", "Business size band → "
+            + (band || "not set") + " · by " + this.me(), "settings",
+            { key: "wageBand", value: band });
+          this.toast(band
+            ? "Business size set to " + this.WAGE_BANDS.filter((b) => b[0] === band)[0][1].toLowerCase()
+              + " — payroll holds hires to " + MVRc(this.wageFloor().bands[band])
+            : "Business size cleared — payroll will warn rather than refuse");
         }
       },
       clockin: {

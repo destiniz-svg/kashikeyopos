@@ -246,7 +246,24 @@ async function buildBootstrap(ctx) {
       USERS: staff.rows.map(userOf),
       CUSTOMERS: members.rows.map((r) => customerOf(r, history[r.id])),
       STAFF: employees.rows.map(employeeOf),
-      PAYROLL_RULES: setting.payroll_rules || {},
+      /* `undefined`, NEVER `{}` — the difference is the whole statutory table.
+         The bridge's hydrate rule is that undefined means "the server has no
+         opinion" and the shipped structure stands; an empty OBJECT is neither
+         undefined nor null nor an array, so it fell through to `K[k] = live[k]`
+         and REPLACED the shipped rules wholesale on every bootstrap. Nothing
+         has ever written `payroll_rules`, so this was `{}` on every outlet on
+         every install: the statutory week, the overtime multiplier and all
+         three minimum-wage bands were wiped from every terminal, for ever.
+
+         Measured on a live outlet: `KPOS.PAYROLL_RULES` came back `{}`. The
+         week and the multiplier survived because their call sites fall back to
+         the same figures the shipped table carries. THE WAGE FLOOR DID NOT —
+         its fallback is the MEDIUM band alone, so the small and large bands
+         were unreachable and an employee on a lawful small-business wage could
+         not be added at all. See wageFloor() in app/index.html; this is the
+         other half of that fix. Same key as `ROLES` one line up, which had it
+         right. */
+      PAYROLL_RULES: setting.payroll_rules || undefined,
       OPEX: opex.rows.map((r) => ({
         id: r.id, cat: r.category, vendor: r.vendor || '', amt: num(r.amount),
         freq: r.freq, due: r.due_day, acct: r.account_code, outlet: ctx.outletId,
