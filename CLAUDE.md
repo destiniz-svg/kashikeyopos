@@ -2335,6 +2335,72 @@ database — the supplier onto the uuid column, the stock moving, the shelf, the
 outlet's own document number, and all three refusals moving no stock. Both fail
 against the version that shipped.
 
+### And its dropdowns had nothing in them
+
+Reported next, from the mobile shortcut and the browser: *"GRN is bugged. drop
+down is stuck. vendor location. vendor also should open and should have option
+to add vendor short cut within."* A `<select>` with **zero options** is exactly
+"stuck" — it cannot be opened on a desktop and does not respond to a tap on a
+phone — and that is what "Receiving location" was on every ordinary customer:
+
+```
+vendor   | Vendor              | options=1
+branch   | Receiving location  | options=0   ← the stuck one
+```
+
+`storeOpts` was `OUTLETS` filtered to the ones that are **not** restaurants — a
+chain's central warehouses. An ordinary customer is one café whose kind IS
+restaurant, so the filter matched nothing.
+
+**And it was the wrong collection entirely.** Where stock lands is a place
+INSIDE this outlet: the `location` table (dry store, walk-in, freezer) is what
+`grn_line`, `batch.location_id` and `moveStock(loc)` have always taken, the
+bootstrap has published it as `LOCATIONS` since it was written, and **nothing
+in the till had ever read it** — the same "published and never read" defect as
+`KPOS.VENDORS`, `oset` and the whole settings plane. So the field is the
+outlet's own locations now, led by *"The store — no separate location"*: a café
+that has never divided its store still receives deliveries, and `openForm`
+seeds a select with its FIRST option, so the default has to be the answer that
+is always true. The chosen location rides on each line and reaches
+`stock_move.location_id` — the handler's `loc` parameter, meaningful for the
+first time.
+
+It is **resolved, never pattern-matched**: `location.id` is TEXT, so there is
+no shape to test for, and an id is kept only where this outlet actually holds
+that location. (The first cut guarded it with `UUID.test()`, which is what the
+till's old outlet id would have needed — and which silently dropped every real
+location id. Caught by driving it.)
+
+**The dispatch forms keep meaning another outlet**, which is a different
+question — but excluding restaurants there was a guess that only a warehouse
+can fulfil an indent, and a café borrowing a case from its sister café is
+ordinary. `storeOpts` is every outlet but the one being stood in, so it is
+empty exactly when the business genuinely has nowhere else.
+
+**And the supplier list carries its own way out.** A store that opened this
+week takes its first delivery from a supplier nobody has entered yet, and the
+answer is not to send somebody to the Suppliers screen to retype a name they
+are holding a docket for — the round trip `ensureBuyItem()` already refused to
+ask for. `＋ New supplier, named below` sits in the list with a field beside
+it, composed through the ONE mapping every supplier write goes through (so it
+sends no id — `H.vendor_upsert` reads none and resolves by name) and queued
+BEFORE the delivery, so it carries the lower lamport and lands first. A name
+the master already holds resolves to that supplier rather than making a second
+one. It does not toast, for the reason the bought-in item does not.
+
+**Nothing is picked for you.** The vendor list opens on *"Pick the supplier…"*
+rather than whichever supplier sorts first — a delivery attributed to the wrong
+company is the Role box defect wearing a different label — and saying nothing
+is refused by name before anything is queued.
+
+Measured by driving the shipped form at 390px on a touch viewport: both
+dropdowns carry real options, no sideways scroll, and a delivery posted from
+the phone with a supplier named in the form landed as
+`LOYC-GRN-000004` against a `chain.supplier` row that did not exist before,
+moving 6 at 12.50 into `location_id = L-CHILL`. `test/wiring.test.js` pins the
+options (including the empty-outlet case), the queue order, the duplicate-name
+resolution and the refusal.
+
 ## The outlet does not always keep the id this device minted
 
 Reported: *"when I add a customer I see a duplicate record, but when I log in
@@ -5653,7 +5719,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 572 tests
+npm test                          # 574 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

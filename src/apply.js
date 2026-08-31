@@ -1300,12 +1300,22 @@ H.grn_receive = async (c, p, ctx) => {
     price: num(l && l.price),
     total: l && l.total != null ? r2(num(l.total)) : r2(num(l && l.qty) * num(l && l.price)),
     unit: (l && l.unit) || null, useBy: (l && l.useBy) || null, lot: (l && l.lot) || null,
-    // A location is a uuid in this schema. The till has no location picker and
-    // sends its OUTLET id for the receiving store, which is a different thing
-    // entirely — so anything that is not a real location id is left null and
-    // the move lands in the outlet's own default.
-    loc: l && UUID.test(String(l.loc || '')) ? String(l.loc) : null
+    loc: l && l.loc ? String(l.loc) : null
   })).filter((l) => l.ing);
+  /* WHERE IT IS BEING PUT IS RESOLVED, NOT PATTERN-MATCHED. `location.id` is
+     TEXT, so there is no shape to test for — and the till used to send its
+     OUTLET id here, which is a different thing entirely and would land in a
+     column that references `location(id)`. So an id is kept only where this
+     outlet actually holds that location, and anything else falls back to the
+     store itself. A café that has never divided its store receives at the
+     store, which is a real answer rather than a missing one. */
+  const locIds = lines.map((l) => l.loc).filter(Boolean);
+  if (locIds.length) {
+    const known = await c.query('SELECT id FROM location WHERE id = ANY($1::text[])',
+      [Array.from(new Set(locIds))]);
+    const ok = new Set(known.rows.map((r) => r.id));
+    lines.forEach((l) => { if (l.loc && !ok.has(l.loc)) l.loc = null; });
+  }
   if (!lines.length) refuse('Add at least one item — a GRN with no lines moves no stock');
   if (lines.some((l) => !(l.qty > 0))) refuse('Every line needs an item and a quantity above zero');
   // Blind receiving, exactly as at the door: the count is only evidence if the

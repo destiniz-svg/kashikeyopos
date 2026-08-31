@@ -2085,6 +2085,9 @@ const r2 = (n) => Math.round((n || 0) * 100) / 100;
    codes are `IT-…` — so it can never collide with a real ingredient, which is
    the only property it needs. */
 const NEW_BUY_ITEM = "__new_stock_item__";
+// The same offer on the GRN: a delivery from a supplier nobody has
+// entered yet is the ordinary case on a store that has just opened.
+const NEW_VENDOR = "__new_supplier__";
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 // Thirty destinations in nine groups was a filing cabinet, not a product: the
@@ -15431,12 +15434,55 @@ class Component extends DCLogic {
 
      Returns false where it refused, so the caller stops rather than toasting
      over its own warning. */
+  /* THE SUPPLIER, PICKED OR NAMED. A store that opened this week takes its
+     first delivery from a supplier nobody has entered yet, and the answer is
+     not to send somebody to the Suppliers screen to retype a name they are
+     holding a docket for — the same round trip `ensureBuyItem()` refused to
+     ask for on the dish editor.
+
+     `vendor_upsert` resolves BY NAME on the server, and so does
+     `grn_receive`'s own `supplierIdOf()`, so the two agree without an id
+     round trip: the supplier op is queued FIRST (lower lamport, applied
+     first in the same push) and the delivery names the same string. If the
+     supplier op were ever refused the GRN still lands, because resolving by
+     name creates the row — fail-safe in the direction that keeps the stock. */
+  grnVendor(v) {
+    const typed = String(v.newVendor || "").trim();
+    const picked = String(v.vendor || "");
+    if (picked && picked !== NEW_VENDOR) {
+      const vend = (((window.KPOS_RAW || {}).vendors) || [])
+        .filter((x) => String(x.id) === picked)[0];
+      return vend ? vend.name : "";
+    }
+    if (!typed) return "";
+    // Already on the master under that name? Then this is that supplier, not a
+    // second one — `vendor_upsert` resolves case-insensitively and so does this.
+    const has = (((window.KPOS_RAW || {}).vendors) || [])
+      .filter((x) => String(x.name || "").trim().toLowerCase() === typed.toLowerCase())[0];
+    if (has) return has.name;
+
+    /* Composed through the ONE mapping every supplier write goes through, so
+       an inline supplier and one typed on the Suppliers screen arrive in the
+       same shape — and the id stays LOCAL, because `H.vendor_upsert` reads no
+       id at all and a supplier resolves by name. It does NOT toast: the save
+       that follows ends in its own message in the same tick, and a toast
+       raised here would be overwritten before it painted. */
+    const row = { id: this.newId("v"), name: typed, termsDays: 30, lead: 2 };
+    const raw0 = window.KPOS_RAW || {};
+    raw0.vendors = [row].concat(raw0.vendors || []);
+    const local = Object.assign({}, this.state.local || {});
+    local.vendors = (local.vendors || []).concat([row]);
+    this.setState({ local: local });
+    const op = this.opFor("vendors", row);
+    if (op) this.queue(op.kind, "Supplier added \u00b7 " + typed, "vendors", op.payload);
+    return typed;
+  }
   grnSend(no, when, v, lines, total, status, label, notes) {
-    const vend = (((window.KPOS_RAW || {}).vendors) || [])
-      .filter((x) => String(x.id) === String(v.vendor))[0];
-    if (!vend) {
-      this.toast("Pick the supplier this delivery came from — a GRN is checked"
-        + " against their invoice, so it cannot be received against nobody", "warn");
+    const vendorName = this.grnVendor(v);
+    if (!vendorName) {
+      this.toast("Say who the delivery came from — pick the supplier, or choose"
+        + " \u201c\uff0b New supplier\u201d and type their name. A GRN is what their"
+        + " invoice gets checked against, so it cannot be received against nobody", "warn");
       return false;
     }
     /* Usable on THIS till the moment it is signed, like the door delivery:
@@ -15445,7 +15491,7 @@ class Component extends DCLogic {
        insertRow, so nothing re-sends it. */
     const local = Object.assign({}, this.state.local || {});
     local.purch = (local.purch || []).concat([{
-      no: no, date: when, vendor: v.vendor, branch: +v.branch || this.state.outletId,
+      no: no, date: when, vendor: v.vendor, branch: this.state.outletId, loc: v.branch || "",
       inv: v.inv, total: total, lines: lines, status: status, by: this.me(),
       notes: notes || v.notes || lines.length + " lines hand-keyed"
     }]);
@@ -15457,10 +15503,14 @@ class Component extends DCLogic {
       // minted on a device that has been dark all evening — and the two are
       // tied through this, the same shape as `sale.client_id`.
       ref: no,
-      vendor: v.vendor, vendorName: vend.name,
+      /* The NAME is what resolves; the id is this browser's and may be one
+         `grnVendor()` has only just minted, which no outlet has heard of. */
+      vendor: v.vendor === NEW_VENDOR ? null : v.vendor, vendorName: vendorName,
       bizDate: when, note: String(v.notes || "").trim() || null,
       lines: lines.map((L) => ({
-        ing: L[0], qty: L[1], price: L[2], total: Math.round(L[1] * L[2] * 100) / 100
+        ing: L[0], qty: L[1], price: L[2], total: Math.round(L[1] * L[2] * 100) / 100,
+        // Where it is being put, inside this outlet. Blank is the store itself.
+        loc: String(v.branch || "") || null
       }))
     });
     return true;
@@ -17557,8 +17607,44 @@ class Component extends DCLogic {
     const addrOutlet = (mo.edit && mo.edit.id) || mo.id;
     const sel = (list) => list.map((x) => ({ v: String(x.v), l: x.l }));
     const outletOpts = sel((K0.OUTLETS || []).map((o) => ({ v: o.id, l: o.name })));
-    const storeOpts = sel((K0.OUTLETS || []).filter((o) => o.type !== "restaurant").map((o) => ({ v: o.id, l: o.name })));
-    const vendorOpts = sel((raw.vendors || []).map((v) => ({ v: v.id, l: v.name })));
+    /* WHERE STOCK LANDS IS A PLACE INSIDE THIS OUTLET, and this list was
+       `OUTLETS` filtered to the ones that are NOT restaurants — a chain's
+       central warehouses. An ordinary customer is one café whose kind IS
+       restaurant, so the filter matched nothing and the "Receiving location"
+       box on the GRN had **zero options**: a `<select>` that cannot be opened
+       on a desktop and does not respond to a tap on a phone. Reported exactly
+       that way — "drop down is stuck. vendor location".
+
+       The outlet's own `location` table (walk-in, dry store, freezer) is what
+       `grn_line`, `batch.location_id` and `moveStock(loc)` have always taken,
+       the bootstrap has published it as `LOCATIONS` since it was written, and
+       NOTHING IN THE TILL HAS EVER READ IT — the same "published and never
+       read" defect as `KPOS.VENDORS` and the settings plane.
+
+       "The store" leads, and means no sub-location: a café that has never
+       divided its store still receives deliveries, and `openForm` seeds a
+       select with its FIRST option, so the default has to be the answer that
+       is always true. */
+    const locOpts = [{ v: "", l: "The store — no separate location" }]
+      .concat(sel((K0.LOCATIONS || []).map((x) => ({ v: x.id, l: x.name }))));
+    /* The DISPATCH forms mean another outlet, which is a different question,
+       and excluding restaurants was a guess that only a warehouse can fulfil
+       an indent — a café borrowing a case from its sister café is ordinary.
+       Every outlet but the one being stood in, so it is empty exactly when the
+       business genuinely has nowhere else. */
+    const storeOpts = sel((K0.OUTLETS || [])
+      .filter((o) => String(o.id) !== String(this.state.outletId))
+      .map((o) => ({ v: o.id, l: o.name })));
+    /* A SUPPLIER IS A DECISION, so nothing is chosen by default — `openForm`
+       seeds the first option, and defaulting a delivery to whichever supplier
+       sorts first is the defect the Role box already paid for. And the list
+       carries its own way out: a delivery from a supplier nobody has entered
+       yet is the ordinary case on a new store, and sending somebody to another
+       screen to type a name they are holding a docket for is the round trip
+       `ensureBuyItem()` already refused to ask for. */
+    const vendorOpts = [{ v: "", l: "Pick the supplier\u2026" }]
+      .concat(sel((raw.vendors || []).map((v) => ({ v: v.id, l: v.name }))))
+      .concat([{ v: NEW_VENDOR, l: "\uff0b New supplier, named below" }]);
     const itemOpts = sel((raw.items || []).filter((i) => i[5] !== "raw" || true).slice(0, 80).map((i) => ({ v: i[0], l: i[2] })));
     const catOpts = sel((K0.MENU_CATEGORIES || []).map((c) => ({ v: c.id, l: c.name })));
     const roleOpts = sel((K0.ROLES || []).map((r) => ({ v: r.key, l: r.label })));
@@ -19184,7 +19270,8 @@ class Component extends DCLogic {
             { k: "no", label: "GRN number", v: this.nextNo("purch", "GRN-2026-") },
             { k: "date", label: "Date received", v: this.today() },
             { k: "vendor", label: "Vendor", options: vendorOpts, full: 1 },
-            { k: "branch", label: "Receiving location", options: storeOpts, full: 1 },
+            { k: "branch", label: "Where it is being put", options: locOpts, full: 1 },
+            { k: "newVendor", label: "\u2026or a new supplier's name", v: "" },
             { k: "inv", label: priced ? "Vendor invoice" : "Delivery docket number", v: "VND-" }
             , { k: "lines", kind: "lines", label: priced ? "Items received \u2014 item, quantity, rate" : "What arrived \u2014 item and how much you counted", options: itemOpts, costed: priced ? 1 : 0, full: 1 }
           ].concat(priced
@@ -19430,7 +19517,8 @@ class Component extends DCLogic {
         title: "New production batch", sub: "Central kitchen output", save: "Start batch",
         foot: "Output quantity is in the item base unit; unit cost is computed from the consumed inputs when the batch is completed.",
         fields: [
-          { k: "branch", label: "Kitchen", options: storeOpts, full: 1 },
+          // A kitchen is a place inside this outlet, not another outlet.
+          { k: "branch", label: "Kitchen", options: locOpts, full: 1 },
           { k: "item", label: "Output item", options: itemOpts, full: 1 },
           { k: "qty", label: "Qty (base unit)", v: "10000" },
           { k: "cost", label: "Unit cost MVR", v: "0" }

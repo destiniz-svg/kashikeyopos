@@ -6115,3 +6115,125 @@ test('a GRN with no supplier is refused before anything is queued', () => {
   assert.match(said, /supplier/i,
     'and it says which field, on the screen: ' + JSON.stringify(said));
 });
+
+/* ═══ THE GRN'S DROPDOWNS HAVE SOMETHING IN THEM ══════════════════════════
+   Reported from the mobile shortcut and the browser: "GRN is bugged. drop
+   down is stuck. vendor location." A `<select>` with ZERO options is exactly
+   that — it cannot be opened on a desktop and does not respond to a tap on a
+   phone — and "Receiving location" had none on every ordinary customer:
+   `storeOpts` was `OUTLETS` filtered to the ones that are NOT restaurants (a
+   chain's central warehouses), and a café is one outlet whose kind IS
+   restaurant.
+
+   The outlet's own `location` table is what `grn_line`, `batch.location_id`
+   and `moveStock(loc)` have always taken, and the bootstrap has published it
+   as LOCATIONS since it was written — nothing in the till had ever read it. */
+test('the GRN offers a place to put it and a supplier to receive from', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const W = F.__win;
+  // The shape of an ordinary customer: ONE outlet, and it is a restaurant.
+  W.KPOS.OUTLETS = [{ id: F.state.outletId, code: 'LOYC', name: 'Loy Cafe',
+    type: 'restaurant', pos: true, active: true }];
+  W.KPOS.LOCATIONS = [{ id: 'L-DRY', name: 'Dry store', kind: 'store' },
+    { id: 'L-CHILL', name: 'Walk-in chiller', kind: 'chiller' }];
+  W.KPOS_RAW = Object.assign({}, W.KPOS_RAW, {
+    vendors: [{ id: 7, name: 'Reef Suppliers' }], purch: [],
+    items: [['iF', 'ING', 'FLOUR', 'kg', 'kg', 1, 25, 0, 0, 10]] });
+
+  const fields = F.formSpec('grn').fields;
+  const at = (k) => fields.filter((f) => f.k === k)[0];
+
+  const where = at('branch');
+  assert.ok(where.options.length >= 3,
+    'a select with no options is the stuck dropdown: ' + JSON.stringify(where.options));
+  assert.strictEqual(where.options[0].v, '',
+    'and the FIRST option is the one that is always true — openForm seeds a'
+    + ' select with it, so the default must be an answer a café can give');
+  assert.ok(/store/i.test(where.options[0].l));
+  assert.ok(where.options.some((o) => o.v === 'L-CHILL'),
+    'the outlet\'s own stock locations are offered');
+
+  /* A SUPPLIER IS A DECISION, so nothing is chosen by default — the Role box
+     already paid for seeding a grant from the first option. */
+  const vend = at('vendor');
+  assert.strictEqual(vend.options[0].v, '', 'nothing is picked for you');
+  assert.ok(vend.options.some((o) => o.v === '__new_supplier__'),
+    'and the list carries its own way out for a store with no suppliers yet: '
+    + JSON.stringify(vend.options.map((o) => o.l)));
+  assert.ok(at('newVendor'), 'with somewhere to type the name');
+
+  /* AND AN OUTLET WITH NO SUB-LOCATIONS IS STILL NOT AN EMPTY BOX. */
+  W.KPOS.LOCATIONS = [];
+  const bare = F.formSpec('grn').fields.filter((f) => f.k === 'branch')[0];
+  assert.strictEqual(bare.options.length, 1,
+    'the store itself is always an option: ' + JSON.stringify(bare.options));
+});
+
+test('a supplier can be named on the GRN, and lands before the delivery', () => {
+  const H = require('./harness');
+  const mk = () => {
+    const F = H.makeInstance({ role: 'SuperAdmin' });
+    const W = F.__win;
+    W.KPOS.OUTLETS = [{ id: F.state.outletId, name: 'Loy Cafe', type: 'restaurant' }];
+    W.KPOS.LOCATIONS = [{ id: 'L-DRY', name: 'Dry store', kind: 'store' }];
+    W.KPOS_RAW = Object.assign({}, W.KPOS_RAW, {
+      vendors: [{ id: 7, name: 'Reef Suppliers' }], purch: [],
+      items: [['iF', 'ING', 'FLOUR', 'kg', 'kg', 1, 25, 0, 0, 10]] });
+    F.showRecost = () => {};
+    return F;
+  };
+  const post = (F, v) => {
+    const ops = [];
+    F.queue = (k, l, e, p) => ops.push({ kind: k, payload: p });
+    F.formSpec('grn').onSave(Object.assign({ no: 'GRN-1', date: F.today(),
+      branch: 'L-DRY', inv: 'V1', total: '0',
+      lines: [{ item: 'iF', qty: '10', rate: '25' }] }, v));
+    return ops;
+  };
+
+  // ── named a supplier nobody had entered ────────────────────────────────
+  const F1 = mk();
+  const made = post(F1, { vendor: '__new_supplier__', newVendor: 'Fresh Fish Co' });
+  const kinds = made.map((o) => o.kind);
+  assert.ok(kinds.indexOf('vendor_upsert') > -1, 'the supplier is created: ' + kinds);
+  assert.ok(kinds.indexOf('vendor_upsert') < kinds.indexOf('grn_receive'),
+    'BEFORE the delivery — a push applies in queue order, so it carries the'
+    + ' lower lamport and lands first: ' + kinds);
+  const vop = made.filter((o) => o.kind === 'vendor_upsert')[0];
+  assert.strictEqual(vop.payload.name, 'Fresh Fish Co');
+  assert.strictEqual(vop.payload.id, undefined,
+    'composed through the ONE mapping every supplier write goes through, which'
+    + ' sends no id — `H.vendor_upsert` reads none and resolves by name');
+  const g1 = made.filter((o) => o.kind === 'grn_receive')[0];
+  assert.strictEqual(g1.payload.vendorName, 'Fresh Fish Co');
+  assert.strictEqual(g1.payload.vendor, null,
+    'and the delivery carries no id, because the one this browser minted is'
+    + ' local and no outlet has heard of it');
+  assert.strictEqual(g1.payload.lines[0].loc, 'L-DRY',
+    'the place it is being put rides on the line');
+  assert.ok((F1.__win.KPOS_RAW.vendors || []).some((x) => x.name === 'Fresh Fish Co'),
+    'and the dropdown carries it straight away');
+
+  // ── a name the master already holds is that supplier, not a second one ──
+  const F2 = mk();
+  const dup = post(F2, { vendor: '__new_supplier__', newVendor: '  reef suppliers ' });
+  assert.ok(dup.every((o) => o.kind !== 'vendor_upsert'),
+    'no second supplier is created for a name that differs only in case');
+  assert.strictEqual(dup.filter((o) => o.kind === 'grn_receive')[0].payload.vendorName,
+    'Reef Suppliers', 'and the delivery names the one that exists');
+
+  // ── picking one creates nothing ────────────────────────────────────────
+  const F3 = mk();
+  const picked = post(F3, { vendor: '7' });
+  assert.ok(picked.every((o) => o.kind !== 'vendor_upsert'));
+  assert.strictEqual(picked.filter((o) => o.kind === 'grn_receive')[0].payload.vendorName,
+    'Reef Suppliers');
+
+  // ── and saying nothing is refused by name, before anything is sent ──────
+  const F4 = mk();
+  F4.__toasts.length = 0;
+  const none = post(F4, { vendor: '', newVendor: '   ' });
+  assert.strictEqual(none.length, 0, 'nothing queued: ' + JSON.stringify(none.map((o) => o.kind)));
+  assert.match((F4.__toasts[F4.__toasts.length - 1] || {}).t || '', /supplier/i);
+});
