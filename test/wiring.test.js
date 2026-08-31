@@ -6007,3 +6007,111 @@ test('the sign-in roster is never sliced', () => {
   assert.ok(!/users\.slice\(/.test(near),
     'the roll is capped again — the eighth person onwards cannot sign in');
 });
+
+/* ═══ A DELIVERY REACHES THE OUTLET ═══════════════════════════════════════
+   Reported as "new grn form does not work", and it was two defects stacked.
+
+   FIRST, on any modern store the form refused a line it had been given
+   correctly: `grnLines()` did `+r.item || 0`, right for the seed-era numeric
+   item master and NaN for every id `newId()` has minted since — so the form's
+   own check answered "Every line needs an item and a quantity above zero"
+   against a line naming a real ingredient.
+
+   SECOND, where it did save, it saved nowhere. Both halves went through
+   `insertRow("purch", …)`; `purch` is not in COLLECTION_OP, so the generic
+   fallback queued `purchases_insert` with NO PAYLOAD — no handler, recorded
+   `unmodelled`, answered success. "GRN posted · 1 lines MVR 250" at the
+   counter, and no delivery, no stock move, no document number anywhere.
+   `H.grn_receive` had been complete on the server the whole time. */
+test('the GRN form keeps the item id it was given', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+
+  const lines = F.grnLines([{ item: 'iFLOUR1', qty: '10', rate: '25' }]);
+  assert.strictEqual(lines[0][0], 'iFLOUR1',
+    'a minted id survives: 0 here is `+r.item` on a text id, and the form then'
+    + ' refuses its own line by name — which is the whole report');
+  assert.strictEqual(lines[0][1], 10);
+  assert.strictEqual(lines[0][2], 25);
+
+  // The seed-era numeric master still works, as a string.
+  assert.strictEqual(F.grnLines([{ item: 3, qty: '2', rate: '1' }])[0][0], '3');
+  // A blank row is dropped rather than rejected.
+  assert.strictEqual(F.grnLines([{ item: '', qty: '' }]).length, 0);
+
+  /* THE SHAPE ITSELF, because `doorLines()` one method up has always been
+     right and this was the odd one out. */
+  assert.ok(!/grnLines\(rows\)[\s\S]{0,300}\+r\.item \|\| 0/.test(SRC),
+    'the item id is numbered again, and every line on a modern store is refused');
+});
+
+test('a posted GRN queues the op the outlet actually handles', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const W = F.__win;
+  W.KPOS_RAW = Object.assign({}, W.KPOS_RAW, {
+    items: [['iFLOUR1', 'ING-1', 'FLOUR', 'kg', 'kg', 1, 25, 0, 0, 10]],
+    vendors: [{ id: 7, name: 'Reef Suppliers' }], purch: [] });
+  const ops = [];
+  F.queue = (kind, label, ent, payload) => ops.push({ kind: kind, payload: payload });
+  F.showRecost = () => {};
+
+  F.formSpec('grn').onSave({ no: 'GRN-2026-0001', date: F.today(), vendor: '7',
+    branch: String(F.state.outletId), inv: 'VND-1', total: '0', notes: 'probe',
+    lines: [{ item: 'iFLOUR1', qty: '10', rate: '25' }] });
+
+  const g = ops.filter((o) => o.kind === 'grn_receive')[0];
+  assert.ok(g, 'grn_receive is queued — `purchases_insert` here is the generic'
+    + ' fallback, which has no handler and carries no payload: '
+    + JSON.stringify(ops.map((o) => o.kind)));
+  assert.ok(!ops.some((o) => /_insert$/.test(o.kind)),
+    'and nothing goes out through the payload-less back-office lane');
+
+  /* IT CARRIES WHAT THE HANDLER READS. An op that queues a label looks fine in
+     the outbox, appears on the trail, and changes nothing. */
+  assert.strictEqual(g.payload.vendorName, 'Reef Suppliers',
+    'the supplier by NAME — delivery.supplier_id is a uuid and the till holds a'
+    + ' number, which is the cast that was killing vendor_payment');
+  assert.strictEqual(g.payload.ref, 'GRN-2026-0001',
+    'the till number rides as a reference; the outlet allocates the document');
+  assert.strictEqual(g.payload.bizDate, F.today());
+  // Field by field: the payload is built inside the vm, so its objects carry
+  // that realm's prototype and a strict deep-compare fails on identity alone.
+  assert.strictEqual(g.payload.lines.length, 1);
+  assert.strictEqual(g.payload.lines[0].ing, 'iFLOUR1');
+  assert.strictEqual(g.payload.lines[0].qty, 10);
+  assert.strictEqual(g.payload.lines[0].price, 25);
+  assert.strictEqual(g.payload.lines[0].total, 250);
+
+  /* AND `purch` STAYS OUT OF COLLECTION_OP. Putting it in would connect the
+     wire and ALSO hand `applyLocal()` a GRN to re-send once per session —
+     `grn_receive` allocates a document number and inserts a delivery, so a
+     second send is a SECOND RECEIPT of the same stock. The outbox's own
+     replay is safe (op_log.op_id); a fresh opId is not. */
+  assert.strictEqual(F.COLLECTION_OP().purch, undefined,
+    'purch must not join the map — the holding pen would receive the stock twice');
+  assert.ok(!F.opFor('purch', { no: 'X' }),
+    'so the pen has no op for it and never re-sends one');
+});
+
+test('a GRN with no supplier is refused before anything is queued', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const W = F.__win;
+  W.KPOS_RAW = Object.assign({}, W.KPOS_RAW, {
+    items: [['iFLOUR1', 'ING-1', 'FLOUR', 'kg', 'kg', 1, 25, 0, 0, 10]],
+    vendors: [], purch: [] });
+  const ops = [];
+  F.queue = (kind) => ops.push(kind);
+  F.__toasts.length = 0;
+  F.showRecost = () => {};
+
+  F.formSpec('grn').onSave({ no: 'GRN-2026-0002', date: F.today(), vendor: '',
+    branch: String(F.state.outletId), inv: '', total: '0',
+    lines: [{ item: 'iFLOUR1', qty: '10', rate: '25' }] });
+
+  assert.strictEqual(ops.length, 0, 'nothing is sent: ' + JSON.stringify(ops));
+  const said = (F.__toasts[F.__toasts.length - 1] || {}).t || '';
+  assert.match(said, /supplier/i,
+    'and it says which field, on the screen: ' + JSON.stringify(said));
+});

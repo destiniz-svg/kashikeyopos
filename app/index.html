@@ -5610,9 +5610,9 @@ class Component extends DCLogic {
     }
     this.openForm("door");
   }
-  // Lines out of the shared editor, with the ids kept as the STRINGS they are:
-  // grnLines() coerces to Number for the seed-era numeric item master, and a
-  // minted id like "iabc12" would go to NaN through it.
+  // Lines out of the shared editor, with the ids kept as the STRINGS they are.
+  // `grnLines()` used to coerce to Number here and sent every minted id like
+  // "iabc12" to NaN; it keeps the string too now, so the two agree.
   doorLines(rows) {
     return (Array.isArray(rows) ? rows : [])
       .filter((r) => r && (String(r.item || "").length || +r.qty))
@@ -15387,13 +15387,83 @@ class Component extends DCLogic {
   }
   // One place that validates and shapes a vendor record, so the create and the
   // edit path can never drift into storing different shapes of the same thing.
-  // Editor rows are strings; a stored line is [itemId, qty, rate]. A blank row
-  // is dropped rather than rejected — someone who added one line too many
-  // should not be stopped, only the empty row ignored.
+  /* Editor rows are strings; a stored line is [itemId, qty, rate]. A blank row
+     is dropped rather than rejected — someone who added one line too many
+     should not be stopped, only the empty row ignored.
+
+     THE ID IS KEPT AS THE STRING IT IS. This read `+r.item || 0`, which is
+     right for the seed-era numeric item master and NaN for every id `newId()`
+     has minted since — so on any store whose items were created on a till,
+     every line came through with item 0 and the form's own check refused it:
+
+         Post GRN → "Every line needs an item and a quantity above zero"
+
+     Measured on the shipped logic class with item id "iFLOUR1". That is the
+     whole of "the new GRN form does not work" for a modern store: not a
+     silent failure, a flat refusal of a line the operator had filled in
+     correctly. `doorLines()` one method up has had this right since it was
+     written, and its comment named this one as the odd one out. */
   grnLines(rows) {
     return (Array.isArray(rows) ? rows : [])
       .filter((r) => r && (String(r.item || "").length || +r.qty))
-      .map((r) => [+r.item || 0, +r.qty || 0, Math.round((+r.rate || 0) * 100) / 100]);
+      .map((r) => [String(r.item || ""), +r.qty || 0, Math.round((+r.rate || 0) * 100) / 100]);
+  }
+  /* THE ONE SEAM A DELIVERY REACHES THE OUTLET THROUGH, and until now there
+     was none. Both halves of the GRN form called `insertRow("purch", …)` —
+     the generic back-office path, which looks up the collection in
+     COLLECTION_OP and, finding no entry for `purch`, falls through to
+     `queue("purchases_insert", label)` WITH NO PAYLOAD. That kind has no
+     handler, so the outlet recorded it `unmodelled` and answered success:
+     the counter read "GRN posted · 1 lines MVR 250" while no delivery row,
+     no grn_line, no batch, no stock move, no document number and no ledger
+     entry existed anywhere. `H.grn_receive` has been complete on the server
+     since the schema was written and had never once been called.
+
+     IT DOES NOT GO BACK THROUGH `insertRow`, and that is deliberate. Adding
+     `purch` to COLLECTION_OP would connect the wire — and would also hand
+     the holding pen a GRN to RE-SEND once per session, because `applyLocal()`
+     re-queues any held row the outlet has no record of. `grn_receive` is not
+     idempotent by content: it allocates a document number and inserts a
+     delivery, so a second send is a SECOND RECEIPT of the same stock. The
+     outbox's own replay is safe (`op_log.op_id` short-circuits a seen op);
+     a fresh opId is not. So this follows `door_receipt` exactly — an
+     explicit queue and a local row — and `purch` stays out of the map.
+
+     Returns false where it refused, so the caller stops rather than toasting
+     over its own warning. */
+  grnSend(no, when, v, lines, total, status, label, notes) {
+    const vend = (((window.KPOS_RAW || {}).vendors) || [])
+      .filter((x) => String(x.id) === String(v.vendor))[0];
+    if (!vend) {
+      this.toast("Pick the supplier this delivery came from — a GRN is checked"
+        + " against their invoice, so it cannot be received against nobody", "warn");
+      return false;
+    }
+    /* Usable on THIS till the moment it is signed, like the door delivery:
+       the local row is what this terminal's own count reads until the outlet
+       answers. It is held in `state.local` rather than pushed through
+       insertRow, so nothing re-sends it. */
+    const local = Object.assign({}, this.state.local || {});
+    local.purch = (local.purch || []).concat([{
+      no: no, date: when, vendor: v.vendor, branch: +v.branch || this.state.outletId,
+      inv: v.inv, total: total, lines: lines, status: status, by: this.me(),
+      notes: notes || v.notes || lines.length + " lines hand-keyed"
+    }]);
+    const arr = this.coll("purch"); if (arr) arr.unshift(local.purch[local.purch.length - 1]);
+    this.setState({ local: local, modal: null });
+    this.queue("grn_receive", label, "purchases", {
+      // The till's own number rides as a REFERENCE. The outlet allocates the
+      // document number from its own series — a statutory sequence cannot be
+      // minted on a device that has been dark all evening — and the two are
+      // tied through this, the same shape as `sale.client_id`.
+      ref: no,
+      vendor: v.vendor, vendorName: vend.name,
+      bizDate: when, note: String(v.notes || "").trim() || null,
+      lines: lines.map((L) => ({
+        ing: L[0], qty: L[1], price: L[2], total: Math.round(L[1] * L[2] * 100) / 100
+      }))
+    });
+    return true;
   }
   /* The business date is the OUTLET's local date, and this till is standing in
      the outlet. `toISOString()` is UTC: Malé is UTC+5, so from 19:00 local —
@@ -19158,10 +19228,9 @@ class Component extends DCLogic {
               if (printed > 0 && Math.abs(printed - total) > 0.5) {
                 return this.toast("Lines add to " + MVRc(total) + " but the invoice says " + MVRc(printed) + " \u2014 fix the line, or query the vendor before posting", "warn");
               }
-              this.insertRow("purch", {
-                no: no, date: when, vendor: +v.vendor, branch: +v.branch, inv: v.inv, total: total, lines: lines,
-                status: "received", by: this.me(), notes: v.notes || lines.length + " lines hand-keyed"
-              }, "GRN posted \u00b7 " + no + " \u00b7 " + lines.length + " lines " + MVRc(total) + (when !== this.today() ? " \u00b7 backdated " + when : ""), "purchases");
+              const label = "GRN posted \u00b7 " + no + " \u00b7 " + lines.length + " lines " + MVRc(total)
+                + (when !== this.today() ? " \u00b7 backdated " + when : "");
+              if (!this.grnSend(no, when, v, lines, total, "received", label)) return null;
               // The delivery is not finished when the stock lands: the rate it
               // arrived at is what every dish using it now costs.
               return this.showRecost(no, this.recostFromLines(lines, "GRN " + no));
@@ -19171,12 +19240,14 @@ class Component extends DCLogic {
             if (v.cond !== "ok" && !String(v.notes || "").trim()) {
               return this.toast("Say what was short or damaged — a discrepancy with no detail cannot be claimed back from the vendor", "warn");
             }
-            const label = { ok: "complete", short: "SHORT", damaged: "DAMAGED", both: "SHORT AND DAMAGED" }[v.cond] || "complete";
-            this.insertRow("purch", {
-              no: no, date: when, vendor: +v.vendor, branch: +v.branch, inv: v.inv, total: 0,
-              lines: lines.map((L) => [L[0], L[1], 0]), status: "unpriced", by: this.me(),
-              notes: "Signed in " + label + " · " + lines.length + " lines counted" + (v.notes ? " · " + v.notes : "") + " · awaiting price check"
-            }, "Delivery signed in · " + no + " · " + lines.length + " lines · " + label, "purchases");
+            const how = { ok: "complete", short: "SHORT", damaged: "DAMAGED", both: "SHORT AND DAMAGED" }[v.cond] || "complete";
+            // Blind: the counter's figures are the count alone, and the server
+            // refuses a rate from below rank 3 for the same reason.
+            const blind = lines.map((L) => [L[0], L[1], 0]);
+            if (!this.grnSend(no, when, v, blind, 0, "unpriced",
+              "Delivery signed in · " + no + " · " + lines.length + " lines · " + how,
+              "Signed in " + how + " · " + lines.length + " lines counted"
+                + (v.notes ? " · " + v.notes : "") + " · awaiting price check")) return null;
             this.toast(v.cond === "ok"
               ? no + " signed in — stock is usable now, a manager prices it later"
               : no + " signed in with a discrepancy — it goes to a manager as a query, not as a bill");

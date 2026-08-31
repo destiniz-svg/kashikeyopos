@@ -312,9 +312,16 @@ test('a series that has issued a number cannot be renumbered', opts, async () =>
 
   const v = await push([{ opId: uuid(), kind: 'vendor_upsert',
     payload: { name: 'Series Test Supplies', terms: 30 } }]);
+  /* A REAL LINE, because a GRN with none moves no stock and is refused — the
+     till refuses it too, in the same words. This test is about the SERIES, and
+     what locks a series is a number actually issued. */
+  const ing0 = await one('SELECT id FROM ingredient ORDER BY name LIMIT 1');
   const got = await push([{ opId: uuid(), kind: 'grn_receive',
-    payload: { vendor: v.body.results[0].result.vendorId, lines: [] } }]);
-  assert.ok(got.body.results[0].result.no, 'the delivery drew a GRN number');
+    payload: { vendor: v.body.results[0].result.vendorId,
+      lines: [{ ing: ing0.id, qty: 1, price: 1, total: 1 }] } }]);
+  assert.ok(got.body.results[0].result
+    && got.body.results[0].result.no, 'the delivery drew a GRN number: '
+    + JSON.stringify(got.body.results[0]));
 
   const after = await post('/api/onboarding/series', {
     series: [{ kind: 'GRN', prefix: 'Y', start: 1 }]
@@ -5743,6 +5750,92 @@ test('the outlet role cannot read a PIN hash', opts, async () => {
   const bad = await post('/api/auth/pin', { outletId: outletId, pin: '0000' });
   assert.strictEqual(bad.status, 401, 'and the wrong one still does not');
 });
+
+/* ═══ A DELIVERY REACHES THE OUTLET ═══════════════════════════════════════
+   `H.grn_receive` had been complete since the schema was written and NOTHING
+   HAD EVER CALLED IT — the GRN form went out through the payload-less
+   back-office fallback. So the first time it was wired, two things in it had
+   never once been executed, and neither is visible from the vm harness: the
+   supplier resolving onto a `uuid NOT NULL` column, and the refusals a person
+   reads off the Sync screen. */
+test('a GRN moves the stock, numbers the document and names the supplier',
+  opts, async () => {
+    const uuid = require('crypto').randomUUID;
+    const ing = await one("SELECT id, on_hand::float8 AS on_hand FROM ingredient"
+      + ' ORDER BY name LIMIT 1');
+    assert.ok(ing, 'the fixture has an item master');
+
+    const grn = (payload) => push([{ opId: uuid(), kind: 'grn_receive',
+      label: 'GRN posted', entity: 'purchases', at: Date.now(),
+      lamport: Date.now(), payload: payload }]);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await grn({ ref: 'GRN-TILL-0001', vendor: '7',
+      vendorName: 'Reef Suppliers Pvt Ltd', bizDate: today, note: 'probe',
+      lines: [{ ing: ing.id, qty: 10, price: 25, total: 250 }] });
+    const res = (r.body.results || [])[0] || {};
+    assert.ok(!res.error, 'the delivery was accepted: ' + JSON.stringify(res));
+
+    const d = await one('SELECT id, grn_no, supplier_id, business_date::text AS bd'
+      + ' FROM delivery ORDER BY at DESC LIMIT 1');
+    assert.ok(d, 'a delivery row exists');
+    /* THE CAST THAT WOULD HAVE PARKED EVERY GRN. The till's vendor id is a
+       number from that browser's list and `delivery.supplier_id` is a uuid, so
+       the supplier resolves BY NAME — the same `supplierIdOf()` every other
+       money op uses since a seed-era numeric id was killing vendor_payment. */
+    const sup = await one('SELECT name FROM chain.supplier WHERE id = $1',
+      [d.supplier_id]);
+    assert.strictEqual((sup || {}).name, 'Reef Suppliers Pvt Ltd',
+      'the supplier resolved by name onto the uuid column');
+
+    const line = await one('SELECT ingredient_id, qty::float8 AS qty,'
+      + ' line_total::float8 AS total FROM grn_line WHERE delivery_id = $1', [d.id]);
+    assert.strictEqual(line.ingredient_id, ing.id);
+    assert.strictEqual(line.qty, 10);
+
+    // THE STOCK ACTUALLY MOVED, which is the whole point of a GRN.
+    const mv = await one("SELECT reason, qty::float8 AS qty, value::float8 AS value"
+      + ' FROM stock_move WHERE ingredient_id = $1 ORDER BY at DESC LIMIT 1', [ing.id]);
+    assert.strictEqual(mv.reason, 'purchase');
+    assert.strictEqual(mv.qty, 10);
+    assert.strictEqual(mv.value, 250);
+    const after = await one('SELECT on_hand::float8 AS on_hand FROM ingredient'
+      + ' WHERE id = $1', [ing.id]);
+    assert.strictEqual(after.on_hand, ing.on_hand + 10, 'and the shelf went up');
+
+    /* The OUTLET allocates the document number — a statutory sequence cannot be
+       minted on a device that has been dark all evening — and the till's own
+       number is kept beside it so the paper pad and the system can be tied. */
+    const doc = await one("SELECT no, kind FROM document WHERE ref_id = $1", [d.id]);
+    assert.strictEqual(doc.kind, 'GRN');
+    assert.strictEqual(doc.no, d.grn_no);
+    assert.notStrictEqual(d.grn_no, 'GRN-TILL-0001');
+    /* The two are tied through the answer the push returns — read there rather
+       than off `chain.audit`, which an outlet's own login role may INSERT into
+       and not SELECT from (the trail is read on the owner connection, by
+       design). The trail row itself is proved in the drive against a real
+       outlet; what matters here is that the till's reference survives. */
+    assert.strictEqual(res.result.ref, 'GRN-TILL-0001',
+      'the till number comes back beside the outlet number');
+    assert.strictEqual(res.result.no, d.grn_no);
+
+    // ── the refusals, which a person reads on the Sync screen ──────────────
+    const noSup = await grn({ ref: 'X', vendor: '', vendorName: '',
+      bizDate: today, lines: [{ ing: ing.id, qty: 1, price: 1, total: 1 }] });
+    assert.match(String(((noSup.body.results || [])[0] || {}).error), /supplier/i,
+      'no supplier is refused by name, never a not-null constraint');
+    const future = await grn({ ref: 'X', vendor: '7', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: '2099-01-01', lines: [{ ing: ing.id, qty: 1, price: 1, total: 1 }] });
+    assert.match(String(((future.body.results || [])[0] || {}).error), /future/i);
+    const noLines = await grn({ ref: 'X', vendor: '7', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: today, lines: [] });
+    assert.match(String(((noLines.body.results || [])[0] || {}).error), /no lines|at least one/i);
+
+    // And nothing of the three moved the shelf.
+    const still = await one('SELECT on_hand::float8 AS on_hand FROM ingredient'
+      + ' WHERE id = $1', [ing.id]);
+    assert.strictEqual(still.on_hand, after.on_hand, 'a refusal moves no stock');
+  });
 
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));

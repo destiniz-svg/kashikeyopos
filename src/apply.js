@@ -1259,30 +1259,89 @@ H.yield_test = async (c, p, ctx) => {
 };
 
 // ═══ PURCHASING ════════════════════════════════════════════════════════════
+/* THE DELIVERY THE TILL SIGNS FOR. This handler has been complete since the
+   schema was written and NOTHING HAS EVER QUEUED IT: the GRN form went through
+   `insertRow("purch", …)`, `purch` is not in the terminal's COLLECTION_OP, and
+   the generic fallback queues `<entity>_insert` with NO PAYLOAD — a kind with
+   no handler, recorded `unmodelled` and answered success. So "GRN posted · 1
+   lines MVR 250" toasted at the counter while no delivery row, no grn_line, no
+   batch, no stock move, no document number and no ledger entry existed
+   anywhere. Reported as "new grn form does not work".
+
+   Two things it took on the way to being called for the first time:
+
+   THE SUPPLIER RESOLVES BY NAME. `delivery.supplier_id` is `uuid NOT NULL`,
+   and the till's vendor id is whatever that browser's list holds — a seed-era
+   number for most stores. Feeding one to a uuid column is the defect that was
+   already killing `vendor_payment` before it resolved by name; the same
+   `supplierIdOf()` every other money op uses is what this needs, or every GRN
+   would have parked on a cast the moment the wire was connected.
+
+   AND IT REFUSES BY NAME. It is applied inside a savepoint from an outbox, so
+   a refusal is read by a person on the Sync screen — `status: 400` and a
+   sentence, never a constraint name. Same shape as `door_receipt`, which is
+   the sibling that was wired correctly. */
 H.grn_receive = async (c, p, ctx) => {
+  const refuse = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  const vendorId = await supplierIdOf(c, p.vendor, p.vendorName);
+  if (!vendorId) refuse('A delivery needs the supplier it came from');
+  const date = String(p.bizDate || today(ctx));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) refuse('Date must be written as YYYY-MM-DD');
+  if (date > today(ctx)) refuse('A delivery cannot be received in the future');
+  const lines = arr(p.lines).map((l) => ({
+    ing: l && (l.ing || l.item) ? String(l.ing || l.item) : null,
+    qty: num(l && l.qty),
+    /* THE UNIT PRICE IS A RATE, NOT MONEY, and `grn_line.unit_price` is
+       `numeric(14,6)` for exactly that reason: rice at 32 laari a kilo is
+       0.032 a gram, and rounding it to the laari makes every dish drawing on
+       it cost the wrong thing for ever. `r2()` here took 0.032 to 0.03 — the
+       LINE TOTAL is money and rounds; the rate underneath it does not. Caught
+       by the sale-settles-once test, whose COGS stopped tying. */
+    price: num(l && l.price),
+    total: l && l.total != null ? r2(num(l.total)) : r2(num(l && l.qty) * num(l && l.price)),
+    unit: (l && l.unit) || null, useBy: (l && l.useBy) || null, lot: (l && l.lot) || null,
+    // A location is a uuid in this schema. The till has no location picker and
+    // sends its OUTLET id for the receiving store, which is a different thing
+    // entirely — so anything that is not a real location id is left null and
+    // the move lands in the outlet's own default.
+    loc: l && UUID.test(String(l.loc || '')) ? String(l.loc) : null
+  })).filter((l) => l.ing);
+  if (!lines.length) refuse('Add at least one item — a GRN with no lines moves no stock');
+  if (lines.some((l) => !(l.qty > 0))) refuse('Every line needs an item and a quantity above zero');
+  // Blind receiving, exactly as at the door: the count is only evidence if the
+  // person counting cannot see the expected figure.
+  if (num(ctx.rank) < 3 && lines.some((l) => l.price > 0)) {
+    refuse('Pricing a delivery needs a manager');
+  }
+
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['GRN']);
   const d = await one(c, 'INSERT INTO delivery (grn_no, po_id, supplier_id,'
     + ' business_date, received_by, note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [no.no, p.po || null, p.vendor, p.bizDate || today(ctx), ctx.actor, p.note || null]);
-  for (const l of arr(p.lines)) {
+    [no.no, p.po || null, vendorId, date, ctx.actor, p.note || null]);
+  for (const l of lines) {
     await c.query('INSERT INTO grn_line (delivery_id, ingredient_id, qty, unit,'
       + ' unit_price, line_total, use_by, lot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [d.id, l.ing, num(l.qty), l.unit || null, num(l.price), r2(l.total),
-        l.useBy || null, l.lot || null]);
+      [d.id, l.ing, l.qty, l.unit, l.price, l.total, l.useBy, l.lot]);
     if (l.useBy || l.lot) {
       await c.query('INSERT INTO batch (ingredient_id, lot, qty, unit_cost, use_by,'
         + ' location_id, delivery_id) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [l.ing, l.lot || null, num(l.qty), num(l.price), l.useBy || null,
-          l.loc || null, d.id]);
+        [l.ing, l.lot, l.qty, l.price, l.useBy, l.loc, d.id]);
     }
-    await moveStock(c, ctx, { ing: l.ing, qty: Math.abs(num(l.qty)), cost: num(l.price),
-      value: r2(l.total), reason: 'purchase', loc: l.loc, date: p.bizDate });
+    await moveStock(c, ctx, { ing: l.ing, qty: Math.abs(l.qty), cost: l.price,
+      value: l.total, reason: 'purchase', loc: l.loc, date: date,
+      note: 'GRN ' + no.no });
   }
   await c.query('INSERT INTO document (no, kind, business_date, ref_id, by_staff)'
     + " VALUES ($1,'GRN',$2,$3,$4) ON CONFLICT (no) DO NOTHING",
-    [no.no, p.bizDate || today(ctx), d.id, ctx.actor]);
-  await log(c, 'grn_receive', 'delivery', d.id, null, { no: no.no, lines: arr(p.lines).length });
-  return { deliveryId: d.id, no: no.no };
+    [no.no, date, d.id, ctx.actor]);
+  await log(c, 'grn_receive', 'delivery', d.id, null,
+    { no: no.no, ref: p.ref || null, lines: lines.length });
+  /* The till's OWN number rides back beside the outlet's. A document number is
+     a statutory sequence and cannot be minted on a device that has been dark
+     all evening — but the counter wrote one on the paper pad, and the two have
+     to be tie-able or the book and the system diverge. Same shape as
+     `sale.client_id`. */
+  return { deliveryId: d.id, no: no.no, ref: p.ref || null };
 };
 
 // Pricing a delivery is what claims the input tax. A signed-for delivery

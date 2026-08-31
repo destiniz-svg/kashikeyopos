@@ -2245,6 +2245,96 @@ isolation model, so Portions answers for this outlet's own shelf and
 screen by `can()`, and the guest plane (the only anonymous one) carries no
 cost at all.
 
+## A delivery that reached nowhere, and the handler nobody had ever called
+
+Reported as *"new grn form does not work. check around it"* — two defects
+stacked, and the sweep around it found a third the moment the wire was
+connected.
+
+**On a modern store the form refused a line it had been given correctly.**
+`grnLines()` did `+r.item || 0`, right for the seed-era numeric item master and
+`NaN` for every id `newId()` has minted since — so the item id became `0` and
+the form's own check answered:
+
+```
+Post GRN → "Every line needs an item and a quantity above zero"
+```
+
+Measured on the shipped logic class with item id `iFLOUR1`. That is the whole
+of "does not work" for any store whose items were created on a till: not a
+silent failure, a flat refusal of a correctly filled line. `doorLines()` one
+method up has had this right since it was written, **and its own comment named
+this one as the odd one out** — the defect was recorded and left standing.
+
+**And where it did save, it saved nowhere.** Both halves went through
+`insertRow("purch", …)`, the generic back-office path; `purch` is not in
+`COLLECTION_OP`, so the fallback queued `purchases_insert` **with no payload** —
+a kind with no handler, recorded `unmodelled`, answered success:
+
+```
+toast: "GRN posted · GRN-TEST-1 · 1 lines MVR 250"
+queued: purchases_insert   payload=undefined
+```
+
+No delivery row, no `grn_line`, no batch, no stock move, no document number, no
+ledger entry — anywhere. `H.grn_receive` has been complete on the server since
+the schema was written and **had never once been called**.
+
+**It does NOT go back through `insertRow`, and that is the load-bearing part.**
+Adding `purch` to `COLLECTION_OP` connects the wire and also hands the holding
+pen a GRN to RE-SEND once per session, because `applyLocal()` re-queues any held
+row the outlet has no record of. `grn_receive` is not idempotent by content: it
+allocates a document number and inserts a delivery, so a second send is a
+**second receipt of the same stock**. The outbox's own replay is safe
+(`op_log.op_id` short-circuits a seen op); a fresh `opId` is not. So this
+follows `door_receipt` exactly — an explicit queue and a local row — and `purch`
+stays out of the map, which `test/wiring.test.js` now pins.
+
+**Two things the handler took on the way to being called for the first time.**
+
+The supplier **resolves by name**. `delivery.supplier_id` is `uuid NOT NULL` and
+the till's vendor id is whatever that browser's list holds — a seed-era number
+for most stores. That is the cast that was already killing `vendor_payment`
+before it resolved by name, and it would have parked every GRN on the first
+press. And it **refuses by name**: applied from an outbox inside a savepoint, a
+refusal is read by a person on the Sync screen, so `status: 400` and a sentence
+— the same shape `door_receipt` already keeps.
+
+The till's own number rides as a **reference**, never as the document number.
+A document number is a statutory sequence and cannot be minted on a device that
+has been dark all evening — but the counter wrote one on the paper pad, so the
+two must be tie-able. Same shape as `sale.client_id`.
+
+**And the suite caught two regressions of mine, which is the part worth
+keeping.** Hardening the handler, I rounded the unit price with `r2()` —
+`grn_line.unit_price` is `numeric(14,6)` for a reason: rice at 32 laari a kilo
+is `0.032` a gram, and rounding it to the laari makes every dish drawing on it
+cost the wrong thing for ever. The line TOTAL is money and rounds; the rate
+underneath it does not. The sale-settles-once test's COGS stopped tying and
+named it. The second was the empty-lines refusal breaking a test that drew a
+GRN number with `lines: []` purely to lock a series — the refusal is right (the
+till refuses it in the same words), so that test draws its number with a real
+delivery now.
+
+Measured against a real outlet, pushing exactly what the fixed form queues:
+
+```
+push answer  {"deliveryId":"3755103b-…","no":"LOYC-GRN-000001","ref":"GRN-PROBE-897291"}
+grn_line     [{"ingredient_id":"IT-0274","qty":"10.0000","unit_price":"25.000000"}]
+stock_move   {"qty":"10.0000","value":"250.00","reason":"purchase","note":"GRN LOYC-GRN-000001"}
+on_hand      0.0000 -> 10.0000
+document     {"no":"LOYC-GRN-000001","kind":"GRN"}
+refusals     "A delivery needs the supplier it came from"
+             "A delivery cannot be received in the future"
+```
+
+`test/wiring.test.js` pins the id surviving `grnLines()`, the op and its
+payload, `purch` staying out of the map, and the no-supplier refusal happening
+before anything is queued; `test/api.test.js` walks the door against a real
+database — the supplier onto the uuid column, the stock moving, the shelf, the
+outlet's own document number, and all three refusals moving no stock. Both fail
+against the version that shipped.
+
 ## The outlet does not always keep the id this device minted
 
 Reported: *"when I add a customer I see a duplicate record, but when I log in
@@ -5563,7 +5653,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 568 tests
+npm test                          # 572 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
