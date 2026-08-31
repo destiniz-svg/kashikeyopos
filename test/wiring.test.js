@@ -436,10 +436,17 @@ test('every queued op carries a client-generated opId', () => {
 
   // Drive the whole sweep, which fires every handler the UI exposes.
   H.sweep(F);
-  // A floor, not a census: it exists so that a sweep which silently stopped
-  // reaching the handlers cannot pass. It went from 21 to 20 when pinning the
-  // sidebar stopped queueing anything — a device preference is not the shop's.
-  assert.ok(queued.length >= 20, 'the sweep queued ' + queued.length + ' ops');
+  /* A floor, not a census: it exists so that a sweep which silently stopped
+     reaching the handlers cannot pass. It went from 21 to 20 when pinning the
+     sidebar stopped queueing anything — a device preference is not the
+     shop's — and from 20 to 19 when Purchasing's "Scan invoice" was deleted.
+     There is no OCR anywhere in this build: that control minted a GRN number,
+     attached whichever supplier sorted first, and queued `purchases_insert`
+     WITH NO PAYLOAD — a kind with no handler, recorded `unmodelled`, answered
+     success. Measured before and after: exactly one kind left the sweep, and
+     it was that one. A floor that only ever ratchets upward would make
+     deleting a lying control cost a test failure. */
+  assert.ok(queued.length >= 19, 'the sweep queued ' + queued.length + ' ops');
   const bad = queued.filter((q) => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(q.opId || ''));
   assert.deepStrictEqual(bad.map((q) => q.kind), [],
     'these ops queued without a v4 opId, so a replay would double-book them');
@@ -6449,4 +6456,161 @@ test('the auto-indent reaches the outlet, and the stock category does not lie', 
      section handler, with no payload. */
   assert.ok(!/queue\("category_insert"/.test(src),
     'a stock category is a name an item is filed under, not a menu section');
+});
+
+/* ═══ THE FOUR COLLECTIONS THAT WERE LITERAL EMPTY ARRAYS ══════════════════
+   Purchasing, Indents, Dispatches and Production each read a `KPOS_RAW` key
+   the bootstrap published as `[]`, over four tables the outlet has been
+   filling since it was provisioned — so every one of those screens showed
+   only what the browser in front of you had created in this session. Same
+   shape as `ledger` and `batches` one rail along, and as `oset` and
+   `KPOS.VENDORS` before them. */
+test('the four back-office collections are read from the outlet, not invented', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.ok(!/purch: \[\]/.test(src) && !/reqs: \[\]/.test(src)
+    && !/disp: \[\]/.test(src) && !/prod: \[\]/.test(src),
+  'none of the four is published as a literal empty array any more');
+  for (const q of ['deliveries:', 'indents:', 'dispatches:', 'productions:']) {
+    assert.ok(src.indexOf(q) > 0, q + ' is queried');
+  }
+  /* `roles` is GONE rather than filled. Nothing has ever read
+     `KPOS_RAW.roles` — every reader takes `K().ROLES`, the shipped catalogue
+     — and a key nobody reads is a key the next person writes a query
+     against. */
+  assert.ok(!/roles: \[\]/.test(src), 'the key nobody read is gone, not filled');
+  const till = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.ok(!/raw\.roles/.test(till), 'and nothing in the till reads it');
+});
+
+test('a delivery says whether it has been priced, and where it landed', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  /* The screen's STATE map has drawn "Awaiting price check" since it was
+     written and nothing could produce it: this mapped every non-draft row to
+     "posted", so `awaitingCheck()` returned nothing on every install and a
+     manager was never told a delivery was waiting on them. */
+  assert.strictEqual(F.grnState({ no: 'G1', status: 'unpriced' }), 'unpriced');
+  assert.strictEqual(F.grnState({ no: 'G2', status: 'received' }), 'posted');
+  assert.strictEqual(F.grnState({ no: 'G3', status: 'draft' }), 'draft');
+
+  const till = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  /* The "Receiving location" column rendered `p.branch` — the OUTLET — down a
+     list already scoped to one outlet, so it printed one constant on every
+     row. The delivery carries its own location since 053. */
+  assert.match(till, /this\.locName\(p\.loc\)/,
+    'the column renders the location the delivery actually landed in');
+  const grn = till.slice(till.indexOf('g_purchases() {'),
+    till.indexOf('g_purchases() {') + 4000);
+  assert.ok(!/locName\(p\.branch\)/.test(grn),
+    'and never the outlet, which is the same name on every row');
+  /* There is no OCR anywhere in this build. The control minted a GRN number,
+     attached whichever supplier sorted first, and queued `purchases_insert`
+     WITH NO PAYLOAD. */
+  assert.ok(!/Scan invoice/.test(till),
+    'no control offers an invoice scan this build cannot perform');
+  assert.ok(!/queue\("purchases_insert"/.test(till)
+    && !/insertRow\("purch"/.test(till),
+  'and nothing writes a delivery through the collection path');
+});
+
+test('a supplier id is a uuid, so it is never coerced with +', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const vid = '0c40350f-65af-4a21-943e-e483dcdb2298';
+  F.__win.KPOS_RAW.vendors = [{ id: vid, name: 'Reef Suppliers', terms: 30 }];
+  F.__win.KPOS_RAW.purch = [{ no: 'G9', vendor: vid, branch: F.state.outletId,
+    date: F.today(), total: 250, status: 'received', inv: 'V-1', lines: [] }];
+  const rows = F.payables();
+  assert.strictEqual(rows.length, 1, 'the priced delivery is a payable');
+  /* `+g.vendor` is NaN for every uuid, so this found nobody: every payable
+     read "Vendor undefined" and `vendorAgeing()` bucketed the whole ledger
+     under NaN — one row for every supplier in the shop. The last of the `+id`
+     class the GRN form, the stock adjustment, the recipe line and the shared
+     lines editor all paid for. */
+  assert.strictEqual(rows[0].vendor, 'Reef Suppliers');
+  assert.strictEqual(rows[0].vendorId, vid);
+  const ageing = F.vendorAgeing();
+  assert.strictEqual(ageing.length, 1);
+  assert.strictEqual(ageing[0].name, 'Reef Suppliers');
+});
+
+test('the three transfer forms carry their lines, and queue the real op', () => {
+  const H = require('./harness');
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  /* All three saved through `insertRow(collection, …)`, and none of `reqs`,
+     `disp` or `prod` is in COLLECTION_OP — so each queued
+     `<collection>_insert` WITH NO PAYLOAD: a kind with no handler, recorded
+     `unmodelled`, answered success. An indent nobody could pick against, a
+     dispatch that moved no stock, a batch that consumed nothing. */
+  for (const dead of ['insertRow("reqs"', 'insertRow("disp"', 'insertRow("prod"']) {
+    assert.ok(src.indexOf(dead) < 0, dead + ' no longer writes through the collection path');
+  }
+  assert.match(src, /this\.queue\("dispatch",/, 'the dispatch queues H.dispatch');
+  assert.match(src, /this\.queue\("produce",/, 'the batch queues H.produce');
+  assert.match(src, /this\.queue\("indent_approve",/, 'approving queues a real op');
+  assert.match(src, /this\.queue\("dispatch_receive",/, 'signing for one queues a real op');
+  assert.match(src, /this\.queue\("batch_close",/, 'closing a lot queues a real op');
+
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const map = F.COLLECTION_OP();
+  /* None of the three is idempotent by content — `H.indent` and `H.dispatch`
+     each allocate a document number and `H.produce` inserts a batch — so the
+     holding pen must never re-send one. Same rule `purch` already keeps. */
+  for (const k of ['reqs', 'disp', 'prod', 'purch']) {
+    assert.ok(!map[k], k + ' stays out of the collection map');
+  }
+
+  /* AND NEITHER FORM ASKS FOR A FIGURE THE SERVER DERIVES. The dispatch asked
+     for a typed "Value MVR" and the batch for a "Unit cost MVR", both of
+     which are the sum of the lines that were never sent — two answers to one
+     question, which the GRN's "invoice total as printed" already settled the
+     right way round. */
+  const disp = F.formSpec('dispatch', {}) || {};
+  const prod = F.formSpec('prodbatch', {}) || {};
+  const ind = F.formSpec('indent', {}) || {};
+  const keys = (f) => (f.fields || []).map((x) => x.k);
+  assert.ok(keys(disp).indexOf('lines') >= 0, 'the dispatch collects lines');
+  assert.ok(keys(disp).indexOf('total') < 0, 'and never a typed value');
+  assert.ok(keys(prod).indexOf('lines') >= 0, 'the batch collects its components');
+  assert.ok(keys(prod).indexOf('cost') < 0, 'and never a typed unit cost');
+  assert.ok(keys(ind).indexOf('lines') >= 0, 'the indent collects what is needed');
+});
+
+test('a transfer names another outlet, and refuses when there is none', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.__win.KPOS.OUTLETS = [{ id: F.state.outletId, name: 'Loy Cafe' }];
+  /* Both forms are dead ends on a single-outlet customer — which is most of
+     them — and a form whose only dropdown has no options is the stuck
+     `<select>` the GRN's receiving location already paid for. */
+  assert.deepStrictEqual(F.otherOutlets(), [], 'nowhere else to send it');
+  const said = [];
+  F.toast = (m, t) => said.push([m, t]);
+  const reqs = F.g_requests();
+  (reqs.actions.find((a) => /New indent/.test(a.label)) || {}).go();
+  assert.ok(said.length === 1 && said[0][1] === 'warn',
+    'the action says so rather than opening a form with an empty dropdown');
+  assert.strictEqual(F.state.modal, null, 'and no form was opened');
+
+  F.__win.KPOS.OUTLETS = [{ id: F.state.outletId, name: 'Loy Cafe' },
+    { id: 9001, name: 'Loy Store' }];
+  assert.strictEqual(F.otherOutlets().length, 1, 'and offers it where there is one');
+});
+
+test('stock_move.value is a magnitude, enforced at the one seam', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const mv = src.slice(src.indexOf('async function moveStock'),
+    src.indexOf("'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason,'"));
+  /* `value` is the money that moved and `qty` carries the direction. Most
+     writers already kept it; a count stored a NEGATIVE value on a shortfall
+     and voiding a sale negated the sale's own, so the column meant two
+     different things depending on which handler had written the row.
+     Enforced at the seam rather than at seventeen call sites. */
+  assert.match(mv, /value = Math\.abs\(r2\(value\)\)/,
+    'the rule is kept where every move passes, not at each call site');
 });

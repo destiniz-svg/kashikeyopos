@@ -190,7 +190,12 @@ const FORMS = [
      from real screens, and were excused from every sweep this harness does.
      Found when the extractor was widened to match the KEY rather than one
      shape of value. */
-  'addon', 'tableEdit', 'zoneEdit', 'grn'
+  'addon', 'tableEdit', 'zoneEdit', 'grn',
+  // Signing for a dispatch, and closing a lot on the FEFO shelf. Both are
+  // rows-that-open: neither had a form because neither act was possible —
+  // `dispatch.received_at` and `batch.state` have been on their tables since
+  // the schema was written and nothing had ever written either.
+  'dispatchReceive', 'batchClose'
 ];
 
 // The message alone names the symptom; the frame names the line. A harness

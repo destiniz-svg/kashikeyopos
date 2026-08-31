@@ -64,6 +64,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        050 a person has a face
                        051 a PIN is an identity
                        052 a batch says where its date came from
+                       053 a delivery lands somewhere
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -2572,16 +2573,177 @@ nulled, the count moving the shelf the right way, the nameless line refused by
 name, and the ledger and batch collections published with the balances and the
 derived flag.
 
-**Stated rather than fixed**, because each is a different module and the change
-was already wide: `raw.purch`, `reqs`, `disp`, `prod` and `roles` are literal
-empty arrays too, so Purchasing, Indents, Dispatches and Production read only
-what the browser in front of you created — the same defect, one rail along. The
-`indent` and `dispatch` forms carry no lines at all. Nothing ever closes a
-`batch`, so a lot stays on the FEFO shelf until somebody writes it off, which is
-what the screen already says. And `stock_move.value` is positive for a
-write-off and negative for a count shortfall; nothing sums that column, so the
-inconsistency costs nothing today and changing a money column's convention did
-not belong in this change.
+Four things were **stated rather than fixed** at the end of that change,
+because each was a different module and it was already wide. Asked *"found and
+not fixed?"*, so they are the section below.
+
+## Four screens further along, and the same four defects
+
+`raw.purch`, `reqs`, `disp`, `prod` and `roles` were literal empty arrays, so
+Purchasing, Indents, Dispatches and Production each read only what the browser
+in front of you had created in this session — over four tables the outlet has
+been filling since it was provisioned. Same shape as `ledger` and `batches` one
+rail along, and as `oset` and `KPOS.VENDORS` before them. And each screen's
+form went through the generic collection path, which finds no entry in
+`COLLECTION_OP` and queues a bare insert kind **with no payload** — no handler,
+recorded `unmodelled`, answered success. So: an indent nobody could pick
+against, a dispatch that moved no stock, a batch that consumed nothing, each
+under a toast saying it was done.
+
+**All four are published now**, in the shapes the screens read, with the staff
+uuid resolved to the name each column is headed with — "Received by",
+"Requested by", "Dispatched by" are questions a uuid does not answer. `roles`
+is **gone rather than filled**: nothing has ever read `KPOS_RAW.roles`, every
+reader takes `K().ROLES` from `app/kashikeyo-data.js`, and a key nobody reads is
+one the next person writes a query against.
+
+**A delivery says whether it has been priced.** `grnState()` mapped every
+non-draft row to "posted", so `unpriced` — the state the screen's own STATE map
+has drawn since it was written, "Awaiting price check" — could never be
+produced, `awaitingCheck()` returned nothing on every install, and a manager was
+never told a delivery was waiting on them. It reads `delivery.priced` now; the
+local override stays on top, because raising a query is this manager's decision
+and has not been sent anywhere.
+
+**And where it landed.** The "Receiving location" column rendered `p.branch` —
+the OUTLET — down a list already scoped to one outlet, so it printed one
+constant on every row. The GRN form asks once and the op has always carried it
+onto every `stock_move` the delivery made; the delivery itself had no column,
+so **migration 053** gives it one, taken from the lines and only where they
+agree. A delivery split across two shelves has no single location, and naming
+one of them would be a guess printed as a fact. NULL is "the store", which is
+the answer `locName(null)` already gives in words.
+
+**`payables()` compared a uuid with `+g.vendor`.** NaN for every supplier, so
+it found nobody: every payable read "Vendor undefined" and `vendorAgeing()`
+bucketed the whole ledger under NaN — one row for every supplier in the shop.
+The last of the `+id` class the GRN form, the stock adjustment, the recipe line
+and the shared lines editor all paid for one screen along.
+
+**"Scan invoice" is deleted.** There is no OCR anywhere in this build and there
+never has been: the control minted a GRN number, attached whichever supplier
+sorted first, and queued a payloadless insert — a draft delivery against a
+vendor nobody chose, in one browser, reading "lines awaiting match" for a match
+nothing performs. Same class as the QR modal's token rotation. Receiving a
+delivery is one button and it is the real one. The wiring test's op floor moved
+20 → 19 with it, and the comment says why: a floor that only ratchets upward
+makes deleting a lying control cost a test failure.
+
+### The forms carry their lines, and ask for no figure the server derives
+
+All three now collect lines through the same editor the GRN uses, and queue
+`indent`, `dispatch` and `produce` **explicitly** — never through
+`COLLECTION_OP`, for the reason `grnSend()` does not: each allocates a document
+number or inserts a batch, so none is idempotent by content and handing one to
+the holding pen would be a second dispatch of the same stock.
+
+Two of them also asked for a figure the server derives — the dispatch's "Value
+MVR" and the batch's "Unit cost MVR", both of which are the sum of the lines
+that were never sent. Two answers to one question is what the GRN's "invoice
+total as printed" already settled the right way round: the lines are the figure.
+Both fields are gone.
+
+**And the auto-indent's local row went with them.** The previous change queued
+the real `indent` op and left the collection row beside it — which, `reqs`
+having no entry in the map, queued a *second* payloadless op on every press,
+and filed a row under a number this BROWSER minted (`PR-2026-…`) that the
+outlet's own (`LOYC-PR-000001`) can never reconcile against, so the pen would
+re-send it once a session for ever. The outlet publishes `reqs` now, so the
+answer arrives on the next bootstrap and there is nothing to hold.
+
+**Nothing is picked for you, and a dead end says so.** `openForm` seeds a select
+with its FIRST option, so a bare list of sister outlets would attribute a
+transfer to whichever sorts first — the Role box defect wearing a different
+label. Both lists lead with the ask. And on a **single-outlet business, which is
+most of them**, there is nowhere to send anything: `otherOutlets()` is empty,
+the dropdown would have no options, and that is the stuck `<select>` the GRN's
+receiving location already paid for. Both actions say what is true instead of
+opening a form nobody can complete.
+
+**Three controls that did nothing now do what they say.** "Approve all normal"
+queued `reqs_update` — no handler — and its filter looked for status "pending",
+a word `indent.status`'s CHECK does not permit: two independent reasons for the
+same nothing. `H.indent_approve` is rank 3 at the door as well as on the screen.
+`H.dispatch_receive` records the confirmation coming back: `dispatch.received_at`,
+`received_by` and `status` have been on the table since the schema was written
+and nothing had ever set one. And **the guide stops claiming what the isolation
+model forbids** — it said the receiver accepts "which credits their location",
+a write in another outlet's schema that belt one exists to make impossible from
+a till. The stock leaving is this store's own act; the receiving outlet posts
+its own arrival at its own till, and the screen says which half it holds.
+
+**Production is one act, not two.** The guide described starting a batch and
+completing it later; `H.produce` has always done the whole thing in one
+transaction, and the unit cost IS what the components cost, known at that
+moment. There is no in-progress state on `production_batch` and none is
+invented; the "Kitchen" column named a location the table does not carry and is
+gone with it.
+
+### A lot can leave the shelf, and only one exit moves stock
+
+`batch.state` has carried holding · open · used · wasted since the schema was
+written and **nothing has ever written it**, so every lot a delivery stamps sat
+on the FEFO shelf for ever. The screen said so itself — "expired stock is still
+counted until it is written off" — which was honest and was also the whole
+defect: a write-off MOVES STOCK, and a lot that was cooked through has already
+given that quantity up through the sales that consumed it. Writing it off a
+second time takes it twice.
+
+So the two exits are separated and only one touches stock. **Finished** moves
+nothing and says so on the sheet, which is what stops somebody reaching for the
+write-off instead. **Thrown away** IS a write-off: it moves the remaining
+quantity at the lot's own cost and books `Dr 5100 / Cr 1200` in the same
+transaction, refuses without a reason, and needs rank 3. Either way the lot is
+emptied — found by driving the shelf, where a closed lot still printed its whole
+received quantity under "Remaining"; what arrived stays on `grn_line`, which is
+the record of what arrived. The lot's id is published at batch index 10, because
+every reader of that row is positional and without it a lot could be looked at
+and never closed.
+
+### `stock_move.value` is a magnitude, and the rule lives at the seam
+
+`value` is the money that moved and `qty` carries the direction — exactly as
+`unit_cost` sits beside a signed quantity. Most writers already kept it: a sale
+values `abs(qty) × avg_cost`, a delivery its line total, a dispatch `qty × cost`.
+Two did not — a count stored a NEGATIVE value on a shortfall, and voiding a sale
+negated the sale's own — so the column meant two different things depending on
+which handler had written the row, and the one thing that sums it (`applySale()`,
+into COGS) would have read a negative as a credit the first time it met one.
+Nothing sums it across reasons today, which is exactly why this cost nothing to
+leave and would have cost something the first time anybody valued the shelf out
+of this table.
+
+Enforced in `moveStock()` rather than at seventeen call sites, so a new writer
+converges by construction and cannot reintroduce the second meaning. The signed
+figure is **not lost**: `count_line.variance` and `count_line.value` keep it,
+because the count sheet's whole subject is the direction, and the journal reads
+that one. Rows written before the rule are left as they were posted.
+
+**And the site queue's indent lane could never fire.** It read
+`r.to === o.id` — the outlet an indent is asked OF — and an outlet's schema
+holds only the indents it raised itself, so the predicate was structurally false
+for every row. The other store's indents are in the other store's schema, which
+belt one makes unreadable from here on purpose. What is open business at this
+location is what this location asked for and has not been sent.
+
+Measured by driving the shipped screens: Purchasing draws six deliveries with
+their vendors, "The store", their line counts, who signed for them and
+**AWAITING PRICE CHECK**; Indents draws both with their item counts and
+needed-by dates, one OPEN and one APPROVED; Dispatches draws
+`LOYC-DSP-000001 · Loy Cafe · Loy Owner · Loy Owner · MVR 38 · SHORT`; the FEFO
+shelf draws its lots wearing USED and WASTED and a derived date as `≈ 03 Sept 26`;
+"New indent" on a single-outlet business refuses by name and opens no form; and
+a lot closed through the sheet lands `LIVE-LOT-1 | 0.0000 | used` with the
+reason on the trail.
+
+**Still stated rather than fixed.** Nothing draws a batch DOWN as stock is
+consumed — FEFO picking at the point of sale is a subsystem, not a fix, and the
+shelf is an ORDER a kitchen works in rather than an allocation. `chain.outlet`
+is scoped by RLS to the signed-in outlet at bootstrap, so `K().OUTLETS` carries
+one row and a dispatch's destination renders as its id where the till cannot
+name it — `locName()`'s documented last resort. And an indent's PRIORITY has no
+column: the field is gone from the form and the column from the screen rather
+than published as a word nobody set.
 
 ## The outlet does not always keep the id this device minted
 
@@ -5901,7 +6063,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 581 tests
+npm test                          # 588 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

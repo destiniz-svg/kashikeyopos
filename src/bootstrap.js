@@ -130,6 +130,42 @@ async function buildBootstrap(ctx) {
         + ' use_by, use_by_derived, location_id, delivery_id, state FROM batch'
         + " WHERE state IN ('holding','open') OR received_at > now() - interval '30 days'"
         + ' ORDER BY use_by NULLS LAST, received_at DESC LIMIT 300'],
+      /* PURCHASING, INDENTS, DISPATCHES AND PRODUCTION. All four were
+         published as literal empty arrays, one key each — so each of those
+         four screens read only what the browser
+         in front of you had created in this session, over four tables the
+         outlet has been filling since it was provisioned. Same shape as
+         `ledger` and `batches` one rail along, and as `oset` and
+         `KPOS.VENDORS` before them: read, published, never filled.
+
+         Bounded like every other read here. The lines are aggregated in the
+         query rather than joined and regrouped in Node, so a delivery with
+         forty lines is one row on the wire and not forty. */
+      deliveries: ['SELECT d.id, d.grn_no, d.supplier_id, d.business_date, d.at,'
+        + ' d.received_by, d.priced, d.net, d.total, d.location_id, d.note,'
+        + " coalesce(json_agg(json_build_object('ing', gl.ingredient_id,"
+        + " 'qty', gl.qty, 'rate', gl.unit_price, 'total', gl.line_total)"
+        + " ORDER BY gl.id) FILTER (WHERE gl.id IS NOT NULL), '[]') AS lines,"
+        + ' max(vi.invoice_no) AS invoice_no'
+        + ' FROM delivery d LEFT JOIN grn_line gl ON gl.delivery_id = d.id'
+        + ' LEFT JOIN vendor_invoice vi ON vi.delivery_id = d.id'
+        + ' GROUP BY d.id ORDER BY d.at DESC LIMIT 300'],
+      indents: ['SELECT i.id, i.pr_no, i.to_outlet, i.at, i.needed_by, i.raised_by,'
+        + ' i.status, i.note,'
+        + " coalesce(json_agg(json_build_object('ing', il.ingredient_id,"
+        + " 'qty', il.qty, 'sent', il.sent_qty) ORDER BY il.id)"
+        + " FILTER (WHERE il.id IS NOT NULL), '[]') AS lines"
+        + ' FROM indent i LEFT JOIN indent_line il ON il.indent_id = i.id'
+        + ' GROUP BY i.id ORDER BY i.at DESC LIMIT 200'],
+      dispatches: ['SELECT d.id, d.dsp_no, d.indent_id, d.to_outlet, d.at, d.sent_by,'
+        + ' d.received_at, d.received_by, d.status, d.value,'
+        + " coalesce(json_agg(json_build_object('ing', dl.ingredient_id,"
+        + " 'qty', dl.qty, 'cost', dl.unit_cost, 'got', dl.received_qty)"
+        + " ORDER BY dl.id) FILTER (WHERE dl.id IS NOT NULL), '[]') AS lines"
+        + ' FROM dispatch d LEFT JOIN dispatch_line dl ON dl.dispatch_id = d.id'
+        + ' GROUP BY d.id ORDER BY d.at DESC LIMIT 200'],
+      productions: ['SELECT id, ingredient_id, qty, unit_cost, at, by_staff, note'
+        + ' FROM production_batch ORDER BY at DESC LIMIT 200'],
       accounts: ['SELECT * FROM account ORDER BY pos'],
       employees: ['SELECT * FROM employee WHERE active ORDER BY name'],
       opex: ['SELECT * FROM opex WHERE active ORDER BY category'],
@@ -179,6 +215,10 @@ async function buildBootstrap(ctx) {
     const tables = q.tables;
     const moves = q.moves;
     const batchRows = q.batchRows;
+    const deliveries = q.deliveries;
+    const indents = q.indents;
+    const dispatches = q.dispatches;
+    const productions = q.productions;
 
 
     const setting = kv(chainSettings.rows);
@@ -186,6 +226,15 @@ async function buildBootstrap(ctx) {
     const gstRule = setting.gst_registration || {};
     const rolled = q.turnover.rows[0] || {};
     const ingById = index(ingredients.rows, 'id');
+    /* WHO DID THIS, in the words the screens print. Every one of the four
+       collections below carries a staff uuid in a column headed "Received by",
+       "Requested by", "Dispatched by" or "Produced by", and a uuid in that
+       column is not an answer anybody reads. The roster is already in hand;
+       an id nobody on it matches is left as an em dash rather than printed
+       raw — a person who has since left is still a person, and their name is
+       on the row that recorded the act, not derivable from a deleted one. */
+    const staffByIdName = index(staff.rows, 'id');
+    const staffName = (id) => (id && staffByIdName[id] && staffByIdName[id].name) || '\u2014';
     const recipeByItem = group(recipeLines.rows, 'item_id');
     const unitsByIng = group(units.rows, 'ingredient_id');
     const modsByItem = group(itemMods.rows, 'item_id');
@@ -548,7 +597,13 @@ async function buildBootstrap(ctx) {
         excelDay(r.received_at), excelDay(r.use_by), num(r.unit_cost),
         num(r.qty),
         r.state === 'holding' || r.state === 'open' ? 'active' : r.state,
-        r.use_by_derived === true
+        r.use_by_derived === true,
+        /* 10: the lot's own id, appended because every reader of this row is
+           positional. Without it a lot could be looked at and never closed —
+           `batch.state` has carried holding · open · used · wasted since the
+           schema was written and nothing has ever written it, so every lot a
+           delivery stamps sat on the FEFO shelf for ever. */
+        r.id
       ]),
       logs: [],
       /* Only what `chain.supplier` actually holds. A kind, a credit limit and
@@ -560,8 +615,90 @@ async function buildBootstrap(ctx) {
         email: r.email || '', tin: r.trn || '', terms: r.terms_days,
         lead: r.lead_days, status: r.active === false ? 'inactive' : 'active'
       })),
-      purch: [], reqs: [],
-      disp: [], prod: [], roles: []
+      /* THE FOUR COLLECTIONS THAT WERE LITERAL EMPTY ARRAYS, in the shapes
+         the four screens read. A staff uuid is resolved to the name the
+         screens print — every one of these columns is "who did this", and a
+         uuid in that column is not an answer anybody reads. */
+      purch: deliveries.rows.map((r) => ({
+        no: r.grn_no,
+        // The supplier id is a UUID and stays a string. `payables()` used to
+        // compare it with `+g.vendor`, which is NaN for every one of them.
+        vendor: r.supplier_id,
+        // Which OUTLET signed for it — the list is scoped on this, and a
+        // group-scope role reads the estate through it.
+        branch: ctx.outletId,
+        // WHERE IT LANDED (053), which is what the column is labelled. NULL
+        // is "the store", the answer locName() already gives in words.
+        loc: r.location_id || null,
+        date: String(r.business_date).slice(0, 10),
+        inv: r.invoice_no || '',
+        lines: (r.lines || []).map((l) => [l.ing, num(l.qty), num(l.rate)]),
+        total: num(r.priced ? r.total : 0),
+        /* PRICED OR NOT IS THE STATE, and it is the one the screen already
+           draws: `received` is a delivery a manager has costed — which is
+           what makes it a payable — and `unpriced` is one still waiting on
+           that check. The screen's own STATE map has carried
+           "Awaiting price check" since it was written and nothing could ever
+           produce it. */
+        status: r.priced ? 'received' : 'unpriced',
+        by: staffName(r.received_by),
+        notes: r.note || ''
+      })),
+      reqs: indents.rows.map((r) => ({
+        no: r.pr_no,
+        // An indent is raised BY this outlet and fulfilled by another; the
+        // table holds only the other end, because this end is the schema.
+        from: ctx.outletId,
+        to: r.to_outlet,
+        by: staffName(r.raised_by),
+        // Approving is a separate act and now has a handler; until somebody
+        // does it the row carries nobody, not a name the screen invented.
+        // `indent` records THAT it was approved and not by whom — there is no
+        // column — so the screen shows the state and never a name it guessed.
+        appr: '',
+        /* PRIORITY IS NOT PUBLISHED, because `indent` has no column for it —
+           the old form collected one and there was nowhere for it to land, so
+           the screen's Priority column would have rendered the same invented
+           word down every row. The column is gone from the screen with the
+           field, and a key nobody reads is not published either. */
+        status: r.status,
+        needed: r.needed_by ? String(r.needed_by).slice(0, 10) : null,
+        lines: (r.lines || []).map((l) => [l.ing, num(l.qty), num(l.sent)]),
+        notes: r.note || ''
+      })),
+      disp: dispatches.rows.map((r) => ({
+        no: r.dsp_no,
+        from: ctx.outletId,
+        to: r.to_outlet,
+        by: staffName(r.sent_by),
+        rcv: r.received_by ? staffName(r.received_by) : '',
+        total: num(r.value),
+        status: r.status,
+        indent: r.indent_id || null,
+        lines: (r.lines || []).map((l) => [l.ing, num(l.qty), num(l.cost),
+          l.got == null ? null : num(l.got)])
+      })),
+      /* PRODUCTION IS ONE ACT, NOT TWO. The screen's guide described starting
+         a batch and completing it later, and `H.produce` has always done the
+         whole thing in one transaction — it consumes the components and knows
+         the unit cost at that moment, because the cost IS what the components
+         cost. There is no in-progress state on the table and none is invented
+         here. `production_batch` carries no document number either, so the
+         row is named by its own id rather than by a series it is not in. */
+      prod: productions.rows.map((r) => ({
+        no: 'PRD-' + String(r.id).slice(0, 6).toUpperCase(),
+        // No `branch`: `production_batch` records no location and the screen
+        // no longer claims one. `status` stays, because the site queue reads
+        // it to decide what is still waiting here.
+        item: r.ingredient_id, qty: num(r.qty),
+        cost: num(r.unit_cost), status: 'completed',
+        by: staffName(r.by_staff), notes: r.note || ''
+      })),
+      /* The `roles` key is gone rather than filled. Nothing has ever read
+         `KPOS_RAW.roles` — every reader in the terminal takes `K().ROLES`,
+         the shipped catalogue in `app/kashikeyo-data.js`, and the RANK is
+         what the server enforces underneath it. A key nobody reads is a key
+         the next person writes a query against. */
     };
 
     return { kpos, raw, ingredients: ingById };

@@ -9717,9 +9717,16 @@ class Component extends DCLogic {
   // module itself renders, filtered to this location.
   siteQueues() {
     const o = this.outlet(), raw = window.KPOS_RAW || {}, K0 = K();
-    const done = (st) => /received|complete|accepted|closed|posted|rejected|cancel/i.test(st || "");
+    const done = (st) => /received|complete|accepted|closed|posted|rejected|cancel|fulfilled/i.test(st || "");
     const grnOpen = (raw.purch || []).filter((p) => p.branch === o.id && !done(p.status));
-    const indentOpen = (raw.reqs || []).filter((r) => r.to === o.id && !done(r.status));
+    /* AN INDENT THIS OUTLET RAISED, NOT ONE RAISED AT IT. This read
+       `r.to === o.id` — the outlet an indent is ASKED OF — and an outlet's
+       schema holds only the indents it raised itself, so the predicate was
+       structurally false for every row and this lane could never fire. The
+       other store's indents are in the other store's schema, which belt one
+       makes unreadable from here on purpose. What is open business at this
+       location is what this location asked for and has not been sent. */
+    const indentOpen = (raw.reqs || []).filter((r) => r.from === o.id && !done(r.status));
     const dispOpen = (raw.disp || []).filter((d) => d.from === o.id && !done(d.status));
     const prodOpen = (raw.prod || []).filter((p) => !done(p.status));
     // Count schedule is category frequency, which is real data on kpos.cats.
@@ -12945,6 +12952,14 @@ class Component extends DCLogic {
      fallback stays for a row written before the receiving location was a
      control anybody could set, and an id that resolves to neither is printed
      as itself rather than dressed up as a record. */
+  /* SOMEWHERE ELSE IN THIS BUSINESS. Both transfer forms are dead ends on a
+     single-outlet customer — which is most of them — and a form whose only
+     dropdown has no options is the stuck `<select>` the GRN's receiving
+     location already paid for. So the two actions say what is true instead of
+     opening one. */
+  otherOutlets() {
+    return (K().OUTLETS || []).filter((o) => String(o.id) !== String(this.state.outletId));
+  }
   locName(id) {
     if (id === null || id === undefined || id === "") return "The store";
     const l = (K().LOCATIONS || []).find((x) => String(x.id) === String(id));
@@ -13000,8 +13015,9 @@ class Component extends DCLogic {
         const to = ((K().OUTLETS || []).find((o) => o.type === "main_store") || { id: 1 }).id;
         const no = this.nextNo("reqs", "PR-2026-");
         const lines = short.slice(0, 40).map((id) => [id, Math.max(1, Math.round((par(id) - this.bookOnHand(id)) * 100) / 100)]);
-        /* THE INDENT REACHES THE OUTLET. This went through `insertRow("reqs",
-           …)`, and `reqs` has no entry in COLLECTION_OP — so it queued
+        /* THE INDENT REACHES THE OUTLET. This went through the generic
+           back-office collection path, and `reqs` has no entry in
+           COLLECTION_OP — so it queued
            `requests_insert` with no payload, a kind with no handler, recorded
            `unmodelled` and answered success. The screen said a draft indent
            had been raised and no store on the estate had one.
@@ -13009,14 +13025,24 @@ class Component extends DCLogic {
            Queued explicitly rather than through the collection map, for the
            reason `grnSend()` is: `H.indent` allocates a document number and
            inserts a request, so it is not idempotent by content and the
-           holding pen must never re-send it. The local row stays, because the
-           Indents screen still reads its own collection. */
+           holding pen must never re-send it.
+
+           AND THE LOCAL ROW IS GONE WITH IT. The first version of this fix
+           queued the real op and ALSO kept the collection row beside it —
+           which, `reqs` having no entry in the map, queued a second
+           payloadless op on every press, and filed a row under a number this
+           BROWSER minted (`PR-2026-…`) that the outlet's own
+           (`LOYC-PR-000001`) can never reconcile against, so the pen would
+           re-send it once a session for ever. The outlet publishes `reqs` now,
+           so the answer arrives on the next bootstrap and there is nothing to
+           hold. */
         this.queue("indent", "Indent raised · " + no + " \u00b7 " + short.length + " below-par items \u00b7 by " + this.me(), "requests", {
           to: to, ref: no, needed: null,
           note: "auto-indent \u00b7 " + short.length + " items below par at " + this.outlet().code,
           lines: lines.map((l) => ({ ing: String(l[0]), qty: l[1] }))
         });
-        this.insertRow("reqs", { no: no, from: s.outletId, to: to, status: "pending", by: this.me(), appr: "", lines: lines, notes: "auto-indent · " + short.length + " items below par at " + this.outlet().code, priority: "normal", reject: "" }, "Indent raised " + no + " · " + short.length + " below-par items", "requests");
+        this.toast("Indent raised \u00b7 " + short.length + " below-par item"
+          + (short.length > 1 ? "s" : "") + " \u2014 the outlet numbers it, and a manager approves it before anything is picked");
         this.setState({ view: "requests" });
       } }, { label: "Stock adjustment", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }],
       cols: tab === 0
@@ -13169,15 +13195,19 @@ class Component extends DCLogic {
       query: ["Query raised", "err"], posted: ["Posted", "ok"]
     };
     return {
+      /* "SCAN INVOICE" IS GONE. There is no OCR anywhere in this build and
+         there never has been — the control minted a GRN number, attached
+         whichever supplier happened to sort first, and wrote a row through
+         the generic back-office collection path, which finds no entry in
+         COLLECTION_OP and queues a bare insert kind WITH NO PAYLOAD — one
+         with no handler,
+         recorded `unmodelled`, answered success. So it created a draft
+         delivery against a vendor nobody chose, in one browser, saying "lines
+         awaiting match" for a match nothing performs. Same class as the QR
+         modal's own token-rotation control, deleted for the same reason: a
+         control offering an act this build cannot make. Receiving a delivery
+         is one button, and it is the real one. */
       actions: [
-        {
-          label: "Scan invoice", go: () => {
-            if (!mayPrice) return this.toast("Scanning an invoice is a pricing job — sign the delivery in and a manager prices it", "warn");
-            const no = this.nextNo("purch", "GRN-2026-");
-            const v = (raw.vendors || [])[0] || { id: 1 };
-            this.insertRow("purch", { no: no, vendor: v.id, branch: this.state.outletId, inv: "", total: 0, status: "draft", by: this.me(), notes: "OCR draft \u2014 lines awaiting match" }, "Draft GRN " + no + " created from scan", "purchases");
-          }
-        },
         { label: mayPrice ? "Receive a delivery" : "Sign for a delivery", primary: true, go: () => {
           if (!this.canReceive()) return this.toast("Signing for a delivery needs receiving rights — ask a manager to add them", "warn");
           this.openForm("grn");
@@ -13202,7 +13232,12 @@ class Component extends DCLogic {
         return {
           on: stt === "unpriced" && mayPrice,
           go: stt === "unpriced" && mayPrice ? () => this.openForm("grnPrice", p) : null,
-          cells: [{ t: p.no, mono: 1 }, v.name || "\u2014", this.locName(p.branch), { t: p.inv || "\u2014", mono: 1 },
+          // WHERE IT LANDED, which is what the column is labelled. This drew
+          // `p.branch` — the OUTLET — down a list already scoped to one
+          // outlet, so it printed the same name on every row and told nobody
+          // anything. The delivery carries its own location since 053, and
+          // locName(null) is "The store", which is a real answer.
+          cells: [{ t: p.no, mono: 1 }, v.name || "\u2014", this.locName(p.loc), { t: p.inv || "\u2014", mono: 1 },
             { t: (p.lines || []).length ? String(p.lines.length) : "\u2014", c: (p.lines || []).length ? "var(--text)" : "var(--text-faint)" }, p.by,
             { t: this.cost$(p.total), c: this.canSeeCost() ? "var(--warn-bright)" : "var(--text-faint)", w: 600 },
             { t: sd[0], chip: this.chip(sd[1]) }]
@@ -13216,46 +13251,103 @@ class Component extends DCLogic {
     };
   }
 
+  /* APPROVING IS A DECISION AND IT NOW MAKES ONE. This screen's one action
+     went through `patchRows("reqs", …)`, which queues `reqs_update` — a kind
+     with no handler, recorded `unmodelled`, answered success — so the toast
+     said N indents were approved and not one row moved, on any install, ever.
+     Its filter could not have matched anyway: it looked for status "pending"
+     or "draft", and `indent.status` is a CHECK over open · approved · part ·
+     fulfilled · cancelled. Two independent reasons for the same nothing.
+
+     It queues `indent_approve` now — rank 3 at the door as well as here,
+     because a screen is not the only caller a door can have — and names the
+     indents rather than sending a filter the server would have to re-derive.
+
+     PRIORITY IS NOT PUBLISHED, because `indent` has no column for it: the
+     form collects it and there is nowhere for it to land. So the column is
+     gone and what replaced it is the two facts the table does hold — how many
+     items were asked for, and when they are needed. A column that renders an
+     empty string down every row is the invented figure this build refuses,
+     wearing a blank. */
   g_requests() {
     const raw = window.KPOS_RAW || {};
+    const open = (raw.reqs || []).filter((r) => /^open$/i.test(String(r.status || "")));
     return {
       actions: [
         {
-          label: "Approve all normal", go: () => {
-            const keys = (raw.reqs || []).filter((r) => r.priority === "normal" && /pending|draft/i.test(r.status)).map((r) => r.no);
-            if (!keys.length) return this.toast("No normal-priority requests are pending", "warn");
-            this.patchRows("reqs", keys, { status: "approved", appr: this.me() }, keys.length + " indent" + (keys.length > 1 ? "s" : "") + " approved", "requests");
+          label: "Approve the open ones", go: () => {
+            if (this.rank() < 3) return this.toast("Approving an indent needs a manager", "warn");
+            if (!open.length) return this.toast("No indent is waiting to be approved", "warn");
+            this.queue("indent_approve",
+              open.length + " indent" + (open.length > 1 ? "s" : "") + " approved \u00b7 " + this.me(),
+              "requests", { nos: open.map((r) => r.no) });
+            this.toast(open.length + " indent" + (open.length > 1 ? "s" : "") + " approved");
           }
         },
-        { label: "New indent", primary: true, go: () => this.openForm("indent") }
+        { label: "New indent", primary: true, go: () => {
+          if (!this.otherOutlets().length) {
+            return this.toast("An indent asks another location for stock, and this business has only " + this.outlet().name + " \u2014 a delivery from a supplier is the GRN screen", "warn");
+          }
+          this.openForm("indent");
+        } }
       ],
-      guideTitle: "Moving stock between locations", guide: ["The outlet raises an indent for what it needs", "A manager approves it — nothing moves on the request alone", "The store picks and dispatches against the approved indent", "The receiving outlet confirms, which is when its stock rises"],
-      
-      cols: [{ label: "Request", w: "1fr", mono: 1 }, { label: "From", w: "1.5fr" }, { label: "To", w: "1.5fr" }, { label: "Requested by", w: "1.1fr" }, { label: "Priority", w: ".9fr", a: "center" }, { label: "Approved by", w: "1.1fr" }, { label: "Status", w: ".9fr", a: "right" }],
+      guideTitle: "Moving stock between locations", guide: ["The outlet raises an indent for what it needs \u2014 one line per item", "A manager approves it \u2014 nothing moves on the request alone", "The store picks and dispatches against the approved indent, which is what moves the stock", "The dispatch is signed for when it lands, and that confirmation comes back onto the document"],
+
+      cols: [{ label: "Request", w: "1fr", mono: 1 }, { label: "From", w: "1.4fr" }, { label: "To", w: "1.4fr" }, { label: "Requested by", w: "1.1fr" }, { label: "Items", w: ".6fr", a: "right", mono: 1 }, { label: "Needed by", w: "1fr", mono: 1 }, { label: "Status", w: ".9fr", a: "right" }],
       rows: (raw.reqs || []).map((r) => ({
-        cells: [{ t: r.no, mono: 1 }, this.locName(r.from), this.locName(r.to), r.by, { t: r.priority, chip: this.chip(r.priority === "urgent" ? "err" : "mute") }, r.appr || "—", { t: r.status, chip: this.chip(this.statusTone(r.status)) }]
+        cells: [{ t: r.no, mono: 1 }, this.locName(r.from), this.locName(r.to), r.by,
+          { t: (r.lines || []).length ? String(r.lines.length) : "\u2014", c: (r.lines || []).length ? "var(--text)" : "var(--text-faint)" },
+          { t: r.needed || "\u2014", c: r.needed ? "var(--text)" : "var(--text-faint)" },
+          { t: r.status, chip: this.chip(this.statusTone(r.status)) }]
       })),
+      empty: "No indent has been raised at " + this.outlet().name + " yet. Raise one for what this outlet needs from another location \u2014 the lines on it are what the store picks against.",
       notes: [["Both sides can read it", "An indent is written in the requesting outlet's own schema and the dispatch in the fulfilling store's, so each side holds its own half and neither can read the other's tables at all. What crosses is the transfer itself, which is why a dispatch is a document rather than a shared row."]]
     };
   }
 
+  /* A DISPATCH NOBODY COULD EVER SIGN FOR. `dispatch.received_at`,
+     `received_by` and `status` have been on the table since the schema was
+     written and nothing has ever set any of them, so every transfer read
+     "in transit" for ever and the Received by column was a permanent dash.
+     `H.dispatch_receive` is the confirmation coming back, and the row is what
+     opens it.
+
+     WHAT THIS SCREEN CAN HONESTLY CLAIM. The old guide said the receiver
+     accepts "which credits their location" — a write in ANOTHER outlet's
+     schema, which belt one exists to make impossible from a till. Nothing has
+     ever done it and nothing here can. What is real is the sending half: the
+     stock leaves this store on save, the document travels, and the
+     confirmation is recorded against it. The receiving outlet posts its own
+     arrival at its own till. The guide says that instead of the thing the
+     isolation model forbids. */
   g_dispatches() {
     const raw = window.KPOS_RAW || {};
+    const enRoute = (raw.disp || []).filter((d) => !/^received$/i.test(String(d.status || "")));
     return {
       actions: [
         {
           label: "Print pick list", go: () => {
-            const open = (raw.disp || []).filter((d) => !/received/i.test(d.status));
-            this.info("Pick list", open.length + " dispatch" + (open.length === 1 ? "" : "es") + " not yet received",
-              open.length ? open.map((d) => [d.no + " → " + this.locName(d.to), MVRc(d.total)]) : [["Nothing to pick", "every dispatch is confirmed received", "t"]]);
+            this.info("Pick list", enRoute.length + " dispatch" + (enRoute.length === 1 ? "" : "es") + " not yet signed for",
+              enRoute.length ? enRoute.map((d) => [d.no + " \u2192 " + this.locName(d.to), MVRc(d.total)]) : [["Nothing to pick", "every dispatch has been signed for", "t"]]);
           }
         },
-        { label: "New dispatch", primary: true, go: () => this.openForm("dispatch") }
+        { label: "New dispatch", primary: true, go: () => {
+          if (!this.otherOutlets().length) {
+            return this.toast("A dispatch sends stock to another location, and this business has only " + this.outlet().name + " \u2014 stock leaving for any other reason is a write-off on Inventory", "warn");
+          }
+          this.openForm("dispatch");
+        } }
       ],
-      guideTitle: "Issuing stock", guide: ["Dispatch debits the sending location the moment you save", "Stock sits in transit — owned by neither side — until confirmed", "The receiver accepts, which credits their location", "A discrepancy at acceptance opens a variance, not a silent edit"],
-      
-      cols: [{ label: "Invoice", w: "1fr", mono: 1 }, { label: "From", w: "1.6fr" }, { label: "To", w: "1.6fr" }, { label: "Dispatched by", w: "1.1fr" }, { label: "Received by", w: "1.1fr" }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
-      rows: (raw.disp || []).map((d) => ({ cells: [{ t: d.no, mono: 1 }, this.locName(d.from), this.locName(d.to), d.by, d.rcv || "—", { t: MVRc(d.total), c: "var(--warn-bright)", w: 600 }, { t: d.status, chip: this.chip(this.statusTone(d.status)) }] }))
+      guideTitle: "Issuing stock", guide: ["Add a line for every item leaving \u2014 the value is the sum of the lines, never a figure typed over them", "Saving debits this store's shelf immediately, because the case has left the building", "The document travels with the goods; tap a row to record that it was signed for", "A line signed for short is filed short rather than received \u2014 those are different conversations"],
+
+      cols: [{ label: "Invoice", w: "1fr", mono: 1 }, { label: "From", w: "1.4fr" }, { label: "To", w: "1.4fr" }, { label: "Dispatched by", w: "1.1fr" }, { label: "Signed for by", w: "1.1fr" }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
+      rows: (raw.disp || []).map((d) => ({
+        on: !/^received$/i.test(String(d.status || "")),
+        go: /^received$/i.test(String(d.status || "")) ? null : () => this.openForm("dispatchReceive", d),
+        cells: [{ t: d.no, mono: 1 }, this.locName(d.from), this.locName(d.to), d.by, d.rcv || "\u2014", { t: MVRc(d.total), c: "var(--warn-bright)", w: 600 }, { t: d.status, chip: this.chip(this.statusTone(d.status)) }]
+      })),
+      empty: "Nothing has been dispatched from " + this.outlet().name + " yet. A dispatch is how stock leaves this store for another location, and it debits this shelf the moment it is saved.",
+      notes: [["Which half this screen holds", "The stock leaving is this store's own act and lands in this store's ledger the moment you save. What the receiving outlet does with it is written in THEIR schema, which no role here can reach \u2014 belt one, and it is the same fence that keeps another outlet out of this one. So the confirmation recorded here is the document being signed for, not the other shelf rising: they post their own arrival at their own till."]]
     };
   }
 
@@ -13275,10 +13367,19 @@ class Component extends DCLogic {
         },
         { label: "New batch", primary: true, go: () => this.openForm("prodbatch") }
       ],
-      guideTitle: "Producing in the kitchen", guide: ["Start the batch with its output item and expected quantity", "Inputs are consumed from the kitchen's own stock by recipe", "Completing the batch sets the true unit cost from what it consumed", "Yield below recipe posts the difference as a variance"],
-      
-      cols: [{ label: "Batch", w: "1.1fr", mono: 1 }, { label: "Kitchen", w: "1.6fr" }, { label: "Output item", w: "2fr" }, { label: "Qty", w: ".8fr", a: "right", mono: 1 }, { label: "Unit cost", w: "1fr", a: "right", mono: 1 }, { label: "Produced by", w: "1.1fr" }, { label: "Status", w: ".9fr", a: "right" }],
-      rows: (raw.prod || []).map((p) => ({ cells: [{ t: p.no, mono: 1 }, this.locName(p.branch), this.itemName(p.item), String(p.qty), MVR(p.cost), p.by, { t: p.status, chip: this.chip(this.statusTone(p.status)) }] }))
+      /* PRODUCTION IS ONE ACT. The old guide described starting a batch and
+         completing it later, and `H.produce` has always done the whole thing
+         in one transaction: it takes the components off the shelf, and the
+         unit cost IS what those components cost, known at that moment. There
+         is no in-progress state on `production_batch` and none is invented
+         here — the form used to ask for the unit cost the server derives,
+         which is two answers to one question, and the "Kitchen" column named
+         a location the table does not carry. */
+      guideTitle: "Producing in the kitchen", guide: ["Name the output item and how much the batch yields, in that item's base unit", "Add a line for every input it consumed \u2014 those come off the shelf on save", "The unit cost is what the inputs cost divided by the yield; it is derived, never typed", "The output goes on at that cost, which is what re-averages every dish drawing on it"],
+
+      cols: [{ label: "Batch", w: "1.1fr", mono: 1 }, { label: "Output item", w: "2.4fr" }, { label: "Yield", w: ".9fr", a: "right", mono: 1 }, { label: "Unit cost", w: "1fr", a: "right", mono: 1 }, { label: "Produced by", w: "1.2fr" }, { label: "Note", w: "1.4fr" }],
+      rows: (raw.prod || []).map((p) => ({ cells: [{ t: p.no, mono: 1 }, this.itemName(p.item), String(p.qty), MVR(p.cost), p.by, { t: p.notes || "\u2014", c: p.notes ? "var(--text)" : "var(--text-faint)" }] })),
+      empty: "No batch has been produced at " + this.outlet().name + " yet. A batch takes its inputs off the shelf and puts the output on at what those inputs actually cost."
     };
   }
 
@@ -13510,7 +13611,7 @@ class Component extends DCLogic {
         }
       ],
       cols: [{ label: "Batch", w: "1.2fr", mono: 1 }, { label: "Item", w: "1.8fr" }, { label: "Location", w: "1.2fr" }, { label: "Source", w: ".8fr" }, { label: "Received", w: ".9fr", a: "right", mono: 1 }, { label: "Use by", w: ".9fr", a: "right", mono: 1 }, { label: "Shelf life", w: ".9fr", a: "right", mono: 1 }, { label: "Remaining", w: ".9fr", a: "right", mono: 1 }, { label: "Tier", w: ".9fr", a: "right" }],
-      guideTitle: "First expiry, first out", guide: ["The table is the pick order — earliest use-by at the top", "Tap a tier to work only that shelf", "A date marked \u2248 was worked out from the item's shelf life, not read off the box", "Expired stock is still counted until it is written off"],
+      guideTitle: "First expiry, first out", guide: ["The table is the pick order \u2014 earliest use-by at the top", "Tap a tier to work only that shelf, or a row to close the lot", "A date marked \u2248 was worked out from the item's shelf life, not read off the box", "Finishing a lot moves no stock \u2014 it already left through the sales that used it. Throwing one away does, and books it"],
       rows: (raw.batches || [])
         .filter((b) => !sel || tierOf(b) === sel)
         // FEFO is an ordering, so the table IS the pick order: earliest use-by
@@ -13526,7 +13627,21 @@ class Component extends DCLogic {
              is the order a kitchen works its morning in and an estimate
              wearing a measurement's clothes is how it would start lying. */
           const est = b[9] === true;
-          return { cells: [
+          return {
+            /* A LOT CAN NOW LEAVE THE SHELF. Nothing has ever written
+               `batch.state`, so every lot a delivery stamped stayed here for
+               ever — the guide said so itself ("expired stock is still counted
+               until it is written off"), which was honest and was also the
+               whole defect: a write-off MOVES STOCK, and a lot that was
+               legitimately cooked through has already left the shelf through
+               the sales that consumed it. Writing it off a second time takes
+               the quantity twice. The sheet separates the two. */
+            on: /active/i.test(b[8]),
+            go: /active/i.test(b[8]) ? () => this.openForm("batchClose", {
+              id: b[10], lot: b[0], ing: b[1], qty: b[7], unit: su,
+              useBy: b[5] ? d(b[5]) : null, expired: t === "expired"
+            }) : null,
+            cells: [
             { t: b[0], mono: 1 },
             this.itemName(b[1]),
             this.locName(b[2]),
@@ -13536,7 +13651,7 @@ class Component extends DCLogic {
             { t: daysLeft == null ? "—" : daysLeft < 0 ? Math.abs(daysLeft) + "d ago" : daysLeft === 0 ? "today" : "in " + daysLeft + "d", mono: 1, c: T ? T[1] : "var(--text-faint)" },
             (Math.round(this.stockQty(it, b[7]) * 100) / 100) + " " + su,
             { t: T ? T[0] : b[8], chip: T ? [T[2], T[1]] : this.chip(this.statusTone(b[8])) }
-          ] };
+            ] };
         })
     };
   }
@@ -13562,14 +13677,20 @@ class Component extends DCLogic {
     return all
       .filter((g) => g.status === "received" && (g.total || 0) > 0 && (this.state.grnState || {})[g.no] !== "query")
       .map((g) => {
-        const v = (raw.vendors || []).find((x) => x.id === +g.vendor) || {};
+        /* A SUPPLIER ID IS A UUID. `+g.vendor` is NaN for every one of them,
+           so this found nobody, every payable read "Vendor undefined", and
+           `vendorAgeing()` bucketed the whole ledger under NaN — one row for
+           every supplier in the shop. Same `+id` class the GRN form, the
+           stock adjustment, the recipe line and the shared lines editor all
+           paid for one screen along; this is the last of them. */
+        const v = (raw.vendors || []).find((x) => String(x.id) === String(g.vendor)) || {};
         const terms = this.termDays(v);
         const due = this.dayNum(g.date) + terms;
         const settled = paid[g.no];
         const age = today - this.dayNum(g.date);
         const overdue = !settled && today > due;
         return {
-          no: g.no, inv: g.inv || "", date: g.date, vendor: v.name || "Vendor " + g.vendor, vendorId: +g.vendor,
+          no: g.no, inv: g.inv || "", date: g.date, vendor: v.name || "Vendor " + g.vendor, vendorId: String(g.vendor || ""),
           total: g.total, terms: terms, dueIn: due - today, age: age,
           bucket: settled ? "paid" : age <= 30 ? "current" : age <= 60 ? "d30" : age <= 90 ? "d60" : "d90",
           paid: settled ? settled.amt : 0, paidAt: settled ? settled.at : null, ref: settled ? settled.ref : "",
@@ -15493,10 +15614,10 @@ class Component extends DCLogic {
       .map((r) => [String(r.item || ""), +r.qty || 0, Math.round((+r.rate || 0) * 100) / 100]);
   }
   /* THE ONE SEAM A DELIVERY REACHES THE OUTLET THROUGH, and until now there
-     was none. Both halves of the GRN form called `insertRow("purch", …)` —
-     the generic back-office path, which looks up the collection in
-     COLLECTION_OP and, finding no entry for `purch`, falls through to
-     `queue("purchases_insert", label)` WITH NO PAYLOAD. That kind has no
+     was none. Both halves of the GRN form went through the generic
+     back-office collection path, which looks up the collection in
+     COLLECTION_OP and, finding no entry for `purch`, fell through to a bare
+     insert kind WITH NO PAYLOAD. That kind has no
      handler, so the outlet recorded it `unmodelled` and answered success:
      the counter read "GRN posted · 1 lines MVR 250" while no delivery row,
      no grn_line, no batch, no stock move, no document number and no ledger
@@ -16765,10 +16886,21 @@ class Component extends DCLogic {
       }
     });
   }
+  /* THE OUTLET'S OWN ANSWER, AND THIS DEVICE'S QUERY ON TOP OF IT. `unpriced`
+     is a state the screen's STATE map has drawn since it was written —
+     "Awaiting price check", the whole reason the pricing lane exists — and
+     nothing could ever produce it: `purch` was a literal empty array, and
+     this method mapped every non-draft row to "posted". So `awaitingCheck()`
+     returned nothing on every install, a manager was never told a delivery
+     was waiting on them, and the row a cashier signed in blind read as
+     finished. `delivery.priced` is the fact; the local override stays on top
+     because raising a query is this manager's decision and has not been sent
+     anywhere. */
   grnState(p) {
     const ov = (this.state.grnState || {})[p.no];
     if (ov) return ov;
-    return p.status === "draft" ? "draft" : "posted";
+    if (p.status === "draft") return "draft";
+    return p.status === "unpriced" ? "unpriced" : "posted";
   }
   // Received but unpriced: the stock is on the shelf and usable, the cost is
   // still the old average and nothing has been booked to the vendor. This is
@@ -17743,6 +17875,13 @@ class Component extends DCLogic {
     const storeOpts = sel((K0.OUTLETS || [])
       .filter((o) => String(o.id) !== String(this.state.outletId))
       .map((o) => ({ v: o.id, l: o.name })));
+    /* AND NOTHING IS PICKED FOR YOU. `openForm` seeds a select with its FIRST
+       option, so a bare `storeOpts` defaults an indent to whichever sister
+       outlet sorts first — a transfer attributed to the wrong store, which is
+       the Role box defect wearing a different label. The two forms that name
+       another outlet lead with the ask, and both refuse an empty answer by
+       name. */
+    const xferOpts = [{ v: "", l: "Pick the location\u2026" }].concat(storeOpts);
     /* A SUPPLIER IS A DECISION, so nothing is chosen by default — `openForm`
        seeds the first option, and defaulting a delivery to whichever supplier
        sorts first is the defect the Role box already paid for. And the list
@@ -19667,60 +19806,179 @@ class Component extends DCLogic {
           this.showRecost(row.no, this.recostFromLines(lines, "Price check " + row.no));
         }
       },
+      /* ── THE THREE FORMS THAT CARRIED NO LINES ───────────────────────────
+         `H.indent`, `H.dispatch` and `H.produce` have all taken lines since
+         they were written, and not one of these forms collected any. All
+         three saved through `insertRow(collection, …)`, and none of `reqs`,
+         `disp` or `prod` is in COLLECTION_OP — so each queued
+         `<collection>_insert` WITH NO PAYLOAD: a kind with no handler,
+         recorded `unmodelled`, answered success. An indent nobody could pick
+         against, a dispatch that moved no stock, a batch that consumed
+         nothing, each under a toast saying it was done.
+
+         Two of them also asked for a figure the server DERIVES — the
+         dispatch's value and the batch's unit cost, both of which are the sum
+         of the lines that were never sent. Two answers to one question is the
+         defect the GRN's "invoice total as printed" already settled the right
+         way round: the lines are the figure, and a typed total cross-checks
+         them or is absent.
+
+         Like `grnSend()`, they queue EXPLICITLY and never through
+         COLLECTION_OP: all three allocate a document number or insert a
+         batch, so none is idempotent by content, and handing one to the
+         holding pen would be a second dispatch of the same stock. */
       indent: {
-        title: "New indent", sub: "Stock request between two locations", save: "Raise indent",
-        foot: "The request is written in this outlet's own schema and the dispatch in the fulfilling store's, so neither side can read the other's tables at all. What travels between them is the document — which is why a transfer is signed for at both ends rather than shared as one row.",
+        title: "New indent", sub: "What this outlet needs from another location", save: "Raise indent",
+        foot: "The request is written in this outlet's own schema and the dispatch in the fulfilling store's, so neither side can read the other's tables at all. What travels between them is the document \u2014 which is why a transfer is signed for at both ends rather than shared as one row.",
         fields: [
-          { k: "from", label: "Requesting location", options: outletOpts, full: 1 },
-          { k: "to", label: "Fulfilled by", options: storeOpts, full: 1 },
-          { k: "priority", label: "Priority", options: [{ v: "normal", l: "Normal" }, { v: "urgent", l: "Urgent" }] },
-          { k: "notes", label: "What is needed", v: "", full: 1 }
-        ],
-        onSave: (v) => {
-          if (+v.from === +v.to) return this.toast("Pick two different locations", "warn");
-          const no = this.nextNo("reqs", "PR-2026-");
-          this.insertRow("reqs", {
-            no: no, from: +v.from, to: +v.to, status: "pending", by: this.me(), appr: "",
-            notes: v.notes || "indent", priority: v.priority, reject: ""
-          }, "Indent raised · " + no, "requests");
-        }
-      },
-      dispatch: {
-        title: "New dispatch", sub: "Issue stock out of a store", save: "Dispatch",
-        foot: "A dispatch is a two-sided document: it debits the sending location on save and credits the receiver only when they confirm.",
-        fields: [
-          { k: "from", label: "From", options: storeOpts, full: 1 },
-          { k: "to", label: "To", options: outletOpts, full: 1 },
-          { k: "total", label: "Value MVR", v: "0" },
+          { k: "to", label: "Fulfilled by", options: xferOpts, full: 1 },
+          { k: "needed", label: "Needed by (YYYY-MM-DD)", v: "" },
+          { k: "lines", kind: "lines", label: "What is needed \u2014 item and how much", options: itemOpts, costed: 0, full: 1 },
           { k: "notes", label: "Notes", v: "", full: 1 }
         ],
         onSave: (v) => {
-          if (+v.from === +v.to) return this.toast("Pick two different locations", "warn");
-          const no = this.nextNo("disp", "INV-2026-");
-          this.insertRow("disp", {
-            no: no, from: +v.from, to: +v.to, total: +v.total || 0, status: "in_transit",
-            by: this.me(), rcv: "", notes: v.notes || "stock issue"
-          }, "Dispatched · " + no, "dispatches");
+          const to = String(v.to || "");
+          if (!to) return this.toast("Pick the location this is asked of", "warn");
+          if (String(to) === String(this.state.outletId)) return this.toast("An outlet cannot indent from itself", "warn");
+          const lines = this.grnLines(v.lines);
+          if (!lines.length) return this.toast("Add at least one item \u2014 an indent with no lines asks for nothing", "warn");
+          const bad = lines.find((L) => !L[0] || L[1] <= 0);
+          if (bad) return this.toast("Every line needs an item and a quantity above zero", "warn");
+          const needed = String(v.needed || "").trim();
+          if (needed && !/^\d{4}-\d{2}-\d{2}$/.test(needed)) return this.toast("Date must be written as YYYY-MM-DD", "warn");
+          // The document number is the OUTLET's — `H.indent` allocates it from
+          // chain.doc_series, which is a statutory sequence and cannot be
+          // minted on a device that has been dark all evening.
+          this.queue("indent", "Indent raised \u00b7 " + lines.length + " item" + (lines.length > 1 ? "s" : "")
+            + " \u00b7 " + this.locName(to), "requests",
+          { to: to, needed: needed || null, note: String(v.notes || "").trim() || null,
+            lines: lines.map((L) => ({ ing: L[0], qty: L[1] })) });
+          this.setState({ modal: null });
+          this.toast("Indent raised \u00b7 " + lines.length + " item" + (lines.length > 1 ? "s" : "") + " \u2014 a manager approves it before anything is picked");
+        }
+      },
+      dispatch: {
+        title: "New dispatch", sub: "Issue stock out of this store", save: "Dispatch",
+        foot: "Saving debits this store's shelf immediately, because the case has left the building. The value is the sum of the lines. The receiving outlet posts its own arrival at its own till \u2014 its schema is one no role here can reach.",
+        fields: [
+          { k: "to", label: "To", options: xferOpts, full: 1 },
+          { k: "lines", kind: "lines", label: "What is leaving \u2014 item, quantity, cost", options: itemOpts, costed: 1, full: 1 },
+          { k: "notes", label: "Notes", v: "", full: 1 }
+        ],
+        onSave: (v) => {
+          const to = String(v.to || "");
+          if (!to) return this.toast("Pick where it is going", "warn");
+          if (String(to) === String(this.state.outletId)) return this.toast("A store cannot dispatch to itself", "warn");
+          const lines = this.grnLines(v.lines);
+          if (!lines.length) return this.toast("Add at least one item \u2014 a dispatch with no lines moves no stock", "warn");
+          const bad = lines.find((L) => !L[0] || L[1] <= 0);
+          if (bad) return this.toast("Every line needs an item and a quantity above zero", "warn");
+          const total = Math.round(lines.reduce((a, L) => a + L[1] * L[2], 0) * 100) / 100;
+          this.queue("dispatch", "Dispatched \u00b7 " + lines.length + " line" + (lines.length > 1 ? "s" : "")
+            + " " + MVRc(total) + " \u2192 " + this.locName(to), "dispatches",
+          { to: to, note: String(v.notes || "").trim() || null,
+            lines: lines.map((L) => ({ ing: L[0], qty: L[1], cost: L[2] })) });
+          this.setState({ modal: null });
+          this.toast("Dispatched \u00b7 " + MVRc(total) + " \u2014 this store's shelf is debited now");
+        }
+      },
+      /* SIGNING FOR A DISPATCH. The receiving quantities default to what was
+         sent, because that is the ordinary case and retyping every line to
+         confirm it arrived is how a confirmation stops being read. A line
+         changed downwards files the document `short` rather than `received`.
+         Recording the receipt is the sender's own act on their own document;
+         it moves no stock here, because the stock left on dispatch. */
+      dispatchReceive: {
+        title: "Sign for this dispatch", sub: "Record that it landed", save: "Record it",
+        foot: "This records the confirmation coming back onto the document. It moves no stock \u2014 the case left this shelf when it was dispatched, and the receiving outlet posts its own arrival in its own schema, which no role here can write to.",
+        pre: () => {
+          const d = ((this.state.modal || {}).edit) || {};
+          return { lines: (d.lines || []).map((L) => ({ item: L[0], qty: String(L[1]), rate: "0" })) };
+        },
+        fields: [
+          { k: "lines", kind: "lines", label: "What actually arrived \u2014 correct any line that came up short", options: itemOpts, costed: 0, full: 1 }
+        ],
+        onSave: (v, edit) => {
+          const d = edit || {};
+          if (!d.no) return this.toast("That dispatch has not reached the outlet yet", "warn");
+          const lines = this.grnLines(v.lines);
+          const sent = {};
+          (d.lines || []).forEach((L) => { sent[String(L[0])] = +L[1] || 0; });
+          const short = lines.some((L) => (+L[1] || 0) < (sent[String(L[0])] || 0) - 0.0001);
+          this.queue("dispatch_receive", d.no + " signed for" + (short ? " \u00b7 SHORT" : ""), "dispatches",
+            { no: d.no, lines: lines.map((L) => ({ ing: L[0], qty: L[1] })) });
+          this.setState({ modal: null });
+          this.toast(short
+            ? d.no + " filed short \u2014 the lines that came up short are on the document"
+            : d.no + " signed for");
+        }
+      },
+      /* TWO EXITS FROM THE SHELF, AND ONLY ONE OF THEM TOUCHES STOCK.
+         "Finished" is the ordinary one: the lot was cooked through, the stock
+         left with the sales that consumed it, and the ledger already carries
+         every one of them — so closing it moves nothing, and saying so on the
+         sheet is what stops somebody reaching for the write-off instead and
+         taking the quantity twice. "Thrown away" is a write-off and is booked
+         as one, Dr 5100 / Cr 1200, in the same transaction that closes the
+         lot. Rank 3, because writing stock off is a manager's decision and
+         the door checks the same rung. */
+      batchClose: {
+        title: "Close this lot", sub: "It is finished, or it went in the bin", save: "Close the lot",
+        foot: "A lot that was cooked through has already left the shelf \u2014 every sale that used it moved its own stock, so finishing it here moves none and changes no figure. A lot that was thrown away has NOT left the shelf, so that one writes off what is left at the lot's own cost and books it to 5100.",
+        pre: () => {
+          const b = ((this.state.modal || {}).edit) || {};
+          return { how: b.expired ? "wasted" : "used", note: "" };
+        },
+        fields: [
+          { k: "how", label: "What happened to it", options: [
+            { v: "used", l: "Finished \u2014 it was all used (moves no stock)" },
+            { v: "wasted", l: "Thrown away \u2014 write off what is left" }
+          ], full: 1 },
+          { k: "note", label: "Why", v: "", full: 1 }
+        ],
+        onSave: (v, edit) => {
+          const b = edit || {};
+          if (!b.id) return this.toast("That lot has not reached the outlet yet", "warn");
+          const wasted = v.how === "wasted";
+          if (wasted && this.rank() < 3) return this.toast("Writing stock off needs a manager", "warn");
+          if (wasted && !String(v.note || "").trim()) {
+            return this.toast("Say why it was thrown away \u2014 a write-off with no reason is unauditable", "warn");
+          }
+          this.queue("batch_close", "Lot " + b.lot + " " + (wasted ? "written off" : "finished")
+            + " \u00b7 " + this.itemName(b.ing), "batches",
+          { batchId: b.id, state: wasted ? "wasted" : "used", note: String(v.note || "").trim() || null });
+          this.setState({ modal: null });
+          this.toast(wasted
+            ? "Lot " + b.lot + " written off \u2014 " + b.qty + " " + (b.unit || "") + " off the shelf and booked to 5100"
+            : "Lot " + b.lot + " closed \u2014 nothing moved, the stock left with the sales that used it");
         }
       },
       prodbatch: {
-        title: "New production batch", sub: "Central kitchen output", save: "Start batch",
-        foot: "Output quantity is in the item base unit; unit cost is computed from the consumed inputs when the batch is completed.",
+        title: "New production batch", sub: "What the kitchen made, and what it took to make it", save: "Post batch",
+        foot: "The inputs come off the shelf on save and the output goes on at what they cost \u2014 their total divided by the yield. The unit cost is derived, never typed: a batch whose cost was keyed by hand is a batch whose margin is somebody's guess.",
         fields: [
-          // A kitchen is a place inside this outlet, not another outlet.
-          { k: "branch", label: "Kitchen", options: locOpts, full: 1 },
           { k: "item", label: "Output item", options: itemOpts, full: 1 },
-          { k: "qty", label: "Qty (base unit)", v: "10000" },
-          { k: "cost", label: "Unit cost MVR", v: "0" }
+          { k: "qty", label: "Yield (in the output item's base unit)", v: "" },
+          { k: "lines", kind: "lines", label: "What it consumed \u2014 item, quantity, cost", options: itemOpts, costed: 1, full: 1 },
+          { k: "notes", label: "Notes", v: "", full: 1 }
         ],
         onSave: (v) => {
+          const item = String(v.item || "");
+          if (!item) return this.toast("Pick the item this batch produces", "warn");
           const qty = +v.qty || 0;
-          if (qty <= 0) return this.toast("Output quantity is required", "warn");
-          const no = this.nextNo("prod", "PRD-2026-");
-          this.insertRow("prod", {
-            no: no, branch: +v.branch, item: +v.item, qty: qty, status: "in_progress",
-            by: this.me(), cost: +v.cost || 0, notes: "batch started"
-          }, "Batch started · " + no, "production");
+          if (qty <= 0) return this.toast("Say how much the batch yields \u2014 the unit cost is that total divided by it", "warn");
+          const lines = this.grnLines(v.lines);
+          if (!lines.length) return this.toast("Add what the batch consumed \u2014 a batch with no inputs costs nothing and takes nothing off the shelf", "warn");
+          const bad = lines.find((L) => !L[0] || L[1] <= 0);
+          if (bad) return this.toast("Every line needs an item and a quantity above zero", "warn");
+          const cost = Math.round(lines.reduce((a, L) => a + L[1] * L[2], 0) * 100) / 100;
+          this.queue("produce", "Batch posted \u00b7 " + this.itemName(item) + " \u00b7 " + qty
+            + " at " + MVRc(Math.round((cost / qty) * 100) / 100) + " each", "production",
+          { ing: item, qty: qty, note: String(v.notes || "").trim() || null,
+            components: lines.map((L) => ({ ing: L[0], qty: L[1], cost: L[2], value: Math.round(L[1] * L[2] * 100) / 100 })) });
+          this.setState({ modal: null });
+          this.toast("Batch posted \u00b7 " + this.itemName(item) + " \u00b7 " + MVRc(cost) + " of inputs at "
+            + MVRc(Math.round((cost / qty) * 100) / 100) + " each");
         }
       },
       printerConn: {

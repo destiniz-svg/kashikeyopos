@@ -742,6 +742,23 @@ async function moveStock(c, ctx, m) {
     if (cost) value = r2(Math.abs(qty) * num(cost.avg_cost));
   }
 
+  /* ONE RULE FOR `value`, KEPT HERE BECAUSE THIS IS WHERE EVERY MOVE PASSES.
+     `stock_move.value` is the MONEY THAT MOVED and `qty` carries the
+     direction — exactly as `unit_cost` sits beside a signed quantity. Most
+     writers already kept it (a sale values `abs(qty) × avg_cost`, a delivery
+     its line total, a dispatch `qty × cost`), and two did not: a count stored
+     a NEGATIVE value on a shortfall, and voiding a sale negated the sale's
+     own. So the column meant two different things depending on which handler
+     had written the row, and the one thing that sums it — `applySale()`,
+     into COGS — would have read a negative as a credit if it had ever met
+     one. Nothing sums it across reasons today, which is exactly why this cost
+     nothing to leave and would have cost something the first time anybody
+     valued the shelf out of this table.
+
+     Enforced at the seam rather than at seventeen call sites, so a new writer
+     converges by construction and cannot reintroduce the second meaning. */
+  value = Math.abs(r2(value));
+
   const row = await one(c,
     'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason,'
     + ' location_id, sale_id, batch_id, note, business_date, by_staff, device_id)'
@@ -1244,6 +1261,10 @@ H.count_post = async (c, p, ctx) => {
       [id, l.ing, expected, counted, variance, lineValue]);
     // A count posts a MOVE, it does not overwrite a balance: the ledger stays
     // the story of what happened, and the variance is visible for ever.
+    /* The SIGNED variance is kept on `count_line`, where the direction is the
+       whole subject, and the journal below reads that one. What reaches
+       `stock_move.value` is a magnitude — see moveStock(), which is where that
+       rule is kept for every writer at once. */
     if (Math.abs(variance) > 0.0001) {
       await moveStock(c, ctx, { ing: l.ing, qty: variance, cost: num(l.cost),
         value: lineValue, reason: 'audit', note: 'Stock count' });
@@ -1395,10 +1416,20 @@ H.grn_receive = async (c, p, ctx) => {
     refuse('Pricing a delivery needs a manager');
   }
 
+  /* WHERE THE DELIVERY LANDED (053). The form asks once and applies it to
+     every line, so the delivery holds it too — the Purchases screen's own
+     "Receiving location" column had nothing else to read and rendered the
+     OUTLET, which is one constant down a list already scoped to one outlet.
+     Taken from the lines because that is where the op carries it, and only
+     where they agree: a delivery split across two shelves has no single
+     location, and naming one of them would be a guess printed as a fact. */
+  const locs = Array.from(new Set(lines.map((l) => l.loc || '')));
+  const deliveryLoc = locs.length === 1 ? (locs[0] || null) : null;
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['GRN']);
   const d = await one(c, 'INSERT INTO delivery (grn_no, po_id, supplier_id,'
-    + ' business_date, received_by, note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [no.no, p.po || null, vendorId, date, ctx.actor, p.note || null]);
+    + ' business_date, received_by, location_id, note)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+    [no.no, p.po || null, vendorId, date, ctx.actor, deliveryLoc, p.note || null]);
   for (const l of lines) {
     await c.query('INSERT INTO grn_line (delivery_id, ingredient_id, qty, unit,'
       + ' unit_price, line_total, use_by, lot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -1667,7 +1698,123 @@ H.dispatch = async (c, p, ctx) => {
   }
   await c.query('UPDATE dispatch SET value = $2 WHERE id = $1', [d.id, value]);
   if (p.indentId) await c.query("UPDATE indent SET status = 'fulfilled' WHERE id = $1", [p.indentId]);
+  await log(c, 'dispatch', 'dispatch', d.id, null, { no: no.no, lines: arr(p.lines).length, value });
   return { dispatchId: d.id, no: no.no, value };
+};
+
+/* APPROVING AN INDENT IS A DECISION, AND IT HAD NO HANDLER. The Indents
+   screen's "Approve all normal" went through `patchRows("reqs", …)`, which
+   queues `reqs_update` — a kind with no handler, recorded `unmodelled` and
+   answered success, under a toast saying N indents were approved. The screen's
+   own guide says "a manager approves it — nothing moves on the request alone",
+   which was true in the worst way: nothing moved, including the approval.
+
+   Rank 3, because that is what the guide promises and what the word means.
+   The status vocabulary is the COLUMN's — open · approved · part · fulfilled ·
+   cancelled — where the till had been writing "pending", a word the CHECK does
+   not permit and the screen's own filter then looked for. */
+H.indent_approve = async (c, p, ctx) => {
+  if (num(ctx.rank) < 3) {
+    throw Object.assign(new Error('Approving an indent needs a manager'), { status: 400 });
+  }
+  const ids = arr(p.ids).map(String).filter(Boolean);
+  const nos = arr(p.nos).map(String).filter(Boolean);
+  if (!ids.length && !nos.length) {
+    throw Object.assign(new Error('Name the indent to approve'), { status: 400 });
+  }
+  // Cast the COLUMN, never the array: `indent.id` is a uuid, and a malformed
+  // id then matches nothing instead of aborting the batch. Same rule flag_ack
+  // paid for once.
+  const q = await c.query("UPDATE indent SET status = 'approved'"
+    + " WHERE status = 'open' AND (id::text = ANY($1::text[]) OR pr_no = ANY($2::text[]))"
+    + ' RETURNING id, pr_no', [ids, nos]);
+  for (const r of q.rows) await log(c, 'indent_approve', 'indent', r.id, null, { no: r.pr_no });
+  return { approved: q.rows.length, nos: q.rows.map((r) => r.pr_no) };
+};
+
+/* A DISPATCH THAT NOBODY EVER SIGNED FOR. `dispatch.received_at`,
+   `received_by` and `status` have been on the table since the schema was
+   written and nothing has ever set any of them, so every transfer this build
+   has made reads "in transit" for ever and the screen's "Received by" column
+   is a permanent dash.
+
+   What this records is the SENDING store's half — the confirmation coming
+   back. The receiving outlet's stock rise is a write in ANOTHER schema, which
+   belt one exists to make impossible from here; the receiver posts their own
+   arrival at their own till. So this sets the document's state and the
+   received quantities, and the screen says which half that is rather than
+   claiming the transfer completed itself. A line received short is `short`,
+   not `received`, because those are different conversations. */
+H.dispatch_receive = async (c, p, ctx) => {
+  const d = await one(c, 'SELECT id, dsp_no, status FROM dispatch'
+    + ' WHERE id::text = $1 OR dsp_no = $1', [String(p.dispatchId || p.no || '')]);
+  if (!d) throw Object.assign(new Error('That dispatch is not on this outlet'), { status: 400 });
+  let short = false;
+  for (const l of arr(p.lines)) {
+    if (!l || !l.ing) continue;
+    const got = num(l.qty);
+    const r = await one(c, 'UPDATE dispatch_line SET received_qty = $3'
+      + ' WHERE dispatch_id = $1 AND ingredient_id = $2 RETURNING qty', [d.id, String(l.ing), got]);
+    if (r && got < num(r.qty) - 0.0001) short = true;
+  }
+  const state = short ? 'short' : 'received';
+  await c.query('UPDATE dispatch SET received_at = now(), received_by = $2, status = $3'
+    + ' WHERE id = $1', [d.id, ctx.actor, state]);
+  await log(c, 'dispatch_receive', 'dispatch', d.id, null, { no: d.dsp_no, status: state });
+  return { dispatchId: d.id, no: d.dsp_no, status: state };
+};
+
+/* A LOT LEAVES THE SHELF, AND UNTIL NOW IT NEVER COULD. `batch.state` has
+   carried holding · open · used · wasted since the schema was written and
+   NOTHING has ever written it, so every lot a delivery stamps sits on the FEFO
+   shelf for ever — the screen said so itself ("until somebody writes it off"),
+   which was honest and also the whole defect: a write-off MOVES STOCK, and a
+   lot that was legitimately cooked through has already left the shelf by the
+   sales that consumed it. Writing it off a second time would take the
+   quantity twice.
+
+   So the two exits are separated and only one of them touches stock:
+
+   - `used` — the lot is finished. Nothing moves. The stock left through the
+     sales that consumed it and the ledger already carries every one of them;
+   - `wasted` — it was thrown away. That IS a write-off, so it moves the
+     remaining quantity out at the lot's own cost and books it to 5100, in the
+     same transaction, rather than leaving a shelf that believes in a bin bag.
+
+   Marking a lot used moves nothing and says nothing untrue; that is the point
+   of having it. */
+H.batch_close = async (c, p, ctx) => {
+  const state = p.state === 'wasted' ? 'wasted' : 'used';
+  const b = await one(c, 'SELECT id, ingredient_id, lot, qty, unit_cost, location_id, state'
+    + ' FROM batch WHERE id::text = $1', [String(p.batchId || '')]);
+  if (!b) throw Object.assign(new Error('That lot is not on this outlet'), { status: 400 });
+  if (b.state === 'used' || b.state === 'wasted') {
+    return { batchId: b.id, state: b.state, already: true };
+  }
+  let moveId = null;
+  if (state === 'wasted' && num(b.qty) > 0) {
+    const value = r2(num(b.qty) * num(b.unit_cost));
+    const mv = await moveStock(c, ctx, { ing: b.ingredient_id, qty: -Math.abs(num(b.qty)),
+      cost: num(b.unit_cost), value: value, reason: 'waste', loc: b.location_id,
+      note: 'Lot ' + (b.lot || String(b.id).slice(0, 6)) + ' thrown away'
+        + (p.note ? ' \u2014 ' + String(p.note).slice(0, 120) : '') });
+    moveId = mv && mv.id;
+    if (value) {
+      await postJournal(c, ctx, [
+        { acct: '5100', dr: value, memo: 'Lot written off' },
+        { acct: '1200', cr: value }
+      ], 'stock', moveId, today(ctx), 'Lot written off');
+    }
+  }
+  /* AND THE LOT IS EMPTY, EITHER WAY. Found by driving the shelf: a closed
+     lot still printed its whole received quantity under "Remaining", so a
+     write-off read as 60 pcs still there and a finished lot as 24. Both are
+     closed for the same reason — nothing is left — and the quantity that WAS
+     received stays on `grn_line`, which is the record of what arrived. */
+  await c.query('UPDATE batch SET state = $2, qty = 0 WHERE id = $1', [b.id, state]);
+  await log(c, 'batch_close', 'batch', b.id, null,
+    { lot: b.lot, state: state, qty: num(b.qty), note: p.note || null });
+  return { batchId: b.id, state: state, moveId: moveId };
 };
 
 // The floor moving an order by hand: a waiter marks it served, a manager drags

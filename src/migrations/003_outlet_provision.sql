@@ -623,6 +623,11 @@ BEGIN
       net         numeric(12,2) NOT NULL DEFAULT 0,
       tax         numeric(12,2) NOT NULL DEFAULT 0,
       total       numeric(12,2) NOT NULL DEFAULT 0,
+      -- Where it landed (053). The form has one receiving-location select and
+      -- the op has always carried it onto every stock_move the delivery made;
+      -- the delivery itself had no column, so the Purchases screen's own
+      -- "Receiving location" column had nothing to read. NULL is the store.
+      location_id text,
       note        text
     );
     -- THE DOOR RECEIPT (048). The gulha man is not a vendor invoice and a

@@ -5979,6 +5979,218 @@ test('the Inventory module reads what the outlet actually holds',
       'and index 4 is that figure per PURCHASE unit: ' + row[4]);
   });
 
+/* ═══ THE FOUR SCREENS THAT READ ONLY WHAT THIS BROWSER MADE ═══════════════
+   Purchasing, Indents, Dispatches and Production each read a `KPOS_RAW` key
+   the bootstrap published as a literal empty array, over four tables the
+   outlet has been filling since it was provisioned. And each of their forms
+   went through the generic collection path, which finds no entry in
+   COLLECTION_OP and queues a bare insert kind with no payload — recorded
+   `unmodelled`, answered success. So an indent nobody could pick against, a
+   dispatch that moved no stock, and a batch that consumed nothing. */
+test('the transfer screens read the outlet, and their forms reach it',
+  opts, async () => {
+    const uuid = require('crypto').randomUUID;
+    const op = (kind, payload) => push([{ opId: uuid(), kind: kind,
+      label: kind, entity: 'transfers', at: Date.now(),
+      lamport: Date.now(), payload: payload }]);
+    const err = (r) => String(((r.body.results || [])[0] || {}).error || '');
+    const out = (r) => ((r.body.results || [])[0] || {}).result || {};
+
+    await op('item_upsert', { id: 'XFER-PROBE', name: 'XFER PROBE ITEM',
+      cat: 'Probe shelf', base: 'g', stock: 'kg', factor: 1000, cost: 0.02 });
+    await op('stock_adjust', { ing: 'XFER-PROBE', qty: 10000, cost: 0.02,
+      value: 200, reason: 'manual', note: 'seed for the transfer probe' });
+
+    /* AN INDENT CARRIES ITS LINES, AND APPROVING IT IS A DECISION.
+       "Approve all normal" queued `reqs_update` — no handler — and its filter
+       looked for status "pending", which `indent.status`'s CHECK does not
+       even permit. Two independent reasons for the same nothing. */
+    let r = await op('indent', { to: 1, needed: null, note: 'probe indent',
+      lines: [{ ing: 'XFER-PROBE', qty: 500 }] });
+    assert.ok(!err(r), 'the indent landed: ' + err(r));
+    const prNo = out(r).no;
+    assert.ok(/-PR-\d+$/.test(prNo), 'the OUTLET numbers it: ' + prNo);
+    let il = await one('SELECT ingredient_id, qty::float8 AS qty FROM indent_line'
+      + ' WHERE indent_id = $1', [out(r).indentId]);
+    assert.strictEqual(il.ingredient_id, 'XFER-PROBE');
+    assert.strictEqual(il.qty, 500, 'with the line the form collected');
+
+    r = await op('indent_approve', { nos: [prNo] });
+    assert.strictEqual(out(r).approved, 1, 'approving moves the row: ' + err(r));
+    let ind = await one('SELECT status FROM indent WHERE pr_no = $1', [prNo]);
+    assert.strictEqual(ind.status, 'approved');
+    // Replaying it approves nothing: the row is no longer open.
+    r = await op('indent_approve', { nos: [prNo] });
+    assert.strictEqual(out(r).approved, 0, 'and a replay is a no-op');
+
+    /* A DISPATCH MOVES STOCK, AND ITS VALUE IS THE SUM OF ITS LINES. The form
+       asked for a typed "Value MVR" and sent no lines at all, so the value it
+       recorded was somebody's arithmetic and the shelf never moved. */
+    const before = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    r = await op('dispatch', { to: 1,
+      lines: [{ ing: 'XFER-PROBE', qty: 300, cost: 0.02 }] });
+    assert.ok(!err(r), 'the dispatch landed: ' + err(r));
+    const dspNo = out(r).no;
+    assert.strictEqual(out(r).value, 6, 'the value is derived from the lines');
+    let mid = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    assert.strictEqual(mid.h, before.h - 300,
+      'and the sending shelf is debited on save, because the case has left');
+
+    /* AND IT CAN BE SIGNED FOR. `dispatch.received_at`, `received_by` and
+       `status` have been on the table since the schema was written and
+       nothing had ever set one, so every transfer read "in transit" for ever
+       and the Received by column was a permanent dash. A line signed for
+       short is filed `short`, not `received`. */
+    r = await op('dispatch_receive', { no: dspNo,
+      lines: [{ ing: 'XFER-PROBE', qty: 280 }] });
+    assert.strictEqual(out(r).status, 'short', 'twenty short: ' + err(r));
+    let dsp = await one('SELECT status, received_by IS NOT NULL AS signed,'
+      + ' received_at IS NOT NULL AS stamped FROM dispatch WHERE dsp_no = $1',
+    [dspNo]);
+    assert.strictEqual(dsp.status, 'short');
+    assert.ok(dsp.signed && dsp.stamped, 'and somebody and some time are on it');
+    const dl = await one('SELECT received_qty::float8 AS got FROM dispatch_line'
+      + ' dl JOIN dispatch d ON d.id = dl.dispatch_id WHERE d.dsp_no = $1', [dspNo]);
+    assert.strictEqual(dl.got, 280);
+    // Signing for the whole of one files it received.
+    r = await op('dispatch', { to: 1, lines: [{ ing: 'XFER-PROBE', qty: 100, cost: 0.02 }] });
+    const whole = out(r).no;
+    r = await op('dispatch_receive', { no: whole,
+      lines: [{ ing: 'XFER-PROBE', qty: 100 }] });
+    assert.strictEqual(out(r).status, 'received');
+    r = await op('dispatch_receive', { no: 'NO-SUCH-DISPATCH', lines: [] });
+    assert.match(err(r), /not on this outlet/i, 'and an unknown one is refused by name');
+
+    /* A BATCH'S UNIT COST IS WHAT ITS INPUTS COST. The form asked for a typed
+       "Unit cost MVR" and sent no components, so `H.produce` divided nothing
+       by the yield and the kitchen's output went on at zero. */
+    const pre = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    r = await op('produce', { ing: 'XFER-PROBE', qty: 100, note: 'probe batch',
+      components: [{ ing: 'XFER-PROBE', qty: 400, cost: 0.02, value: 8 }] });
+    assert.ok(!err(r), 'the batch landed: ' + err(r));
+    assert.strictEqual(out(r).unitCost, 0.08,
+      'MVR 8 of inputs over a yield of 100 — derived, never typed');
+    const post = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    assert.strictEqual(post.h, pre.h - 400 + 100,
+      'the inputs came off the shelf and the output went on');
+
+    /* A LOT CAN LEAVE THE SHELF. `batch.state` has carried holding · open ·
+       used · wasted since the schema was written and nothing has ever written
+       it, so every lot a delivery stamped sat on the FEFO shelf for ever —
+       and the only exit the screen offered was a write-off, which MOVES
+       STOCK a lot that was cooked through has already given up through the
+       sales that consumed it. */
+    const today2 = new Date().toISOString().slice(0, 10);
+    r = await op('grn_receive', { ref: 'XFER-GRN', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: today2, lines: [{ ing: 'XFER-PROBE', qty: 2000, price: 0.02,
+        total: 40, lot: 'XFER-LOT-A' }] });
+    assert.ok(!err(r), 'the delivery landed: ' + err(r));
+    r = await op('grn_receive', { ref: 'XFER-GRN-2', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: today2, lines: [{ ing: 'XFER-PROBE', qty: 1000, price: 0.02,
+        total: 20, lot: 'XFER-LOT-B' }] });
+    assert.ok(!err(r), 'and the second: ' + err(r));
+    const lotA = await one("SELECT id FROM batch WHERE lot = 'XFER-LOT-A'");
+    const lotB = await one("SELECT id FROM batch WHERE lot = 'XFER-LOT-B'");
+
+    // FINISHED moves nothing: the stock left with the sales that used it, and
+    // writing it off a second time would take the quantity twice.
+    const shelfBefore = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    r = await op('batch_close', { batchId: lotA.id, state: 'used' });
+    assert.strictEqual(out(r).state, 'used');
+    assert.strictEqual(out(r).moveId, null, 'closing a finished lot moves no stock');
+    const shelfMid = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    assert.strictEqual(shelfMid.h, shelfBefore.h, 'and the shelf is unchanged');
+
+    // THROWN AWAY is a write-off, and is booked as one.
+    r = await op('batch_close', { batchId: lotB.id, state: 'wasted',
+      note: 'spoiled in the chiller' });
+    assert.strictEqual(out(r).state, 'wasted');
+    assert.ok(out(r).moveId, 'a thrown lot moves stock');
+    const shelfEnd = await one("SELECT on_hand::float8 AS h FROM ingredient"
+      + " WHERE id = 'XFER-PROBE'");
+    assert.strictEqual(shelfEnd.h, shelfMid.h - 1000,
+      'the remaining quantity comes off at the lot\'s own cost');
+    const jl = await one("SELECT count(*)::int AS n FROM journal_line"
+      + " WHERE memo = 'Lot written off'");
+    assert.strictEqual(jl.n, 1, 'and it is booked, Dr 5100 / Cr 1200');
+    // Closing it again is a no-op rather than a second write-off.
+    r = await op('batch_close', { batchId: lotB.id, state: 'wasted' });
+    assert.strictEqual(out(r).already, true);
+    // AND A CLOSED LOT IS EMPTY, either way — found by driving the shelf,
+    // where a written-off lot still printed its whole quantity remaining.
+    const left = await one('SELECT qty::float8 AS q FROM batch WHERE id = ANY($1::uuid[])'
+      + ' AND qty <> 0', [[lotA.id, lotB.id]]);
+    assert.ok(!left, 'neither closed lot has anything left on the shelf');
+
+    /* ONE RULE FOR `stock_move.value`: the money that moved, with `qty`
+       carrying the direction. A count used to store a NEGATIVE value on a
+       shortfall, so the column meant two things depending on which handler
+       wrote the row. Enforced in moveStock(), so every writer converges. */
+    await op('count_post', { scope: 'all', lines: [{ ing: 'XFER-PROBE',
+      expected: 100000, counted: 99000, cost: 0.02 }] });
+    const neg = await one('SELECT count(*)::int AS n FROM stock_move'
+      + ' WHERE value < 0');
+    assert.strictEqual(neg.n, 0,
+      'no move written by this build carries a negative value');
+    const cl2 = await one("SELECT variance::float8 AS v, value::float8 AS val"
+      + " FROM count_line WHERE ingredient_id = 'XFER-PROBE'"
+      + ' ORDER BY count_id DESC LIMIT 1');
+    assert.strictEqual(cl2.v, -1000, 'the signed variance is kept on the count line');
+    assert.ok(cl2.val < 0, 'and so is its value, where the direction is the subject');
+
+    /* AND ALL FOUR COLLECTIONS COME BACK. Each of these was a literal empty
+       array, so each screen read only what the browser in front of you had
+       created in this session. */
+    const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const raw = boot.body.raw || {};
+    assert.ok(!('roles' in raw),
+      'the key nobody has ever read is gone, not filled');
+
+    const pr = (raw.purch || []).filter((p) => p.no);
+    assert.ok(pr.length >= 1, 'the deliveries are published: ' + pr.length);
+    const probe = pr.filter((p) => (p.lines || [])
+      .some((l) => l[0] === 'XFER-PROBE'))[0];
+    assert.ok(probe, 'with their lines');
+    assert.strictEqual(probe.status, 'unpriced',
+      'a delivery nobody has costed says so — the state the screen has drawn'
+      + ' since it was written and nothing could ever produce');
+    assert.strictEqual(typeof probe.vendor, 'string',
+      'and its supplier id stays the uuid it is, never coerced with +');
+    assert.ok(probe.by && !/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(probe.by),
+      '"Received by" is a name, not a uuid: ' + probe.by);
+
+    const req = (raw.reqs || []).filter((x) => x.no === prNo)[0];
+    assert.ok(req, 'the indent is published');
+    assert.strictEqual(req.status, 'approved');
+    assert.strictEqual((req.lines || []).length, 1);
+    assert.ok(!('priority' in req),
+      'and never a priority, because `indent` has no column for one');
+
+    const d2 = (raw.disp || []).filter((x) => x.no === dspNo)[0];
+    assert.ok(d2, 'the dispatch is published');
+    assert.strictEqual(d2.status, 'short');
+    assert.ok(d2.rcv && !/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(d2.rcv),
+      'with who signed for it, by name: ' + d2.rcv);
+    assert.strictEqual(d2.lines[0][3], 280, 'and what actually arrived');
+
+    const pb = (raw.prod || []).filter((x) => x.item === 'XFER-PROBE')[0];
+    assert.ok(pb, 'the batch is published');
+    assert.strictEqual(pb.cost, 0.08, 'at the cost its inputs actually were');
+    assert.ok(!('branch' in pb),
+      'and no kitchen, because production_batch records no location');
+
+    const closed = (raw.batches || []).filter((b) => b[0] === 'XFER-LOT-A')[0];
+    assert.ok(closed, 'the closed lot is still on the shelf list');
+    assert.strictEqual(closed[8], 'used', 'wearing the state that closed it');
+    assert.ok(closed[10], 'and its own id, so it could be closed at all');
+  });
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
