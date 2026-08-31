@@ -63,6 +63,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        049 a section wears its kind
                        050 a person has a face
                        051 a PIN is an identity
+                       052 a batch says where its date came from
                        control/004 the archive shelf
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
@@ -2400,6 +2401,187 @@ the phone with a supplier named in the form landed as
 moving 6 at 12.50 into `location_id = L-CHILL`. `test/wiring.test.js` pins the
 options (including the empty-outlet case), the queue order, the duplicate-name
 resolution and the refusal.
+
+## Four tabs, and three of them had nothing to read
+
+Reported as *"same with inventory. fix the module."* The Inventory rail is On
+hand · Counts · Stock ledger · Batches & expiry, and the sweep found the same
+shape as the GRN one tab over, plus a money defect worse than either.
+
+**THE ITEM FORM WROTE A SHELF LIFE INTO THE COST PER BASE UNIT.** Index 9 of an
+item row is what every recipe multiplies a gram by, and the form asked for a
+shelf life and put it there — because `ingredient` has never had a column for
+one. Both directions cost money, and both were measured on a real outlet's own
+published row before anything was written:
+
+```
+creating   rice at MVR 32/KG  →  cost: 180, factor: 0.177
+                                 MVR 180 a GRAM. 5,625× what the kitchen paid,
+                                 on every dish drawing on it, for ever.
+editing    pre() showed that item's own cost per base unit under the label
+           "Shelf life (days)" — so correcting a PRICE sent factor 1.23 for an
+           item whose conversion factor is 1.
+```
+
+Migration 052 gives the shelf life `ingredient.shelf_life_days`, and the two
+facts stop sharing a slot: index 9 is the cost per base unit, derived from the
+purchase cost through the conversion this form already validates, and index 15
+is how long it keeps. **NULL is a real answer**, the same one `yield_pct`
+keeps: "nobody has said" and "three days" are different facts.
+
+Two more on the same form. **A category is a NAME** — `raw.cats` is
+`SELECT DISTINCT category FROM ingredient` — and `+v.cat || 1` filed every item
+a till ever created under a category called "1". And **par was invented**: the
+row carried a literal 100, which is the figure "below par" is measured against
+and the auto-indent orders up to. It is asked for now, and empty means nobody
+has set one.
+
+Measured by driving the shipped form on a real store:
+
+```
+BASMATI RICE | Dry goods | GRM | KG | factor 1000 | avg_cost 0.032 | par 25 | shelf 365
+```
+
+**`ledger`, `batches` and `logs` were published as literal empty arrays.** The
+Stock ledger and Batches & expiry tabs read `raw.ledger` and `raw.batches` and
+nothing else, so both answered "Nothing here yet" on every install that has
+ever traded — over a `stock_move` table holding every delivery and every plated
+portion. Exactly the shape of `oset` and `KPOS.VENDORS`: read, published, never
+filled. Both are published now, bounded like every other read here. The
+ledger's running balance is derived BACKWARDS from the figure each ingredient
+carries now — everything after a row, unwound — which is exact for every row in
+the window and costs no second scan of a table that only grows; a
+`sum() OVER (PARTITION BY …)` would read every movement the store has ever made
+to render two hundred rows. `logs` stays empty and says so: an outlet's login
+role may INSERT into `chain.audit` and not SELECT from it, by design.
+
+**And no delivery had ever stamped a batch.** `grn_receive` made one only
+`if (l.useBy || l.lot)` and the GRN form asks for neither; `door_receipt` made
+none at all. So `batch` was empty on every store, and the FEFO screen could
+not have drawn a row if it had been published. Its own foot said otherwise —
+*"posting … stamps a batch at that day's price"*. `stampBatch()` is the one
+seam both deliveries go through now.
+
+**The use-by is OFFERED, never asserted.** Where a receiver read one off the
+box it is theirs. Where they did not and the item carries a shelf life, one is
+derived from it and stamped `use_by_derived` — the screen draws it as `≈ 03 Sept`
+and the guide says what that means — because this table is the order a kitchen
+works its morning in and an estimate wearing a measurement's clothes is how it
+would start lying the first day it had rows. An item nobody has assessed gets
+no date at all, which lands it in the tier written for exactly that: *"Received
+without a use-by — go and read the box"*.
+
+**A blind count was refused on every count ever taken.** `postCount()` computed
+its rows and then sent the SHEET — item ARRAYS — so `l.id`, `l.theo`, `l.actual`
+and `l.cost` were all `undefined`, `count_line.ingredient_id` is `text NOT NULL`,
+and the op was refused, retried eight times and parked, under a screen reporting
+the variance it had just worked out. And the fields were the wrong two: the
+server computed `actual − theo` of USAGE and moved that into `stock_move.qty`,
+which inverts the sign — a count finding two kilos MORE would have taken two
+away. It sends the two STOCK LEVELS now, in BASE units, because the server moves
+that figure straight into the ledger and 2 kg sent as `2` moves two grams. A
+line naming nobody is refused in English.
+
+**And picking a category changed nothing about the count sheet.** `sel.indexOf(it[5])`
+compares the picked category names against the item's KIND — `"raw"` or
+`"prep"` — so no pick has ever matched and the sheet fell through to "whatever
+the recipes consume". Index 1 is the category. The label under each line read
+"Pantry" for the same reason.
+
+**The whole `+id` class, swept rather than patched.** `item()` compares with
+`===`, and `+"iFLOUR1"` is `NaN`, so on any store whose master was built on a
+till:
+
+- the **stock adjustment** refused a correctly-picked item with *"Pick an
+  item"* — the GRN's own defect, one form along;
+- a **recipe line** stored `NaN` as its ingredient;
+- and in the **shared lines editor** the GRN, the door receipt and both pricing
+  forms all use, the unit beside every line read "unit" and *"picking an item
+  seeds its last known rate"* — the comment above it — seeded nothing.
+
+`test/wiring.test.js` now fails on any `this.item(+` anywhere in the terminal.
+
+**Where stock sits is a place inside the store.** `locName()` resolved a
+LOCATION id against OUTLETS, so the ledger and the FEFO shelf printed
+"Location #L-CHILL" for a chiller the outlet has published since it was
+provisioned. And the **stock adjustment's** location list was OUTLETS — a
+different store — landing an outlet id in `stock_move.location_id`; it is the
+outlet's own `location` table now, led by *"The store — no separate location"*,
+and `H.stock_adjust` resolves what it is given exactly as `grn_receive` does,
+falling back to the store rather than storing a place nobody can resolve.
+
+**What the books think is on the shelf was mixing two units.** `on_hand` and a
+GRN line are BASE units — `stock_move.qty` is, and that is what feeds them —
+and `bookOnHand()` converted only the recipe term. So for any item bought by
+the kilo and cooked by the gram it read a thousand times its own shelf, in the
+one figure the whole Inventory screen is built on. Invisible on a store whose
+items are counted in the unit they are bought in, which is why it survived.
+
+**Two controls on this screen did nothing, and one did something else.**
+*Auto-indent below par* went through `insertRow("reqs", …)`, and `reqs` has no
+entry in `COLLECTION_OP`, so it queued `requests_insert` with no payload — a
+kind with no handler, recorded `unmodelled`, answered success. It queues the
+real `indent` op now, explicitly rather than through the collection map, for
+the reason `grnSend()` does: `H.indent` allocates a document number, so the
+holding pen must never re-send it. And *New category* minted
+`Math.max(0, "Dry goods")` — NaN — then queued `category_insert`, which the
+server aliases to the MENU section handler, with no payload: refused, parked,
+under a toast saying the category had been created. A stock category is a name
+an item is filed under; it becomes the store's the moment the first item lands
+in it, and there is nothing to queue.
+
+**A brand-new store had no way through the item form either.** `raw.cats` is
+empty on a store nobody has stocked, so the Category select had ZERO options —
+the stuck dropdown the GRN's receiving location already paid for. It leads with
+*Uncategorised* and ends with `＋ New category, named below`, the same shape the
+supplier list keeps.
+
+**And two claims came off the screen.** The ribbon said *"FEFO picking enforced
+at dispatch"* — nothing in this build picks a batch; a dispatch moves a quantity
+of an ingredient and never touches a batch row. The batch shelf is an ORDER a
+kitchen works in, which is real and useful, and saying it is enforced claims a
+rule the app does not keep. The count schedule was the same shape: the bootstrap
+published `freq: ''` and `storage: ''` for every category, so the Schedule list
+read "weekly · storage" for all of them — a cadence nobody had set — and the
+Today list's "counted daily" predicate could never fire. `count_freq` is on the
+ingredient and is published per category now; there is no storage column
+anywhere and the readers that printed one are gone.
+
+Measured end to end on a real outlet — a delivery, a write-off and a count of
+one item:
+
+```
+LOCATION          ITEM                  MOVEMENT      IN      OUT   BALANCE
+The store         PROBE KULHIBOAKIBAA   COUNTED        —    4 pcs    74 pcs
+Walk-in chiller   PROBE KULHIBOAKIBAA   WRITTEN OFF    —    6 pcs    78 pcs
+The store         PROBE KULHIBOAKIBAA   RECEIVED   24 pcs      —     84 pcs
+Walk-in chiller   PROBE KULHIBOAKIBAA   RECEIVED   60 pcs      —     60 pcs
+
+BATCH     ITEM                  LOCATION          USE BY          TIER
+#eb91cc   PROBE KULHIBOAKIBAA   Walk-in chiller   ≈ 03 Sept 26    THIS WEEK
+BOX-77    PROBE KULHIBOAKIBAA   The store           14 Sept 26    HOLDING
+```
+
+`test/wiring.test.js` pins the item form's two directions, the string ids
+across all four sites, the count payload's fields and units, `bookOnHand`,
+`locName`, the indent op and the category doors — seven tests, and all seven
+fail against the version that shipped. `test/api.test.js` walks the road over
+HTTP: the shelf life landing and surviving a silent save, both batches with
+their two kinds of date, the adjustment's location resolved and an unknown one
+nulled, the count moving the shelf the right way, the nameless line refused by
+name, and the ledger and batch collections published with the balances and the
+derived flag.
+
+**Stated rather than fixed**, because each is a different module and the change
+was already wide: `raw.purch`, `reqs`, `disp`, `prod` and `roles` are literal
+empty arrays too, so Purchasing, Indents, Dispatches and Production read only
+what the browser in front of you created — the same defect, one rail along. The
+`indent` and `dispatch` forms carry no lines at all. Nothing ever closes a
+`batch`, so a lot stays on the FEFO shelf until somebody writes it off, which is
+what the screen already says. And `stock_move.value` is positive for a
+write-off and negative for a count shortfall; nothing sums that column, so the
+inconsistency costs nothing today and changing a money column's convention did
+not belong in this change.
 
 ## The outlet does not always keep the id this device minted
 
@@ -5719,7 +5901,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 574 tests
+npm test                          # 581 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

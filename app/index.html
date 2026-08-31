@@ -2088,6 +2088,8 @@ const NEW_BUY_ITEM = "__new_stock_item__";
 // The same offer on the GRN: a delivery from a supplier nobody has
 // entered yet is the ordinary case on a store that has just opened.
 const NEW_VENDOR = "__new_supplier__";
+// And the same door on the item master's own category list.
+const NEW_CATEGORY = "__new_category__";
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 // Thirty destinations in nine groups was a filing cabinet, not a product: the
@@ -4601,6 +4603,10 @@ class Component extends DCLogic {
       logs: ["Audit Log", "Append-only. Insert allowed, update and delete revoked"],
       inventory: ["Inventory", "On-hand by stock location"],
       counts: ["Stock Counts", "Automated cycle counts with variance posting"],
+      // The one fold tab with no entry, so it opened under the product's own
+      // name with no subtitle — on the screen that answers "where did that
+      // stock come from".
+      ledger: ["Stock Ledger", "Every movement, and the balance it left behind"],
       purchases: ["Purchases / GRN", "Goods received against vendor invoices"],
       requests: ["Indent Requests", "Outlet to central store requisitions"],
       dispatches: ["Dispatches", "Inter-branch transfers in transit"],
@@ -4702,8 +4708,15 @@ class Component extends DCLogic {
         card("Stock on hand", MVRc(val), (raw.inv || []).length + " item/location rows", amber),
         card("Below par", String(dig.short.length),
           dig.short.length ? "Short by " + MVRc(dig.short.reduce((a, x) => a + x.cost, 0)) + " at cost" : "Every item at or above par"),
+        /* NOTHING ENFORCES FEFO. A dispatch moves a quantity of an
+           ingredient; it never touches a batch row, and no code in this build
+           picks one. The batch shelf is an ORDER a kitchen works in — earliest
+           use-by first — which is a real and useful thing, and saying it is
+           "enforced" claims a rule the app does not keep. */
         card("Expiring ≤ 7 days", String(dig.soon.length),
-          dig.expired.length ? dig.expired.length + " already past date" : "FEFO picking enforced at dispatch"),
+          dig.expired.length ? dig.expired.length + " already past date"
+            : (dig.soon.length ? "Work the batch shelf earliest first"
+              : "Nothing on the shelf is dated within the week")),
         card("Last cycle count", lastCount ? this.dayLabel(lastCount.date) : "Never",
           lastCount ? "Variance " + MVRc(lastCount.variance) + " · posted to 5100"
             : "Nothing counted on this outlet yet")
@@ -8156,7 +8169,11 @@ class Component extends DCLogic {
       // Only lines a recipe actually consumes here. Counting the whole item
       // master would make the sheet an hour's work and the variance meaningless.
       const used = this.theoreticalUse(0).by;
-      const sheet = (raw.items || []).filter((it) => sel.indexOf(it[5]) >= 0 || (sel.length && used[String(it[0])]));
+      /* INDEX 1 IS THE CATEGORY. Index 5 is the KIND — "raw" or "prep" — and
+         this compared the picked category names against that, so no pick ever
+         matched and the sheet fell through to "whatever the recipes consume"
+         on every count ever taken. Picking categories changed nothing. */
+      const sheet = (raw.items || []).filter((it) => sel.indexOf(it[1]) >= 0 || (sel.length && used[String(it[0])]));
       return {
         modalTitle: m.stage === 2 ? "Count sheet" : "New cycle count",
         modalSub: m.stage === 2
@@ -8166,7 +8183,7 @@ class Component extends DCLogic {
           ? "Count what is physically there and key it in. The book figure stays hidden until you submit — then the terminal shows you the variance against what the recipes say should have been used."
           : "Pick the categories to count. The sheet is built from what the recipes here actually consume, the app hides on-hand figures while counting, and anything within category tolerance posts without a human ever seeing it.",
         countCats: m.stage === 2 ? [] : (raw.cats || []).slice(0, 8).map((c) => ({
-          name: c.name, sub: c.storage + " · " + c.freq,
+          name: c.name, sub: (c.items || 0) + " item" + (c.items === 1 ? "" : "s") + " \u00b7 counted " + (c.freq || "weekly"),
           pick: () => { const n = sel.indexOf(c.id) >= 0 ? sel.filter((x) => x !== c.id) : sel.concat([c.id]); this.setState({ modal: Object.assign({}, m, { cats: n }) }); },
           style: "display:flex;flex-direction:column;align-items:flex-start;padding:11px 13px;border-radius:9px;border:1px solid " + (sel.indexOf(c.id) >= 0 ? "var(--text)" : "var(--line)") + ";background:" + (sel.indexOf(c.id) >= 0 ? "var(--bg-3)" : "var(--bg-2)")
         })),
@@ -8177,7 +8194,7 @@ class Component extends DCLogic {
         // expected number, the count stops being evidence.
         countSheet: m.stage === 2 ? sheet.map((it) => ({
           name: it[2],
-          sub: (raw.cats || []).reduce((a, c) => c.id === it[5] ? c.name : a, "") || "Pantry",
+          sub: (raw.cats || []).reduce((a, c) => c.id === it[1] ? c.name : a, "") || "Pantry",
           unit: (it[8] || it[3] || "").toLowerCase(),
           val: (m.counted || {})[String(it[0])] || "",
           set: (e) => this.setState({ modal: Object.assign({}, m, { counted: Object.assign({}, m.counted || {}, { [String(it[0])]: e.target.value }) }) })
@@ -8874,7 +8891,12 @@ class Component extends DCLogic {
               totalStyle: "font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (costed ? "var(--warn-bright)" : "var(--text-dim)"),
               addLine: () => edit((c) => c.concat([{ item: String((opts[0] || {}).v || ""), qty: "1", rate: "" }])),
               rows: rows.map((r, i) => {
-                const it = this.item(+r.item) || [];
+                // An item id is a STRING. `+id` is NaN for every one newId()
+                // has minted, so the unit beside each line read "unit" and the
+                // rate seeding below — the whole reason picking an item does
+                // anything — never found a row to seed from. Same defect the
+                // GRN's own `grnLines()` paid for, in the editor above it.
+                const it = this.item(String(r.item || "")) || [];
                 return {
                   item: String(r.item || ""),
                   qty: String(r.qty === undefined ? "" : r.qty),
@@ -8888,7 +8910,7 @@ class Component extends DCLogic {
                   // known cost, so the receiver corrects a figure against the
                   // invoice instead of typing every one from nothing.
                   onItem: (e) => {
-                    const id = e.target.value, m = this.item(+id) || [];
+                    const id = e.target.value, m = this.item(String(id || "")) || [];
                     put(i, { item: id, rate: (!r.rate || +r.rate === 0) && m[4] ? String(m[4]) : r.rate });
                   },
                   onQty: (e) => put(i, { qty: e.target.value }),
@@ -9701,7 +9723,7 @@ class Component extends DCLogic {
     const dispOpen = (raw.disp || []).filter((d) => d.from === o.id && !done(d.status));
     const prodOpen = (raw.prod || []).filter((p) => !done(p.status));
     // Count schedule is category frequency, which is real data on kpos.cats.
-    const countsDue = (raw.cats || []).filter((c) => /dail/i.test(c.freq || c.storage || "")).map((c) => ({ no: c.name, status: "due" }));
+    const countsDue = (raw.cats || []).filter((c) => /dail/i.test(c.freq || "")).map((c) => ({ no: c.name, status: "due" }));
     return { grnOpen: grnOpen, indentOpen: indentOpen, dispOpen: dispOpen, prodOpen: prodOpen, countsDue: countsDue };
   }
   // Switching outlet must never strand the user on a screen this location has
@@ -9814,7 +9836,7 @@ class Component extends DCLogic {
       notes: [
         [kind === "store" ? "This location does not sell" : "This kitchen does not sell",
           o.name + " has no tables and no till, so there is no floor plan and no ticket to open. Its work is " + (kind === "store" ? "receiving, counting, picking and dispatching" : "producing, and dispatching to the outlets") + " — the queue above is the equivalent of a floor: the things waiting for someone here. The selling screens are hidden for this location rather than shown empty."],
-        ["Stock here is real", MVRc(totalVal) + " across " + mine.length + " item lines and " + cats.length + " categories, with " + batches.length + " open batches under FEFO. Consumption at the restaurants deducts against these balances by recipe explosion, and every movement writes an append-only ledger row with a running balance."],
+        ["Stock here is real", MVRc(totalVal) + " across " + mine.length + " item lines and " + cats.length + " categories, with " + batches.length + " open batches, earliest use-by first. Consumption at the restaurants deducts against these balances by recipe explosion, and every movement writes an append-only ledger row with a running balance."],
         ["Sub-locations", kids.length ? kids.map((k) => k.code + " " + (k.loc || "").replace("_", " ")).join(" · ") + " — these are RLS scopes inside " + o.code + ", so a store keeper's token reaches the location and its bins and nothing else. Balances are held against " + o.code + " itself." : "This location has no child bins; stock is held against " + o.code + " directly."]
       ]
     };
@@ -12458,9 +12480,15 @@ class Component extends DCLogic {
     // measured one-to-two-seconds-per-tap defect.
     const bag = this.passCache("usedBag", () => this.theoreticalUse(0).by);
     const used = (bag[String(id)] || {}).gross || 0;
-    // Base units in, stock units out — the shelf is counted in kilos, the recipe
-    // in grams, and mixing them is the classic stock-take error.
-    return seeded + received - this.stockQty(it, used);
+    /* BASE UNITS IN, STOCK UNITS OUT — and the conversion has to reach every
+       term. `on_hand` and a GRN line are both base units (`stock_move.qty` is,
+       and that is what feeds them), the recipes consume base units, and only
+       the third of those three was being converted. So for any item bought by
+       the kilo and cooked by the gram this read a thousand times its own
+       shelf: the classic stock-take error, in the one figure the whole
+       Inventory screen is built on. Invisible on a store whose items are all
+       counted in the unit they are bought in. */
+    return this.stockQty(it, seeded + received - used);
   }
   saleTrail(snap) {
     const raw = window.KPOS_RAW || {}, K0 = K(), o = this.outlet();
@@ -12910,7 +12938,20 @@ class Component extends DCLogic {
   }
   stockQty(it, qty) { return qty / this.convFactor(it); }
   outletByCode(code) { return (K().OUTLETS || []).find((o) => o.code === code) || {}; }
-  locName(id) { const o = (K().OUTLETS || []).find((x) => x.id === id); return o ? o.name : "Location #" + id; }
+  /* WHERE INSIDE THIS STORE, not which store. `location.id` is TEXT — the dry
+     store, the walk-in, the freezer — and this resolved it against OUTLETS, so
+     the stock ledger and the FEFO shelf printed "Location #L-CHILL" for a
+     chiller the outlet has published since it was provisioned. The outlet
+     fallback stays for a row written before the receiving location was a
+     control anybody could set, and an id that resolves to neither is printed
+     as itself rather than dressed up as a record. */
+  locName(id) {
+    if (id === null || id === undefined || id === "") return "The store";
+    const l = (K().LOCATIONS || []).find((x) => String(x.id) === String(id));
+    if (l) return l.name;
+    const o = (K().OUTLETS || []).find((x) => String(x.id) === String(id));
+    return o ? o.name : String(id);
+  }
 
   g_inventory() {
     const raw = window.KPOS_RAW || {}, s = this.state;
@@ -12959,7 +13000,23 @@ class Component extends DCLogic {
         const to = ((K().OUTLETS || []).find((o) => o.type === "main_store") || { id: 1 }).id;
         const no = this.nextNo("reqs", "PR-2026-");
         const lines = short.slice(0, 40).map((id) => [id, Math.max(1, Math.round((par(id) - this.bookOnHand(id)) * 100) / 100)]);
-        this.insertRow("reqs", { no: no, from: s.outletId, to: to, status: "pending", by: this.me(), appr: "", lines: lines, notes: "auto-indent · " + short.length + " items below par at " + this.outlet().code, priority: "normal", reject: "" }, "Draft indent " + no + " · " + short.length + " below-par items", "requests");
+        /* THE INDENT REACHES THE OUTLET. This went through `insertRow("reqs",
+           …)`, and `reqs` has no entry in COLLECTION_OP — so it queued
+           `requests_insert` with no payload, a kind with no handler, recorded
+           `unmodelled` and answered success. The screen said a draft indent
+           had been raised and no store on the estate had one.
+
+           Queued explicitly rather than through the collection map, for the
+           reason `grnSend()` is: `H.indent` allocates a document number and
+           inserts a request, so it is not idempotent by content and the
+           holding pen must never re-send it. The local row stays, because the
+           Indents screen still reads its own collection. */
+        this.queue("indent", "Indent raised · " + no + " \u00b7 " + short.length + " below-par items \u00b7 by " + this.me(), "requests", {
+          to: to, ref: no, needed: null,
+          note: "auto-indent \u00b7 " + short.length + " items below par at " + this.outlet().code,
+          lines: lines.map((l) => ({ ing: String(l[0]), qty: l[1] }))
+        });
+        this.insertRow("reqs", { no: no, from: s.outletId, to: to, status: "pending", by: this.me(), appr: "", lines: lines, notes: "auto-indent · " + short.length + " items below par at " + this.outlet().code, priority: "normal", reject: "" }, "Indent raised " + no + " · " + short.length + " below-par items", "requests");
         this.setState({ view: "requests" });
       } }, { label: "Stock adjustment", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }],
       cols: tab === 0
@@ -13053,7 +13110,7 @@ class Component extends DCLogic {
       actions: [
         { label: "New blind count", primary: true, go: () => this.setState({ modal: { kind: "count" } }) },
         { label: "Schedule", go: () => this.info("Count schedule", "Generated from count_freq on each category",
-            cats.map((c) => [c.name, (c.freq || c.storage || "weekly") + " · " + (c.storage || "") + " storage", "t"])) }
+            cats.map((c) => [c.name, "counted " + (c.freq || "weekly") + " · " + (c.items || 0) + " item" + (c.items === 1 ? "" : "s"), "t"])) }
       ],
       cardMin: 240,
       cards: [
@@ -13453,7 +13510,7 @@ class Component extends DCLogic {
         }
       ],
       cols: [{ label: "Batch", w: "1.2fr", mono: 1 }, { label: "Item", w: "1.8fr" }, { label: "Location", w: "1.2fr" }, { label: "Source", w: ".8fr" }, { label: "Received", w: ".9fr", a: "right", mono: 1 }, { label: "Use by", w: ".9fr", a: "right", mono: 1 }, { label: "Shelf life", w: ".9fr", a: "right", mono: 1 }, { label: "Remaining", w: ".9fr", a: "right", mono: 1 }, { label: "Tier", w: ".9fr", a: "right" }],
-      guideTitle: "First expiry, first out", guide: ["The table is the pick order — earliest use-by at the top", "Tap a tier to work only that shelf", "Expired stock is still counted until it is written off", "A batch with no use-by is a box nobody read"],
+      guideTitle: "First expiry, first out", guide: ["The table is the pick order — earliest use-by at the top", "Tap a tier to work only that shelf", "A date marked \u2248 was worked out from the item's shelf life, not read off the box", "Expired stock is still counted until it is written off"],
       rows: (raw.batches || [])
         .filter((b) => !sel || tierOf(b) === sel)
         // FEFO is an ordering, so the table IS the pick order: earliest use-by
@@ -13463,13 +13520,19 @@ class Component extends DCLogic {
           const it = this.item(b[1]); const su = it ? (it[8] || it[3]) : "";
           const t = tierOf(b), T = t ? TIER[t] : null;
           const daysLeft = b[5] ? b[5] - today : null;
+          /* A DERIVED DATE IS DRAWN AS ONE. Where nobody read a use-by off the
+             box, the delivery offers one from the item's own shelf life (052)
+             and the row says so — "≈" and the item's span — because this table
+             is the order a kitchen works its morning in and an estimate
+             wearing a measurement's clothes is how it would start lying. */
+          const est = b[9] === true;
           return { cells: [
             { t: b[0], mono: 1 },
             this.itemName(b[1]),
             this.locName(b[2]),
             b[3],
             { t: b[4] ? d(b[4]) : "—", mono: 1 },
-            { t: b[5] ? d(b[5]) : "—", mono: 1, c: T ? T[1] : "var(--text-dim)" },
+            { t: (b[5] ? (est ? "\u2248 " : "") + d(b[5]) : "—"), mono: 1, c: T ? T[1] : "var(--text-dim)" },
             { t: daysLeft == null ? "—" : daysLeft < 0 ? Math.abs(daysLeft) + "d ago" : daysLeft === 0 ? "today" : "in " + daysLeft + "d", mono: 1, c: T ? T[1] : "var(--text-faint)" },
             (Math.round(this.stockQty(it, b[7]) * 100) / 100) + " " + su,
             { t: T ? T[0] : b[8], chip: T ? [T[2], T[1]] : this.chip(this.statusTone(b[8])) }
@@ -15272,15 +15335,33 @@ class Component extends DCLogic {
         qrOff: r.qrOff === undefined ? null : !!r.qrOff,
         diets: r.veg ? ["veg"] : [], recipe: r.recipe || []
       })],
+      /* The item master is positional: [id, cat, name, stockUnit,
+         costPerStockUnit, kind, code, baseUnit, stockUnit, costPerBase, par,
+         minStock, sellable, yield, waste, shelfLifeDays].
+
+         `factor` is the outlet's own stored conversion, round-tripped: index 4
+         is `avg_cost × stock_factor` and index 9 is `avg_cost`, so their ratio
+         IS that factor and sending it back cannot rewrite it. Where the cost
+         is zero the ratio says nothing, and the row's own units answer instead
+         — which is the case a brand-new item is in before anybody has priced
+         a delivery.
+
+         PAR AND SHELF LIFE ARE THREE-STATE. `null` is "nobody has set one" and
+         the handler preserves what it holds; a number is a decision. `num()`
+         on a null would send 0, which is a par of nothing and a shelf life the
+         column refuses. */
       items: ["item_upsert", (r) => (Array.isArray(r) ? {
-        // The item master is positional: [id, cat, name, stockUnit,
-        // costPerStockUnit, kind, code, baseUnit, stockUnit, costPerBase, par]
         id: r[0], name: r[2], cat: r[1], base: r[7], stock: r[8],
-        factor: num(r[4]) && num(r[9]) ? num(r[4]) / num(r[9]) : 1,
-        cost: num(r[9]), par: num(r[10]), producible: r[5] === "prep"
+        factor: num(r[4]) && num(r[9]) ? num(r[4]) / num(r[9]) : this.convFactor(r),
+        cost: num(r[9]),
+        par: r[10] == null || r[10] === "" ? null : num(r[10]),
+        shelf: r[15] == null || r[15] === "" ? null : num(r[15]),
+        producible: r[5] === "prep"
       } : {
         id: r.id, name: r.name, cat: r.cat, base: r.base, stock: r.stock,
-        factor: num(r.factor) || 1, cost: num(r.cost), par: num(r.par)
+        factor: num(r.factor) || 1, cost: num(r.cost),
+        par: r.par == null || r.par === "" ? null : num(r.par),
+        shelf: r.shelf == null || r.shelf === "" ? null : num(r.shelf)
       })],
       vendors: ["vendor_upsert", (r) => ({
         name: r.name, trn: r.trn, contact: r.contact, phone: r.phone,
@@ -15446,6 +15527,15 @@ class Component extends DCLogic {
      first in the same push) and the delivery names the same string. If the
      supplier op were ever refused the GRN still lands, because resolving by
      name creates the row — fail-safe in the direction that keeps the stock. */
+  /* THE CATEGORY, PICKED OR NAMED. A stock category is not a row anywhere —
+     `ingredient.category` is text, so it becomes the outlet's the moment an
+     item is filed under it. There is nothing to queue and nothing to resolve
+     an id against; the name IS the answer. */
+  catNamed(v) {
+    const picked = String(v.cat || "");
+    if (picked && picked !== NEW_CATEGORY) return picked;
+    return String(v.newCat || "").trim();
+  }
   grnVendor(v) {
     const typed = String(v.newVendor || "").trim();
     const picked = String(v.vendor || "");
@@ -17377,9 +17467,27 @@ class Component extends DCLogic {
       modal: null,
       view: "counts"
     });
+    /* THE PAYLOAD IS THE ROWS THIS FUNCTION COMPUTED, and it never was.
+       `lines` here is the SHEET — item ARRAYS — so `l.id`, `l.theo`, `l.actual`
+       and `l.cost` were all `undefined` on every line of every count ever
+       taken. `count_line.ingredient_id` is `text NOT NULL`, so the op was
+       refused, retried eight times and parked, under a screen reporting the
+       variance it had just worked out.
+
+       And it is the two STOCK LEVELS that go, not the two usage figures. The
+       ledger correction is `counted − book`; the theoretical-usage comparison
+       beside it is this screen's own analysis and belongs on the report a
+       person reads. Sent in BASE units, because that is what `stock_move.qty`
+       is and the server moves this figure straight into it — a 2 kg variance
+       posted as 2 would have moved two grams. */
     this.queue("count_post", lines.length + " lines counted · variance " + MVRc(varValue) + " · " + this.me(), "stock_counts", {
       scope: "all",
-      lines: lines.map((l) => ({ ing: l.id, theo: l.theo, actual: l.actual, cost: l.cost || 0 }))
+      lines: rows.map((r) => {
+        const it = this.item(r.id) || [];
+        const f = this.convFactor(it);
+        return { ing: String(r.id), expected: r.book * f, counted: r.counted * f,
+          cost: this.costPerBase(it) };
+      })
     });
     this.info("Count posted", lines.length + " lines · variance " + MVRc(varValue) + " at cost",
       [["Theoretical usage", MVRc(theoValue) + " since the last count"],
@@ -17653,7 +17761,22 @@ class Component extends DCLogic {
     const F = {
       category: {
         title: "New category", sub: "Menu section or stock category", save: "Create category",
-        foot: "A menu category is what a guest browses and what the POS tabs across — its icon is how a busy cashier finds it without reading. A stock category instead drives the count schedule and storage rules, which is why it asks how often it is counted.",
+        /* A STOCK CATEGORY IS A NAME AN ITEM CARRIES, and this form used to
+           treat it as a row somewhere. Two defects fell out of that. Its id
+           was `max(existing id) + 1` over a list whose ids are category NAMES,
+           so `Math.max(0, "Dry goods")` is NaN and every stock category a till
+           made was created under the id NaN. And it queued `category_insert`,
+           which the server aliases to `menu_category_insert` — the MENU
+           section handler — with no payload: refused for want of a name, eight
+           times, then parked, under a toast that said the category had been
+           created. A stock category the till was told to make would have
+           appeared on the guest's menu rail if it had ever landed.
+
+           There is nowhere for it to land, and that is the honest answer:
+           `ingredient.category` is text, so the category becomes the outlet's
+           the moment an item is filed under it and the next bootstrap
+           publishes it back. Storage has no column in this build at all. */
+        foot: "A menu category is what a guest browses and what the POS tabs across — its icon is how a busy cashier finds it without reading. A stock category is a name an item is filed under: it becomes the store's the moment the first item is saved into it, and the count schedule is the frequency held on the items themselves.",
         fields: [
           { k: "scope", label: "Category for", options: [{ v: "menu", l: "Menu section — what guests browse" }, { v: "stock", l: "Stock category — what the store counts" }], full: 1 },
           { k: "name", label: "Name", v: "", full: 1 },
@@ -17665,8 +17788,6 @@ class Component extends DCLogic {
             { v: "soup", l: "Steaming bowl — soups" }, { v: "salad", l: "Leaves — salads" },
             { v: "seafood", l: "Fish — seafood" }
           ], full: 1 },
-          { k: "storage", label: "Storage (stock only)", options: [{ v: "dry", l: "Dry" }, { v: "chilled", l: "Chilled" }, { v: "frozen", l: "Frozen" }, { v: "daily", l: "Daily fresh" }] },
-          { k: "freq", label: "Count frequency (stock only)", options: [{ v: "weekly", l: "Weekly" }, { v: "daily", l: "Daily" }, { v: "monthly", l: "Monthly" }] }
         ],
         onSave: (v) => {
           if (!v.name) return this.toast("A name is required", "warn");
@@ -17685,14 +17806,17 @@ class Component extends DCLogic {
             return;
           }
           const cats = (window.KPOS_RAW || {}).cats || [];
-          const id = cats.reduce((a, c) => Math.max(a, c.id || 0), 0) + 1;
-          const row = { id: id, name: v.name, icon: v.storage, storage: v.storage, freq: v.freq };
-          cats.push(row);
-          const L = Object.assign({}, this.state.local || {});
-          L.stockcats = (L.stockcats || []).concat([row]);
-          this.setState({ local: L, modal: null });
-          this.queue("category_insert", "Stock category · " + v.name + " · " + v.storage + " · counted " + v.freq, "categories");
-          this.toast("Stock category created · " + v.name);
+          const name = v.name.trim();
+          if (cats.some((c) => String(c.id).toLowerCase() === name.toLowerCase())) {
+            return this.toast("The store already files items under " + name, "warn");
+          }
+          // The NAME is the id, because that is what `ingredient.category`
+          // holds and what the bootstrap publishes back. Nothing is queued:
+          // there is no category row to write, and the category reaches the
+          // outlet with the first item filed under it.
+          cats.push({ id: name, name: name, icon: "store", freq: "weekly", items: 0 });
+          this.setState({ modal: null });
+          this.toast(name + " is ready — file an item under it and the store has it");
         }
       },
       chain: {
@@ -17854,25 +17978,74 @@ class Component extends DCLogic {
           this.toast("Terminal settings saved");
         }
       },
+      /* THE ITEM MASTER, AND THE TWO FIGURES THAT WERE THE SAME SLOT.
+         Index 9 of an item row is the cost per BASE unit — the figure every
+         recipe multiplies a gram by — and this form asked for a SHELF LIFE
+         and wrote it there. Both directions were wrong and both cost money:
+
+           creating   rice at MVR 32/KG queued `cost: 180, factor: 0.177`,
+                      which is MVR 180 a GRAM at the outlet, 5,625× what the
+                      kitchen paid, on every dish drawing on it for ever;
+           editing    `pre()` handed the operator that item's own cost per
+                      base unit in a box labelled "Shelf life (days)", so
+                      correcting a PRICE rewrote the conversion factor every
+                      recipe divides by — measured at 1.23 on an item whose
+                      factor is 1.
+
+         Migration 052 gives the shelf life a column, so the two facts stop
+         sharing a slot: index 9 is the cost per base unit, computed from the
+         purchase cost and the conversion this form already validates, and
+         index 15 is how long it keeps.
+
+         A category is a NAME. `raw.cats` is `SELECT DISTINCT category FROM
+         ingredient` — text — and this coerced it with `+v.cat || 1`, so every
+         item a till ever created landed in a category called "1".
+
+         And PAR IS ASKED FOR rather than invented. The old row carried a
+         literal 100, which is the figure the On hand screen measures "below
+         par" against and the auto-indent orders up to. Empty means nobody has
+         set one, and the handler preserves that. */
       item: {
         title: "Add an item to the master", sub: "Nothing can be received, counted or cooked until it exists here", save: "Create item",
         foot: "This is where inventory starts. An item defines the unit it is bought in, the unit it is stored in, and the conversion between them — which is what lets a recipe ask for 180 grams of a fish bought by the kilo. Stock quantity arrives later, through a GRN.",
         fields: [
           { k: "name", label: "Item name", v: "", full: 1 },
-          { k: "cat", label: "Category", options: sel((raw.cats || []).map((c) => ({ v: c.id, l: c.name }))), full: 1 },
+          /* A BRAND-NEW STORE HAS NO CATEGORIES, and `raw.cats` is `SELECT
+             DISTINCT category FROM ingredient` — so on the first item anybody
+             ever creates this was a select with ZERO options: the stuck
+             dropdown the GRN's receiving location already paid for. It leads
+             with the answer that is always true (openForm seeds a select with
+             its FIRST option) and carries its own way out, the same shape the
+             supplier list does. */
+          { k: "cat", label: "Category",
+            options: [{ v: "", l: "Uncategorised" }]
+              .concat(sel((raw.cats || []).map((c) => ({ v: c.id, l: c.name }))))
+              .concat([{ v: NEW_CATEGORY, l: "＋ New category, named below" }]), full: 1 },
+          { k: "newCat", label: "…or a new category's name", v: "" },
           { k: "base", label: "Recipe unit", options: [{ v: "GRM", l: "GRM — grams" }, { v: "ML", l: "ML — millilitres" }, { v: "PCS", l: "PCS — pieces" }] },
           { k: "stock", label: "Purchase unit", options: [{ v: "KG", l: "KG — kilogram" }, { v: "LTR", l: "LTR — litre" }, { v: "PCS", l: "PCS — pieces" }, { v: "GRM", l: "GRM — grams" }] },
           { k: "cost", label: "Cost per purchase unit MVR", v: "0" },
-          { k: "shelf", label: "Shelf life (days)", v: "180" }
+          { k: "par", label: "Par level (purchase units, optional)", v: "" },
+          { k: "shelf", label: "Shelf life in days (optional — offers a use-by on delivery)", v: "", full: 1 }
         ],
         editSave: "Save changes",
-        pre: (it) => ({ name: it[2], cat: String(it[1]), base: it[7], stock: it[8], cost: String(it[4]), shelf: String(it[9] || 180) }),
+        pre: (it) => ({ name: it[2], cat: String(it[1] == null ? "" : it[1]), base: it[7], stock: it[8],
+          cost: String(it[4]), par: it[10] ? String(it[10]) : "",
+          shelf: it[15] == null ? "" : String(it[15]) }),
         onEdit: (v, it) => {
           const cost = +v.cost || 0;
           if (cost <= 0) return this.toast("A cost is required", "warn");
           if (v.base !== it[7] || v.stock !== it[8]) return this.toast("Units cannot change once an item exists — every recipe and ledger row is denominated in them. Create a new item instead.", "warn");
           const next = it.slice();
-          next[2] = v.name.toUpperCase(); next[1] = +v.cat || it[1]; next[4] = cost; next[9] = String(+v.shelf || 180);
+          next[2] = v.name.toUpperCase();
+          next[1] = v.cat === undefined ? it[1] : this.catNamed(v);
+          next[4] = cost;
+          // The cost per base unit follows the cost per purchase unit through
+          // the same conversion the grid already reads. Held apart because the
+          // op sends both and derives the factor from their ratio.
+          next[9] = String(cost / this.convFactor(next));
+          next[10] = String(v.par || "").trim() === "" ? null : Math.max(0, +v.par || 0);
+          next[15] = String(v.shelf || "").trim() === "" ? null : Math.max(1, Math.min(3650, Math.round(+v.shelf || 0)));
           this.patchRowsArr("items", it[0], next,
             next[2] + " updated" + (cost !== it[4] ? " · " + MVR(it[4]) + " to " + MVR(cost) + " per " + it[8] : ""), "items");
         },
@@ -17887,7 +18060,11 @@ class Component extends DCLogic {
           // here re-points recipes and stock moves, not just this row.
           const id = this.newId("i");
           const code = id;
-          const row = [id, +v.cat || 1, v.name.toUpperCase(), stock, cost, "raw", code, base, stock, String(+v.shelf || 180), 100, 0, 0];
+          const row = [id, this.catNamed(v), v.name.toUpperCase(), stock, cost, "raw", code, base, stock,
+            "0", null, 0, 0, null, null,
+            String(v.shelf || "").trim() === "" ? null : Math.max(1, Math.min(3650, Math.round(+v.shelf || 0)))];
+          row[9] = String(cost / this.convFactor(row));
+          row[10] = String(v.par || "").trim() === "" ? null : Math.max(0, +v.par || 0);
           this.insertRow("items", row, "Item created · " + v.name.toUpperCase() + " · " + code + " · " + MVR(cost) + "/" + stock, "items");
         }
       },
@@ -17903,20 +18080,32 @@ class Component extends DCLogic {
           const qty = Math.round(+v.qty || 0);
           if (qty <= 0) return this.toast("Quantity must be greater than zero", "warn");
           const dish = (K0.MENU || []).find((m) => String(m.id) === String(v.dish));
-          const it = this.item(+v.item);
+          // Same class as the GRN line and the stock adjustment: an item id is
+          // a string, `+id` is NaN for every one `newId()` mints, and a recipe
+          // line carrying NaN names no ingredient the server can explode.
+          const iid = String(v.item || "");
+          const it = this.item(iid);
           if (!dish || !it) return this.toast("Pick a dish and an item", "warn");
-          const next = (dish.recipe || []).filter((r) => +r[0] !== +v.item).concat([[+v.item, qty]]);
+          const next = (dish.recipe || []).filter((r) => String(r[0]) !== iid).concat([[iid, qty]]);
           const lineCost = this.costPerBase(it) * qty;
           this.patchRows("menu", [dish.id], { recipe: next },
-            dish.name + " · " + this.itemName(+v.item) + " " + qty + " " + (it[7] || "g").toLowerCase() + " · " + MVR(lineCost) + " a portion", "recipes");
+            dish.name + " · " + this.itemName(iid) + " " + qty + " " + (it[7] || "g").toLowerCase() + " · " + MVR(lineCost) + " a portion", "recipes");
         }
       },
       adjust: {
         title: "Stock adjustment", sub: "Write stock off or on with a reason", save: "Post adjustment",
         foot: "Every adjustment posts a reversing-safe ledger row and lands in the variance account, so a count that comes up short is explained by a named reason and a named person rather than appearing as an unexplained food-cost gap.",
+        /* THE ID IS THE STRING IT IS, and the LOCATION is a place inside this
+           store. Two defects, both the ones the GRN form paid for: `+v.item`
+           is NaN for every id `newId()` has minted, and `item()` compares with
+           `===`, so a correctly-picked item was refused "Pick an item" on any
+           store whose master was built on a till. And the location list was
+           OUTLETS — a different store — landing an outlet id in
+           `stock_move.location_id`, which names a row in this outlet's own
+           `location` table. */
         fields: [
           { k: "item", label: "Item", options: sel((raw.items || []).slice(0, 220).map((it) => ({ v: it[0], l: it[2] + " · " + MVR(it[4]) + "/" + (it[8] || "kg") }))), full: 1 },
-          { k: "loc", label: "Location", options: outletOpts, full: 1 },
+          { k: "loc", label: "Location", options: locOpts, full: 1 },
           { k: "dir", label: "Direction", options: [{ v: "out", l: "Write off — stock is gone" }, { v: "in", l: "Write on — found stock" }] },
           { k: "qty", label: "Quantity (stock unit)", v: "1" },
           { k: "reason", label: "Reason", options: [{ v: "Spoilage", l: "Spoilage" }, { v: "Damage", l: "Damage in handling" }, { v: "Expiry", l: "Expired stock" }, { v: "Theft", l: "Theft or loss" }, { v: "Count variance", l: "Count variance" }, { v: "Staff meal", l: "Staff meal" }], full: 1 },
@@ -17925,12 +18114,13 @@ class Component extends DCLogic {
         onSave: (v) => {
           const qty = +v.qty || 0;
           if (qty <= 0) return this.toast("Quantity must be greater than zero", "warn");
-          const it = this.item(+v.item);
+          const id = String(v.item || "");
+          const it = this.item(id);
           if (!it) return this.toast("Pick an item", "warn");
           const val = (it[4] || 0) * qty, out = v.dir !== "in";
           this.setState({ modal: null });
-          this.queue("stock_adjust", (out ? "Write-off" : "Write-on") + " · " + this.itemName(+v.item) + " " + qty + " " + (it[8] || "kg") + " · " + v.reason + " · " + MVRc(val), "stock_ledger", {
-            ing: v.item, qty: (out ? -1 : 1) * Math.abs(qty * this.convFactor(it)),
+          this.queue("stock_adjust", (out ? "Write-off" : "Write-on") + " · " + this.itemName(id) + " " + qty + " " + (it[8] || "kg") + " · " + v.reason + " · " + MVRc(val), "stock_ledger", {
+            ing: id, qty: (out ? -1 : 1) * Math.abs(qty * this.convFactor(it)),
             cost: this.costPerBase(it), value: val,
             reason: out ? "waste" : "manual", note: v.reason, loc: v.loc || null
           });

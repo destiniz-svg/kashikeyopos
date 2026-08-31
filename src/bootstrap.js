@@ -21,6 +21,25 @@ const { presetCounts } = require('./preset');
 const { today } = require('./apply');
 
 const num = (v) => (v == null ? 0 : Number(v));
+
+/* Excel's day zero, because that is the clock both stock screens already
+   count in: the FEFO tiers compare a use-by against today rather than only
+   printing it, and a shelf-life column nobody can sort by is a decoration. */
+function excelDay(d) {
+  if (!d) return null;
+  const t = d instanceof Date ? d.getTime() : Date.parse(String(d));
+  if (!isFinite(t)) return null;
+  return Math.round((t - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+/* What a movement is called on the ledger. `stock_move.reason` is the machine
+   word; this is the one a storekeeper reads, and there is one of them so two
+   screens cannot name the same row differently. */
+const MOVEMENT = {
+  purchase: 'Received', sale: 'Sold', refund: 'Refunded', audit: 'Counted',
+  manual: 'Adjusted', waste: 'Written off', transfer: 'Transferred',
+  produce: 'Produced', prep: 'Prepped', opening: 'Opening'
+};
 // Three decimals, because a batch is measured in grams and millilitres and a
 // half-gram matters to nobody, while a rounded-to-the-unit batch size changes
 // what a gram of it costs.
@@ -97,6 +116,20 @@ async function buildBootstrap(ctx) {
       ingredients: ['SELECT * FROM ingredient ORDER BY name'],
       units: ['SELECT * FROM ingredient_unit ORDER BY ingredient_id, name'],
       locations: ['SELECT * FROM location WHERE active ORDER BY name'],
+      /* THE STOCK LEDGER AND THE BATCH SHELF. Both screens read a collection
+         this file published as a literal empty array — `ledger: [], batches:
+         []` — so the Inventory rail's third and fourth tabs answered "Nothing
+         here yet" on every install that has ever traded, over a `stock_move`
+         table holding every delivery and every plated portion. Same shape as
+         `oset` and `KPOS.VENDORS`, two collections along: read, published,
+         never filled. Bounded like every other read here, because a ledger
+         that grows without limit is a bootstrap that gets slower for ever. */
+      moves: ['SELECT id, at, business_date, ingredient_id, qty, unit_cost, value,'
+        + ' reason, location_id, note FROM stock_move ORDER BY at DESC, id DESC LIMIT 200'],
+      batchRows: ["SELECT id, ingredient_id, lot, qty, unit_cost, received_at,"
+        + ' use_by, use_by_derived, location_id, delivery_id, state FROM batch'
+        + " WHERE state IN ('holding','open') OR received_at > now() - interval '30 days'"
+        + ' ORDER BY use_by NULLS LAST, received_at DESC LIMIT 300'],
       accounts: ['SELECT * FROM account ORDER BY pos'],
       employees: ['SELECT * FROM employee WHERE active ORDER BY name'],
       opex: ['SELECT * FROM opex WHERE active ORDER BY category'],
@@ -144,6 +177,8 @@ async function buildBootstrap(ctx) {
     const outletSettings = q.outletSettings;
     const zones = q.zones;
     const tables = q.tables;
+    const moves = q.moves;
+    const batchRows = q.batchRows;
 
 
     const setting = kv(chainSettings.rows);
@@ -427,7 +462,23 @@ async function buildBootstrap(ctx) {
     // read. Positional because it is 250+ rows on a phone and the field names
     // would be two thirds of the payload.
     const raw = {
-      cats: cats.rows.map((r, i) => ({ id: r.category, name: r.category, icon: 'store', storage: '', freq: '' })),
+      /* A STOCK CATEGORY IS A NAME, and how often it is counted is a fact its
+         items carry. `count_freq` has been on `ingredient` since the schema
+         was written; this published `freq: ''` and `storage: ''` for every
+         category, so the count modal's cards read " · " where a frequency
+         belongs, the Schedule list said "weekly ·  storage" for every one of
+         them — a cadence nobody had set — and the Today list's "counted
+         daily" predicate could never fire. There is no storage column
+         anywhere and inventing one would be worse than the screens saying
+         what is true, so it is gone with the readers that printed it. */
+      cats: cats.rows.map((r) => {
+        const mine = ingredients.rows.filter((x) => x.category === r.category);
+        const freq = {};
+        mine.forEach((x) => { const f = x.count_freq || 'weekly'; freq[f] = (freq[f] || 0) + 1; });
+        const keys = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+        return { id: r.category, name: r.category, icon: 'store',
+          freq: keys[0] || 'weekly', items: mine.length };
+      }),
       // Index 4 is the cost per STOCK unit — what the kitchen buys in, and what
       // costPerBase() divides by the conversion factor to reach a per-gram
       // figure. avg_cost is held per BASE unit, so it is multiplied up here
@@ -445,7 +496,13 @@ async function buildBootstrap(ctx) {
            estimate for that case and says on screen that it is an estimate.
            Publishing 1 would present a guess as a measurement. */
         r.yield_pct == null ? null : num(r.yield_pct),
-        r.waste_pct == null ? null : num(r.waste_pct)
+        r.waste_pct == null ? null : num(r.waste_pct),
+        /* 15: how long it keeps (052). Appended for the same reason 13 and 14
+           were, and null rather than a number where nobody has said — the
+           item form used to write this figure into index 9, WHICH IS THE COST
+           PER BASE UNIT, so a store creating rice at MVR 32 a kilo sent the
+           outlet MVR 180 a gram. It has a column of its own now. */
+        r.shelf_life_days == null ? null : num(r.shelf_life_days)
       ]),
       units: (setting.units || []).map((u) => [u.code, u.name, u.base, u.base, u.factor, 0]),
       unitsFor: unitsByIng,
@@ -459,7 +516,41 @@ async function buildBootstrap(ctx) {
          browser's holding pen for ever: on screen there, absent everywhere
          else, and re-inserted by the pen on every bootstrap. Same shape as
          `oset`, one collection along. */
-      ledger: [], batches: [], logs: [],
+      /* THE MOVEMENT, AND THE BALANCE IT LEFT BEHIND. The screen wants a
+         running balance per ingredient and the window here is the last 200
+         moves, so the balance is derived BACKWARDS from the figure the
+         ingredient carries now: everything after this row, unwound. Exact for
+         every row in the window and it costs no second scan of a table that
+         only grows. A `sum() OVER (PARTITION BY …)` would have been one line
+         and would read every movement the store has ever made, on every
+         bootstrap, to render two hundred rows. */
+      ledger: (function () {
+        const after = {};
+        return moves.rows.map((r) => {
+          const ing = ingById[r.ingredient_id] || {};
+          const run = after[r.ingredient_id] || 0;
+          const bal = num(ing.on_hand) - run;
+          after[r.ingredient_id] = run + num(r.qty);
+          const q = num(r.qty);
+          return [r.location_id || null, r.ingredient_id, MOVEMENT[r.reason] || r.reason,
+            q > 0 ? q : 0, q < 0 ? -q : 0, bal];
+        });
+      })(),
+      /* THE BATCH SHELF, in the shape the FEFO screen reads: Excel day numbers
+         so a use-by can be compared with today rather than only printed, and
+         `active` for a lot still on the shelf. Index 9 says whether that date
+         was READ OFF THE BOX or worked out from the item's shelf life, because
+         the screen must not draw an estimate the way it draws a fact. */
+      batches: batchRows.rows.map((r) => [
+        r.lot || ('#' + String(r.id).slice(0, 6)),
+        r.ingredient_id, r.location_id || null,
+        r.delivery_id ? 'GRN' : (/-DD-/.test(String(r.lot || '')) ? 'Door' : '\u2014'),
+        excelDay(r.received_at), excelDay(r.use_by), num(r.unit_cost),
+        num(r.qty),
+        r.state === 'holding' || r.state === 'open' ? 'active' : r.state,
+        r.use_by_derived === true
+      ]),
+      logs: [],
       /* Only what `chain.supplier` actually holds. A kind, a credit limit and
          an address are fields the vendor FORM collects and the table has no
          column for — publishing an invented value would be worse than the

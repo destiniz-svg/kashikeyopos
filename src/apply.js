@@ -679,6 +679,45 @@ function quantityGap(derived, supplied) {
   return off;
 }
 
+/* ═══ A BATCH IS WHAT ARRIVED ═════════════════════════════════════════════
+   One lot, at one price, on one day, in one place. Every delivery makes one —
+   and until now none did: `grn_receive` stamped a batch only `if (l.useBy ||
+   l.lot)` and the GRN form collects neither, `door_receipt` stamped none at
+   all, so `batch` was empty on every store that has ever traded. The Batches
+   & expiry tab reads that table and nothing else, which is why a quarter of
+   the Inventory module had never had a row to draw. Its own foot said
+   otherwise — "posting … stamps a batch at that day's price" — which is the
+   copy-versus-behaviour defect this build refuses by name.
+
+   THE USE-BY IS OFFERED, NEVER ASSERTED. Where a receiver read one off the
+   box it is theirs. Where they did not and the item carries a shelf life,
+   one is derived and STAMPED AS DERIVED (052), because the FEFO screen sorts
+   a kitchen's morning by these dates and an estimate wearing a measurement's
+   clothes is how that screen would start lying the first day it had rows.
+   An item nobody has assessed gets no date at all, which lands it in the
+   tier written for exactly that: "go and read the box". */
+async function stampBatch(c, b) {
+  if (!b.ing || !(num(b.qty) > 0)) return null;
+  let useBy = b.useBy || null;
+  let derived = false;
+  // A span is only a date when it has a day to count from. `addDays(null, n)`
+  // is `new Date(null)` — the epoch — so a missing receiving date would file
+  // the batch as expired in 1970 rather than as undated.
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '').slice(0, 10))
+    ? String(b.date).slice(0, 10) : null;
+  if (!useBy && from) {
+    const it = await one(c, 'SELECT shelf_life_days FROM ingredient WHERE id = $1', [b.ing]);
+    const days = it && it.shelf_life_days != null ? num(it.shelf_life_days) : 0;
+    if (days > 0) { useBy = addDays(from, days); derived = true; }
+  }
+  const row = await one(c, 'INSERT INTO batch (ingredient_id, lot, qty, unit_cost,'
+    + ' received_at, use_by, use_by_derived, location_id, delivery_id)'
+    + ' VALUES ($1,$2,$3,$4,coalesce($5::date, current_date),$6,$7,$8,$9) RETURNING id',
+    [b.ing, b.lot || null, num(b.qty), num(b.cost), b.date || null,
+      useBy, derived, b.loc || null, b.deliveryId || null]);
+  return { id: row.id, useBy: useBy, derived: derived };
+}
+
 async function moveStock(c, ctx, m) {
   if (!m.ing) return null;
   const qty = num(m.qty);
@@ -1124,12 +1163,24 @@ H.credit_reverse = async (c, p, ctx) => {
 
 // ═══ STOCK ═════════════════════════════════════════════════════════════════
 H.stock_adjust = async (c, p, ctx) => {
+  /* WHERE IT WENT FROM IS RESOLVED, exactly as a delivery's is. The till's
+     adjustment form used to offer OUTLETS here — a different store — so an
+     outlet id landed in `stock_move.location_id`, which names a row in this
+     outlet's own `location` table. An id this outlet does not hold falls back
+     to the store itself rather than being stored as a place nobody can
+     resolve; a build old enough to still be sending an outlet id gets the
+     same treatment. */
+  let loc = p.loc ? String(p.loc) : null;
+  if (loc) {
+    const known = await one(c, 'SELECT id FROM location WHERE id = $1', [loc]);
+    if (!known) loc = null;
+  }
   // An equipment failure writes off VALUE with no single item to move — the
   // journal legs are the truth there, and forcing an item row would invent
   // one. With an item, the movement and the money travel together as ever.
   const mv = p.ing ? await moveStock(c, ctx, {
     ing: p.ing, qty: num(p.qty), cost: num(p.cost), value: r2(p.value),
-    reason: p.reason === 'waste' ? 'waste' : 'manual', note: p.note, loc: p.loc
+    reason: p.reason === 'waste' ? 'waste' : 'manual', note: p.note, loc: loc
   }) : null;
   const id = mv && mv.id;
   if (r2(p.value)) {
@@ -1162,15 +1213,35 @@ H.count_post = async (c, p, ctx) => {
   const id = p.countId || (await one(c, 'INSERT INTO stock_count (by_staff, scope)'
     + ' VALUES ($1,$2) RETURNING id', [ctx.actor, p.scope || 'all'])).id;
   let value = 0;
+  /* A LINE NAMES AN INGREDIENT, OR IT IS REFUSED BY NAME. `count_line.
+     ingredient_id` is `text NOT NULL`, and the till used to send the count
+     SHEET rather than the rows it had computed from it — so every line arrived
+     as `{ing: undefined}` and every count ever taken was refused on a
+     not-null violation and parked. A parked op is read by a person, so this
+     says what is missing rather than quoting a constraint at them.
+
+     `expected` and `counted` are the two STOCK LEVELS, in base units: the
+     books' figure and what was on the shelf. The variance between them is the
+     correction, and its sign is the direction the ledger moves — found more
+     than the books expected, stock goes up. The older `theo`/`actual` names
+     carried the two USAGE figures and inverted that sign; they are read here
+     only so a device still holding one in its outbox is not left with an op
+     nobody will ever accept. */
   for (const l of arr(p.lines)) {
-    const variance = r2(num(l.actual) - num(l.theo));
+    if (!l || !l.ing) {
+      throw Object.assign(new Error('Every counted line has to name its item'),
+        { status: 400 });
+    }
+    const expected = num(l.expected != null ? l.expected : l.theo);
+    const counted = num(l.counted != null ? l.counted : l.actual);
+    const variance = r2(counted - expected);
     const lineValue = r2(variance * num(l.cost));
     value = r2(value + lineValue);
     await c.query('INSERT INTO count_line (count_id, ingredient_id, expected,'
       + ' counted, variance, value) VALUES ($1,$2,$3,$4,$5,$6)'
       + ' ON CONFLICT (count_id, ingredient_id) DO UPDATE SET counted = excluded.counted,'
       + ' variance = excluded.variance, value = excluded.value',
-      [id, l.ing, num(l.theo), num(l.actual), variance, lineValue]);
+      [id, l.ing, expected, counted, variance, lineValue]);
     // A count posts a MOVE, it does not overwrite a balance: the ledger stays
     // the story of what happened, and the variance is visible for ever.
     if (Math.abs(variance) > 0.0001) {
@@ -1332,11 +1403,11 @@ H.grn_receive = async (c, p, ctx) => {
     await c.query('INSERT INTO grn_line (delivery_id, ingredient_id, qty, unit,'
       + ' unit_price, line_total, use_by, lot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
       [d.id, l.ing, l.qty, l.unit, l.price, l.total, l.useBy, l.lot]);
-    if (l.useBy || l.lot) {
-      await c.query('INSERT INTO batch (ingredient_id, lot, qty, unit_cost, use_by,'
-        + ' location_id, delivery_id) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [l.ing, l.lot, l.qty, l.price, l.useBy, l.loc, d.id]);
-    }
+    // Every line is a batch. See stampBatch() — this used to be guarded on a
+    // use-by or a lot the form has never asked for, so no delivery in the
+    // life of this build ever made one.
+    await stampBatch(c, { ing: l.ing, lot: l.lot, qty: l.qty, cost: l.price,
+      useBy: l.useBy, loc: l.loc, deliveryId: d.id, date: date });
     await moveStock(c, ctx, { ing: l.ing, qty: Math.abs(l.qty), cost: l.price,
       value: l.total, reason: 'purchase', loc: l.loc, date: date,
       note: 'GRN ' + no.no });
@@ -1437,6 +1508,10 @@ H.door_receipt = async (c, p, ctx) => {
     await moveStock(c, ctx, { ing: l.ing, qty: Math.abs(l.qty), cost: l.rate,
       value: r2(l.qty * l.rate), reason: 'purchase', date: date,
       note: 'Door delivery ' + no.no });
+    // A tray at the door is the most perishable thing a store takes in, so
+    // it is the last delivery that should be missing from FEFO.
+    await stampBatch(c, { ing: l.ing, qty: l.qty, cost: l.rate, date: date,
+      lot: no.no });
   }
   if (priced && total > 0) {
     await postJournal(c, ctx, cash ? [
@@ -2357,21 +2432,29 @@ H.item_upsert = async (c, p) => {
   const id = p.id || slug(p.name);
   await c.query('INSERT INTO ingredient (id, name, category, base_unit, stock_unit,'
     + ' stock_factor, avg_cost, par, min_stock, location_id, supplier_id, count_freq,'
-    + ' allergens, sellable, sell_price, producible)'
+    + ' allergens, sellable, sell_price, producible, shelf_life_days)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,coalesce($14,false),$15,'
-    + ' coalesce($16,false)) ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
+    + ' coalesce($16,false),$17) ON CONFLICT (id) DO UPDATE SET name = excluded.name,'
     + ' category = excluded.category, base_unit = excluded.base_unit,'
     + ' stock_unit = excluded.stock_unit, stock_factor = excluded.stock_factor,'
     + ' par = excluded.par, min_stock = excluded.min_stock,'
     + ' location_id = excluded.location_id, supplier_id = excluded.supplier_id,'
     + ' count_freq = excluded.count_freq, allergens = excluded.allergens,'
     + ' sellable = excluded.sellable, sell_price = excluded.sell_price,'
-    + ' producible = excluded.producible',
+    + ' producible = excluded.producible,'
+    /* SILENCE PRESERVES, the same rule tags and off_menu keep. A caller
+       that says nothing about the shelf life keeps the one the store
+       measured; only an explicit figure moves it. Without the coalesce a
+       bulk import and every older build would strip it on every pass. */
+    + ' shelf_life_days = coalesce(excluded.shelf_life_days,'
+    + ' ingredient.shelf_life_days)',
     [id, p.name, p.cat || null, p.base || 'g', p.stock || p.base || 'g',
       num(p.factor) || 1, num(p.cost), p.par == null ? null : num(p.par),
       p.min == null ? null : num(p.min), p.loc || null, p.vendor || null,
       p.freq || 'weekly', arr(p.allergens), p.sellable,
-      p.sellPrice == null ? null : r2(p.sellPrice), p.producible]);
+      p.sellPrice == null ? null : r2(p.sellPrice), p.producible,
+      p.shelf == null || p.shelf === '' ? null
+        : Math.max(1, Math.min(3650, Math.round(num(p.shelf))))]);
   await republishUsing(c, id);
   return { ingredientId: id };
 };

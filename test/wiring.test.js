@@ -6237,3 +6237,216 @@ test('a supplier can be named on the GRN, and lands before the delivery', () => 
   assert.strictEqual(none.length, 0, 'nothing queued: ' + JSON.stringify(none.map((o) => o.kind)));
   assert.match((F4.__toasts[F4.__toasts.length - 1] || {}).t || '', /supplier/i);
 });
+
+/* ═══ THE INVENTORY MODULE ═════════════════════════════════════════════════
+   Four tabs on one rail — On hand, Counts, Stock ledger, Batches & expiry —
+   and every one of these fails against the version that shipped. */
+
+test('the item form keeps the cost and the shelf life in separate slots', () => {
+  const H = require('./harness');
+  const mk = () => {
+    const F = H.makeInstance({ role: 'SuperAdmin' });
+    F.setState = () => {};
+    F.__ops = [];
+    F.queue = (kind, label, entity, payload) => F.__ops.push({ kind, payload });
+    F.__win.KPOS_RAW = Object.assign({}, F.__win.KPOS_RAW, {
+      cats: [{ id: 'Dry goods', name: 'Dry goods' }],
+      // A real outlet's published row: pcs/pcs at MVR 20.3125.
+      items: [['IT-0274', '', 'BAJIYA', 'pcs', 20.3125, 'raw', 'IT-0274',
+        'pcs', 'pcs', '20.3125', 0, 0, 0, null, null, null]]
+    });
+    return F;
+  };
+
+  /* INDEX 9 IS THE COST PER BASE UNIT and this form asked for a SHELF LIFE
+     and wrote it there, in both directions:
+       creating  rice at MVR 32/KG sent `cost: 180, factor: 0.177` — MVR 180
+                 a GRAM, 5,625× what the kitchen paid;
+       editing   `pre()` handed the operator that item's own cost per base
+                 unit in a box labelled "Shelf life (days)". */
+  const F0 = mk();
+  const shown = F0.formSpec('item').pre(F0.__win.KPOS_RAW.items[0]);
+  assert.strictEqual(shown.shelf, '',
+    'the shelf-life box is empty on an item nobody has assessed — it used to'
+    + ' show that item\'s own cost per base unit: ' + JSON.stringify(shown));
+  assert.strictEqual(shown.cost, '20.3125');
+
+  // ── creating ─────────────────────────────────────────────────────────────
+  const F1 = mk();
+  F1.formSpec('item').onSave({ name: 'basmati rice', cat: 'Dry goods',
+    base: 'GRM', stock: 'KG', cost: '32', par: '', shelf: '180' });
+  const made = F1.__ops.filter((o) => o.kind === 'item_upsert')[0];
+  assert.ok(made, 'an item reaches the outlet: ' + JSON.stringify(F1.__ops));
+  assert.strictEqual(made.payload.cost, 0.032,
+    'MVR 32 a kilo is 3.2 laari a gram, and `cost` is per BASE unit');
+  assert.strictEqual(made.payload.factor, 1000, 'a thousand grams in a kilo');
+  assert.strictEqual(made.payload.shelf, 180, 'the shelf life has a slot of its own');
+  assert.strictEqual(made.payload.cat, 'Dry goods',
+    'a stock category is a NAME — `+v.cat || 1` filed every item a till ever'
+    + ' created under a category called "1"');
+
+  /* AND A BRAND-NEW STORE HAS NO CATEGORIES AT ALL. `raw.cats` is SELECT
+     DISTINCT category FROM ingredient, so on the first item anybody creates
+     this was a select with ZERO options — the stuck dropdown the GRN's
+     receiving location already paid for. */
+  const F3 = H.makeInstance({ role: 'SuperAdmin' });
+  F3.setState = () => {};
+  F3.__ops = [];
+  F3.queue = (kind, label, entity, payload) => F3.__ops.push({ kind, payload });
+  F3.__win.KPOS_RAW = Object.assign({}, F3.__win.KPOS_RAW, { cats: [], items: [] });
+  const catField = F3.formSpec('item').fields.filter((f) => f.k === 'cat')[0];
+  assert.ok(catField.options.length >= 2,
+    'a store with no categories still has a list: ' + JSON.stringify(catField.options));
+  assert.strictEqual(catField.options[0].v, '',
+    'and the FIRST option is the one always true — openForm seeds a select'
+    + ' with it');
+  assert.ok(catField.options.some((o) => o.v === '__new_category__'),
+    'with its own way out');
+  F3.formSpec('item').onSave({ name: 'ghee', cat: '__new_category__',
+    newCat: '  Chilled  ', base: 'GRM', stock: 'KG', cost: '90', par: '', shelf: '' });
+  assert.strictEqual(F3.__ops.filter((o) => o.kind === 'item_upsert')[0].payload.cat,
+    'Chilled', 'a name typed here files the item under it, and the category is'
+    + ' the outlet\'s the moment that item lands');
+  assert.strictEqual(made.payload.par, null,
+    'and an unset par is null, not the literal 100 this used to invent');
+
+  // ── editing a price, with the shelf-life box left exactly as presented ───
+  const F2 = mk();
+  const it = F2.__win.KPOS_RAW.items[0];
+  const pre = F2.formSpec('item').pre(it);
+  F2.formSpec('item').onEdit(Object.assign({}, pre, { cost: '25' }), it);
+  const ed = F2.__ops.filter((o) => o.kind === 'item_upsert')[0];
+  assert.strictEqual(ed.payload.factor, 1,
+    'correcting a PRICE must not rewrite the conversion every recipe divides'
+    + ' by — this sent 1.23 for an item whose factor is 1');
+  assert.strictEqual(ed.payload.cost, 25);
+  assert.strictEqual(ed.payload.shelf, null, 'and says nothing it was not told');
+});
+
+test('an item id is the string it is, everywhere the master is picked', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.setState = () => {};
+  F.__ops = [];
+  F.queue = (kind, label, entity, payload) => F.__ops.push({ kind, payload });
+  F.__win.KPOS.LOCATIONS = [{ id: 'L-CHILL', name: 'Walk-in chiller', kind: 'chiller' }];
+  F.__win.KPOS_RAW = Object.assign({}, F.__win.KPOS_RAW, {
+    cats: [], items: [['iFLOUR1', 'Dry', 'FLOUR', 'kg', 25, 'raw', 'iFLOUR1',
+      'g', 'kg', '0.025', 10, 0, 0, null, null, null]] });
+
+  // ── the stock adjustment ────────────────────────────────────────────────
+  const adj = F.formSpec('adjust');
+  assert.ok(adj.fields.filter((f) => f.k === 'loc')[0].options
+    .some((o) => o.v === 'L-CHILL'),
+    'the location list is this outlet\'s own places, not the estate\'s outlets');
+  F.__toasts.length = 0;
+  adj.onSave({ item: 'iFLOUR1', loc: 'L-CHILL', dir: 'out', qty: '2',
+    reason: 'Spoilage', notes: '' });
+  const sa = F.__ops.filter((o) => o.kind === 'stock_adjust')[0];
+  assert.ok(sa, '`+v.item` is NaN for every id newId() mints, and item() compares'
+    + ' with === — so a correctly picked item was refused "Pick an item": '
+    + JSON.stringify(F.__toasts));
+  assert.strictEqual(sa.payload.ing, 'iFLOUR1');
+  assert.strictEqual(sa.payload.loc, 'L-CHILL');
+
+  // ── a recipe line ───────────────────────────────────────────────────────
+  F.__win.KPOS.MENU = [{ id: 'd1', name: 'Roshi', recipe: [] }];
+  F.patchRows = (k, keys, set) => { F.__patch = set; };
+  F.formSpec('recipe').onSave({ dish: 'd1', item: 'iFLOUR1', qty: '100' });
+  // Compared field by field: the array is minted inside the vm, so its
+  // prototype is a different realm's and deepStrictEqual refuses it.
+  const rl = ((F.__patch || {}).recipe || [])[0] || [];
+  assert.strictEqual(rl[0], 'iFLOUR1',
+    'a recipe line names an ingredient the server can explode, not NaN');
+  assert.strictEqual(rl[1], 100);
+
+  // ── and the shared lines editor the GRN and the door receipt both use ────
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.ok(!/this\.item\(\+/.test(src),
+    'no path coerces an item id with + before looking it up');
+});
+
+test('a blind count sends the rows it computed, in the unit the ledger moves', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.setState = (p) => { Object.assign(F.state, p || {}); };
+  F.__ops = [];
+  F.queue = (kind, label, entity, payload) => F.__ops.push({ kind, payload });
+  F.info = () => {};
+  // Flour, bought by the kilo and cooked by the gram.
+  const it = ['iFLOUR1', 'Dry', 'FLOUR', 'kg', 25, 'raw', 'iFLOUR1', 'g', 'kg',
+    '0.025', 10, 0, 0, null, null, null];
+  F.__win.KPOS.OUTLETS = [{ id: F.state.outletId, code: 'LOYC', name: 'Loy Cafe' }];
+  F.__win.KPOS_RAW = Object.assign({}, F.__win.KPOS_RAW, {
+    items: [it], inv: [[F.state.outletId, 'iFLOUR1', 8000]], cats: [] });
+  F.state.settled = [];
+
+  F.postCount({ counted: { iFLOUR1: '6' }, cats: [] }, [it]);
+  const cp = F.__ops.filter((o) => o.kind === 'count_post')[0];
+  assert.ok(cp, 'a count reaches the outlet');
+  const line = cp.payload.lines[0];
+  /* `lines` in postCount is the SHEET — item ARRAYS — so `l.id`, `l.theo`,
+     `l.actual` and `l.cost` were all undefined on every count ever taken, and
+     `count_line.ingredient_id` is text NOT NULL: refused, parked, under a
+     screen reporting the variance it had just worked out. */
+  assert.strictEqual(line.ing, 'iFLOUR1', 'the line names its item: '
+    + JSON.stringify(line));
+  assert.strictEqual(line.expected, 8000,
+    'BASE units — the server moves this straight into stock_move.qty, so 8 kg'
+    + ' sent as 8 would move eight grams');
+  assert.strictEqual(line.counted, 6000);
+  assert.strictEqual(line.cost, 0.025, 'and the cost is per base unit too');
+});
+
+test('what the books think is on the shelf is one unit all the way through', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  const it = ['iFLOUR1', 'Dry', 'FLOUR', 'kg', 25, 'raw', 'iFLOUR1', 'g', 'kg',
+    '0.025', 10, 0, 0, null, null, null];
+  F.__win.KPOS.OUTLETS = [{ id: F.state.outletId, code: 'LOYC', name: 'Loy Cafe' }];
+  F.__win.KPOS_RAW = Object.assign({}, F.__win.KPOS_RAW, {
+    items: [it], inv: [[F.state.outletId, 'iFLOUR1', 8000]], cats: [] });
+  F.state.settled = [];
+  /* `on_hand` and a GRN line are BASE units — `stock_move.qty` is, and that is
+     what feeds them — and only the recipe term was being converted. So for any
+     item bought by the kilo this read a thousand times its own shelf, in the
+     one figure the whole Inventory screen is built on. */
+  assert.strictEqual(F.bookOnHand('iFLOUR1'), 8,
+    'eight kilograms, not eight thousand');
+});
+
+test('the Inventory screen names a place inside the store', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  F.__win.KPOS.LOCATIONS = [{ id: 'L-CHILL', name: 'Walk-in chiller' }];
+  assert.strictEqual(F.locName('L-CHILL'), 'Walk-in chiller',
+    'the stock ledger and the FEFO shelf resolved this against OUTLETS, so a'
+    + ' chiller the outlet has published since it was provisioned printed as'
+    + ' "Location #L-CHILL"');
+  assert.strictEqual(F.locName(null), 'The store');
+  assert.strictEqual(F.locName('L-GONE'), 'L-GONE',
+    'and an id that resolves to nothing is printed as itself');
+});
+
+test('the auto-indent reaches the outlet, and the stock category does not lie', () => {
+  const H = require('./harness');
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  /* `insertRow("reqs", …)` fell through to `requests_insert` with no payload —
+     a kind with no handler, recorded `unmodelled`, answered success. It is an
+     explicit queue now, and `reqs` stays OUT of COLLECTION_OP for the reason
+     `purch` does: `H.indent` allocates a document number, so the holding pen
+     must never re-send it. */
+  assert.match(src, /this\.queue\("indent",/,
+    'the below-par indent queues the op the outlet actually handles');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  assert.ok(!F.COLLECTION_OP().reqs,
+    'and `reqs` is not in the collection map, or the pen would re-raise it');
+
+  /* "New category" on the Inventory screen minted `Math.max(0, "Dry goods")`
+     — NaN — and queued `category_insert`, which the server aliases to the MENU
+     section handler, with no payload. */
+  assert.ok(!/queue\("category_insert"/.test(src),
+    'a stock category is a name an item is filed under, not a menu section');
+});

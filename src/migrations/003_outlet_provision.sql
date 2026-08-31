@@ -471,6 +471,11 @@ BEGIN
       waste_pct   numeric(6,4) CHECK (waste_pct IS NULL OR (waste_pct >= 0 AND waste_pct < 1)),
       yield_by    text,
       yield_at    timestamptz,
+      -- How long it keeps once received (052). NULL is a real answer, the
+      -- same one yield_pct keeps: nobody has said. It is what a delivery
+      -- OFFERS a receiver as a use-by, never what it asserts.
+      shelf_life_days integer CHECK (shelf_life_days IS NULL
+                    OR (shelf_life_days > 0 AND shelf_life_days <= 3650)),
       active      boolean NOT NULL DEFAULT true
     );
     CREATE TABLE IF NOT EXISTS %1$I.ingredient_unit (
@@ -534,6 +539,10 @@ BEGIN
       use_by        date,
       location_id   text,
       delivery_id   uuid,
+      -- Whether that use_by was READ OFF THE BOX or worked out from the
+      -- item's shelf life (052). The screen draws them differently, because
+      -- a date this app derived is not a date anybody has checked.
+      use_by_derived boolean NOT NULL DEFAULT false,
       state         text NOT NULL DEFAULT 'holding'
                     CHECK (state IN ('holding','open','used','wasted'))
     );

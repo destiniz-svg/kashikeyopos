@@ -5837,6 +5837,148 @@ test('a GRN moves the stock, numbers the document and names the supplier',
     assert.strictEqual(still.on_hand, after.on_hand, 'a refusal moves no stock');
   });
 
+test('the Inventory module reads what the outlet actually holds',
+  opts, async () => {
+    const uuid = require('crypto').randomUUID;
+    const today = new Date().toISOString().slice(0, 10);
+    const op = (kind, payload) => push([{ opId: uuid(), kind: kind,
+      label: kind, entity: 'inventory', at: Date.now(),
+      lamport: Date.now(), payload: payload }]);
+    const err = (r) => String(((r.body.results || [])[0] || {}).error || '');
+    const out = (r) => ((r.body.results || [])[0] || {}).result;
+
+    /* AN ITEM CARRIES A SHELF LIFE (052). The till's own form used to write
+       this figure into the item row's index 9 — the COST PER BASE UNIT — so a
+       store creating rice at MVR 32 a kilo sent the outlet MVR 180 a gram. */
+    let r = await op('item_upsert', { id: 'INV-PROBE', name: 'INV PROBE ITEM',
+      cat: 'Probe shelf', base: 'g', stock: 'kg', factor: 1000, cost: 0.032,
+      par: 20, shelf: 4 });
+    assert.ok(!err(r), 'the item landed: ' + err(r));
+    let ing = await one('SELECT avg_cost::float8 AS cost, stock_factor::float8 AS f,'
+      + ' par::float8 AS par, shelf_life_days AS shelf, category'
+      + " FROM ingredient WHERE id = 'INV-PROBE'");
+    assert.strictEqual(ing.cost, 0.032, 'three point two laari a gram');
+    assert.strictEqual(ing.f, 1000);
+    assert.strictEqual(ing.shelf, 4);
+    assert.strictEqual(ing.category, 'Probe shelf', 'a category is a NAME');
+
+    // SILENCE PRESERVES: a save that says nothing keeps the measured span.
+    await op('item_upsert', { id: 'INV-PROBE', name: 'INV PROBE ITEM',
+      cat: 'Probe shelf', base: 'g', stock: 'kg', factor: 1000, cost: 0.04 });
+    ing = await one("SELECT shelf_life_days AS shelf FROM ingredient"
+      + " WHERE id = 'INV-PROBE'");
+    assert.strictEqual(ing.shelf, 4, 'the shelf life survives a save that is'
+      + ' silent about it, the same rule tags and off_menu keep');
+
+    /* EVERY DELIVERY STAMPS A BATCH. This was guarded on a use-by or a lot the
+       GRN form has never asked for, so `batch` was empty on every store that
+       has ever traded — and the Batches & expiry tab reads that table and
+       nothing else. */
+    const loc = await one('SELECT id FROM location ORDER BY id LIMIT 1');
+    r = await op('grn_receive', { ref: 'INV-1', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: today, lines: [{ ing: 'INV-PROBE', qty: 5000, price: 0.032,
+        total: 160, loc: loc ? loc.id : null }] });
+    assert.ok(!err(r), 'the delivery landed: ' + err(r));
+    const derived = await one("SELECT use_by::text AS use_by, use_by_derived AS d,"
+      + " qty::float8 AS qty, location_id FROM batch WHERE ingredient_id = 'INV-PROBE'"
+      + ' ORDER BY received_at DESC LIMIT 1');
+    assert.ok(derived, 'a batch exists');
+    assert.strictEqual(derived.d, true,
+      'nobody read a date off the box, so one is OFFERED from the shelf life'
+      + ' and MARKED as offered — the FEFO screen must not draw an estimate'
+      + ' the way it draws a fact');
+    const want = new Date(Date.parse(today + 'T00:00:00Z') + 4 * 86400000)
+      .toISOString().slice(0, 10);
+    assert.strictEqual(derived.use_by, want, 'four days from the day received');
+
+    // A date read off the box is the receiver's, and is not marked derived.
+    r = await op('grn_receive', { ref: 'INV-2', vendorName: 'Reef Suppliers Pvt Ltd',
+      bizDate: today, lines: [{ ing: 'INV-PROBE', qty: 1000, price: 0.032,
+        total: 32, lot: 'LOT-9', useBy: '2099-01-31' }] });
+    assert.ok(!err(r), err(r));
+    const read = await one("SELECT use_by::text AS use_by, use_by_derived AS d"
+      + " FROM batch WHERE lot = 'LOT-9'");
+    assert.strictEqual(read.use_by, '2099-01-31');
+    assert.strictEqual(read.d, false);
+
+    /* A STOCK ADJUSTMENT LANDS IN A PLACE INSIDE THIS STORE. The till's form
+       offered OUTLETS here, so an outlet id went into `stock_move.location_id`,
+       which names a row in this outlet's own `location` table. */
+    r = await op('stock_adjust', { ing: 'INV-PROBE', qty: -500, cost: 0.032,
+      value: 16, reason: 'waste', note: 'Spoilage', loc: loc ? loc.id : null });
+    assert.ok(!err(r), err(r));
+    let mv = await one("SELECT location_id, qty::float8 AS qty FROM stock_move"
+      + " WHERE ingredient_id = 'INV-PROBE' ORDER BY id DESC LIMIT 1");
+    assert.strictEqual(mv.location_id, loc ? loc.id : null);
+    // An id this outlet does not hold falls back to the store, never garbage.
+    await op('stock_adjust', { ing: 'INV-PROBE', qty: -1, cost: 0.032, value: 1,
+      reason: 'waste', note: 'Spoilage', loc: 'NOT-A-PLACE-HERE' });
+    mv = await one("SELECT location_id FROM stock_move"
+      + " WHERE ingredient_id = 'INV-PROBE' ORDER BY id DESC LIMIT 1");
+    assert.strictEqual(mv.location_id, null);
+
+    /* A COUNT NAMES ITS LINES. The till sent the count SHEET rather than the
+       rows it had computed from it, so every line arrived `{ing: undefined}`
+       and `count_line.ingredient_id` is text NOT NULL — refused, parked,
+       under a screen reporting the variance it had just worked out. */
+    const before = await one("SELECT on_hand::float8 AS on_hand FROM ingredient"
+      + " WHERE id = 'INV-PROBE'");
+    r = await op('count_post', { scope: 'all', lines: [{ ing: 'INV-PROBE',
+      expected: before.on_hand, counted: before.on_hand - 250, cost: 0.032 }] });
+    assert.ok(!err(r), 'the count landed: ' + err(r));
+    assert.strictEqual(out(r).value, -8, '250 g short at 3.2 laari a gram');
+    const cl = await one("SELECT expected::float8 AS e, counted::float8 AS c,"
+      + " variance::float8 AS v FROM count_line WHERE ingredient_id = 'INV-PROBE'"
+      + ' ORDER BY count_id DESC LIMIT 1');
+    assert.strictEqual(cl.v, -250, 'the variance is counted minus book, and its'
+      + ' SIGN is the direction the ledger moves');
+    const after = await one("SELECT on_hand::float8 AS on_hand FROM ingredient"
+      + " WHERE id = 'INV-PROBE'");
+    assert.strictEqual(after.on_hand, before.on_hand - 250,
+      'and the shelf follows the count, in base units');
+
+    const nameless = await op('count_post', { scope: 'all',
+      lines: [{ theo: 1, actual: 2 }] });
+    assert.match(err(nameless), /name its item/i,
+      'a line naming nobody is refused in English, not with a not-null violation');
+
+    /* AND THE TWO SCREENS THAT READ NONE OF IT. `ledger` and `batches` were
+       published as literal empty arrays, so the Inventory rail's third and
+       fourth tabs answered "Nothing here yet" on every install that has ever
+       traded. */
+    const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const raw = boot.body.raw || {};
+    assert.ok((raw.ledger || []).length > 0, 'the stock ledger has rows');
+    const mine = (raw.ledger || []).filter((l) => l[1] === 'INV-PROBE');
+    assert.ok(mine.length >= 4, 'every movement of this item is on it: '
+      + JSON.stringify(mine));
+    assert.strictEqual(mine[0][5], after.on_hand,
+      'and the newest row carries the balance it left behind');
+    assert.ok(mine.some((l) => l[2] === 'Received') && mine.some((l) => l[2] === 'Counted'),
+      'named in words a storekeeper reads: ' + JSON.stringify(mine.map((l) => l[2])));
+
+    const bats = (raw.batches || []).filter((b) => b[1] === 'INV-PROBE');
+    assert.strictEqual(bats.length, 2, 'both batches are on the shelf');
+    assert.ok(bats.some((b) => b[9] === true), 'and one says its date is derived');
+    assert.ok(bats.every((b) => b[8] === 'active'));
+
+    const cat = (raw.cats || []).filter((c) => c.id === 'Probe shelf')[0];
+    assert.ok(cat, 'the category the item was filed under is published back');
+    assert.strictEqual(cat.freq, 'weekly',
+      'with the count frequency its items actually carry, where this used to'
+      + " publish '' and every screen printed a cadence nobody had set");
+
+    const row = (raw.items || []).filter((i) => i[0] === 'INV-PROBE')[0];
+    assert.strictEqual(row[15], 4, 'the shelf life is published at index 15');
+    /* And index 9 is the cost per BASE unit — the outlet's own weighted
+       average, which the deliveries above re-averaged, not a shelf life. */
+    const cost = await one("SELECT avg_cost::float8 AS c FROM ingredient"
+      + " WHERE id = 'INV-PROBE'");
+    assert.strictEqual(Number(row[9]), cost.c);
+    assert.ok(Math.abs(row[4] - cost.c * 1000) < 1e-6,
+      'and index 4 is that figure per PURCHASE unit: ' + row[4]);
+  });
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
