@@ -124,8 +124,28 @@ const flat = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
    invoice in their hand and Google's own words are "try again later". */
 const RETRYABLE = { 429: 1, 500: 1, 502: 1, 503: 1, 504: 1 };
 
+/* AND "TRY AGAIN IN A MOMENT" STOPS BEING TRUE. Measured on the live install
+   the day the key landed: the same 503 at 15:15:02, 15:15:22, 15:15:52 and
+   again at 16:19:27 — around eight attempts across an hour and four minutes,
+   every one of them "spikes in demand are usually temporary". A sentence that
+   goes on promising transience through that is an assurance rather than a
+   fact, which is the class this build already deleted a lateness figure and a
+   FEFO claim for. So the FIRST failure is reported as a spike, because that is
+   the likely truth and the remedy is free; once the condition has held past
+   BUSY_PERSISTS the sentence changes to name the model and how long, because
+   by then the decision is not "wait" but "this model has no capacity for this
+   key, and another one may be needed" — and only the operator can make it. */
+const BUSY_PERSISTS = 10 * 60 * 1000;
+let busySince = 0;
+
 function says(status) {
   if (RETRYABLE[status]) {
+    const held = busySince ? Date.now() - busySince : 0;
+    if (held > BUSY_PERSISTS) {
+      return MODEL() + ' has had no capacity for ' + Math.round(held / 60000)
+        + ' minutes (HTTP ' + status + ') — this is the model\'s own capacity'
+        + ' and not this install, so it is a question of which model to ask for';
+    }
     return status === 429
       ? 'the model is rate-limited right now (HTTP 429) — try the scan again in a moment'
       : 'the model is busy right now (HTTP ' + status + ') — try the scan again in a moment';
@@ -200,6 +220,11 @@ async function ask(opts) {
         await new Promise((f) => setTimeout(f, 1500));
         return ask(Object.assign({}, o, { _again: true }));
       }
+      /* Stamped BEFORE says() reads it, so the first failure of a run
+         measures zero and reports a spike. Cleared by any other outcome, so a
+         model that answers once is not still "unavailable since breakfast". */
+      if (!busySince && RETRYABLE[r.status]) busySince = Date.now();
+      if (!RETRYABLE[r.status]) busySince = 0;
       last = {
         ok: false, at: Date.now(),
         reason: says(r.status),
@@ -217,6 +242,7 @@ async function ask(opts) {
       console.error('[ai] unparseable answer — ' + flat(out).slice(0, 200));
       return { ok: false, reason: last.reason };
     }
+    busySince = 0;
     last = { ok: true, at: Date.now() };
     return { ok: true, data: parsed, model: MODEL() };
   } catch (e) {

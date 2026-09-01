@@ -3000,6 +3000,31 @@ That base URL is an env var an operator sets, not a field a request carries —
 which is why it is not the print relay's problem, where the fence exists
 because a stranger could write the address into a body.
 
+**And then it kept happening, which made the sentence wrong again.** Reported
+next as *"modal is busy. 503"* — the new wording reaching the screen exactly as
+intended, and the advice in it no longer true. Measured off the install's own
+log: the same 503 at 15:15:02, 15:15:22, 15:15:52 and again at 16:19:27 — about
+eight attempts across **an hour and four minutes**, every one of them "spikes in
+demand are usually temporary".
+
+A spike is a good first guess and waiting is free, so the FIRST failure of a run
+still says so. But a message that goes on promising transience for an hour is an
+assurance rather than a fact, and this build has already deleted a lateness
+figure and a FEFO claim for exactly that. Past `BUSY_PERSISTS` (ten minutes) the
+sentence names the model and the elapsed time — *"gemini-3.7-flash has had no
+capacity for 64 minutes (HTTP 503) — this is the model's own capacity and not
+this install, so it is a question of which model to ask for"* — because by then
+the decision has changed from **wait** to **which model**, and that one is the
+operator's: a model has a price and a quality, and silently asking a different
+one would be the Role-box defect wearing a new label.
+
+`busySince` is stamped before `says()` reads it, so the first failure measures
+zero; **any other outcome clears it**, so a model that answers once is not still
+"unavailable since breakfast", and a non-retryable status resets it too. The
+test drives all four states against the local server — spike, held twenty
+minutes, cleared by a success, and a spike again after — with `Date.now`
+substituted rather than the suite sleeping for twenty minutes.
+
 **Stated rather than fixed**: two more callers of `window.claude` remain — the
 Today briefing and the CFO advisory. Both are honest about being unreachable
 (they say so on screen), and both want a free-text contract rather than the

@@ -7101,6 +7101,55 @@ test('a busy model is retried and named as busy; a refusal names whose fault it 
     assert.ok(!/high demand/.test(r.reason),
       'while the caller gets the class, never the transport verbatim');
 
+    /* ── AND "IN A MOMENT" STOPS BEING TRUE ────────────────────────────────
+       Measured on the live install: the same 503 at 15:15:02, 15:15:22,
+       15:15:52 and again at 16:19:27 — about eight attempts across an hour and
+       four minutes, every one of them "spikes in demand are usually
+       temporary". A sentence that keeps promising transience through that is
+       an assurance rather than a fact. The FIRST failure still reads as a
+       spike, because that is the likely truth and waiting is free; once it has
+       held, the sentence names the model and the elapsed time, because the
+       decision has changed from "wait" to "which model to ask for". */
+    {
+      const clock = Date.now;
+      try {
+        replies.push({ status: 503, body: busy });
+        replies.push({ status: 503, body: busy });
+        const first = await ai.ask({ prompt: 'x' });
+        assert.match(first.reason, /in a moment/i,
+          'the first failure of a run is a spike, and waiting is the remedy');
+        assert.ok(!/no capacity/i.test(first.reason));
+
+        // The same condition, still holding, twenty minutes on.
+        const t0 = clock();
+        Date.now = () => t0 + 20 * 60 * 1000;
+        replies.push({ status: 503, body: busy });
+        replies.push({ status: 503, body: busy });
+        const held = await ai.ask({ prompt: 'x' });
+        assert.match(held.reason, /no capacity for 20 minutes/i,
+          'it says how long, because that is what makes it a decision');
+        assert.match(held.reason, new RegExp(ai._model()),
+          'and names the model, which is the thing that would change');
+        assert.ok(!/in a moment/i.test(held.reason),
+          'and stops telling somebody to wait for something that is not coming');
+        assert.ok(!/this install/i.test(held.reason.replace(/not this install/i, '')),
+          'still never blamed on the install');
+
+        /* A model that answers clears the run — otherwise the next bad minute
+           inherits an hour that has nothing to do with it. */
+        Date.now = clock;
+        replies.push({ status: 200, body: JSON.stringify({
+          candidates: [{ content: { parts: [{ text: '{"lines":[]}' }] } }] }) });
+        assert.strictEqual((await ai.ask({ prompt: 'x' })).ok, true);
+        Date.now = () => t0 + 40 * 60 * 1000;
+        replies.push({ status: 503, body: busy });
+        replies.push({ status: 503, body: busy });
+        const after = await ai.ask({ prompt: 'x' });
+        assert.match(after.reason, /in a moment/i,
+          'a success resets the clock, so the next spike is a spike again');
+      } finally { Date.now = clock; }
+    }
+
     // ── the three that ARE about this install, each named apart ───────────
     for (const [status, re] of [[401, /key/i], [403, /key/i]]) {
       replies.push({ status: status, body: '{"error":{"message":"nope"}}' });
