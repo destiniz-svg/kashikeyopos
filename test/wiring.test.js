@@ -6506,11 +6506,15 @@ test('a delivery says whether it has been priced, and where it landed', () => {
     till.indexOf('g_purchases() {') + 4000);
   assert.ok(!/locName\(p\.branch\)/.test(grn),
     'and never the outlet, which is the same name on every row');
-  /* There is no OCR anywhere in this build. The control minted a GRN number,
-     attached whichever supplier sorted first, and queued `purchases_insert`
-     WITH NO PAYLOAD. */
-  assert.ok(!/Scan invoice/.test(till),
-    'no control offers an invoice scan this build cannot perform');
+  /* THE SCAN IS BACK, WITH A MODEL BEHIND IT. It was deleted when there was
+     no OCR anywhere in this build — it minted a GRN number, attached whichever
+     supplier sorted first, and queued a bare insert kind with no payload — and
+     what makes it a control rather than a claim is the gate: it is drawn only
+     where the INSTALL has a model, and only for somebody who may price. */
+  assert.match(till, /label: "Scan invoice", go: \(\) => this\.pickInvoice\(\)/,
+    'the scan is a real control');
+  assert.match(till, /const canScan = mayPrice && aiOn\.ok === true;/,
+    'absent where there is no model, and never offered to somebody who may not price');
   assert.ok(!/queue\("purchases_insert"/.test(till)
     && !/insertRow\("purch"/.test(till),
   'and nothing writes a delivery through the collection path');
@@ -6613,4 +6617,166 @@ test('stock_move.value is a magnitude, enforced at the one seam', () => {
      Enforced at the seam rather than at seventeen call sites. */
   assert.match(mv, /value = Math\.abs\(r2\(value\)\)/,
     'the rule is kept where every move passes, not at each call site');
+});
+
+/* ═══ THE INVOICE SCAN IS REAL, AND IT STILL POSTS NOTHING ══════════════════
+   "Scan invoice" was deleted because there was no OCR behind it: it minted a
+   GRN number, attached whichever supplier sorted first, and queued a bare
+   insert kind with no payload. It is back with `src/ai.js` behind it, and the
+   property that makes that safe is the one pinned here — a scan FILLS THE
+   FORM and the stock ledger still only ever moves through `grn_receive`. */
+test('a scan fills the GRN form and never posts a delivery', () => {
+  const fs = require('fs'), path = require('path');
+  const till = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const scan = till.slice(till.indexOf('  pickInvoice() {'),
+    till.indexOf('  photoUrl(src) {'));
+  assert.ok(scan.length > 500, 'the scan path is in the till');
+
+  assert.match(scan, /this\.openForm\("grn", draft\)/,
+    'the answer opens the GRN form the operator already knows');
+  /* NOT ONE QUEUE, NOT ONE OP. A machine reading a supplier's handwriting
+     straight into a stock ledger is the "control does what it says" defect
+     with the consequence turned up: right about having scanned, wrong about
+     the stock. */
+  assert.ok(!/this\.queue\(/.test(scan), 'a scan queues nothing');
+  assert.ok(!/insertRow\(/.test(scan), 'and writes no local row');
+  /* AN UNRESOLVED LINE IS EMPTY, NEVER A GUESS. `openForm` seeds a select
+     with its first option, so a line the outlet could not resolve must not
+     arrive carrying the item master's alphabetical first row. */
+  assert.match(scan, /l\.item \|\| ""/, 'an unresolved line seeds no item');
+
+  // And the lines editor says so, rather than picking one for you.
+  assert.match(till, /\{ v: "", l: "Pick the item\\u2026" \}/,
+    'the item list leads with the ask');
+});
+
+test('the model is asked by the outlet, never by the page', () => {
+  const fs = require('fs'), path = require('path');
+  const till = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const run = till.slice(till.indexOf('  async runAi() {'), till.indexOf('  aiFallback(msg) {'));
+  /* `window.claude.complete` exists inside a Claude artifact host and in NO
+     browser on any real till, so the menu builder took its "unreachable"
+     branch on every customer's terminal for the life of the build. It was
+     honest about it, which is the only reason it was not a lying control; it
+     was still a feature nobody could use. */
+  assert.ok(!/window\.claude/.test(run), 'the menu builder no longer asks the page');
+  assert.match(run, /KPOS_BRIDGE\.menuIdeas/, 'it asks its outlet');
+  assert.match(run, /AI \|\| \{\}/, 'and reads whether this install has a model at all');
+
+  // The key can spend money, so it is held where PLATFORM_KEY and the mail
+  // key are: server-side, never rendered, never in a page.
+  for (const f of ['index.html', 'kpos-bridge.js', 'kashikeyo-api.js',
+    'guest.html', 'member.html']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8');
+    assert.ok(!/GEMINI_API_KEY/.test(src), f + ' does not carry the model key');
+  }
+});
+
+test('a scan is audit-only, and the trail carries no invoice', () => {
+  const { AUDIT_ONLY } = require('../src/apply');
+  assert.ok(AUDIT_ONLY.indexOf('invoice_scanned') >= 0,
+    'a scan changes no table — the delivery is what lands, through grn_receive');
+  const fs = require('fs'), path = require('path');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const door = route.slice(route.indexOf("r.post('/invoice/scan'"),
+    route.indexOf("r.post('/menu/ideas'"));
+  assert.match(door, /atLeast\('manager'\)/,
+    'reading rates off an invoice IS pricing, and grn_receive refuses a rate below rank 3');
+  assert.match(door, /gate\('invoice_scan'/, 'the door has a doorman — this one costs money');
+  /* THE IMAGE IS READ AND DROPPED. Storing suppliers' invoices is a new class
+     of data with retention and disclosure questions nobody asked for. */
+  assert.ok(!/INSERT INTO .*(image|invoice_scan)/i.test(door),
+    'nothing stores the photograph');
+  assert.match(door, /lines: lines\.length, matched: scan\.matched/,
+    'the trail carries how much resolved, never the supplier’s line text');
+});
+
+test('a bad minute does not turn the model off for ever', async () => {
+  /* FOUND BY DRIVING IT. `health().ok` folded in the last transport outcome,
+     and the bootstrap published `ok` to decide whether the Scan invoice
+     button is DRAWN. So one transient refusal — a 429, a timeout, a minute of
+     the provider being unavailable — took the control off every terminal in
+     the shop, and with the button gone there could never be another call to
+     clear it. Off for ever, from one bad minute, under a screen saying this
+     install had no model.
+
+     Whether an install HAS a model and whether the last call worked are two
+     questions. `configured` decides whether a control exists; `ok` is that AND
+     the last outcome, which is what an operator and the boot line want. */
+  const path = require('path');
+  const before = process.env.GEMINI_API_KEY;
+  delete require.cache[require.resolve('../src/ai')];
+  process.env.GEMINI_API_KEY = 'a-well-formed-key';
+  try {
+    const ai = require('../src/ai');
+    let h = ai.health();
+    assert.strictEqual(h.configured, true);
+    assert.strictEqual(h.ok, true, 'a fresh install with a key is both');
+
+    // The seam's own failure path, without reaching anything: an unreachable
+    // host makes `last` a failure exactly as a refusal would.
+    await ai.ask({ prompt: 'x', timeoutMs: 1 });
+    {
+      h = ai.health();
+      assert.strictEqual(h.ok, false, 'the operator is told the last call failed');
+      assert.strictEqual(h.configured, true,
+        'but the install still HAS a model, so the control still exists');
+
+      const boot = require('fs').readFileSync(
+        path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+      assert.match(boot, /ok: !!h\.configured/,
+        'the bootstrap publishes the configuration, never the last minute');
+      const route = require('fs').readFileSync(
+        path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+      assert.ok(!/if \(!h\.ok\) return res\.status\(503\)/.test(route),
+        'and a door still attempts the call after a failure, as the mail seam does');
+    }
+  } finally {
+    if (before === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = before;
+    delete require.cache[require.resolve('../src/ai')];
+  }
+});
+
+test('a scan draft seeds the GRN form, and an unresolved line names nobody', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real(), role: 'SuperAdmin' });
+  /* The exact shape `sendInvoice()` composes, opened through the exact call
+     it makes. This is the join the API test cannot see and the browser drive
+     cannot see cheaply: whether the outlet's answer actually lands in the
+     boxes the operator will read. */
+  const items = (F.__win.KPOS_RAW.items || []);
+  const known = items.length ? String(items[0][0]) : '';
+  F.openForm('grn', {
+    scan: true, no: 'GRN-SCAN-1', date: '2026-08-30', inv: 'INV-9001', total: '993',
+    lines: [[known, 25, 32], ['', 3, 4]],
+    _scanNotes: ['2. Something this store has never bought — no item on this store matches'],
+    _scanSupplier: 'Reef Suppliers Pvt Ltd',
+    _scanUnreadable: ['the handwritten note at the foot']
+  });
+  const v = F.state.formVals;
+  assert.strictEqual(F.state.modal.form, 'grn', 'the GRN form opened');
+  assert.strictEqual(v.inv, 'INV-9001', 'the invoice number is offered');
+  assert.strictEqual(v.date, '2026-08-30', "and the invoice's own date");
+  assert.strictEqual(v.lines.length, 2);
+  assert.strictEqual(v.lines[0].item, known, 'a resolved line names its item');
+  assert.strictEqual(v.lines[0].qty, '25');
+  assert.strictEqual(v.lines[0].rate, '32');
+  /* AN UNRESOLVED LINE NAMES NOBODY. `openForm` seeds a select with its first
+     option, so this is the one that would silently have become the item
+     master's alphabetical first row standing over a stock movement. */
+  assert.strictEqual(v.lines[1].item, '', 'an unresolved line is empty, never a guess');
+
+  // And the form SAYS what the scan could and could not read, in its foot —
+  // not in a toast that has already gone.
+  const spec = F.formSpec('grn', {});
+  assert.match(spec.foot, /READ OFF THE PAPER/);
+  assert.match(spec.foot, /Reef Suppliers Pvt Ltd/, 'the supplier as printed, where it resolved to nobody');
+  assert.match(spec.foot, /Lines still needing an item/);
+  assert.match(spec.foot, /handwritten note at the foot/, 'and what it could not make out');
+
+  // An ordinary GRN, opened with no draft, says none of that.
+  F.openForm('grn');
+  assert.ok(!/READ OFF THE PAPER/.test(F.formSpec('grn', {}).foot),
+    'a typed delivery carries no scan preamble');
 });

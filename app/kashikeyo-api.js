@@ -708,6 +708,26 @@
        tables is not a till write, and a half-applied reset behind a toast is
        the defect the holding pen exists to catch. Rank 5 at the door, and the
        door asks for the confirmation too. */
+    /* READING A SUPPLIER'S INVOICE. Not an outbox op, and never offline: the
+       answer is a DRAFT the operator checks against the paper in their hand,
+       so there is nothing durable to hold and nothing to replay. The delivery
+       itself still lands through `grn_receive` like any other, which is what
+       keeps one road into the stock ledger. */
+    /* THE MENU BUILDER'S QUESTION, asked of the OUTLET rather than of the
+       page. It used to call `window.claude.complete` — which exists inside a
+       Claude artifact host and in no browser on any real till — so on every
+       customer's terminal it took the "model unreachable" branch, every time,
+       for the life of the build. It said so honestly, which is the only
+       reason it was not a lying control; it was still a feature nobody could
+       use. Same door, same key, same rank gate as the invoice scan. */
+    menuIdeas(brief, pantry, context) {
+      return this._fetch("/api/outlet/" + this.outletId + "/menu/ideas",
+        { method: "POST", body: { brief: brief, pantry: pantry, context: context } });
+    }
+    scanInvoice(image) {
+      return this._fetch("/api/outlet/" + this.outletId + "/invoice/scan",
+        { method: "POST", body: { image: image } });
+    }
     tradeCensus() {
       return this._fetch("/api/outlet/" + this.outletId + "/reset/trade");
     }

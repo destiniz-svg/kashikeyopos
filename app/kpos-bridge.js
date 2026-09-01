@@ -385,6 +385,8 @@
     /* The shipped catalogue, landed server-side and re-read whole — the same
        reason the setup import is not an outbox op. */
     menuPreset: function (part) { return api.menuPreset(part); },
+    scanInvoice: function (image) { return api.scanInvoice(image); },
+    menuIdeas: function (b, p, c) { return api.menuIdeas(b, p, c); },
     tradeCensus: function () { return api.tradeCensus(); },
     resetTrade: function (why) { return api.resetTrade(why); },
     /* The log-out's cache clean — see wipeLocal() in the API client. */

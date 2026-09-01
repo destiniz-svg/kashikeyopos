@@ -10376,6 +10376,114 @@ class Component extends DCLogic {
     rd.readAsDataURL(f);
     clear();
   }
+  /* ═══ READING A SUPPLIER'S INVOICE ══════════════════════════════════════
+     The file chooser, the call, and the DRAFT that opens the GRN form. Three
+     things this deliberately does not do.
+
+     IT POSTS NOTHING. The answer opens the form the operator already knows,
+     with every figure in a box they can correct against the paper in their
+     hand, and the delivery lands through `grn_receive` exactly as a typed one
+     does. A machine reading handwriting straight into a stock ledger is the
+     "control does what it says" defect with the consequence turned up: the
+     screen would be right about having scanned and wrong about the stock.
+
+     IT NEVER PICKS AN ITEM THE OUTLET DID NOT RESOLVE. An unmatched line
+     arrives with an empty item, which the lines editor now shows as
+     "Pick the item…" and the form's own check refuses by name. Silently
+     seeding the alphabetical first row would be the Role box defect standing
+     over a stock movement.
+
+     AND IT IS NOT AN OUTBOX OP. There is nothing durable to hold: a draft
+     nobody confirmed is worth nothing, and replaying a scan three hours later
+     spends money to re-read a document somebody has already dealt with. */
+  pickInvoice() {
+    if (this.state.scanning) return;
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/jpeg,image/png,image/webp,application/pdf";
+    inp.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) this.readInvoice(f);
+    };
+    inp.click();
+  }
+  /* A PHOTOGRAPH IS DOWNSCALED ON THE DEVICE, at 1600px on its longest side —
+     larger than a dish photograph's 720 because the thing being read is
+     six-point type on a docket, and smaller than a modern camera's 4000
+     because the body cap is 4 MB and a legible invoice is nowhere near it. A
+     PDF is sent as it is: rasterising one needs a renderer this build does
+     not ship, and Gemini reads the file itself. */
+  readInvoice(f) {
+    const isPdf = f.type === "application/pdf";
+    if (!isPdf && !/^image\//.test(f.type || "")) {
+      return this.toast("That file is not a photograph or a PDF", "warn");
+    }
+    const rd = new FileReader();
+    rd.onerror = () => this.toast("That file could not be read", "warn");
+    rd.onload = () => {
+      const src = String(rd.result || "");
+      if (isPdf) return this.sendInvoice(src, f.name);
+      const im = new Image();
+      im.onerror = () => this.toast("That image could not be read", "warn");
+      im.onload = () => {
+        const sc = Math.min(1, 1600 / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(im.width * sc); cv.height = Math.round(im.height * sc);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        this.sendInvoice(cv.toDataURL("image/jpeg", 0.9), f.name);
+      };
+      im.src = src;
+    };
+    rd.readAsDataURL(f);
+  }
+  async sendInvoice(dataUrl, name) {
+    if (!window.KPOS_BRIDGE || !window.KPOS_BRIDGE.scanInvoice) {
+      return this.toast("Scanning needs the outlet — this terminal cannot reach it", "warn");
+    }
+    this.setState({ scanning: true });
+    this.toast("Reading " + (name || "the invoice") + "…");
+    let out;
+    try {
+      out = await window.KPOS_BRIDGE.scanInvoice(dataUrl);
+    } catch (e) {
+      this.setState({ scanning: false });
+      // The outlet's own sentence, never a word of this screen's own
+      // invention: it is the one thing that says whether the install, the
+      // photograph or the model is the thing to go and look at.
+      return this.toast(String((e && e.message) || "The invoice could not be read"), "warn");
+    }
+    this.setState({ scanning: false });
+    const lines = (out.lines || []);
+    if (!lines.length) {
+      return this.toast("Nothing on that page read as a delivery line — photograph the "
+        + "itemised part of the invoice, or key it in", "warn");
+    }
+    /* THE DRAFT IS THE GRN FORM'S OWN SHAPE, so `openForm` seeds it with no
+       new machinery: `lines` is the [item, qty, rate] triple its editor
+       already reads, and an unresolved item is the empty string rather than a
+       guess. The DATE and the invoice number are offered; the receiving
+       location and the supplier are not overridden where the scan could not
+       resolve them, because a suggestion steps aside and a decision does not. */
+    const draft = {
+      scan: true,
+      no: this.nextNo("purch", "GRN-2026-"),
+      date: out.date || this.today(),
+      inv: out.invoiceNo || "",
+      total: out.total ? String(out.total) : "0",
+      lines: lines.map((l) => [l.item || "", l.qty || 0, l.rate || 0]),
+      _scanNotes: lines.map((l, i) => l.item ? null
+        : (i + 1) + ". " + (l.text || "a line") + " — " + l.why).filter(Boolean),
+      _scanSupplier: out.supplier || "",
+      _scanUnreadable: out.unreadable || []
+    };
+    if (out.supplierId) draft.vendor = out.supplierId;
+    this.openForm("grn", draft);
+    const miss = lines.length - out.matched;
+    this.toast(lines.length + " line" + (lines.length === 1 ? "" : "s") + " read"
+      + (miss ? " · " + miss + " need" + (miss === 1 ? "s" : "") + " an item picked" : "")
+      + " — check it against the paper before you post",
+    miss ? "warn" : "ok");
+  }
   photoUrl(src) {
     const v = String(src || "");
     if (!v) return "";
@@ -13190,29 +13298,36 @@ class Component extends DCLogic {
     const raw = window.KPOS_RAW || {}, s = this.state;
     const mayPrice = this.canPriceCheck();
     const waiting = this.awaitingCheck();
+    // Whether this INSTALL has a model at all, published by the bootstrap.
+    const aiOn = (K() || {}).AI || {};
+    const canScan = mayPrice && aiOn.ok === true;
     const STATE = {
       draft: ["Draft", "mute"], unpriced: ["Awaiting price check", "warn"],
       query: ["Query raised", "err"], posted: ["Posted", "ok"]
     };
     return {
-      /* "SCAN INVOICE" IS GONE. There is no OCR anywhere in this build and
-         there never has been — the control minted a GRN number, attached
-         whichever supplier happened to sort first, and wrote a row through
-         the generic back-office collection path, which finds no entry in
-         COLLECTION_OP and queues a bare insert kind WITH NO PAYLOAD — one
-         with no handler,
-         recorded `unmodelled`, answered success. So it created a draft
-         delivery against a vendor nobody chose, in one browser, saying "lines
-         awaiting match" for a match nothing performs. Same class as the QR
-         modal's own token-rotation control, deleted for the same reason: a
-         control offering an act this build cannot make. Receiving a delivery
-         is one button, and it is the real one. */
-      actions: [
+      /* "SCAN INVOICE" IS REAL NOW, and it was deleted first for a reason
+         worth keeping: there was no OCR anywhere in this build, so the old
+         control minted a GRN number, attached whichever supplier sorted
+         first, and wrote a row through the generic back-office collection
+         path — which finds no entry in COLLECTION_OP and queues a bare insert
+         kind WITH NO PAYLOAD, one with no handler, recorded `unmodelled`,
+         answered success. It said "lines awaiting match" for a match nothing
+         performed. Deleting it was right; putting it back with a model behind
+         it is better.
+
+         IT IS DRAWN ONLY WHERE THE INSTALL HAS A MODEL (`AI.ok` from the
+         bootstrap) and only for somebody who may price — reading rates off an
+         invoice IS pricing, and `grn_receive` refuses a rate from below rank
+         3, so a cashier would be handed figures they cannot post. Where there
+         is no model the button is ABSENT rather than dead, and the note below
+         carries the install's own reason for whoever can act on it. */
+      actions: (canScan ? [{ label: "Scan invoice", go: () => this.pickInvoice() }] : []).concat([
         { label: mayPrice ? "Receive a delivery" : "Sign for a delivery", primary: true, go: () => {
           if (!this.canReceive()) return this.toast("Signing for a delivery needs receiving rights — ask a manager to add them", "warn");
           this.openForm("grn");
         } }
-      ],
+      ]),
       guideTitle: mayPrice ? "Receiving goods" : "Signing for a delivery",
       guide: mayPrice
         ? ["Raise the GRN as the delivery lands \u2014 one line per item, with quantity and rate", "The lines add up to the total; the printed invoice figure only cross-checks them", "Stock moves into the receiving location and stamps a batch per line", "Price-check it: that day's price becomes the new average, and every dish using the item is recosted"]
@@ -17892,7 +18007,17 @@ class Component extends DCLogic {
     const vendorOpts = [{ v: "", l: "Pick the supplier\u2026" }]
       .concat(sel((raw.vendors || []).map((v) => ({ v: v.id, l: v.name }))))
       .concat([{ v: NEW_VENDOR, l: "\uff0b New supplier, named below" }]);
-    const itemOpts = sel((raw.items || []).filter((i) => i[5] !== "raw" || true).slice(0, 80).map((i) => ({ v: i[0], l: i[2] })));
+    /* NOTHING IS PICKED FOR YOU ON A LINE EITHER. `openForm` seeds a select
+       with its FIRST option, so every fresh GRN line came up naming whichever
+       item sorts first — a delivery attributed to the wrong item is the Role
+       box defect in the one place it moves stock. It matters more now that a
+       SCANNED line can arrive unresolved: the operator has to see that this
+       line is theirs to name, not find the item master's alphabetical first
+       row sitting in it. The form already refuses an unnamed line by name
+       ("Every line needs an item and a quantity above zero"), so the empty
+       answer is a refusal rather than a bad post. */
+    const itemOpts = [{ v: "", l: "Pick the item\u2026" }]
+      .concat(sel((raw.items || []).filter((i) => i[5] !== "raw" || true).slice(0, 80).map((i) => ({ v: i[0], l: i[2] }))));
     const catOpts = sel((K0.MENU_CATEGORIES || []).map((c) => ({ v: c.id, l: c.name })));
     const roleOpts = sel((K0.ROLES || []).map((r) => ({ v: r.key, l: r.label })));
     const staffOpts = sel((K0.STAFF || []).map((x) => ({ v: x.id, l: x.name + " · " + x.job })));
@@ -19588,13 +19713,35 @@ class Component extends DCLogic {
       // prices it afterwards, which is the second signature the ledger needs.
       grn: (() => {
         const priced = this.canPriceCheck();
+        // The draft a scan produced, or {} — formSpec is called on every
+        // render, including while the DETAIL modal is still up, so it reads
+        // the row either way rather than off anything the page left behind.
+        const scan = ((this.state.modal || {}).edit) || {};
         return {
           title: priced ? "New GRN" : "Sign for a delivery",
           sub: priced ? "Goods received against a vendor invoice" : "Count it, note anything wrong, sign it in",
           save: priced ? "Post GRN" : "Sign it in",
-          foot: priced
+          /* WHAT A SCAN COULD AND COULD NOT READ IS ON THE FORM, not in a
+             toast that has already gone. A half-filled form with no
+             explanation is worse than an empty one: the operator cannot tell
+             a line the model missed from a line the item master does not
+             hold, and those need two different actions. So the foot names
+             every unresolved line by its printed text, repeats the supplier's
+             name as printed where it resolved to nobody, and lists whatever
+             the model said it could not make out \u2014 which is the honest
+             half of OCR and the half most tools drop. */
+          foot: (scan.scan
+            ? "READ OFF THE PAPER \u2014 check every figure against the invoice in your hand before you post. Nothing has been saved yet.\n"
+              + (scan._scanSupplier && !scan.vendor
+                ? "The invoice says \u201c" + scan._scanSupplier + "\u201d and no supplier on this store matches \u2014 pick one below, or add it.\n" : "")
+              + ((scan._scanNotes || []).length
+                ? "Lines still needing an item:\n" + scan._scanNotes.join("\n") + "\n" : "")
+              + ((scan._scanUnreadable || []).length
+                ? "The scan could not make out: " + scan._scanUnreadable.join("; ") + "\n" : "")
+              + "\n"
+            : "") + (priced
             ? "Add a line for every item on the invoice \u2014 the total is the sum of the lines, never a figure typed over them. Picking an item seeds its last known rate, so you only correct what the vendor changed. Posting moves each line into the receiving location and stamps a batch at that day's price."
-            : "Stock is usable the moment you sign it in, so the kitchen is never waiting on an office. A manager prices the invoice afterwards — that part is not yours to carry, and the count you record here is what their invoice gets checked against.",
+            : "Stock is usable the moment you sign it in, so the kitchen is never waiting on an office. A manager prices the invoice afterwards — that part is not yours to carry, and the count you record here is what their invoice gets checked against."),
           fields: [
             { k: "no", label: "GRN number", v: this.nextNo("purch", "GRN-2026-") },
             { k: "date", label: "Date received", v: this.today() },
@@ -21118,24 +21265,35 @@ class Component extends DCLogic {
     if (this.state.aiRunning) return;
     const s = this.state, o = this.outlet();
     if (!s.online) { this.toast("The builder needs the network — it prices against the live item master", "warn"); return; }
-    if (!(window.claude && window.claude.complete)) { this.aiFallback("Model unreachable — showing the last cost-engineered proposal"); return; }
+    /* THE OUTLET IS ASKED, NOT THE PAGE. This used to test for a completion
+       helper injected by an artifact host — a thing that exists in NO browser
+       on any real till — so on every customer's terminal it took the fallback
+       branch, every time, for the life of the build. The key can spend money,
+       so it lives on the server exactly as the mail key does; `src/ai.js` is
+       the one seam and this is one of its two callers. */
+    if (!(window.KPOS_BRIDGE && window.KPOS_BRIDGE.menuIdeas)) {
+      this.aiFallback("This terminal cannot reach the outlet, so nothing was proposed");
+      return;
+    }
+    const aiState = (K() || {}).AI || {};
+    if (aiState.ok !== true) {
+      this.aiFallback(aiState.reason || "No model is configured on this install");
+      return;
+    }
     this.setState({ aiRunning: true, aiResult: null });
     const pantry = this.aiPantry();
     const cats = (K().MENU_CATEGORIES || []).map((c) => c.name).join(", ");
-    const sys = "You are a restaurant menu engineer for a Maldivian chain. You design dishes only from the pantry given. "
-      + "Reply with JSON only, no prose, no code fences. Shape: "
-      + '{"rationale":"2-3 sentences on the trade-offs you made","dishes":[{"name":"","cat":"one of the given categories","price":<MVR integer>,"lines":[{"item":<pantry id>,"qty":<integer>}],"why":"one sentence tying this dish to cost or stock"}]}. '
-      + "Use pantry ids exactly. qty is per single portion, in THAT item's own base unit as given in the pantry (GRM = grams, ML = millilitres, PCS = whole pieces) — never convert. "
-      + "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit.";
-    const body = "Outlet: " + o.name + " (" + o.code + "), " + o.type.replace("_", " ") + ", " + (this.taxLine(o) || "not GST registered") + ".\n"
-      + "Menu categories: " + cats + "\n"
-      + "Brief: " + s.aiPrompt + "\n\nPantry (id · item · category · base unit · MVR per one base unit · on hand):\n"
-      + pantry.map((p) => p.id + " · " + p.name + " · " + p.cat + " · " + p.base + " · " + p.costPerBase.toFixed(4) + " · " + p.onHand.toFixed(1) + p.unit).join("\n");
     try {
-      const txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 4000, system: sys, messages: [{ role: "user", content: body }] });
-      const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
-      if (a < 0 || b < a) throw new Error("no json");
-      const parsed = JSON.parse(txt.slice(a, b + 1));
+      /* The outlet composes the model's own prompt from the shape below; what
+         travels is the PANTRY this terminal costed and the brief somebody
+         typed. The proposal comes back uncosted and is costed HERE, against
+         that same pantry — so a price is this store's arithmetic on this
+         store's item master, never a figure a model asserted. */
+      const parsed = await window.KPOS_BRIDGE.menuIdeas(s.aiPrompt, pantry.map((p) =>
+        p.id + " · " + p.name + " · " + p.cat + " · " + p.base + " · "
+          + p.costPerBase.toFixed(4) + " · " + p.onHand.toFixed(1) + p.unit),
+      "Outlet: " + o.name + " (" + o.code + "), " + o.type.replace("_", " ") + ", "
+        + (this.taxLine(o) || "not GST registered") + ".\nMenu categories: " + cats);
       const dishes = (parsed.dishes || []).map((d) => {
         const lines = this.aiCost(d.lines);
         const cost = lines.reduce((x, l) => x + l[1], 0);

@@ -3353,6 +3353,15 @@ H.staffedit = H.employee_upsert;
 const AUDIT_ONLY = [
   'access_change', 'act_as', 'auto_lock', 'backup_create', 'backup_run',
   'cfo_query', 'device_deregister', 'device_diagnostics', 'device_lock',
+  /* A SCAN IS A READING, NOT A DELIVERY. `/invoice/scan` hands the GRN form a
+     draft and posts nothing — the stock lands through `grn_receive` like any
+     other delivery, with its own document number and its own refusals. What
+     is worth keeping is that somebody pointed a camera at a supplier's paper
+     and how much of it this outlet could resolve; a scan whose lines never
+     matched anything is the sentence a manager needs when the item master is
+     the thing that is wrong. The image and the supplier's line text are
+     deliberately NOT on the trail: the delivery is the record. */
+  'invoice_scanned',
   'device_paired', 'device_replay', 'grn_query', 'outlet_switch_denied',
   // The rename itself happened over HTTP, at rank 5, behind a refusal the
   // operator saw. What reaches the outbox is the record of it.

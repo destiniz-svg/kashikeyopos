@@ -17,6 +17,7 @@ const { withOutletRead } = require('./db');
 // What this install is running. Read once, from the one place it is stated.
 const APP_VERSION = require('../package.json').version;
 const { presetCounts } = require('./preset');
+const ai = require('./ai');
 // The outlet's own local date — see apply.js. One day-key, not two.
 const { today } = require('./apply');
 
@@ -450,6 +451,24 @@ async function buildBootstrap(ctx) {
          whether this outlet is still short of the pre-set options without a
          literal 112 sitting in the client. Shipped structure, no trade, no
          query. */
+      /* WHETHER THIS INSTALL HAS A MODEL, so a screen can offer the invoice
+         scan only where there is something behind it — the rule the Backup
+         card and the panel's Logs tab already keep: a control that cannot
+         work is absent, and the REASON is on the screen for whoever can act
+         on it rather than a button that fails when pressed.
+
+         `ok` and `reason` only. `reason` is the CLASS and the status — the
+         install's own state, identical for every caller — and never the
+         transport's verbatim `detail`, which is the operator's and goes to
+         the log, exactly as the mail seam splits the same two sentences. */
+      AI: (function () {
+        const h = ai.health();
+        /* `configured`, NEVER `ok` — see the latch `health()` names. Whether
+           a control EXISTS is a question about this install; whether the last
+           call worked is a question about the last minute, and a transient
+           refusal that removes the button removes the only way to clear it. */
+        return { ok: !!h.configured, reason: h.reason || null };
+      })(),
       PRESET: presetCounts(),
       /* Live sign-ins at this outlet, this device included. `others` is what
          "sign out everywhere" would actually end. */

@@ -779,6 +779,13 @@ async function boot() {
      A failure does not stop the others and does not stop the process: each
      database's run is its own row in chain.backup, and the watchdog reads
      them. */
+  /* WHETHER THIS INSTALL HAS A MODEL, said at boot by name. A fence that is
+     silently absent is worse than no fence, and an operator who set
+     GEMINI_API_KEY needs to know whether it was READ — a dangling
+     ${{reference}} is non-empty, truthy and useless, which is the trap the
+     mail seam already names twice. */
+  console.log(require('./src/ai').why());
+
   (function scheduleBackups() {
     const backup = require('./src/backup');
     const hours = Number(process.env.BACKUP_EVERY_HOURS || 24);
