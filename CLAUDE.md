@@ -2878,7 +2878,7 @@ composition and decision, never connectivity. The first real scan on the live
 install is the first proof that the key, the quota and the model's reading are
 right, and `[ai]` on the boot line says whether the key was even read.
 
-**And on the first deploy it said the key was NOT read.** `GEMINI_API_KEY`,
+**And on the first two deploys it said the key was NOT read.** `GEMINI_API_KEY`,
 `GEMINI_MODEL` and `AI_PROVIDER` are all present on the production service by
 NAME, and the boot line was still:
 
@@ -2899,6 +2899,49 @@ lied: the scan control is simply ABSENT on every terminal, `Receive a
 delivery` is untouched, and the install says by name which of the four states
 it is in. An install with no model is a stated condition, not a broken one —
 the same rule the mail seam and the backup destination already keep.
+
+**And then the value was pasted, and the install said so itself:**
+
+```
+[ai] gemini-3.7-flash — invoice scanning and the menu builder are live
+```
+
+Which is exactly as much as a boot line can prove, and the seam is written so
+that is clear. `configured` is true — the provider is Gemini, the key is
+non-empty and is not a dangling `${{reference}}` — so the Scan control is drawn
+on every rank-3 terminal and the menu builder answers. `ok` is that AND `last`,
+the install's own most recent outcome, and at boot `last` is null because no
+call has been made. **The boot line therefore proves the key was READ, and
+nothing about whether it WORKS.**
+
+Three things are still unproven by it, and the first real scan settles all
+three at once: whether the key is valid, whether there is quota, and whether
+`gemini-3.7-flash` is a name Google serves — `MODEL()` goes straight into the
+URL path (`/v1beta/models/<model>:generateContent`), so a name the API does not
+carry is a 404 on the first call and never a boot failure. That is deliberate:
+this build cannot ask Google what it serves without spending the key, and a
+model list baked in here would be stale the week after it was written.
+
+Nothing lies in that case either, and the two flags do exactly opposite jobs
+here — which is worth stating precisely, because the obvious reading is wrong.
+**The bootstrap publishes `configured`, never `ok`** (`AI: { ok: !!h.configured }`
+— the key is renamed on the way out and the comment there says why). So a
+refused call does NOT take the control away: `last` is set, `health()` returns
+`configured: true, ok: false` carrying the transport's own words, `reason` is
+published beside it, and the button STAYS with that sentence under it. Removing
+it would remove the only way to try again once the cause was fixed, which is
+the latch the seam was split to avoid.
+
+And `last` is in-process (`let last = null` at module scope), so a restart
+clears it and the boot line reads "live" again. That is correct rather than
+sloppy: the boot line is a statement about CONFIGURATION, and the last call's
+outcome is not a fact a fresh process has. Nobody should read a green `[ai]`
+line as evidence a scan works — only a scan is.
+
+So the failure mode of a wrong model name is a named refusal on the screen of
+whoever scanned, with the control still there to retry — never a half-filled
+GRN. `grn_receive` is untouched either way, because the scan fills a form and
+never posts.
 
 **Stated rather than fixed**: two more callers of `window.claude` remain — the
 Today briefing and the CFO advisory. Both are honest about being unreachable
