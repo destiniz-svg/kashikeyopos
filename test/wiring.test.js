@@ -7284,3 +7284,111 @@ test('the poll does not call the accept, and the card says which act it is', () 
   // "On my way" is what you say to a call, not to an order.
   assert.match(src, /Accept the order/, 'the control names the act');
 });
+
+test('Orders & Tickets carries the waiting rounds, with what was ordered', () => {
+  /* Asked for: "order and tickets should show this qr orders with the item
+     details. from there also orders can be accepted." The floor card is a
+     nudge on one screen and it can only say "3 items"; whether the kitchen can
+     make it depends on WHICH three, and Orders & Tickets is where somebody
+     goes to see what the outlet owes food on. */
+  const H = require('./harness');
+  const K = FX.kpos();
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+  const dish = (K.MENU || [])[0];
+
+  F.allSignals = () => [{
+    id: 'go_11111111-1111-1111-1111-111111111111',
+    outlet: F.state.outletId, table: 7, kind: 'order', at: Date.now() - 6 * 60000,
+    lines: [{ id: dish.id, qty: 2, addons: 0 }, { id: 'NOT-A-DISH', qty: 1 }],
+    guest: 'Aishath', from: 'portal'
+  }];
+
+  const w = F.qrWaiting();
+  assert.strictEqual(w.length, 1, 'the round is listed');
+  assert.strictEqual(w[0].items, 3, 'counted by quantity, not by line');
+  assert.ok(w[0].lines.some((l) => l.name === dish.name),
+    'and it names the dish — the whole point of showing it here');
+  assert.ok(w[0].unknown,
+    'a dish this terminal has never heard of is FLAGGED rather than shown as'
+    + ' an id, because that is the one thing to see before accepting');
+  assert.ok(w[0].mins >= 5, 'and how long somebody has been waiting');
+
+  F.state.tab = Object.assign({}, F.state.tab, { ordSub: 'waiting' });
+  const g = F.g_orders();
+  assert.ok((g.tabs || []).some((t) => t.label === 'Waiting' && t.count === 1),
+    'the tab counts it');
+  assert.strictEqual(g.rows.length, 1, 'and the tab draws it');
+  const cellText = JSON.stringify(g.rows[0].cells);
+  assert.ok(cellText.indexOf(dish.name) >= 0, 'the row carries the item detail');
+  assert.ok(typeof g.rows[0].go === 'function', 'and opens the round');
+
+  // The tab strip is one function, or the counts drift between the two returns.
+  F.state.tab = Object.assign({}, F.state.tab, { ordSub: 'open' });
+  assert.ok((F.g_orders().tabs || []).some((t) => t.label === 'Waiting' && t.count === 1),
+    'and Waiting is counted from every other tab too');
+});
+
+test('a round can be declined, and the reason is what reaches the guest', () => {
+  /* Asked for: "if an item is unavailable, this order should be rejected.
+     allow to send a message with the rejected reason." `H.qr_order` has taken
+     `reject` since it was written and NOTHING had ever sent one — so the only
+     way to refuse a round was to accept it and void the lines, which cooks it
+     first. */
+  const H = require('./harness');
+  const K = FX.kpos();
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+  const sig = 'go_22222222-2222-2222-2222-222222222222';
+  F.allSignals = () => [{ id: sig, outlet: F.state.outletId, table: 4, kind: 'order',
+    at: Date.now(), lines: [{ id: (K.MENU[0] || {}).id, qty: 1 }], from: 'portal' }];
+
+  const q = [];
+  const toasts = [];
+  F.queue = (kind, label, entity, payload) => q.push({ kind, payload, label });
+  F.toast = (t, tone) => toasts.push({ t, tone });
+
+  // A refusal with no words is a phone that says no and never why.
+  F.declineQr(sig, '   ');
+  assert.strictEqual(q.length, 0, 'an empty reason declines nothing');
+  assert.match(toasts[0].t, /Say why/i, 'and says so');
+
+  F.declineQr(sig, 'No more Valhomas Rice tonight');
+  const op = q.find((o) => o.kind === 'qr_order');
+  assert.ok(op, 'the decision reaches the outlet');
+  assert.strictEqual(op.payload.id, sig.slice(3), 'naming the guest_order row');
+  assert.strictEqual(op.payload.reject, 'No more Valhomas Rice tonight',
+    'and carrying the words the guest will read');
+  assert.ok(!q.some((o) => o.kind === 'add_line'),
+    'NOTHING is cooked — a decline is not an accept with a note on it');
+  assert.ok(!q.some((o) => o.kind === 'fire_course'), 'and nothing is fired');
+  assert.match(op.label, /declined/i, 'the trail says what happened');
+});
+
+test('a declined round reaches the phone, because absence is not an answer', () => {
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  /* Every other read filters `rejected_reason IS NULL`, so without this the
+     round leaves the projection entirely and the guest's ladder falls back to
+     what the PHONE last sent — "Received", for food nobody will cook. Exactly
+     the settled-receipt defect, and it needs the same answer: the projection
+     says it. */
+  assert.match(out, /declined:\s*\['SELECT table_no, rejected_reason/,
+    'the snapshot carries the declined rounds');
+  assert.match(out, /declined: q\.declined\.rows/, 'and returns them');
+  assert.ok(/rejected_reason IS NOT NULL/.test(out), 'only the declined ones');
+  assert.ok(/declined:[\s\S]{0,400}interval '2 hours'/.test(out),
+    'bounded, so tomorrow\'s guest on this table never reads it');
+
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.match(bridge, /K\.DECLINED = \(snap\.declined \|\| \[\]\)/,
+    'the bridge publishes it');
+
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(g, /declinedHere\(\)/, 'the phone reads it');
+  assert.match(g, /steps: \["Received", "Declined"\]/,
+    'and the ladder ends where it actually ended');
+  /* Guarded exactly as settledHere() is, or a refusal from an earlier sitting
+     claims a round this guest has only just sent. */
+  const from = g.indexOf('declinedHere() {');
+  const to = g.indexOf('stage() {', from);
+  assert.match(g.slice(from, to), /this\.state\.sent/,
+    'against this phone\'s own last round');
+});

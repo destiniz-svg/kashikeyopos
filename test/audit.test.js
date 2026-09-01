@@ -34,7 +34,7 @@ test('empty database — every screen renders and no handler throws', () => {
   assert.strictEqual(r.errs.length, 0, r.errs.join(' | '));
   assert.strictEqual(r.s.rendered, 34, 'all 34 screen generators render');
   assert.strictEqual(r.m.rendered, 35, 'all 35 modal kinds open');
-  assert.strictEqual(r.f.rendered, 69, 'all 69 forms have a spec');
+  assert.strictEqual(r.f.rendered, 70, 'all 70 forms have a spec');
   assert.ok(r.s.fired > 400, 'the handler sweep actually swept (' + r.s.fired + ' calls)');
 });
 

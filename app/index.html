@@ -10346,6 +10346,87 @@ class Component extends DCLogic {
     if (touched) this.setState({ tickets: t });
     this.forceUpdate();
   }
+  /* ═══ A ROUND WAITING ON A DECISION ═══════════════════════════════════
+     The floor card is a nudge and it is on one screen; Orders & Tickets is
+     where somebody goes to see what this outlet owes food on, so a round
+     nobody has accepted belongs there too — with what was actually ordered,
+     because "2 items from the QR menu" is not enough to know whether the
+     kitchen can make it. */
+  qrWaiting() {
+    return this.signals()
+      .filter((x) => x.kind === "order" && x.lines && x.lines.length)
+      .map((x) => {
+        const menu = K().MENU || [];
+        const lines = x.lines.map((l) => {
+          const mi = menu.find((y) => y.id === l.id) || {};
+          return {
+            id: l.id, qty: l.qty || 1,
+            name: mi.name || l.id,
+            /* An id where the name should be is the honest answer: this round
+               names a dish this terminal's menu does not hold, which is the
+               one case a cashier must see before accepting rather than after
+               the kitchen asks what it is. */
+            unknown: !mi.name,
+            price: this.menuPrice(mi) + (+l.addons || 0),
+            note: l.note || ""
+          };
+        });
+        return {
+          sig: x.id, table: x.table, at: x.at, lines: lines,
+          items: lines.reduce((a, l) => a + l.qty, 0),
+          due: lines.reduce((a, l) => a + l.price * l.qty, 0),
+          guest: x.guest || x.memberName || "",
+          unknown: lines.some((l) => l.unknown),
+          mins: Math.max(0, Math.round((Date.now() - (x.at || Date.now())) / 60000))
+        };
+      })
+      .sort((a, b) => (a.at || 0) - (b.at || 0));
+  }
+  /* The round, its items, and the two decisions — nothing else. Composed
+     through `share`, the same sheet the receipt and the invitation use, so
+     there is no fourth way to draw a list with actions under it. */
+  qrRoundSheet(r) {
+    const money = (n) => MVRc(n);
+    this.setState({ modal: { kind: "share",
+      title: "Round from " + this.slotName(r.table),
+      sub: r.items + " item" + (r.items === 1 ? "" : "s") + " \u00b7 " + money(r.due)
+        + " \u00b7 " + (r.mins ? r.mins + " min ago" : "just now")
+        + (r.guest ? " \u00b7 " + r.guest : ""),
+      acts: r.lines.map((l) => ({
+        head: "", label: l.qty + " \u00d7 " + l.name,
+        sub: (l.unknown ? "This terminal's menu has no such dish \u2014 check before accepting"
+          : money(l.price * l.qty)) + (l.note ? " \u00b7 " + l.note : ""),
+        go: () => {}
+      })).concat([
+        { head: "The decision",
+          label: "Accept the order",
+          sub: "Lines land on " + this.slotName(r.table) + " and go to the kitchen now",
+          go: () => this.acceptQr(r.sig) },
+        { label: "Decline the round",
+          sub: "Tell the guest why \u2014 the reason reaches their phone",
+          go: () => this.openForm("qrdecline", { sig: r.sig, table: r.table }) }
+      ])
+    } });
+  }
+  /* DECLINING IS A MESSAGE, NOT A DELETION. `H.qr_order` has taken `reject`
+     since it was written and nothing has ever sent one, so the only way a
+     counter could refuse a round was to accept it and then void the lines —
+     which cooks it first. The reason is mandatory because the whole point is
+     that the guest is told: "declined" with no words is a phone that says the
+     kitchen refused and never why, and the guest is sitting at the table. */
+  declineQr(sigId, reason) {
+    const why = String(reason || "").trim();
+    if (!why) return this.toast("Say why \u2014 the guest is told this", "warn");
+    const r = this.qrWaiting().find((x) => x.sig === sigId);
+    this.queue("qr_order", "QR round declined \u00b7 " + (r ? this.slotName(r.table) : "")
+      + " \u00b7 " + why + " \u00b7 by " + this.me(), "order_lines",
+    { id: String(sigId).slice(3), reject: why });
+    this.patchSignal(sigId, { ing: 1 });
+    (this._ackedSig || (this._ackedSig = {}))[sigId] = 1;
+    this.setState({ modal: null });
+    this.toast("Declined \u2014 " + (r ? this.slotName(r.table) : "the round")
+      + " has been told: " + why, "warn");
+  }
   /* ONE GLYPH SET, and it is in app/kashikeyo-data.js because the guest's
      phone draws the same plates from it. A second copy here is how the
      allergen table ended up with two key vocabularies and a diet that blocked
@@ -14568,6 +14649,19 @@ class Component extends DCLogic {
     };
   }
 
+  /* One tab strip for both returns, or the counts drift the first time one is
+     edited — the defect two rank tables and three tier ladders already paid
+     for in this file. */
+  ordTabs(sub, openList, closed, nWaiting) {
+    const s = this.state;
+    return [["waiting", "Waiting", nWaiting],
+      ["open", "Open", openList.filter((x) => x.live).length],
+      ["parked", "Parked", openList.filter((x) => x.parked).length],
+      ["settled", "Settled", closed.length],
+      ["all", "All", openList.length + closed.length]]
+      .map((t) => ({ label: t[1], count: t[2], on: sub === t[0],
+        pick: () => this.setState({ tab: Object.assign({}, s.tab, { ordSub: t[0] }) }) }));
+  }
   g_orders() {
     const s = this.state, q = s.search.toLowerCase();
     // Orders and tickets are the same list. The sub-categories sort it out:
@@ -14615,12 +14709,55 @@ class Component extends DCLogic {
     const openList = live.concat(parked).filter(matches);
     const closed = this.todayOrders().filter(matches);
     const all = openList.concat(closed);
-    const list = sub === "open" ? openList.filter((x) => x.live)
+    /* A ROUND NOBODY HAS ACCEPTED IS NOT A TICKET YET, so it gets its own tab
+       and its own columns rather than being forced into a row shaped for a
+       bill. What a cashier needs here is what was ordered — the floor card can
+       only say "3 items", and whether the kitchen can make it depends on which
+       three. Waiting leads, because it is the only tab on this screen where
+       somebody is sitting at a table waiting for an answer. */
+    const waiting = this.qrWaiting()
+      .filter((r) => !q || (this.slotName(r.table) + " "
+        + r.lines.map((l) => l.name).join(" ")).toLowerCase().indexOf(q) >= 0);
+    const list = sub === "waiting" ? waiting
+      : sub === "open" ? openList.filter((x) => x.live)
       : sub === "parked" ? openList.filter((x) => x.parked)
       : sub === "settled" ? closed : all;
+    if (sub === "waiting") {
+      return {
+        tabs: this.ordTabs(sub, openList, closed, waiting.length),
+        guideTitle: waiting.length ? "Somebody is waiting" : "No round waiting",
+        guide: waiting.length
+          ? ["A guest has sent this from their own phone and nothing is cooking yet",
+            "Open a round to read what was ordered, then accept it or decline it",
+            "Declining asks for a reason, and the reason reaches the guest's phone"]
+          : ["Every round sent from the QR menu has been answered",
+            "A new one appears here and on the floor the moment a guest sends it",
+            "Nothing is cooked until somebody accepts it"],
+        actions: [],
+        cols: [{ label: "Table", w: ".8fr", mono: 1 }, { label: "Waiting", w: ".8fr", mono: 1 },
+          { label: "What they ordered", w: "3fr" }, { label: "Guest", w: "1.2fr" },
+          { label: "Due", w: "1fr", a: "right", mono: 1 }],
+        empty: q ? "No waiting round matches that." : "No round is waiting on a decision.",
+        rows: waiting.map((r) => ({
+          on: true,
+          go: () => this.qrRoundSheet(r),
+          cells: [
+            { t: this.slotName(r.table), mono: 1 },
+            /* The age is the whole urgency of this screen, so it is a chip
+               rather than a number: a round eight minutes old with nobody
+               having looked at it is the thing this tab exists to surface. */
+            { t: r.mins ? r.mins + "m" : "now",
+              chip: this.chip(r.mins >= 5 ? "red" : r.mins >= 2 ? "warn" : "info") },
+            { t: r.lines.map((l) => l.qty + " \u00d7 " + l.name).join(" \u00b7 "),
+              c: r.unknown ? "var(--red-bright)" : "" },
+            r.guest || { t: "\u2014", c: "var(--text-faint)" },
+            { t: MVRc(r.due), c: "var(--warn-bright)", w: 600 }
+          ]
+        }))
+      };
+    }
     return {
-      tabs: [["open", "Open", openList.filter((x) => x.live).length], ["parked", "Parked", openList.filter((x) => x.parked).length], ["settled", "Settled", closed.length], ["all", "All", openList.length + closed.length]]
-        .map((t) => ({ label: t[1], count: t[2], on: sub === t[0], pick: () => this.setState({ tab: Object.assign({}, s.tab, { ordSub: t[0] }) }) })),
+      tabs: this.ordTabs(sub, openList, closed, waiting.length),
       guideTitle: openList.length ? "Open first" : "Today's orders",
       guide: openList.length
         ? [openList.length + " still open — live tickets and parked bills, newest first", "The status column is where the order is, on the same rung the pass and the guest read", "Open a ticket to move that status, or take payment — which opens the till's own pay screen on it"]
@@ -18979,6 +19116,20 @@ class Component extends DCLogic {
          plausible 17:00 would be the same lie wearing a helpful face. Rank 3 —
          stating when somebody's shift ended is a manager's act, and it is the
          one write in this module that is not simply a punch. */
+      qrdecline: {
+        title: "Decline this round", save: "Decline and tell them",
+        sub: (function (self, e) {
+          const r = (self.qrWaiting() || []).find((x) => x.sig === (e || {}).sig);
+          return r ? (r.items + " item" + (r.items === 1 ? "" : "s") + " from "
+            + self.slotName(r.table)) : "";
+        })(this, (this.state.modal || {}).edit),
+        foot: "The words go to the guest's own phone, so write them for the person sitting at the table rather than for the trail. Naming the dish is what stops them re-sending the same round: \u201cSorry \u2014 no more Valhomas Rice tonight\u201d tells them what to do next, where \u201cunavailable\u201d does not. Nothing is cooked and nothing is charged; the round is closed at the outlet and the trail records who declined it.",
+        fields: [{ k: "why", label: "Why \u2014 the guest reads this", v: "", full: 1 }],
+        onSave: (v) => {
+          const e = (this.state.modal || {}).edit || {};
+          this.declineQr(e.sig, v.why);
+        }
+      },
       clockclose: {
         title: "Close a shift left open", save: "Close the shift",
         sub: (function (self, e) {

@@ -744,6 +744,75 @@ test('a member reaches their own card and nobody else\'s', opts, async () => {
     'a table token cannot read a membership');
 });
 
+/* ═══ A ROUND THE COUNTER DECLINES ═════════════════════════════════════════
+   Asked for: "if an item is unavailable, this order should be rejected. allow
+   to send a message with the rejected reason." `H.qr_order` has taken `reject`
+   since it was written and NOTHING had ever sent one, so the only way a
+   counter could refuse a round was to accept it and void the lines — which
+   cooks it first.
+
+   And a refused round left every read the outlet publishes (each filters
+   `rejected_reason IS NULL`), so the guest's tracker fell back to what the
+   PHONE last sent and went on saying "Received" for food nobody would cook.
+   Absence is not an answer, exactly as the settled receipt already proved, so
+   the projection has to say it — which is what this walks, over HTTP, against
+   a real database.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a declined round cooks nothing and tells the guest why', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T11');
+  const table = { 'x-table-token': t.body.token };
+
+  const sent = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 2 }], name: 'Declined Guest', opId: uuid() }, table);
+  assert.strictEqual(sent.status, 201, JSON.stringify(sent.body));
+
+  // It is waiting, and the till is offered it.
+  const before = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  assert.ok(((before.body.state || {}).guestOrders || [])
+    .some((g) => g.id === sent.body.id), 'the round is waiting on a decision');
+
+  const why = 'No more Valhomas Rice tonight';
+  const res = await push([{ opId: uuid(), kind: 'qr_order',
+    payload: { id: sent.body.id, reject: why } }]);
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+
+  const row = await one('SELECT rejected_reason, accepted_at, ticket_id'
+    + ' FROM guest_order WHERE id = $1', [sent.body.id]);
+  assert.strictEqual(row.rejected_reason, why, "the counter's own words are kept");
+  assert.ok(row.accepted_at, 'and the round is decided, so it cannot be decided twice');
+  assert.strictEqual(row.ticket_id, null, 'no ticket was opened');
+
+  /* NOTHING WAS COOKED. A decline is not an accept with a note on it: the
+     whole point is that the kitchen is never told. */
+  const tk = await one("SELECT id FROM ticket WHERE table_no = 'T11'"
+    + " AND status = 'open'");
+  assert.ok(!tk, 'no ticket on that table at all');
+
+  // It stops being offered to the till.
+  const after = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  assert.ok(!((after.body.state || {}).guestOrders || [])
+    .some((g) => g.id === sent.body.id), 'and the till stops being asked');
+
+  /* AND THE GUEST IS TOLD — the half that needed building. Without it the
+     round simply vanishes and the phone says "Received" for ever. */
+  const menu = await getWith('/api/g/' + slug + '/menu', table);
+  assert.strictEqual(menu.status, 200);
+  const mine = (menu.body.declined || []).filter((d) => d.table_no === 'T11');
+  assert.strictEqual(mine.length, 1, 'the projection carries the decline');
+  assert.strictEqual(mine[0].rejected_reason, why,
+    'with the reason, or the guest is told no and never why');
+  assert.ok(mine[0].decided_at, 'and when it was decided, which the phone guards on');
+
+  /* Carries nothing a guest may not see — the same list the settled rows are
+     held to. */
+  const k = Object.keys(mine[0]);
+  ['cost', 'margin', 'staff', 'device', 'member_id', 'accepted_by', 'lines']
+    .forEach((bad) => assert.ok(k.indexOf(bad) < 0,
+      'a declined row must not carry ' + bad));
+});
+
 /* ═══ A MEMBER'S ORDER REACHES THE FLOOR ════════════════════════════════════
    The member card's round used to go out TABLE-LESS — `table: undefined`
    clobbered the bound table in the bridge — so the outlet refused every one

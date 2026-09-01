@@ -887,6 +887,25 @@ async function snapshot(c, outletId) {
       + ' FROM sale s JOIN ticket t ON t.id = s.ticket_id'
       + " WHERE s.at > now() - interval '2 hours' AND s.voided_at IS NULL"
       + ' ORDER BY s.at DESC LIMIT 60'],
+    /* A ROUND THE COUNTER DECLINED, because absence is not an answer.
+
+       A rejected round simply left both reads — every query here filters
+       `rejected_reason IS NULL` — so the guest's tracker fell back through its
+       ladder and went on saying "Received" for food nobody was ever going to
+       cook. That is the settled-receipt defect exactly: the phone cannot tell
+       "not accepted yet" from "declined" out of an absence, so the projection
+       has to SAY it.
+
+       `accepted_at` is when the round was DECIDED — the handler stamps it on a
+       rejection too, which is what makes the decision idempotent — so it is
+       the window and the ordering. Two hours, matching `settled`: long enough
+       for the guest still sitting there, short enough that tomorrow's guest on
+       the same table never reads it. Nothing here a guest may not see: the
+       table, the words the counter wrote, and the two times. */
+    declined: ['SELECT table_no, rejected_reason, at, accepted_at AS decided_at'
+      + ' FROM guest_order WHERE rejected_reason IS NOT NULL'
+      + " AND accepted_at > now() - interval '2 hours'"
+      + ' ORDER BY accepted_at DESC LIMIT 60'],
     /* Only what a guest should SEE tonight: live, and inside its own date
        window. The slot switch is applied below — a merchant who turned the
        strip off must empty it on every phone, not only on the till. */
@@ -961,6 +980,7 @@ async function snapshot(c, outletId) {
     tickets: q.tickets.rows,
     stages: q.stages.rows,
     settled: q.settled.rows,
+    declined: q.declined.rows,
     banners: ((q.bannerSlot.rows[0] || {}).value === true) ? q.banners.rows : [],
     promos: q.promos.rows,
     company: q.company.rows[0]

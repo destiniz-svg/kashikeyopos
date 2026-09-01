@@ -1044,6 +1044,23 @@ class Component extends DCLogic {
     if (last && new Date(hit.at || 0).getTime() < last) return null;
     return hit;
   }
+  /* A ROUND THE COUNTER DECLINED, guarded exactly as settledHere() is: a
+     refusal older than this phone's last round belongs to an earlier sitting.
+     Without this the round simply left every list the outlet publishes and the
+     ladder fell through to "Received" — a guest watching food being prepared
+     that nobody was ever going to cook. Absence is not an answer; the outlet
+     says so and the phone repeats its words. */
+  declinedHere() {
+    const rows = ((window.KPOS || {}).DECLINED || [])
+      .filter((d) => this.sameTable(d.table, this.state.table))
+      .sort((a, b) => new Date(b.decided || 0) - new Date(a.decided || 0));
+    const hit = rows[0];
+    if (!hit) return null;
+    const sent = this.state.sent || [];
+    const last = sent.length ? Math.max.apply(null, sent.map((r) => r.at || 0)) : 0;
+    if (last && new Date(hit.decided || 0).getTime() < last) return null;
+    return hit;
+  }
   stage() {
     /* THE STAGE IS AN INDEX, and the row carries its own step names.
 
@@ -1073,6 +1090,16 @@ class Component extends DCLogic {
        the ladder ends where it actually ended. */
     const paid = this.settledHere();
     if (paid) return { at: 4, steps: STEPS.concat(["Paid"]), when: paid.at, paid: paid };
+    /* DECLINED ENDS THE LADDER TOO, and it is checked after the open ticket
+       and the settled bill on purpose: a guest who was refused one round and
+       then sent another that WAS accepted has a live ticket, and that is the
+       later truth. Only where nothing is open and nothing was paid does a
+       refusal describe where this table actually stands. */
+    const no = this.declinedHere();
+    if (no) {
+      return { at: 1, steps: ["Received", "Declined"], when: no.decided,
+        declined: no, why: no.why || "" };
+    }
     // The kitchen calls it "Cooking"; a guest is told what that means.
     if (live) {
       const word = live.stage === "Cooking" ? "In the kitchen" : live.stage;
@@ -1534,6 +1561,7 @@ class Component extends DCLogic {
       ? fs.steps : ["Received", "In the kitchen", "Ready", "Served"];
     const at = fs ? Math.max(0, Math.min(STAGES.length - 1, fs.at)) : (s.sent.length ? 0 : -1);
     const paidRow = fs && fs.paid ? fs.paid : null;
+    const noRow = fs && fs.declined ? fs.declined : null;
     V.trackSub = s.sent.length
       ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
       : "Nothing sent yet";
@@ -1552,6 +1580,14 @@ class Component extends DCLogic {
         sub: label === "Paid"
           ? (paidRow ? "Settled · " + this.money(paidRow.total)
             + (paidRow.no ? " · " + paidRow.no : "") : "Settled at the counter")
+          /* THE COUNTER'S OWN WORDS, not a shrug. A refusal with no reason
+             is a phone saying the kitchen said no and never why, to somebody
+             sitting at the table who then has to get up and ask. The reason is
+             mandatory at the till precisely so there is something to say
+             here. */
+          : label === "Declined"
+            ? (noRow && noRow.why ? noRow.why
+              : "The counter could not take this round \u2014 please ask a server")
           : i === 0 ? (at >= 0 ? "The till has your round" : "Send a round to start")
             : i === 1 ? (at >= 1 ? "Being cooked now" : "Fires once the kitchen accepts it")
               : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")

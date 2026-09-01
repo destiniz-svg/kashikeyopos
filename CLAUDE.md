@@ -1534,6 +1534,56 @@ the shipped logic class in a vm and the shipped text statically, not pixels. The
 first QR round on a live install is the first proof of the card persisting to a
 real cashier's eye.
 
+### Where the round is read, and the two answers to it
+
+Asked for next: *"order and tickets should show this qr orders with the item
+details. from there also orders can be accepted. if an item is unavailable,
+this order should be rejected. allow to send a message with the rejected
+reason."*
+
+**Orders & Tickets leads with Waiting.** The floor card is a nudge on one
+screen and it can only say "3 items" — whether the kitchen can make it depends
+on WHICH three — and Orders & Tickets is where somebody goes to see what this
+outlet owes food on. A round is not a ticket yet, so the tab has its own
+columns rather than being forced into a row shaped for a bill: the table, how
+long somebody has been waiting (a chip, because that is the whole urgency of
+the screen), what was ordered by name, the guest, and what it comes to. **A
+dish this terminal's menu does not hold is flagged rather than printed as an
+id** — that is the one thing to see BEFORE accepting rather than when the
+kitchen asks what it is. Opening a round gives the items and the two decisions,
+through the same `share` sheet the receipt and the invitation use.
+
+**Declining is a message, not a deletion.** `H.qr_order` has taken `reject`
+since it was written and **nothing had ever sent one**, so the only way a
+counter could refuse a round was to accept it and then void the lines — which
+cooks it first. The reason is mandatory, because the entire point is that the
+guest is told: "declined" with no words is a phone saying the kitchen refused
+and never why, to somebody sitting at a table who then has to get up and ask.
+Nothing is queued but the one op — no line, no fire, no ticket.
+
+**And the guest is told, which is the half that needed building.** Every read
+of `guest_order` filters `rejected_reason IS NULL`, so a refused round left the
+projection entirely and the phone's ladder fell through to what it last SENT —
+"Received", for food nobody was going to cook. That is the settled-receipt
+defect exactly, and it takes the same answer: the projection SAYS it.
+`declined` carries the table, the counter's own words and when it was decided,
+bounded to two hours like `settled` so tomorrow's guest on that table never
+reads it, and carrying nothing a guest may not see. `declinedHere()` on the
+phone is guarded exactly as `settledHere()` is — a refusal older than this
+phone's last round belongs to an earlier sitting — and it is checked AFTER the
+open ticket and the settled bill, because a guest refused one round who then
+sent another that was accepted has a live ticket, and that is the later truth.
+The ladder ends `Received → Declined`, and the sub-line is the counter's own
+sentence.
+
+`test/api.test.js` walks it over HTTP against a real database: the round
+waiting, the decline landing with its words, **no ticket opened at all**, the
+till no longer offered it, the projection carrying it to the phone, and the
+declined row asserted against the same list of things a guest may not see that
+`settled` is held to. `test/wiring.test.js` pins the tab and its counts, the
+unknown-dish flag, the empty reason refused, and that a decline queues no
+`add_line` and no `fire_course` — a decline is not an accept with a note on it.
+
 ## A call the floor answers has to stop coming back
 
 Reported: *"the outlet keeps refusing, acknowledging… outlet keeps refusing
@@ -6635,7 +6685,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 612 tests
+npm test                          # 616 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

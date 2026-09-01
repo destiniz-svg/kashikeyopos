@@ -175,7 +175,7 @@ const FORMS = [
   'category', 'chain', 'company', 'outletProfile', 'taxProfile',
   'pin', 'terminal', 'item', 'recipe', 'adjust', 'refund',
   'journal', 'regopen', 'yield', 'subrecipe', 'acqFile', 'mdr', 'taxVersion',
-  'fxrates', 'regclose', 'brand', 'staffedit', 'wageband', 'clockin', 'clockclose', 'opex', 'asset',
+  'fxrates', 'regclose', 'brand', 'staffedit', 'wageband', 'clockin', 'clockclose', 'qrdecline', 'opex', 'asset',
   'breakdown', 'outlet', 'dish', 'outletPrice', 'pinFor', 'bankImport',
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'door', 'doorPrice', 'indent', 'dispatch',

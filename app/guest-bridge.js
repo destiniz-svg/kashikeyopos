@@ -241,6 +241,15 @@
       return { table: s.table_no, no: s.receipt_no,
         total: Number(s.total) || 0, at: s.at };
     });
+    /* AND A ROUND THE COUNTER DECLINED, for the same reason one line up: it
+       leaves every other list the outlet publishes, so without this the phone
+       falls back to what it last SENT and says "Received" for food nobody is
+       cooking. `decided` is when the counter answered, which is what the
+       phone's own guard compares against its last round. */
+    K.DECLINED = (snap.declined || []).map(function (d) {
+      return { table: d.table_no, why: d.rejected_reason || "",
+        at: d.at, decided: d.decided_at };
+    });
     if (snap.table) state.table = snap.table;
     root.KPOS_GUEST.snapshot = snap;
     try { root.dispatchEvent(new Event("kpos-data-ready")); } catch (e) {}
