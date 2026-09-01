@@ -3078,7 +3078,20 @@ class Component extends DCLogic {
     if (live.docs) patch.docs = live.docs;
     if (live.costMoves) patch.costMoves = live.costMoves;
     if (live.refunds) patch.refunds = live.refunds;
-    if (live.clock) patch.clock = live.clock;
+    /* A PUNCH THIS DEVICE HAS NOT DELIVERED SURVIVES THE BOOTSTRAP. This
+       replaced the list wholesale, so a shift clocked in offline — or in the
+       seconds before the next push — was erased by the outlet's answer, and
+       the person was simply not on the floor any more. The outlet's copy of a
+       row wins (it is the later answer, and it carries the outlet's own id);
+       a row the outlet has no record of rides beside it, matched on the till's
+       own name for it. Same shape as every other holding pen here. */
+    if (live.clock) {
+      const mine = this.state.clock || [];
+      const seen = {};
+      live.clock.forEach((c) => { if (c.cid) seen[c.cid] = 1; });
+      patch.clock = live.clock.concat(
+        mine.filter((c) => c.cid && !seen[c.cid]));
+    }
     if (live.maint) patch.maint = live.maint;
     if (live.opexPaid) patch.opexPaid = live.opexPaid;
     if (live.payrollPosted) patch.payrollPosted = live.payrollPosted;
@@ -10752,9 +10765,17 @@ class Component extends DCLogic {
   /* Overtime above the daily share of the statutory week, from this person's
      own punches in the period. Measured, never modelled: an overtime figure a
      payroll run posts is money leaving the business. */
-  otHoursFor(staffId) {
+  otHoursFor(staffId, month) {
     const R = this.rules(), reg = (R.week_hours || 48) / 6;
-    return this.clockRows().filter((c) => c.staff === staffId)
+    /* SCOPED TO A MONTH, because this figure is multiplied by an hourly rate
+       and paid. The bootstrap publishes the last 500 punches, so an unscoped
+       sum put every hour a person had ever worked into THIS month's payslip
+       the moment the outlet started publishing them back — and it read zero
+       before that, because the rows were matched on a key the bootstrap did
+       not send. Both halves were wrong in opposite directions. */
+    const m = month || this.today().slice(0, 7);
+    return this.clockRows()
+      .filter((c) => c.staff === staffId && String(this.clockDay(c)).slice(0, 7) === m)
       .reduce((a, c) => a + Math.max(0, this.clockHours(c) - reg), 0);
   }
   // How many audit rows this outlet has written today. Counted, because an
@@ -10766,6 +10787,17 @@ class Component extends DCLogic {
       return String(r.at || "").slice(0, 10) === t;
     }).length;
   }
+  /* THE BUSINESS DAY A PUNCH BELONGS TO. The outlet stamps `business_date` on
+     the row — its own local date, not the container's — so that is the answer
+     wherever there is one; a punch this device has not delivered yet has only
+     its own timestamp. One definition, because `labourToday`, the payroll run
+     and the on-shift floor all ask it and two readings would disagree at
+     exactly 19:00 local, which is most of a restaurant's trading. */
+  clockDay(c) { return (c && c.date) || this.dayOf(c && c.in); }
+  /* A punch belongs to this outlet unless it says otherwise. A row published
+     before the outlet was stamped on it carries none, and dropping those would
+     empty the timesheet of a store's whole history the day it upgraded. */
+  clockHere(c) { return c.outlet == null || c.outlet === this.state.outletId; }
   // Hours worked on an entry, to the minute. An open entry accrues to now.
   clockHours(c) {
     const end = c.out || this.state.now.getTime();
@@ -10776,8 +10808,15 @@ class Component extends DCLogic {
   labourToday(outletId) {
     const R = this.rules(), reg = (R.week_hours || 48) / 6;
     let cost = 0, hours = 0, ot = 0, heads = 0, open = 0;
+    const day = this.today();
     this.clockRows().forEach((c) => {
-      if (outletId && c.outlet !== outletId) return;
+      /* TODAY, which the card's own sentence claims and this never checked.
+         With only this session's punches in state it was true by accident;
+         the moment the outlet publishes its 500 back, "hours across N shifts
+         today" was a month of them — on the card a manager reads the labour
+         percentage off. */
+      if (this.clockDay(c) !== day) return;
+      if (outletId && c.outlet != null && c.outlet !== outletId) return;
       const st = this.staffFor(c.staff); if (!st.id) return;
       const h = this.clockHours(c), o = Math.max(0, h - reg);
       hours += h; ot += o; heads++; if (!c.out) open++;
@@ -10786,21 +10825,53 @@ class Component extends DCLogic {
     });
     return { cost: cost, hours: hours, ot: ot, heads: heads, open: open };
   }
+  /* A PUNCH IS NAMED BY THE DEVICE THAT MAKES IT, and the outlet keeps that
+     name (054). `clock_entry.id` is the outlet's bigserial, which this device
+     has never been told — so a clock-out sent against the id the till minted
+     matched NOTHING at the outlet, every time, on every store. The shift
+     stayed open and went on accruing while the screen said it was closed.
+
+     The id comes from `newId()` for the reason every other device-minted id in
+     this build does: `"ck" + Date.now()` is two devices in one millisecond
+     minting one name, and here that name is what closes a shift. */
   clockIn(staffId) {
     const st = this.staffFor(staffId);
+    if (!st.id) { this.toast("That employee is not on this outlet's roster", "warn"); return; }
     const rows = this.clockRows().slice();
-    if (rows.find((c) => c.staff === staffId && !c.out)) { this.toast(st.name + " is already clocked in", "warn"); return; }
-    rows.push({ id: "ck" + Date.now(), staff: staffId, outlet: st.outlet, in: Date.now(), out: 0, late: 0 });
+    const day = this.today();
+    /* TODAY'S open punch is what blocks a second one. A shift left open on an
+       EARLIER day is a stranded row — the consequence of the clock-out that
+       never landed — and it is a manager's to close at a time they state, not
+       a reason to refuse somebody their shift this morning. */
+    if (rows.find((c) => c.staff === staffId && !c.out && this.dayOf(c.in) === day)) {
+      this.toast(st.name + " is already clocked in", "warn"); return;
+    }
+    const cid = this.newId("CK");
+    rows.push({ id: cid, cid: cid, staff: staffId, outlet: this.state.outletId,
+      in: Date.now(), out: 0 });
     this.setState({ clock: rows, modal: null });
-    this.queue("clock_in", st.name + " clocked in · " + this.locName(st.outlet), "time_entries", { emp: staffId, at: Date.now(), bizDate: this.today() });
+    this.queue("clock_in", st.name + " clocked in · " + this.locName(this.state.outletId),
+      "time_entries", { emp: staffId, cid: cid, at: Date.now(), bizDate: day });
     this.toast(st.name + " clocked in");
   }
-  clockOut(entryId) {
-    const rows = this.clockRows().map((c) => c.id === entryId ? Object.assign({}, c, { out: Date.now() }) : c);
-    const e = rows.find((c) => c.id === entryId), st = this.staffFor(e.staff);
-    this.setState({ clock: rows });
-    this.queue("clock_out", st.name + " clocked out · " + this.clockHours(e).toFixed(2) + "h", "time_entries", { clockId: entryId, at: Date.now() });
-    this.toast(st.name + " clocked out — " + this.clockHours(e).toFixed(2) + " hours");
+  /* `at` is the moment the shift ENDED, and it is a parameter because a shift
+     stranded open by the defect above did not end now: a manager closing one
+     states when that person actually left, and booking it at `now` would pay
+     them for every hour since. */
+  clockOut(entryId, at) {
+    const when = at || Date.now();
+    const rows = this.clockRows().map((c) => c.id === entryId
+      ? Object.assign({}, c, { out: when }) : c);
+    const e = rows.find((c) => c.id === entryId);
+    if (!e) { this.toast("That shift is no longer on this device", "warn"); return; }
+    const st = this.staffFor(e.staff), h = this.clockHours(e);
+    this.setState({ clock: rows, modal: null });
+    /* Both names go out: the till's where this device minted one, the outlet's
+       where the row was adopted from a bootstrap, and a punch from before 054
+       has only the second. */
+    this.queue("clock_out", (st.name || "A shift") + " clocked out · " + h.toFixed(2) + "h",
+      "time_entries", { cid: e.cid || null, clockId: e.cid ? null : e.id, at: when });
+    this.toast((st.name || "That shift") + " clocked out — " + h.toFixed(2) + " hours");
   }
   // Per-employee monthly payroll. Pensionable wage is the contract basic, not
   // gross; withholding tax is banded on gross AFTER the employee's pension.
@@ -10814,7 +10885,7 @@ class Component extends DCLogic {
     return staff.map((st) => {
       // Overtime is measured for everyone, from the punches. Whether it is
       // PAID is the contract.
-      const otHours = this.otHoursFor(st.id);
+      const otHours = this.otHoursFor(st.id, this.today().slice(0, 7));
       const otEligible = st.ot !== false;
       const otPay = otEligible ? otHours * this.rate(st) * (R.ot_weekday || 1.25) : 0;
       const svcShare = st.svc === false ? 0 : share;
@@ -10846,12 +10917,23 @@ class Component extends DCLogic {
     const tab = s.tab_staff || 0;
     const pick = (i) => () => this.setState({ tab_staff: i });
     const scoped = this.staffAll().filter((x) => this.roleIsChainWide() || x.outlet === s.outletId);
-    const rows = this.clockRows().filter((c) => this.roleIsChainWide() || c.outlet === s.outletId);
+    const rows = this.clockRows().filter((c) => this.roleIsChainWide() || this.clockHere(c));
+    const day = this.today();
+    const onFloor = rows.filter((c) => !c.out && this.clockDay(c) === day);
+    /* SHIFTS THE CLOCK-OUT DEFECT LEFT OPEN. Until 054 the till closed a punch
+       against an id the outlet had never issued, so the update matched nothing
+       and every shift a store ever clocked is still open at the outlet. Those
+       rows are not today's floor and they are not labour today — but they are
+       also not something this build may quietly close, because nobody knows
+       when those people went home and an invented finish time is a figure
+       somebody could be paid on. So they are drawn apart, named, and a manager
+       closes each one at a time they state. */
+    const stranded = rows.filter((c) => !c.out && this.clockDay(c) !== day);
     const L = this.labourToday(this.roleIsChainWide() ? 0 : s.outletId);
     const sales = this.roleIsChainWide() ? this.posOutlets().reduce((a, x) => a + this.outletSales(x), 0) : this.outletSales(o);
     const g = {
       tabs: [
-        { label: "On shift", count: L.open, on: tab === 0, pick: pick(0) },
+        { label: "On shift", count: onFloor.length, on: tab === 0, pick: pick(0) },
         { label: "Timesheet", count: rows.length, on: tab === 1, pick: pick(1) },
         { label: "Roster", count: scoped.length, on: tab === 2, pick: pick(2) },
         { label: "Scorecard", count: scoped.length, on: tab === 3, pick: pick(3) }
@@ -10874,40 +10956,67 @@ class Component extends DCLogic {
           go: () => this.can("payroll", "e")
             ? this.openForm("wageband")
             : this.toast("Setting the business size band needs payroll rights", "warn") },
-        { label: "Export timesheet", go: () => this.csv("timesheet", ["Staff", "Job", "Outlet", "In", "Out", "Hours", "Cost MVR"], rows.map((c) => { const st = this.staffFor(c.staff); const h = this.clockHours(c); return [st.name, st.job, this.locName(c.outlet), this.hhmm(c.in), c.out ? this.hhmm(c.out) : "on shift", h.toFixed(2), (h * this.rate(st)).toFixed(2)]; })) }
+        { label: "Export timesheet", go: () => this.csv("timesheet", ["Staff", "Job", "Date", "Outlet", "In", "Out", "Hours", "Cost MVR"], rows.map((c) => { const st = this.staffFor(c.staff); const h = this.clockHours(c); return [st.name, st.job, this.clockDay(c), this.locName(c.outlet), this.hhmm(c.in), c.out ? this.hhmm(c.out) : "on shift", h.toFixed(2), (h * this.rate(st)).toFixed(2)]; })) }
       ]
     };
     if (tab === 0) {
       g.cardMin = 250;
-      g.cards = rows.filter((c) => !c.out).map((c) => {
+      g.cards = onFloor.map((c) => {
         const st = this.staffFor(c.staff), h = this.clockHours(c);
         return {
           title: st.name, sub: st.job + " · " + this.locName(c.outlet),
-          chip: c.late ? c.late + "m late" : "On time", chipBg: c.late ? "var(--bad-dim)" : "var(--ok-dim)", chipFg: c.late ? "var(--red-bright)" : "var(--green)",
+          /* LATENESS WAS AN INVENTED FIGURE. The field was set to a literal 0
+             on every punch this build ever made, no column has ever held one,
+             and `rota_shift` — the only table that could say what time
+             somebody was due — is read and written by nothing anywhere. So
+             every card read "On time" whoever it was and however late they
+             were, which is worse than saying nothing: it is an assurance. The
+             chip says what is actually known, which is the shift's own day. */
+          chip: this.clockDay(c) === day ? "Today" : this.clockDay(c),
+          chipBg: "var(--ok-dim)", chipFg: "var(--green)",
           big: h.toFixed(2) + "h", bigSize: 22, bigColor: h > 8 ? "var(--red-bright)" : "var(--warn-bright)",
           rows: [["Clocked in", this.hhmm(c.in)], ["Contract", this.staffType(st)[0]], ["Rate", MVR(this.rate(st)) + "/h"], ["Cost so far", MVRc(h * this.rate(st))], ["Pension", st.mrps ? "MRPS 7+7%" : "Voluntary (expat)"]],
           foot: h > 8 ? "Past the daily regular hours — every further hour is at 1.25×." : "Tap the row below to clock out."
         };
       });
       g.cols = [{ label: "Staff", w: "1.4fr" }, { label: "In", w: ".7fr", mono: 1 }, { label: "Hours", w: ".7fr", a: "right", mono: 1 }, { label: "Cost", w: ".9fr", a: "right", mono: 1 }, { label: "", w: ".8fr", a: "right" }];
-      g.rows = rows.filter((c) => !c.out).map((c) => {
+      g.rows = onFloor.map((c) => {
         const st = this.staffFor(c.staff), h = this.clockHours(c);
         return { go: () => this.clockOut(c.id), cells: [st.name + " · " + st.job, { t: this.hhmm(c.in), mono: 1 }, { t: h.toFixed(2) + "h", mono: 1 }, { t: MVRc(h * this.rate(st)), mono: 1, c: "var(--warn-bright)" }, { t: "Clock out", chip: ["var(--warn-dim)", "var(--warn-bright)"] }] };
-      });
-      g.emptyText = "Nobody is on the floor. Use “Clock someone in” to start a shift.";
+      }).concat(stranded.map((c) => {
+        const st = this.staffFor(c.staff);
+        /* No hours and no cost: this shift's length is not known, and printing
+           the run-on figure would be the invented number the whole screen is
+           measured against. It says which day it belongs to and offers the one
+           act that can settle it. */
+        return { go: () => this.openForm("clockclose", c),
+          cells: [(st.name || "Unknown employee") + " · " + (st.job || "no longer on the roster"),
+            { t: this.hhmm(c.in), mono: 1 },
+            { t: "—", mono: 1, c: "var(--text-faint)" },
+            { t: this.clockDay(c), mono: 1, c: "var(--text-dim)" },
+            { t: "Left open", chip: ["var(--bad-dim)", "var(--red-bright)"] }] };
+      }));
+      /* The shell reads `g.empty`, and this said `g.emptyText` — so the one
+         sentence written for an empty floor has never been drawn, and the
+         screen fell through to the generic "Nothing here yet." */
+      g.empty = "Nobody is on the floor. Use “Clock someone in” to start a shift.";
     }
-    if (tab === 2) {
-      g.cols = [{ label: "Staff", w: "1.3fr" }, { label: "Outlet", w: "1fr" }, { label: "In", w: ".6fr", mono: 1 }, { label: "Out", w: ".6fr", mono: 1 }, { label: "Hours", w: ".6fr", a: "right", mono: 1 }, { label: "OT", w: ".5fr", a: "right", mono: 1 }, { label: "Cost", w: ".8fr", a: "right", mono: 1 }];
+    if (tab === 1) {
+      g.cols = [{ label: "Staff", w: "1.3fr" }, { label: "Date", w: ".8fr", mono: 1 }, { label: "In", w: ".6fr", mono: 1 }, { label: "Out", w: ".6fr", mono: 1 }, { label: "Hours", w: ".6fr", a: "right", mono: 1 }, { label: "OT", w: ".5fr", a: "right", mono: 1 }, { label: "Cost", w: ".8fr", a: "right", mono: 1 }];
       const reg = (this.rules().week_hours || 48) / 6;
       g.rows = rows.map((c) => {
         const st = this.staffFor(c.staff), h = this.clockHours(c), ot = Math.max(0, h - reg);
         const rt = this.rate(st);
         const cost = (h - ot) * rt + ot * rt * (this.rules().ot_weekday || 1.25);
-        return { go: () => this.info(st.name, st.job + " · " + this.locName(c.outlet), [["Clocked in", this.hhmm(c.in)], ["Clocked out", c.out ? this.hhmm(c.out) : "still on shift"], ["Hours", h.toFixed(2)], ["Regular", (h - ot).toFixed(2)], ["Overtime", ot.toFixed(2) + " at " + (this.rules().ot_weekday || 1.25) + "×"], ["Hourly rate", MVR(rt) + " (basic ÷ statutory month)"], ["Shift cost", MVRc(cost)], ["Late", c.late ? c.late + " minutes" : "no"]], "Overtime starts above " + reg.toFixed(0) + " hours a day, derived from the " + (this.rules().week_hours || 48) + "-hour statutory week. Punches are append-only — a correction is a new entry with a reason, never an edit."),
-          cells: [st.name, this.locName(c.outlet), { t: this.hhmm(c.in), mono: 1 }, { t: c.out ? this.hhmm(c.out) : "—", mono: 1, c: c.out ? "var(--text)" : "var(--green)" }, { t: h.toFixed(2), mono: 1 }, { t: ot > 0 ? ot.toFixed(2) : "—", mono: 1, c: ot > 0 ? "var(--red-bright)" : "var(--text-faint)" }, { t: MVRc(cost), mono: 1, c: "var(--warn-bright)" }] };
+        return { go: () => this.info(st.name, st.job + " · " + this.locName(c.outlet), [["Clocked in", this.hhmm(c.in)], ["Clocked out", c.out ? this.hhmm(c.out) : "still on shift"], ["Hours", h.toFixed(2)], ["Regular", (h - ot).toFixed(2)], ["Overtime", ot.toFixed(2) + " at " + (this.rules().ot_weekday || 1.25) + "×"], ["Hourly rate", MVR(rt) + " (basic ÷ statutory month)"], ["Shift cost", MVRc(cost)], ["Business date", this.clockDay(c)]], "Overtime starts above " + reg.toFixed(0) + " hours a day, derived from the " + (this.rules().week_hours || 48) + "-hour statutory week. Punches are append-only — a correction is a new entry with a reason, never an edit."),
+          /* The OUTLET was one constant down a list already scoped to one
+             outlet — the Purchasing column's defect, one screen along. What a
+             timesheet row actually needs to say is WHICH DAY, because this is
+             not today's list: the bootstrap publishes the last 500 punches. */
+          cells: [st.name, { t: this.clockDay(c), mono: 1 }, { t: this.hhmm(c.in), mono: 1 }, { t: c.out ? this.hhmm(c.out) : "—", mono: 1, c: c.out ? "var(--text)" : "var(--green)" }, { t: h.toFixed(2), mono: 1 }, { t: ot > 0 ? ot.toFixed(2) : "—", mono: 1, c: ot > 0 ? "var(--red-bright)" : "var(--text-faint)" }, { t: MVRc(cost), mono: 1, c: "var(--warn-bright)" }] };
       });
     }
-    if (tab === 3) {
+    if (tab === 2) {
       g.cols = [{ label: "Staff", w: "1.3fr" }, { label: "Job", w: "1fr" }, { label: "Contract", w: ".8fr" }, { label: "Basic / month", w: ".9fr", a: "right", mono: 1 }, { label: "Hourly (derived)", w: ".8fr", a: "right", mono: 1 }, { label: "Pays", w: "1.1fr" }];
       g.rows = scoped.map((st) => ({
         go: () => this.info(st.name, st.job + " · " + this.locName(st.outlet), [["Employment", st.kind === "local" ? "Maldivian" : "Foreign national"], ["Joined", st.joined], ["Basic (pensionable wage)", MVRc(st.basic)], ["Hourly rate", MVR(this.rate(st)) + " — derived from basic, never stored separately"], ["Contract", this.staffType(st)[0]], ["Overtime", st.ot === false ? "Not paid — salaried, hours still clocked" : "Paid at 1.25× above the statutory day"], ["Service charge", st.svc === false ? "Excluded from the pool" : "Shares in the pool"], ["MRPS", st.mrps ? "Enrolled · 7% employee + 7% employer" : (st.kind === "expat" ? "Not enrolled — foreign nationals are not mandated" : "Not enrolled")], ["Minimum wage check", st.basic >= (this.rules().min_wage_large || 8000) ? "above the large-business floor" : "review against sector floor"]], "The three eligibility settings govern pay only. This employee still clocks in and out, and their hours, overtime and lateness are recorded either way — a salaried manager's overtime appears on the timesheet and simply never reaches the payslip.", this.can("payroll") ? { label: "Edit contract terms", go: () => this.openForm("staffedit", st) } : null, this.staffAvatar(st)),
@@ -10916,7 +11025,7 @@ class Component extends DCLogic {
             chip: (st.ot !== false && st.svc !== false && st.mrps) ? ["var(--ok-dim)", "var(--green)"] : ["var(--warn-dim)", "var(--warn-bright)"] }]
       }));
     }
-    if (tab === 4) {
+    if (tab === 3) {
       g.cols = [{ label: "Staff", w: "1.3fr" }, { label: "Sales", w: ".9fr", a: "right", mono: 1 }, { label: "Covers", w: ".6fr", a: "right", mono: 1 }, { label: "Avg cheque", w: ".8fr", a: "right", mono: 1 }, { label: "Sales / labour h", w: "1fr", a: "right", mono: 1 }, { label: "Voids", w: ".6fr", a: "right", mono: 1 }, { label: "Rating", w: ".7fr" }];
       g.rows = scoped.map((st) => {
         // Read off this person's own settled bills and their own punches.
@@ -10931,19 +11040,26 @@ class Component extends DCLogic {
         const voids = theirs.filter((x) => x.status === "void").length;
         const good = sph > 900 && voids <= 3;
         return {
-          go: () => this.info(st.name, st.job + " · " + this.locName(st.outlet), [["Sales rung", MVRc(sold)], ["Covers served", String(cov)], ["Average cheque", cov ? MVR(sold / cov) : "\u2014"], ["Hours clocked today", h.toFixed(2)], ["Sales per labour hour", h ? MVRc(sph) : "\u2014"], ["Voids", String(voids)], ["Late arrivals", String(mine.filter((c) => c.late).length)]], "Sales per labour hour is the only server metric that survives a busy night — raw totals just reward whoever worked longest. Voids are counted from reversals, each one already carrying a manager authorisation."),
+          go: () => this.info(st.name, st.job + " · " + this.locName(st.outlet), [["Sales rung", MVRc(sold)], ["Covers served", String(cov)], ["Average cheque", cov ? MVR(sold / cov) : "\u2014"], ["Hours clocked today", h.toFixed(2)], ["Sales per labour hour", h ? MVRc(sph) : "\u2014"], ["Voids", String(voids)], ["Shifts this month", String(mine.length)]], "Sales per labour hour is the only server metric that survives a busy night — raw totals just reward whoever worked longest. Voids are counted from reversals, each one already carrying a manager authorisation."),
           cells: [st.name, { t: MVRc(sold), mono: 1 }, { t: String(cov), mono: 1 }, { t: cov ? MVR(sold / cov) : "\u2014", mono: 1 }, { t: h ? MVRc(sph) : "\u2014", mono: 1, c: sph > 900 ? "var(--green)" : sph < 500 ? "var(--red-bright)" : "var(--text)" }, { t: String(voids), mono: 1, c: voids > 3 ? "var(--red-bright)" : "var(--text)" }, { t: good ? "Strong" : sph < 500 ? "Coach" : "Steady", chip: good ? ["var(--ok-dim)", "var(--green)"] : sph < 500 ? ["var(--bad-dim)", "var(--red-bright)"] : ["var(--warn-dim)", "var(--warn-bright)"] }]
         };
       }).sort((a, b) => 0);
     }
-    g.notes = [
+    g.notes = (stranded.length ? [["Shifts left open on an earlier day",
+      stranded.length + (stranded.length === 1 ? " shift is" : " shifts are")
+      + " still open from a day that is not today. Until migration 054 a"
+      + " clock-out was sent against an id the till minted and the outlet had"
+      + " never issued, so it matched nothing and the shift stayed open there"
+      + " whatever this screen said. None of them is counted in today\u2019s"
+      + " labour and none will be guessed at: open the row and state the time"
+      + " that person actually left."]] : []).concat([
       ["Labour is measured, not budgeted", "Every figure here comes from a clock punch. " + L.hours.toFixed(1) + " hours across " + L.heads + " shifts today costs " + MVRc(L.cost) + ", which is " + ((L.cost / (sales || 1)) * 100).toFixed(1) + "% of net sales. Together with food cost that gives a real prime cost on the CFO panel. The hourly rate is derived from the contract basic divided by the statutory month, so the timesheet and the payroll run can never disagree about what a shift cost."],
       ["Reading it mid-service", L.open ? L.open + " of these shifts are still open, so their cost is accrued only up to " + this.hhmm(Date.now()) + ". The percentage against sales will rise as the day finishes — judge a day on its closed figure, and a week on the payroll run, which pays a monthly basic rather than an hourly rate." : "Every shift today is closed, so this is the final labour figure for the day."],
       ["Why the percentage looks low", "A 26% labour guide comes from markets where wages are the largest cost in a restaurant. Maldivian menu prices sit high against local and expatriate wage levels, so a healthy outlet here often runs 10–15%. Service charge is excluded — it is funded by the guest, accrues to 2400 and is distributed to staff, so counting it as labour cost would double-count it."],
-      ["Why punches are append-only", "A time entry is never edited. A correction is a new entry with a reason and a manager authorisation, because a payroll dispute is settled by the record or not at all. Buddy punching and forgotten clock-outs quietly add several percent to payroll — the till PIN and the shift are the defence."],
+      ["Why punches are append-only", "A time entry is never edited. A correction is a new entry with a reason and a manager authorisation, because a payroll dispute is settled by the record or not at all. Every punch is stamped at the outlet with the person, the signed-in operator who made it and the device it was made on, and both halves land on the audit trail — that stamp, not this screen, is what a dispute is read off. Buddy punching and forgotten clock-outs quietly add several percent to payroll; the till PIN and the shift are the defence."],
       ["Contract type is not decoration", "Full-time, part-time, contract, casual and probation each carry different notice periods, leave accrual and — for foreign nationals — work-permit conditions. Holding it on the record means the roster answers who can legally be scheduled for a double, and who is still inside a probation window, without anyone opening a filing cabinet."],
       ["Tracked for everyone, paid by contract", "Every employee clocks in, and their hours, overtime and lateness are recorded the same way — including salaried managers who are not paid overtime. That separation is deliberate: attendance is a fact and belongs in the record, while overtime, service charge and pension are terms and belong to the contract. It is why a manager's 14 clocked overtime hours appear on the timesheet and on the labour cost, but never on their payslip. Set the three eligibility switches on each employee in the roster."]
-    ];
+    ]);
     return g;
   }
   hhmm(t) { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
@@ -18780,10 +18896,54 @@ class Component extends DCLogic {
             : "Business size cleared — payroll will warn rather than refuse");
         }
       },
+      /* CLOSING A SHIFT THE CLOCK-OUT DEFECT LEFT OPEN. It asks for the time
+         and refuses to invent one, because this figure is multiplied by an
+         hourly rate and paid: booking it at `now` would pay somebody for every
+         hour since the day they were left open, and defaulting the box to a
+         plausible 17:00 would be the same lie wearing a helpful face. Rank 3 —
+         stating when somebody's shift ended is a manager's act, and it is the
+         one write in this module that is not simply a punch. */
+      clockclose: {
+        title: "Close a shift left open", save: "Close the shift",
+        sub: (function (self, e) {
+          const st = self.staffFor((e || {}).staff);
+          return (st.name || "This shift") + " · clocked in "
+            + self.hhmm((e || {}).in) + " on " + self.clockDay(e || {});
+        })(this, (this.state.modal || {}).edit),
+        foot: "Until now a clock-out was sent against an id the outlet had never issued, so it matched nothing and the shift stayed open there whatever the screen said. Nothing will be guessed on this person's behalf: state the time they actually left, on that day. The punch is not edited — the shift is closed, and the trail carries who closed it.",
+        fields: [{ k: "at", label: "Time they left (HH:MM, 24-hour)", v: "", full: 1 }],
+        onSave: (v) => {
+          const e = (this.state.modal || {}).edit || {};
+          if (!this.can("payroll", "e") && this.rank() < 3) {
+            return this.toast("Closing a shift left open needs a manager", "warn");
+          }
+          const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(v.at || "").trim());
+          if (!m) return this.toast("Give the time they left as HH:MM", "warn");
+          const d = new Date(e.in);
+          d.setHours(+m[1], +m[2], 0, 0);
+          let end = d.getTime();
+          /* A shift that ran past midnight ends on the NEXT day, and that is
+             ordinary in a restaurant. A time earlier than the punch means the
+             small hours, not a mistake — but only once, or "08:00" on a shift
+             three weeks open would silently become a month of overtime. */
+          if (end < e.in) end += 86400000;
+          if (end - e.in > 86400000) {
+            return this.toast("That is more than a day after they clocked in \u2014 check the time", "warn");
+          }
+          this.clockOut(e.id, end);
+        }
+      },
       clockin: {
         title: "Clock in", sub: "Starts a paid shift on this device", save: "Clock in",
         foot: "The punch is written append-only against the staff id and the device. A correction is a new entry with a reason, never an edit — a payroll dispute is settled by the record or not at all.",
-        fields: [{ k: "staff", label: "Who is starting", options: staffOpts, full: 1 }],
+        /* NOTHING IS PICKED FOR YOU. `openForm` seeds a select with its FIRST
+           option, so this opened naming whichever employee sorts first — and
+           a punch is a wage record, so a mis-tap starts somebody else's paid
+           shift and their name is on the timesheet. Same rule the vendor list
+           and the dispatch destination already keep, and the form's own check
+           can now actually fire. */
+        fields: [{ k: "staff", label: "Who is starting", full: 1,
+          options: [{ v: "", l: "Pick who is clocking in\u2026" }].concat(staffOpts) }],
         onSave: (v) => { if (!v.staff) return this.toast("Pick who is clocking in", "warn"); this.clockIn(v.staff); }
       },
       opex: {

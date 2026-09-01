@@ -2066,18 +2066,81 @@ H.tax_version = async (c, p, ctx) => {
 };
 
 // ═══ PEOPLE AND COSTS ══════════════════════════════════════════════════════
+/* A PUNCH CARRIES THE TILL'S OWN NAME FOR IT (054). `clock_entry.id` is a
+   bigserial the outlet allocates and the till has never learnt it, so the
+   clock-out that follows — which the till sends against the id it minted
+   itself — matched nothing, every time, on every store. An open shift accrues,
+   so that is not a broken link, it is a wage bill that goes on growing.
+
+   `cid` is nullable because a build older than 054 sends none, and a punch
+   from an earlier terminal is still a punch. Where it IS sent, it is what
+   makes a replay a no-op and a clock-out resolvable before the device has
+   ever heard back from the outlet. */
 H.clock_in = async (c, p, ctx) => {
+  const refuse = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  const emp = String(p.emp || '').trim();
+  if (!emp) refuse('A punch needs the person it belongs to');
+  const who = await one(c, 'SELECT id, name FROM employee WHERE id = $1', [emp]);
+  if (!who) refuse('That employee is not on this outlet\'s roster');
+
+  const cid = p.cid ? String(p.cid).slice(0, 64) : null;
+  const date = p.bizDate || today(ctx);
+
+  /* THE SAME PERSON CANNOT BE CLOCKED IN TWICE ON ONE DAY. The till checks its
+     OWN rows before it queues, which is right at the counter and no help at
+     all across two devices: clocked in on the handheld and again at the till
+     is two open entries accruing one person's wage in parallel, and nothing
+     here would ever have said so.
+
+     THE DAY IS LOAD-BEARING, and not tidiness. Because the clock-out never
+     matched, every punch every store has made is still open — so refusing on
+     any open entry at all would lock every one of those people out of the
+     clock permanently, over a fault they did not cause. A shift left open on
+     an earlier business date is a stranded row for a manager to close at a
+     time they state; it is not today's shift and it does not block one. */
+  const openToday = await one(c,
+    'SELECT id FROM clock_entry WHERE employee_id = $1 AND out_at IS NULL'
+    + ' AND business_date = $2', [emp, date]);
+  if (openToday) refuse(who.name + ' is already clocked in');
+
   const q = await one(c, 'INSERT INTO clock_entry (employee_id, in_at, business_date,'
-    + ' by_staff, device_id) VALUES ($1, coalesce($2, now()), coalesce($3, current_date),'
-    + ' $4,$5) RETURNING id',
-    [p.emp, p.at ? new Date(p.at) : null, p.bizDate || null, ctx.actor, ctx.deviceId]);
-  return { clockId: q.id };
+    + ' by_staff, device_id, client_id) VALUES ($1, coalesce($2, now()), $3, $4,$5,$6)'
+    + ' ON CONFLICT (client_id) WHERE client_id IS NOT NULL DO NOTHING RETURNING id',
+    [emp, p.at ? new Date(p.at) : null, date, ctx.actor, ctx.deviceId, cid]);
+  const id = q ? q.id
+    : (await one(c, 'SELECT id FROM clock_entry WHERE client_id = $1', [cid]) || {}).id;
+  await log(c, 'clock_in', 'clock_entry', String(id), null,
+    { emp: emp, name: who.name, cid: cid, date: date });
+  return { clockId: id, cid: cid };
 };
 
-H.clock_out = async (c, p) => {
+/* Resolved by EITHER name — the till's, where it has one, and the outlet's for
+   a row this device adopted from a bootstrap. A punch made before 054 has only
+   the second, which is why both are honoured rather than one replacing the
+   other. */
+H.clock_out = async (c, p, ctx) => {
+  const refuse = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  const cid = p.cid ? String(p.cid) : null;
+  const row = await one(c,
+    'SELECT id, out_at, employee_id FROM clock_entry'
+    + ' WHERE ($1::text IS NOT NULL AND client_id = $1)'
+    + '    OR ($2::text IS NOT NULL AND id::text = $2)',
+    [cid, p.clockId == null ? null : String(p.clockId)]);
+  /* A clock-out naming NO shift is a refusal a person reads on the Sync
+     screen — it means this device is holding a punch the outlet never took.
+     A clock-out naming one that is ALREADY closed is not: two taps, or a
+     replay under a fresh opId, must not park an op over work that is done. */
+  if (!row) refuse('That shift is not one this outlet holds');
+  if (row.out_at) return { ok: true, already: true, clockId: row.id };
+
   await c.query('UPDATE clock_entry SET out_at = coalesce($2, now()) WHERE id = $1'
-    + ' AND out_at IS NULL', [p.clockId, p.at ? new Date(p.at) : null]);
-  return { ok: true };
+    + ' AND out_at IS NULL', [row.id, p.at ? new Date(p.at) : null]);
+  const done = await one(c, 'SELECT employee_id, in_at, out_at FROM clock_entry'
+    + ' WHERE id = $1', [row.id]);
+  await log(c, 'clock_out', 'clock_entry', String(row.id), null,
+    { emp: done.employee_id, cid: cid,
+      hours: Math.max(0, (new Date(done.out_at) - new Date(done.in_at)) / 3600000) });
+  return { ok: true, clockId: row.id };
 };
 
 // Employer pension is its OWN expense, taken from wages, not netted into them.

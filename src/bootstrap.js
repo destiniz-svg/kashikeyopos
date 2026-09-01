@@ -330,7 +330,7 @@ async function buildBootstrap(ctx) {
       ROLES: setting.roles || undefined,
       USERS: staff.rows.map(userOf),
       CUSTOMERS: members.rows.map((r) => customerOf(r, history[r.id])),
-      STAFF: employees.rows.map(employeeOf),
+      STAFF: employees.rows.map((r) => employeeOf(r, ctx.outletId)),
       /* `undefined`, NEVER `{}` — the difference is the whole statutory table.
          The bridge's hydrate rule is that undefined means "the server has no
          opinion" and the shipped structure stands; an empty OBJECT is neither
@@ -974,9 +974,28 @@ async function buildState(ctx, opts) {
         amt: num(d.amount), ref: d.ref_id
       })),
 
-      // People and costs.
+      /* People and costs.
+
+         THE TERMINAL READS `staff`, AND THIS PUBLISHED `emp`. Two key
+         vocabularies for one row, exactly as `descr`/`desc` was on a bank
+         line — and this one is what was reported: a punch clocks in naming
+         the person, and the moment the outlet publishes it back every screen
+         reads `c.staff`, gets undefined, and prints the word "undefined"
+         where the name was. On an outlet-scoped role it is worse than a wrong
+         word: the row is filtered on `c.outlet`, which was not published
+         either, so the shift simply DISAPPEARS off the floor.
+
+         And it is not only a label. `otHoursFor()` matches punches by
+         `c.staff` too, so every payroll run this build has ever composed
+         counted ZERO overtime hours for everybody — money, not cosmetics.
+
+         `outlet` is this outlet by construction: `clock_entry` lives in the
+         outlet's own schema, so a punch here can belong to nobody else. It is
+         published rather than left for the client to assume, because the
+         terminal's chain-wide screens genuinely compare it. */
       clock: clock.rows.map((k) => ({
-        id: k.id, emp: k.employee_id, in: ms(k.in_at), out: ms(k.out_at),
+        id: k.id, cid: k.client_id || null, staff: k.employee_id,
+        outlet: ctx.outletId, in: ms(k.in_at), out: ms(k.out_at),
         date: k.business_date
       })),
       payrollPosted: payroll.rows.map((p) => ({
@@ -1204,9 +1223,16 @@ function customerOf(r, h) {
   };
 }
 
-function employeeOf(r) {
+/* `outlet` was the literal `null`, and every reader compares it. `employee`
+   lives in the outlet's own schema, so an employee here belongs to this outlet
+   and to no other — publishing null made `x.outlet === s.outletId` false for
+   every person on the roster, which took the whole roster off an outlet-scoped
+   screen and made `labourToday(outletId)` skip every punch, so the labour cost
+   and "On shift now" read zero with people standing on the floor. */
+function employeeOf(r, outletId) {
   return {
-    id: r.id, name: r.name, outlet: null, job: r.job, kind: r.kind,
+    id: r.id, name: r.name, outlet: outletId == null ? null : outletId,
+    job: r.job, kind: r.kind,
     basic: num(r.basic), hourly: num(r.hourly), joined: r.joined_on,
     mrps: r.mrps, ot: r.ot, svc: r.svc, type: r.emp_type,
     // The row's own photograph (050) — the literal '' here is what wiped a

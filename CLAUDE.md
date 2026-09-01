@@ -65,6 +65,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        051 a PIN is an identity
                        052 a batch says where its date came from
                        053 a delivery lands somewhere
+                       054 a punch the till can name
                        control/004 the archive shelf
 src/ai.js              the one model seam — Gemini, honest when it has none
 src/backup.js          taking a copy, and putting it back
@@ -2904,6 +2905,177 @@ Today briefing and the CFO advisory. Both are honest about being unreachable
 (they say so on screen), and both want a free-text contract rather than the
 JSON one these two doors keep, so they are a third door rather than a third
 line. They stay dead-but-honest until that door is written.
+
+## A punch belongs to a person, and the outlet has to say which
+
+Reported: *"clocking a staff has bugs. when clocked in the name disappears and
+it says undefined. fix whole module."* Both halves of that sentence were one
+defect, and it is the shape only a round trip can show.
+
+**THE BOOTSTRAP AND THE TERMINAL HAD TWO VOCABULARIES FOR ONE ROW.**
+`src/bootstrap.js` published a punch as `{ id, emp, in, out, date }`. Every
+reader in the terminal asks for `c.staff`. So a shift clocked in named the
+person correctly — the till had just written that row itself — and the moment
+the outlet published it back, `staffFor(undefined)` returned `{}` and the name
+rendered as the word **undefined**. Measured on the shipped logic class before
+anything was written:
+
+```
+the till's own row   {"staff":"E-001", ...}   -> AISHATH NASHWA
+the outlet's own row {"emp":"E-001", ...}     -> undefined
+```
+
+It is the `descr`/`desc` defect from the bank line, one module over, and the
+same class as `KPOS.VENDORS`: two files agreeing about the value and
+disagreeing about its name.
+
+**AND ON AN OUTLET-SCOPED ROLE THE SHIFT DID NOT SAY "undefined" — IT
+VANISHED.** The timesheet filters `c.outlet === s.outletId` and the published
+row carried no outlet at all, so at rank 3 the person simply left the floor.
+That was `employeeOf()` too: it published `outlet: null` for every employee on
+the roster, which is why `labourToday(outletId)` skipped every punch and the
+"On shift now" card and the labour cost read **zero with somebody standing
+there**. An `employee` row lives in the outlet's own schema, so it belongs to
+that outlet by construction; publishing `null` made the comparison false for
+everybody.
+
+**And it was not only a label — it was wages.** `otHoursFor()` matches punches
+by `c.staff` as well, so every payroll run this build has ever composed counted
+**zero overtime hours for everyone**. The opposite error sat beside it:
+nothing scoped that sum to a period, so the day the vocabulary was fixed it
+would have put every hour in the published window — the last 500 punches —
+into this month's payslip. `labourToday()` had the same hole and the card's own
+sentence says the quiet part: *"N hours across M shifts today"*, over a list
+that was never filtered to today. Both are scoped now, and `clockDay()` is the
+one definition of which business day a punch belongs to — the outlet's own
+stamp where there is one, this device's timestamp where the punch has not been
+delivered yet.
+
+### A clock-out that had never closed a shift
+
+`clock_entry.id` is a bigserial the OUTLET allocates. The till mints its own id
+the instant somebody punches in — it has to, because a shift starts on a device
+that may be dark — and then sent THAT id back as `clockId` when the same person
+tapped to clock out. The two are never equal, so
+
+```sql
+UPDATE clock_entry SET out_at = ... WHERE id = $1 AND out_at IS NULL
+```
+
+matched **nothing**, every time, on every store. The screen said the shift was
+closed; the outlet kept it open, and an open shift ACCRUES. That is not a
+broken link, it is a wage bill that goes on growing until somebody finds it.
+
+Migration 054 gives the row `client_id`, exactly as `sale.client_id` (043) and
+`ticket_line.client_id` (008) already answer the same question. NULL is a real
+answer and it stays nullable — a build older than this sends none — and
+`H.clock_out` resolves by EITHER name, so a punch from before 054 still closes
+by the outlet's own id. `newId("CK")` mints it, because `"ck" + Date.now()` is
+the clock-only id class this build already swept once.
+
+**WHAT 054 DELIBERATELY DOES NOT DO IS CLOSE THE SHIFTS IT FOUND OPEN.**
+Because the update never matched, every punch every store has ever made is
+still open. The first draft added a partial unique index — one open entry per
+employee, which is the right rule — and it would have **refused to apply** on
+any store that used the clock twice. A migration that refuses to apply is worse
+than a handler that converges, which is what `vendor_upsert` already paid for.
+Nor may an `out_at` be invented: nobody knows when those people went home, and a
+made-up finish time is a figure somebody could be paid on.
+
+So the rule lives in `H.clock_in`, which refuses a second open punch for one
+person **on the same business date** — and the day is load-bearing rather than
+tidy: refusing on any open entry at all would lock every person with a stranded
+shift out of the clock for ever, over a fault they did not cause. The stranded
+rows are drawn apart on the floor as **Left open**, with no hours figure (the
+run-on since that day is exactly the invented number this build refuses), out
+of today's labour, and each closable through a sheet that asks for the time and
+takes no default. Measured: a shift left open on 28 August closed at **17:30 on
+28 August**, not four days of overtime.
+
+### And the four tabs drew each other's screens
+
+The staff rail declares four tabs and the bodies tested `0`, `2`, `3` and `4`.
+So **Timesheet rendered nothing at all**, **Roster rendered the timesheet**,
+**Scorecard rendered the roster**, and the scorecard itself was unreachable —
+there is no tab 4. Driven before the fix:
+
+```
+tab 0 "On shift"   -> Staff,In,Hours,Cost
+tab 1 "Timesheet"  -> (none)
+tab 2 "Roster"     -> Staff,Outlet,In,Out,Hours,OT,Cost     <- the timesheet
+tab 3 "Scorecard"  -> Staff,Job,Contract,Basic / month,...  <- the roster
+```
+
+The timesheet's "Outlet" column was one constant down a list already scoped to
+one outlet — the Purchasing column's defect, one screen along — and what a
+timesheet row actually needs is WHICH DAY, because the published window is 500
+punches rather than today's. It carries the date now, and so does the export.
+
+### Three more the sweep found
+
+- **Lateness was an invented figure.** The field was set to a literal `0` on
+  every punch this build ever made, no column has ever held one, and
+  `rota_shift` — the only table that could say what time somebody was due — is
+  read and written by **nothing anywhere**. So every card read "On time"
+  whoever it was and however late they were, and the scorecard's "Late
+  arrivals" was structurally zero. An assurance is worse than a blank. Both are
+  gone; a rota is a subsystem, not a fix, and it is stated rather than built.
+- **A punch this device had not delivered was erased by the next bootstrap.**
+  `applyLive` replaced the list wholesale, so a shift clocked in offline —
+  or in the seconds before the next push — simply left the floor. It is a
+  holding pen now: the outlet's copy of a row wins, and a row the outlet has no
+  record of rides beside it, matched on the till's own name for it.
+- **The empty state was never drawn.** The screen shell reads `g.empty` and
+  this set `g.emptyText`, so the sentence written for an empty floor — *"Nobody
+  is on the floor"* — fell through to the generic "Nothing here yet" for the
+  life of the build.
+
+And **nothing is picked for you**: `openForm` seeds a select with its first
+option, so "Who is starting" opened naming whichever employee sorts first. A
+punch is a wage record, so a mis-tap started somebody else's paid shift under
+their name. The list leads with the ask, the same rule the vendor list and the
+dispatch destination already keep, and the form's own check can now actually
+fire.
+
+Both `clock_in` and `clock_out` land on the audit trail, which is what the
+screen's own copy says a payroll dispute is settled by; the punch was already
+stamped at the outlet with the operator and the device.
+
+### Measured, through the shipped screens
+
+Driven in Chromium against outlet 39 on a real database — clocked in on one
+browser, then read on a **second browser that had never seen that punch**, which
+is exactly the state the report describes:
+
+```
+AISHATH TESTER MTELTVBT
+Waiter · Loy Cafe
+TODAY          0.02h        Clocked in 05:27
+"undefined" anywhere on screen: false
+```
+
+and the outlet's own row, after the clock-out was tapped on that second
+browser:
+
+```
+id | client_id          | name                    | in       | out      | mins
+ 1 | CKi87k7hcj9nc27cd3 | AISHATH TESTER MTELTVBT | 05:27:59 | 05:29:11 |    1
+ 2 |                    | AISHATH TESTER MTELTVBT | 08-28 09:00 | 08-28 17:30 | (closed at a stated time)
+```
+
+Row 2 carries no client id — a pre-054 punch, closed by the outlet's own id.
+`test/api.test.js` walks the whole road over HTTP against a real Postgres (the
+publish keys, the outlet on the employee, the double-punch refusal, both
+clock-out names, a re-close that is a no-op rather than a park, a clock-out
+naming no shift refused in English, and both trail rows);
+`test/wiring.test.js` pins the vocabulary on BOTH files, the four tabs, the
+date scoping, the minted id, the holding pen, the stranded lane and the
+figures nothing measures. All seven fail against the version that shipped.
+
+**Found on the way and fixed, not part of this report**: the onboarding panel's
+stepper pills hide their label on a phone, leaving a 34px tap target, and the
+GST switch was its own 30px track. Both are controls a customer taps while
+signing up, and `test/responsive.test.js` had been failing on them.
 
 ## The outlet does not always keep the id this device minted
 
@@ -6223,7 +6395,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 594 tests
+npm test                          # 602 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

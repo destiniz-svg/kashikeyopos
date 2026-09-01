@@ -6780,3 +6780,207 @@ test('a scan draft seeds the GRN form, and an unresolved line names nobody', () 
   assert.ok(!/READ OFF THE PAPER/.test(F.formSpec('grn', {}).foot),
     'a typed delivery carries no scan preamble');
 });
+
+/* ═══ THE TIME CLOCK ════════════════════════════════════════════════════════
+   Reported: "clocking a staff has bugs. when clocked in the name disappears
+   and it says undefined. fix whole module."
+
+   The vocabulary defect underneath it is pinned over HTTP in test/api.test.js,
+   because it needs the server's own answer. These are the client half — the
+   readers that were matching on a key the bootstrap never sent, and the four
+   tabs that drew each other's screens. */
+const clockFixture = (role) => {
+  const F = H.makeInstance({ role: role || 'SuperAdmin' });
+  F.state.outletId = 39;
+  F.__win.KPOS.STAFF = [{ id: 'E-001', name: 'AISHATH NASHWA', job: 'Cashier',
+    outlet: 39, basic: 9000, kind: 'local', mrps: true, ot: true, svc: true }];
+  return F;
+};
+
+test('the outlet publishes a punch in the words the terminal reads', () => {
+  /* THE REPORTED DEFECT, and it is a defect BETWEEN two files, so a test that
+     lives in one of them cannot see it. `src/bootstrap.js` published
+     `{ id, emp, in, out, date }` and every reader in the terminal asks for
+     `c.staff` — so a punch clocked in naming the person came back from the
+     outlet with the name rendered as the word "undefined", and on an
+     outlet-scoped role the row was filtered on `c.outlet` and disappeared off
+     the floor entirely. Same class as `descr`/`desc` on a bank line.
+
+     Pinned on the KEYS, because `emp` carried the right employee id — under a
+     name nothing reads. The round trip itself is in test/api.test.js, against
+     a real database, which is the only place it could ever have been caught. */
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  const from = boot.indexOf('clock: clock.rows.map(');
+  assert.ok(from > 0, 'found the clock publish');
+  const shape = boot.slice(from, boot.indexOf('})),', from));
+  for (const k of ['staff', 'outlet', 'cid', 'date']) {
+    assert.match(shape, new RegExp('\\b' + k + ':'),
+      'the clock row is published with `' + k + '`, which the terminal reads');
+  }
+  assert.ok(!/\bemp:/.test(shape), 'and not under `emp`, which nothing reads');
+
+  /* And an employee belongs to the outlet whose schema holds it. `outlet: null`
+     made `x.outlet === s.outletId` false for every person on the roster. */
+  const emp = boot.slice(boot.indexOf('function employeeOf('),
+    boot.indexOf('staffId: r.staff_id'));
+  assert.ok(!/outlet:\s*null\b/.test(emp),
+    'an employee is not published belonging to no outlet');
+
+  // The terminal's side of the same contract, on the shipped logic class.
+  for (const role of ['SuperAdmin', 'OutletManager']) {
+    const F = clockFixture(role);
+    F.state.clock = [{ id: 41, cid: 'CK-a', staff: 'E-001', outlet: 39,
+      in: Date.now() - 3600000, out: null, date: F.today() }];
+    F.state.tab_staff = 0;
+    const g = F.g_staff();
+    assert.strictEqual(g.cards.length, 1, role + ': the shift is on the floor');
+    assert.strictEqual(g.cards[0].title, 'AISHATH NASHWA',
+      role + ': named, never "undefined"');
+    assert.strictEqual(F.labourToday(39).heads, 1,
+      role + ': and counted in the labour the card reports');
+    assert.ok(F.labourToday(39).cost > 0, role + ': at a real cost');
+  }
+});
+
+test('the four staff tabs draw four different screens', () => {
+  /* The tabs are declared 0..3 and the bodies tested 0, 2, 3 and 4 — so
+     "Timesheet" rendered nothing at all, "Roster" rendered the timesheet,
+     "Scorecard" rendered the roster, and the scorecard was unreachable. */
+  const F = clockFixture();
+  F.state.clock = [{ id: 1, cid: 'CK-a', staff: 'E-001', outlet: 39,
+    in: Date.now() - 3600000, out: 0, date: F.today() }];
+  const seen = [];
+  for (let t = 0; t < 4; t++) {
+    F.state.tab_staff = t;
+    const g = F.g_staff();
+    const cols = (g.cols || []).map((c) => c.label).join(',');
+    assert.ok(cols, 'tab ' + t + ' (' + g.tabs[t].label + ') draws a table');
+    assert.ok(seen.indexOf(cols) < 0,
+      'tab ' + t + ' draws its own screen, not one already drawn: ' + cols);
+    seen.push(cols);
+  }
+  assert.strictEqual(seen.length, 4);
+});
+
+test('labour today is today, and overtime is one month', () => {
+  /* `labourToday` summed EVERY punch in state. With only this session's rows
+     that was true by accident; the bootstrap publishes the last 500, so the
+     card's own sentence — "N hours across M shifts today" — became a month of
+     them. `otHoursFor` is worse, because that figure is multiplied by an
+     hourly rate and paid. */
+  const F = clockFixture();
+  const now = Date.now();
+  F.state.clock = [
+    { id: 1, staff: 'E-001', outlet: 39, in: now - 3600000, out: now, date: F.today() },
+    { id: 2, staff: 'E-001', outlet: 39, in: now - 40 * 86400000,
+      out: now - 40 * 86400000 + 12 * 3600000, date: '2000-01-01' }
+  ];
+  const L = F.labourToday(39);
+  assert.strictEqual(L.heads, 1, 'one shift today, not two');
+  assert.ok(Math.abs(L.hours - 1) < 0.02, 'one hour, not thirteen: ' + L.hours);
+  assert.strictEqual(F.otHoursFor('E-001', '2000-01'), 4,
+    'the old month keeps its own overtime');
+  assert.strictEqual(F.otHoursFor('E-001', F.today().slice(0, 7)), 0,
+    'and none of it reaches this month');
+});
+
+test('a clock-out names the shift by the id this device minted', () => {
+  /* 054. The till sent the id it minted against a bigserial the outlet
+     allocates, so the UPDATE matched nothing and the shift stayed open —
+     accruing — while the screen said it was closed. */
+  const F = clockFixture();
+  const q = [];
+  F.queue = (kind, label, entity, payload) => q.push({ kind, payload });
+  F.state.clock = [];
+  F.clockIn('E-001');
+  const punch = F.state.clock[0];
+  assert.ok(/^CK/.test(punch.cid), 'minted through newId, never a bare clock value');
+  assert.ok(!/^ck\d+$/.test(punch.id), 'and never "ck" + Date.now()');
+  assert.strictEqual(punch.outlet, 39, 'stamped with the outlet it happened at');
+  assert.strictEqual(q[0].kind, 'clock_in');
+  assert.strictEqual(q[0].payload.cid, punch.cid, 'the op carries that name');
+
+  F.clockOut(punch.id);
+  assert.strictEqual(q[1].kind, 'clock_out');
+  assert.strictEqual(q[1].payload.cid, punch.cid, 'and so does the clock-out');
+
+  // A punch adopted from the outlet has no client id, and names the outlet's.
+  const F2 = clockFixture();
+  const q2 = [];
+  F2.queue = (kind, label, entity, payload) => q2.push({ kind, payload });
+  F2.state.clock = [{ id: 41, cid: null, staff: 'E-001', outlet: 39,
+    in: Date.now() - 3600000, out: 0, date: F2.today() }];
+  F2.clockOut(41);
+  assert.strictEqual(q2[0].payload.clockId, 41, 'a pre-054 punch closes by the outlet\'s id');
+  assert.strictEqual(q2[0].payload.cid, null);
+});
+
+test('a punch this device has not delivered survives a bootstrap', () => {
+  // The list was replaced wholesale, so a shift clocked in offline was erased
+  // by the outlet's answer and the person was simply not on the floor.
+  const F = clockFixture();
+  F.state.clock = [];
+  F.clockIn('E-001');
+  const mine = F.state.clock[0].cid;
+  F.applyLive({ clock: [{ id: 99, cid: 'CK-other', staff: 'E-001', outlet: 39,
+    in: Date.now() - 7200000, out: Date.now(), date: F.today() }] });
+  assert.ok(F.state.clock.some((c) => c.cid === mine), 'my undelivered punch is still here');
+  assert.ok(F.state.clock.some((c) => c.cid === 'CK-other'), 'beside the outlet\'s own row');
+  // And the outlet's copy of MY row replaces it once it has landed.
+  F.applyLive({ clock: [{ id: 100, cid: mine, staff: 'E-001', outlet: 39,
+    in: Date.now(), out: null, date: F.today() }] });
+  assert.strictEqual(F.state.clock.filter((c) => c.cid === mine).length, 1,
+    'and once the outlet holds it, there is one row, not two');
+});
+
+test('a shift left open on an earlier day is named, never costed or guessed', () => {
+  /* Because the clock-out never matched, every punch every store has made is
+     still open. Those are not today's floor and they are not today's labour —
+     and this build may not close them either, because nobody knows when those
+     people went home and a made-up finish time is a wage figure. */
+  const F = clockFixture();
+  F.state.clock = [{ id: 7, cid: 'CK-old', staff: 'E-001', outlet: 39,
+    in: Date.now() - 5 * 86400000, out: 0, date: '2026-08-27' }];
+  F.state.tab_staff = 0;
+  const g = F.g_staff();
+  assert.strictEqual(F.labourToday(39).heads, 0, 'not counted in today\'s labour');
+  assert.strictEqual(g.rows.length, 1, 'but drawn, because it is still open');
+  assert.strictEqual(g.rows[0].cells[4].t, 'Left open', 'and named as what it is');
+  assert.strictEqual(g.rows[0].cells[2].t, '—',
+    'with no hours figure, which would be the run-on since that day');
+  assert.match(g.notes[0][0], /left open/i, 'and the screen explains it');
+
+  // Closing one asks for the time and refuses to invent one.
+  const q = [];
+  F.queue = (kind, label, entity, payload) => q.push({ kind, payload });
+  const e = F.state.clock[0];
+  F.setState({ modal: { kind: 'form', name: 'clockclose', edit: e } });
+  const spec = F.formSpec('clockclose');
+  spec.onSave({ at: '' });
+  assert.strictEqual(q.length, 0, 'an empty time queues nothing');
+  spec.onSave({ at: 'home time' });
+  assert.strictEqual(q.length, 0, 'and nor does a word');
+  spec.onSave({ at: '17:30' });
+  assert.strictEqual(q.length, 1, 'a real time closes it');
+  assert.ok(q[0].payload.at < Date.now() - 4 * 86400000,
+    'on the day the shift belongs to, not today');
+});
+
+test('nothing on the clock reports a figure it does not measure', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('  g_staff() {');
+  const to = src.indexOf('  hhmm(t) {', from);
+  assert.ok(from > 0 && to > from, 'found the staff screen');
+  const body = src.slice(from, to);
+  /* `c.late` was a literal 0 on every punch this build ever made, no column
+     has ever held one, and `rota_shift` — the only table that could say what
+     time somebody was due — is read and written by nothing anywhere. So every
+     card read "On time" whoever it was and however late they were, which is an
+     assurance rather than a blank. */
+  assert.ok(!/\.late\b/.test(body),
+    'no screen reads a lateness this build cannot measure');
+  // The screen shell reads `g.empty`; `g.emptyText` was never drawn.
+  assert.ok(!/g\.emptyText\s*=/.test(body),
+    'the empty state uses the key the shell actually reads');
+  assert.match(body, /g\.empty\s*=/, 'and does set one');
+});

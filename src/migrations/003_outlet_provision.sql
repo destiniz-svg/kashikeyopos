@@ -879,9 +879,18 @@ BEGIN
       out_at      timestamptz,
       business_date date NOT NULL,
       source      text NOT NULL DEFAULT 'terminal',
-      by_staff    uuid, device_id uuid
+      by_staff    uuid, device_id uuid,
+      -- The till's own name for this shift (054). A punch starts on a device
+      -- that may be dark, so the row has to be nameable before any server has
+      -- seen it or the clock-out is unsendable -- which is exactly what it
+      -- was, matching the outlet's bigserial against an id the till minted.
+      client_id   text
     );
     CREATE INDEX IF NOT EXISTS clock_emp ON %1$I.clock_entry(employee_id, business_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS clock_client_id
+      ON %1$I.clock_entry (client_id) WHERE client_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS clock_open
+      ON %1$I.clock_entry (employee_id, business_date) WHERE out_at IS NULL;
 
     CREATE TABLE IF NOT EXISTS %1$I.payroll_run (
       id        text PRIMARY KEY,            -- YYYY-MM

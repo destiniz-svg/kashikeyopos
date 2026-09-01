@@ -6198,6 +6198,111 @@ test('the transfer screens read the outlet, and their forms reach it',
    quietly cost a store money: which item a printed line resolves to, what
    happens when two items share a name, what happens when none does, and that
    a scan posts absolutely nothing. */
+/* ═══ THE TIME CLOCK, OVER HTTP AGAINST A REAL DATABASE ════════════════════
+   Reported: "clocking a staff has bugs. when clocked in the name disappears
+   and it says undefined."
+
+   Both halves of that were one defect and it is the kind only a real round
+   trip can catch: the bootstrap published a punch as `{ id, emp, in, out }`
+   and every screen in the terminal reads `c.staff`. So the punch clocked in
+   naming the person, and the moment the outlet published it back the name was
+   `undefined` — and on an outlet-scoped role the row vanished entirely,
+   because it is filtered on `c.outlet`, which was not published either.
+
+   Underneath it, a clock-out that never closed anything: the till sends the
+   id it minted and `clock_entry.id` is the outlet's bigserial, so the UPDATE
+   matched nothing, every time, on every store. A vm test cannot see either —
+   both need the server's own answer. */
+test('a punch names its person, and clocking out closes it', opts, async () => {
+  const uuid = require('crypto').randomUUID;
+  const op = (kind, payload) => push([{ opId: uuid(), kind: kind, label: kind,
+    entity: 'time_entries', at: Date.now(), lamport: Date.now(), payload: payload }]);
+
+  await op('employee_upsert', { id: 'E-CLK', name: 'CLOCK PROBE', job: 'Cashier',
+    kind: 'local', basic: 9000, mrps: true, ot: true, svc: true });
+
+  const cid = 'CK-probe-' + Date.now();
+  const inAt = Date.now() - 3 * 3600000;
+  let r = await op('clock_in', { emp: 'E-CLK', cid: cid, at: inAt });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const applied = (r.body.results || [])[0] || {};
+  assert.ok(applied.ok !== false, 'the punch applied: ' + JSON.stringify(applied));
+
+  const row = await one('SELECT id, employee_id, client_id, out_at, business_date'
+    + ' FROM clock_entry WHERE client_id = $1', [cid]);
+  assert.ok(row, 'the outlet holds the punch');
+  assert.strictEqual(row.employee_id, 'E-CLK');
+  assert.strictEqual(row.out_at, null, 'and it is open');
+
+  /* THE BOOTSTRAP PUBLISHES IT IN THE WORDS THE TERMINAL READS. This is the
+     reported defect, and it is asserted on the KEY rather than on the value,
+     because `emp` carried the right employee id under a name nothing reads. */
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(boot.status, 200);
+  const pub = ((boot.body.state || {}).clock || []).find((c) => c.cid === cid);
+  assert.ok(pub, 'the punch is published');
+  assert.strictEqual(pub.staff, 'E-CLK', 'under `staff` — what every screen reads');
+  assert.strictEqual(pub.emp, undefined, 'and not under `emp`, which nothing reads');
+  assert.strictEqual(pub.outlet, outletId, 'stamped with the outlet, or it is filtered off');
+  assert.ok(pub.date, 'and the business day it belongs to');
+
+  /* AND THE EMPLOYEE KNOWS WHICH OUTLET, which was the literal null that made
+     `x.outlet === s.outletId` false for every person on the roster. */
+  const emp = ((boot.body.kpos || {}).STAFF || []).find((x) => x.id === 'E-CLK');
+  assert.ok(emp, 'the employee is published');
+  assert.strictEqual(emp.outlet, outletId, 'belonging to this outlet, not to null');
+
+  // ── the same person cannot be clocked in twice on one day ────────────────
+  r = await op('clock_in', { emp: 'E-CLK', cid: cid + '-again', at: Date.now() });
+  let res = (r.body.results || [])[0] || {};
+  assert.match(String(res.error || ''), /already clocked in/i,
+    'a second open punch on one day is refused by name: ' + JSON.stringify(res));
+  const n = await one("SELECT count(*)::int AS n FROM clock_entry WHERE employee_id = 'E-CLK'");
+  assert.strictEqual(n.n, 1, 'and nothing was written');
+
+  // ── an employee this outlet does not hold ────────────────────────────────
+  r = await op('clock_in', { emp: 'NOBODY-AT-ALL', cid: 'CK-nobody', at: Date.now() });
+  res = (r.body.results || [])[0] || {};
+  assert.match(String(res.error || ''), /not on this outlet/i,
+    'refused by name rather than on a foreign key');
+
+  /* ── CLOCKING OUT BY THE TILL'S OWN NAME FOR THE SHIFT ──────────────────
+     The whole point of 054. Before it this sent `clockId: "ck1788…"` against a
+     bigserial and closed nothing at all. */
+  const outAt = inAt + 2 * 3600000;
+  r = await op('clock_out', { cid: cid, at: outAt });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const closed = await one('SELECT in_at, out_at FROM clock_entry WHERE client_id = $1', [cid]);
+  assert.ok(closed.out_at, 'the shift is closed at the outlet');
+  const hours = (new Date(closed.out_at) - new Date(closed.in_at)) / 3600000;
+  assert.ok(Math.abs(hours - 2) < 0.02, 'for the hours it was told: ' + hours);
+
+  // A second clock-out is not a refusal — two taps must not park an op.
+  r = await op('clock_out', { cid: cid, at: outAt });
+  res = (r.body.results || [])[0] || {};
+  assert.ok(!res.error, 'closing a closed shift is a no-op, not a park: '
+    + JSON.stringify(res));
+
+  // ── and the OUTLET's own id still works, for a punch from before 054 ─────
+  const legacy = await one("INSERT INTO clock_entry (employee_id, in_at, business_date)"
+    + " VALUES ('E-CLK', now() - interval '2 hours', current_date - 1) RETURNING id");
+  r = await op('clock_out', { clockId: String(legacy.id), at: Date.now() });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const legacyRow = await one('SELECT out_at FROM clock_entry WHERE id = $1', [legacy.id]);
+  assert.ok(legacyRow.out_at, 'a punch with no client id closes by the outlet\'s own id');
+
+  // ── a clock-out naming no shift is a refusal a person can read ───────────
+  r = await op('clock_out', { cid: 'CK-never-existed' });
+  res = (r.body.results || [])[0] || {};
+  assert.match(String(res.error || ''), /not one this outlet holds/i,
+    'and it says so rather than silently doing nothing');
+
+  // ── both halves land on the trail, which is what settles a dispute ───────
+  const trail = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action IN ('clock_in','clock_out') AND outlet_id = $1", [outletId]);
+  assert.ok(trail.n >= 2, 'the punch and its close are both recorded: ' + trail.n);
+});
+
 test('an invoice scan resolves against the outlet, and posts nothing', opts, async () => {
   const ai = require('../src/ai');
   const realAsk = ai.ask, realHealth = ai.health;
