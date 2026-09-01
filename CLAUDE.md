@@ -1470,6 +1470,70 @@ two of a dish for table `8`, and the outlet holds **one** ticket carrying both
 lines — the guest's fired, the counter's not — with the Kitchen Display drawing
 `T08 · QR self-order · ×2 Valhomas Rice · HOT PASS` and the ticket at rung 1.
 
+## A round nobody accepted is a round still waiting
+
+Reported: *"order notification that goes to pos on qr portal orders disappears
+after showing for a second though it's not acknowledged. this order is should
+be recorded when the cashier accepts the order."* Exactly right, and the poll
+was the whole of it.
+
+**`ingestQr()` RAN FROM THE FIVE-SECOND TICK, OVER EVERY ORDER SIGNAL.** It put
+the lines on the ticket, fired them to the kitchen, and queued `qr_order`
+carrying the guest_order row id — which sets `accepted_at`. Both reads filter
+`accepted_at IS NULL`, so by the next tick the row was gone from the outlet's
+answer and the card went with it. One flash, five seconds wide, and no person
+in the loop at all. The server was never at fault: it publishes unaccepted
+rounds WHOLE on every tick, exactly so that a card can persist.
+
+Losing the card is the symptom; the defect is that the decision was taken away.
+Accepting a round is the counter saying *we will cook this* — the one judgement
+left once the guest has pressed send, and the moment a kitchen is committed and
+a table is opened. A poll cannot make it, and a shop that is slammed, closing or
+out of the dish needs the round still to be there.
+
+**The rule was already written one method up.** `ingestPayIntent()` carries the
+comment *"the ingest is bookkeeping, the acknowledgement is a person"* — and its
+own neighbour broke it. So the two halves are separated by name and only one may
+run on a tick:
+
+| | |
+| --- | --- |
+| `reconcileQr()` | bookkeeping: a round whose lines are ALREADY on the ticket is marked ingested. A comparison, not a decision — no line, no fire, no close |
+| `acceptQr(sigId)` | the decision, and only from a control somebody pressed: lines, then the fire, then the op that closes the round, in one batch |
+
+**And acknowledging destroyed an order rather than losing a card.**
+`ackSignal()` queued `qr_order` with the row id — closing the round at the
+outlet — and created NOT ONE LINE. A cashier tapping the card's own button made
+the guest's food vanish: no ticket, no docket, nothing to settle, and the round
+gone from every terminal. It was masked only because the poll auto-accepted
+first, and it is the same defect underneath: **closing a round is only ever safe
+as half of accepting it.** `ackSignal` routes a `go_` id to `acceptQr` now, so
+no caller can perform the destructive half alone.
+
+**An order is accepted; a call is answered.** They are different acts and they
+had one pair of buttons — *"Open table"* and *"On my way"*, both of which closed
+a round, one of them while walking away from it. Opening a table to LOOK at a
+round must not commit the kitchen, so the go-button only opens it, and the
+accept is its own word: **Accept the order**, with the toast naming what was
+fired. A round the cashier accepts leaves the list on that press rather than on
+a later poll — deferring was right while this was automatic and wrong now, since
+a card still pulsing after a press invites a second one.
+
+`test/wiring.test.js` drives all of it on the shipped logic class: the tick
+queueing nothing at all, the accept queueing `add_line` then `fire_course` then
+`qr_order` in that order (lamport order is queue order, so the fire resolves
+lids the lines have just created), the acknowledgement no longer closing an
+empty round, and a static pin that nothing on the five-second path may call the
+accept — because this is a class rather than one call site. All four fail
+against the version that shipped.
+
+**NOT PROVEN THROUGH A BROWSER.** The Chromium drive did not complete in this
+environment — the sandbox's egress proxy intercepts Chromium's background
+service calls and the run times out before sign-in — so what is proved here is
+the shipped logic class in a vm and the shipped text statically, not pixels. The
+first QR round on a live install is the first proof of the card persisting to a
+real cashier's eye.
+
 ## A call the floor answers has to stop coming back
 
 Reported: *"the outlet keeps refusing, acknowledging… outlet keeps refusing
@@ -6571,7 +6635,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 609 tests
+npm test                          # 612 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

@@ -6405,11 +6405,32 @@ class Component extends DCLogic {
               : (mins ? mins + " min ago" : "just now") + (x.detail ? " \u00b7 " + x.detail : ""),
             style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
-            go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); },
-            goLabel: "Open table",
+            /* AN ORDER IS ACCEPTED; A CALL IS ANSWERED. They are different
+               acts and they had one pair of buttons: "Open table" and "On my
+               way", both of which closed a QR round at the outlet — one of
+               them while walking away from it. Opening the table to LOOK at a
+               round must not commit the kitchen to it, so for an order the
+               go-button only opens the table, and accepting is its own word. */
+            go: () => {
+              this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" });
+              if (x.kind !== "order") this.ackSignal(x.id);
+            },
+            goLabel: x.kind === "order" ? "Look at the table" : "Open table",
             goStyle: isCode ? "display:none" : GOS,
-            ack: () => { this.ackSignal(x.id); this.toast(isCode ? "Done \u2014 their code was read out" : "Acknowledged \u2014 T" + x.table); },
-            ackLabel: isCode ? "Done \u2014 read out" : "On my way", ackStyle: ACKS
+            ack: () => {
+              if (x.kind === "order") {
+                const n = (x.lines || []).reduce((a, l) => a + (l.qty || 1), 0);
+                this.ackSignal(x.id);
+                this.toast("Order accepted \u2014 T" + x.table + " \u00b7 " + n
+                  + " item" + (n === 1 ? "" : "s") + " fired to the kitchen");
+                return;
+              }
+              this.ackSignal(x.id);
+              this.toast(isCode ? "Done \u2014 their code was read out" : "Acknowledged \u2014 T" + x.table);
+            },
+            ackLabel: isCode ? "Done \u2014 read out"
+              : x.kind === "order" ? "Accept the order" : "On my way",
+            ackStyle: ACKS
           };
         });
         if (open.length > 3) {
@@ -10110,7 +10131,7 @@ class Component extends DCLogic {
         x.kind + " · " + (x.memberName || where) + " · " + (x.detail || ""),
         x.kind === "member" || x.kind === "reward" ? "customers" : "guest_signals");
     });
-    this.ingestQr();
+    this.reconcileQr();
     const all = this.allSignals();
     if (all.length !== (this._sigN || 0)) { this._sigN = all.length; this.forceUpdate(); }
   }
@@ -10123,8 +10144,15 @@ class Component extends DCLogic {
     const acked = this._ackedSig || (this._ackedSig = {});
     acked[id] = 1;
     if (id.indexOf("go_") === 0) {
-      this.queue("qr_order", "QR round acknowledged by " + this.me(), "guest_signals",
-        { id: id.slice(3) });
+      /* AN ORDER IS ACCEPTED, NEVER MERELY ACKNOWLEDGED. This queued
+         `qr_order` carrying the row id — which CLOSES the round at the outlet
+         — and created not one line. So a cashier tapping the card's own button
+         made the guest's food disappear: no ticket, no docket, nothing to
+         settle, and the round gone from every terminal. It was masked while
+         the poll auto-accepted first, and it is the same defect underneath —
+         closing a round is only ever safe as half of accepting it. One seam,
+         so no caller can do the destructive half alone. */
+      return this.acceptQr(id);
     } else if (id.indexOf("gr_") === 0) {
       this.queue("flag_ack", "Guest call acknowledged by " + this.me(), "guest_signals",
         { id: id.slice(3) });
@@ -10169,9 +10197,49 @@ class Component extends DCLogic {
     });
     this.setState({ tickets: t });
   }
-  ingestQr() {
+  /* THE BOOKKEEPING HALF, and nothing else — it may run on a poll.
+
+     A round whose lines are ALREADY on the ticket is one this device has
+     accepted, so the signal is marked ingested and stops being offered. That
+     is a comparison, not a decision: no line is created, nothing is fired, and
+     no round is closed at the outlet. */
+  reconcileQr() {
     this.ingestPayIntent();
-    const rows = this.signals().filter((x) => x.kind === "order" && !x.ing && x.lines && x.lines.length);
+    const t = this.state.tickets || {};
+    this.signals().forEach((x) => {
+      if (x.kind !== "order" || x.ing) return;
+      const cur = t[this.state.outletId + ":" + x.table];
+      if (cur && (cur.lines || []).some((l) => l.sig === x.id)) {
+        this.patchSignal(x.id, { ing: 1 });
+      }
+    });
+  }
+  /* ACCEPTING A GUEST'S ROUND IS A PERSON'S ACT, AND IT WAS AUTOMATIC.
+
+     Reported: "order notification that goes to pos on qr portal orders
+     disappears after showing for a second though it's not acknowledged."
+     Exactly right, and this was the whole of it. `ingestQr()` ran from the
+     five-second poll over EVERY order signal — it put the lines on the ticket,
+     fired them to the kitchen, and queued `qr_order` carrying the row id,
+     which sets `accepted_at` at the outlet. The next tick's query filters
+     `accepted_at IS NULL`, so the row was gone and the card with it: one
+     flash, no person, no decision.
+
+     Worse than a vanishing card, it took the decision away. Accepting a round
+     is the counter saying "we will cook this" — the one judgement left once
+     the guest has pressed send, and the moment a kitchen is committed and a
+     table is opened. A poll cannot make it, and a store that is slammed,
+     closing, or out of the dish needs the round to still be there.
+
+     The rule was already written one method up, over `ingestPayIntent`: "the
+     ingest is bookkeeping, the acknowledgement is a person." This is that
+     method's neighbour breaking its own stated rule. So the two halves are
+     separated by name — `reconcileQr()` is the bookkeeping and may run on a
+     tick; `acceptQr()` is the decision and runs only from a control somebody
+     pressed. */
+  acceptQr(sigId) {
+    const rows = this.signals().filter((x) => x.kind === "order" && x.id === sigId
+      && x.lines && x.lines.length);
     if (!rows.length) return;
     const t = Object.assign({}, this.state.tickets);
     const done = [];
@@ -10264,11 +10332,19 @@ class Component extends DCLogic {
         ? { id: String(x.id).slice(3), ticketId: cur.id || null }
         : undefined);
     });
-    // Signals confirmed present on the ticket are closed now; ones just applied
-    // stay open until a later poll can see them, which is what makes this
-    // converge instead of losing an order to a race.
-    done.forEach((x) => this.patchSignal(x.id, { ing: 1 }));
+    /* A round somebody has just ACCEPTED leaves the list on that press, not on
+       a later poll. Deferring it was right while this ran automatically —
+       there was no person to answer to and the outlet's own answer was the
+       only safe confirmation — and it is wrong now: the cashier pressed
+       Accept, and a card that sits there pulsing invites a second press and a
+       second round. `_ackedSig` is what keeps it gone until the outlet stops
+       publishing it, exactly as an acknowledged call already works. */
+    done.concat(rows).forEach((x) => {
+      this.patchSignal(x.id, { ing: 1 });
+      (this._ackedSig || (this._ackedSig = {}))[x.id] = 1;
+    });
     if (touched) this.setState({ tickets: t });
+    this.forceUpdate();
   }
   /* ONE GLYPH SET, and it is in app/kashikeyo-data.js because the guest's
      phone draws the same plates from it. A second copy here is how the

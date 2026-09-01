@@ -5057,7 +5057,11 @@ test('a QR round is fired when it is accepted, not left off the pass', () => {
     lines: [{ id: dish.id, qty: 2 }] }], guestRequests: [] } };
   F.state.outletId = F.state.outletId || 1;
 
-  F.ingestQr();
+  /* The seam was renamed when the poll stopped accepting rounds on its own:
+     `acceptQr` is a person's act and takes the signal it is accepting. The
+     property this test pins — lines, then the fire, by the same lid — is
+     unchanged, and is exactly what must survive that move. */
+  F.acceptQr('go_g1');
 
   const adds = queued.filter((x) => x.kind === 'add_line');
   assert.strictEqual(adds.length, 1, 'the round becomes a line on the outlet\'s ticket');
@@ -7178,4 +7182,105 @@ test('a busy model is retried and named as busy; a refusal names whose fault it 
     else process.env.GEMINI_BASE_URL = before.base;
     delete require.cache[require.resolve('../src/ai')];
   }
+});
+
+test('a QR round waits for a person, and accepting it is what records it', () => {
+  /* Reported: "order notification that goes to pos on qr portal orders
+     disappears after showing for a second though it's not acknowledged. this
+     order is should be recorded when the cashier accepts the order."
+
+     Exactly right, and the poll was the whole of it. `ingestQr()` ran from the
+     five-second tick over EVERY order signal: it put the lines on the ticket,
+     fired them to the kitchen, and queued `qr_order` carrying the row id —
+     which sets `accepted_at`. Both reads filter `accepted_at IS NULL`, so the
+     row was gone by the next tick and the card with it. One flash, no person.
+
+     Driven on the shipped logic class, because the defect is in WHO acts. */
+  const H = require('./harness');
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+
+  const round = {
+    id: 'go_11111111-2222-3333-4444-555555555555',
+    outlet: F.state.outletId, table: 5, kind: 'order', at: Date.now(), ack: 0,
+    lines: [{ id: (FX.kpos().MENU[0] || {}).id, qty: 2, addons: 0 }],
+    from: 'portal'
+  };
+  F.allSignals = () => [round];
+
+  const q = [];
+  F.queue = (kind, label, entity, payload) => q.push({ kind: kind, payload: payload });
+
+  // ── the tick must not accept anything ────────────────────────────────────
+  F.reconcileQr();
+  assert.strictEqual(q.length, 0,
+    'a poll creates no line, fires nothing, and closes no round');
+  assert.ok(!q.some((o) => o.kind === 'qr_order'),
+    'above all it does not send the op that sets accepted_at at the outlet');
+  assert.strictEqual((F.signals() || []).length, 1,
+    'and the card is still on the floor, waiting for somebody');
+
+  // ── the cashier accepts: one act, and all of it happens ──────────────────
+  F.acceptQr(round.id);
+  const kinds = q.map((o) => o.kind);
+  assert.ok(kinds.indexOf('add_line') >= 0, 'the round becomes lines');
+  assert.ok(kinds.indexOf('fire_course') >= 0, 'and reaches the kitchen');
+  assert.ok(kinds.indexOf('qr_order') >= 0, 'and the round closes at the outlet');
+  assert.ok(kinds.indexOf('add_line') < kinds.indexOf('fire_course'),
+    'lines before the fire — lamport order is queue order, so fire_course'
+    + ' resolves lids the add_lines have just created');
+
+  const closer = q.find((o) => o.kind === 'qr_order');
+  assert.strictEqual(closer.payload.id, round.id.slice(3),
+    'the op names the guest_order row, which is what closes it');
+
+  const tk = F.state.tickets[F.state.outletId + ':5'];
+  assert.ok(tk && (tk.lines || []).length, 'the lines are on the ticket');
+  assert.ok((tk.lines || []).every((l) => l.fired),
+    'accepting IS the decision to cook it, so they are fired');
+});
+
+test('acknowledging an order accepts it, and never closes it empty', () => {
+  /* The other half, and it destroyed an order rather than losing a card.
+     `ackSignal` queued `qr_order` with the row id — closing the round at the
+     outlet — and created NOT ONE LINE. So a cashier tapping the card's own
+     button made the guest's food vanish: no ticket, no docket, nothing to
+     settle, and the round gone from every terminal. It was masked only
+     because the poll auto-accepted first. */
+  const H = require('./harness');
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+  const round = {
+    id: 'go_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    outlet: F.state.outletId, table: 3, kind: 'order', at: Date.now(), ack: 0,
+    lines: [{ id: (FX.kpos().MENU[0] || {}).id, qty: 1, addons: 0 }], from: 'portal'
+  };
+  F.allSignals = () => [round];
+  const q = [];
+  F.queue = (kind, label, entity, payload) => q.push({ kind: kind, payload: payload });
+
+  F.ackSignal(round.id);
+  assert.ok(q.some((o) => o.kind === 'qr_order'), 'the round is closed');
+  assert.ok(q.some((o) => o.kind === 'add_line'),
+    'but only as half of accepting it — closing a round with no lines is how'
+    + ' a guest\'s order disappears with the money still to take');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('  ackSignal(id) {');
+  const to = src.indexOf('  patchSignal(id', from);
+  assert.ok(from > 0 && to > from, 'found ackSignal');
+  assert.ok(!/queue\("qr_order"/.test(src.slice(from, to)),
+    'and no caller composes that op alone — there is one seam, acceptQr');
+});
+
+test('the poll does not call the accept, and the card says which act it is', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  /* The static half, because this is a class rather than one call site: a
+     future tick handler that reaches for the accept re-creates the report. */
+  assert.ok(!/this\.ingestQr\(\)/.test(src),
+    'the auto-accepting entry point is gone by name, not merely unused');
+  const tick = src.slice(src.indexOf('  pullSignals() {'), src.indexOf('  ackSignal(id) {'));
+  assert.ok(!/acceptQr\(/.test(tick),
+    'nothing on the five-second path may accept a round');
+  assert.match(tick, /reconcileQr\(\)/, 'the tick does the bookkeeping half only');
+  // "On my way" is what you say to a call, not to an order.
+  assert.match(src, /Accept the order/, 'the control names the act');
 });
