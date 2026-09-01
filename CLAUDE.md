@@ -2877,6 +2877,28 @@ composition and decision, never connectivity. The first real scan on the live
 install is the first proof that the key, the quota and the model's reading are
 right, and `[ai]` on the boot line says whether the key was even read.
 
+**And on the first deploy it said the key was NOT read.** `GEMINI_API_KEY`,
+`GEMINI_MODEL` and `AI_PROVIDER` are all present on the production service by
+NAME, and the boot line was still:
+
+```
+[ai] no model: no model is configured on this install — set GEMINI_API_KEY
+```
+
+That is the `!KEY()` branch and not the dangling-reference one, so the
+variable resolves to an EMPTY STRING in the process — the third time this
+install has been bitten by exactly that, after `ALERT_EMAIL` twice. A
+platform resolves an unknown same-service reference to empty rather than
+leaving the literal, so a variable that is right there in the dashboard
+arrives as nothing, and every check written as "is it set" passes. The value
+is what has to be pasted, never a reference to itself.
+
+This is the whole argument for the boot line and for `configured`. Nothing
+lied: the scan control is simply ABSENT on every terminal, `Receive a
+delivery` is untouched, and the install says by name which of the four states
+it is in. An install with no model is a stated condition, not a broken one —
+the same rule the mail seam and the backup destination already keep.
+
 **Stated rather than fixed**: two more callers of `window.claude` remain — the
 Today briefing and the CFO advisory. Both are honest about being unreachable
 (they say so on screen), and both want a free-text contract rather than the
