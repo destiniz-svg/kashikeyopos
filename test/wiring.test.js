@@ -6984,3 +6984,31 @@ test('nothing on the clock reports a figure it does not measure', () => {
     'the empty state uses the key the shell actually reads');
   assert.match(body, /g\.empty\s*=/, 'and does set one');
 });
+
+test('the image starts through the entrypoint, and still ends as node', () => {
+  /* Two files that only work together: the Dockerfile has to call the script
+     and the script has to be there and be runnable. Removing either half
+     leaves an image that either will not start or silently goes back to the
+     EACCES that made every backup fail, and neither is visible from any
+     screen. `USER node` is deliberately NOT here — it cannot chown a mount
+     that does not exist until the container starts — so the pin is that the
+     drop still happens, in the entrypoint. */
+  const df = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+  assert.match(df, /ENTRYPOINT \["docker-entrypoint\.sh"\]/,
+    'the image starts through the entrypoint');
+  assert.match(df, /CMD \["node", "server\.js"\]/,
+    'and the command it is handed is still the server');
+  assert.match(df, /apk add --no-cache su-exec/,
+    'su-exec is what the entrypoint drops privileges with — without the'
+    + ' package the container starts as root and stays there');
+
+  const ep = path.join(__dirname, '..', 'docker-entrypoint.sh');
+  assert.ok(fs.existsSync(ep), 'the entrypoint the Dockerfile names exists');
+  assert.ok(fs.statSync(ep).mode & 0o111, 'and is executable in the repository,'
+    + ' because a mode set only by the Dockerfile is one a local run loses');
+  const sh = fs.readFileSync(ep, 'utf8');
+  assert.match(sh, /exec su-exec node/,
+    'the application process is node, never root');
+  assert.match(sh, /chown node:node "\$BACKUP_DIR"/,
+    'and the mount is handed over before that happens');
+});

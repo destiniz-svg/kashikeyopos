@@ -5715,13 +5715,64 @@ hours about their own decision is how an alert channel gets muted.
 
 | Variable | Effect |
 | --- | --- |
-| `BACKUP_DIR` | A mounted path. The `file` driver. |
+| `BACKUP_DIR` | A mounted path. The `file` driver. **The mount must be writable by the user the app runs as** — see below; a platform hands one over owned by root. |
 | `BACKUP_S3_BUCKET` + `_KEY` `_SECRET` `_REGION` `_ENDPOINT` `_PREFIX` | Any S3-compatible store — a Railway bucket, R2, B2, MinIO, AWS. Endpoint empty for AWS. A bucket with no key is refused by name rather than half-configured. |
 | `BACKUP_S3_PATH_STYLE` | How the bucket is spelled into the URL, and it is **not cosmetic**: `host` is a signed header, so the wrong style fails every upload. Virtual-hosted (`<bucket>.<endpoint>`) is the default and the S3 standard — a Railway bucket, R2 and AWS all serve it. `1` switches to path-style (`<endpoint>/<bucket>`) for MinIO and for a Railway bucket issued before that change. Neither is derivable from the endpoint, since both are a bare host, so this is a named opt-in rather than a guess that fails on somebody's first real backup. This file used to assert the opposite. |
 | `BACKUP_EVERY_HOURS` | Schedule interval (24). 0 turns the schedule off and leaves the CLI working. |
 | `BACKUP_RETAIN_DAYS` | 30. A database's newest good copy is never removed by age, however old. |
 | `BACKUP_STALE_HOURS` | When the watchdog says so (default: twice the interval). |
 | `PG_BIN_DIR` | Where pg_dump lives, if not on PATH. |
+
+### And a destination the process cannot write to is not a destination
+
+Found by attaching a volume to the live install and READING THE LOG, which is
+the only way this one could have been found — every part of it was individually
+correct. The boot line said the destination was configured and named the tool:
+
+```
+[backup] file → /backups · every 24h · keeping 30 days · pg_dump (PostgreSQL) 18.6
+```
+
+Then, two minutes later, all four databases dumped and every one refused:
+
+```
+[backup] kashikeyo_biz_1  FAILED  EACCES: permission denied, copyfile
+         '/tmp/kashikeyo-….dump' -> '/backups/kashikeyo_biz_1-….dump'
+[backup] 4 of 4 failed
+```
+
+**A platform mounts a volume owned by root, and the image runs as `node`.** The
+Dockerfile's own comment named the assumption that had just stopped being true
+— *"Nothing in this image is written to at runtime"* — which was correct when
+state lived only in Postgres and the browser, and false the moment a backup
+destination became a mounted path. And `USER node` cannot fix it: the mount
+does not exist until the container starts, so there is nothing to chown at
+build time.
+
+So `docker-entrypoint.sh` does the ONE act that needs root — hand the mount to
+`node` — and then `exec`s the process as `node`, which leaves no root process
+behind and gives the application exactly the privileges it had before. Guarded
+three ways, because this same image is also Mission Control and the public
+website and neither mounts a volume: no `BACKUP_DIR` is nothing to do, a path
+that is not a directory is nothing to do, and **a chown that fails is not
+fatal** — a restaurant losing its till over a backup directory is a worse
+failure than a backup that reports EACCES by name, which it already does.
+
+Nothing lied here, and that is the whole argument for the run line as well as
+the boot line: `[backup] 4 of 4 failed` went to `console.error`, the shelf
+stayed empty, and the watchdog's fourth condition is written for exactly this
+— a configured destination that stops receiving copies. What was missing was
+somebody reading it.
+
+There is no Docker daemon in CI, so the IMAGE cannot be built there. What CAN
+be run is the shipped script itself: `test/entrypoint.test.js` executes
+`docker-entrypoint.sh` against a stubbed `chown`, `id` and `su-exec` on PATH
+and asserts the sequence of acts — the mount handed over BEFORE privileges are
+dropped (a chown after the drop is a chown that fails), the command passed
+through unchanged, all three guards, and a failing chown still booting. All
+five fail against the version that shipped, and `test/wiring.test.js` pins the
+two halves together, because a Dockerfile that names a script and a script that
+is not there is an image that will not start.
 
 `test/backup.test.js` runs the whole drill every CI run — trade, archive, **DROP
 the database**, restore, and compare every figure — plus the SigV4 signer
@@ -6395,7 +6446,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 602 tests
+npm test                          # 608 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

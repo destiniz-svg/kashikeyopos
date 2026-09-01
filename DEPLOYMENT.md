@@ -369,6 +369,23 @@ however old — and the watchdog raises an alert once the newest good archive
 passes `BACKUP_STALE_HOURS`. `/metrics` carries `kpos_backup_age_hours`, with
 `-1` for "never".
 
+**A volume is mounted owned by root; the app runs as `node`.** The image's
+entrypoint hands the `BACKUP_DIR` mount over at start and then drops back to
+`node`, so an ordinary deploy is handled. If you mount a volume some other way,
+or pin the container's user yourself, **read the first RUN rather than the boot
+line** — the boot line only says a destination is configured, and this is what
+an unwritable one looks like:
+
+```
+[backup] file → /backups · every 24h · keeping 30 days · pg_dump (PostgreSQL) 18.6
+[backup] kashikeyo_biz_1  FAILED  EACCES: permission denied, copyfile
+         '/tmp/kashikeyo-….dump' -> '/backups/kashikeyo_biz_1-….dump'
+[backup] 4 of 4 failed
+```
+
+Every dump correct, every copy refused, nightly. `npm run backup -- --check`
+answers the same question on demand.
+
 Every run is a row in `chain.backup` in the registry, **including the ones that
 fail**: a shelf showing only successes reads as "backed up nightly" on an
 install whose last four nights did not.
