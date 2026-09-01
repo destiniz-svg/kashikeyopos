@@ -7012,3 +7012,121 @@ test('the image starts through the entrypoint, and still ends as node', () => {
   assert.match(sh, /chown node:node "\$BACKUP_DIR"/,
     'and the mount is handed over before that happens');
 });
+
+test('a busy model is retried and named as busy; a refusal names whose fault it is', async () => {
+  /* Reported from the live install the first time anybody pressed Scan
+     invoice: "modal refused this install error 503". The install was fine.
+     Google answered, verbatim, with the model recognised and the key valid:
+
+       503 UNAVAILABLE — "This model is currently experiencing high demand.
+       Spikes in demand are usually temporary. Please try again later."
+
+     Every non-2xx read `the model refused this install`, which sends whoever
+     is holding the invoice to check the key and the variables over a spike in
+     somebody else's capacity. The mail seam's own rule is that `reason` tells
+     the person waiting WHETHER IT IS THEIRS TO FIX, and this said yes when the
+     answer was no.
+
+     Driven against a real local server speaking Google's own shapes, because
+     the whole defect is in what a status is turned into. */
+  const http = require('http');
+  const path = require('path');
+
+  const hits = [];
+  const replies = [];
+  const srv = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      hits.push({ url: req.url, key: req.headers['x-goog-api-key'] });
+      const next = replies.shift() || { status: 200, body: '{}' };
+      res.writeHead(next.status, { 'content-type': 'application/json' });
+      res.end(next.body);
+    });
+  });
+  await new Promise((f) => srv.listen(0, '127.0.0.1', f));
+  const port = srv.address().port;
+
+  const before = {
+    key: process.env.GEMINI_API_KEY,
+    base: process.env.GEMINI_BASE_URL
+  };
+  delete require.cache[require.resolve('../src/ai')];
+  process.env.GEMINI_API_KEY = 'a-well-formed-key';
+  process.env.GEMINI_BASE_URL = 'http://127.0.0.1:' + port;
+
+  try {
+    const ai = require('../src/ai');
+
+    /* Google's real 503 body, pretty-printed exactly as it arrives. */
+    const busy = JSON.stringify({
+      error: {
+        code: 503,
+        message: 'This model is currently experiencing high demand. Spikes in'
+          + ' demand are usually temporary. Please try again later.',
+        status: 'UNAVAILABLE'
+      }
+    }, null, 2);
+
+    // ── busy once, then the answer: the operator never sees the spike ──────
+    hits.length = 0;
+    replies.push({ status: 503, body: busy });
+    replies.push({ status: 200, body: JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"lines":[]}' }] } }] }) });
+    let r = await ai.ask({ prompt: 'x' });
+    assert.strictEqual(r.ok, true,
+      'a spike that clears on the retry is not an error the counter has to read');
+    assert.strictEqual(hits.length, 2, 'and it was retried exactly once');
+
+    // ── busy twice: reported, and NOT as the install's fault ──────────────
+    hits.length = 0;
+    replies.push({ status: 503, body: busy });
+    replies.push({ status: 503, body: busy });
+    r = await ai.ask({ prompt: 'x' });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(hits.length, 2, 'retried once, never in a loop');
+    assert.match(r.reason, /busy/i, 'named as busy');
+    assert.match(r.reason, /try the scan again/i, 'with the action that works');
+    assert.ok(!/this install/i.test(r.reason),
+      'and never as this install, which is what sent an operator to the key');
+
+    // The detail an operator reads must be ONE line — Google pretty-prints,
+    // and a multi-line console.error is scattered across the platform's log.
+    const h = ai.health();
+    assert.ok(h.detail, 'the transport\'s own words survive for the log');
+    assert.ok(!/[\n\r]/.test(h.detail),
+      'on one line, or the log viewer shows a brace and hides the message');
+    assert.match(h.detail, /high demand/,
+      'and it is the sentence that actually says what happened');
+    assert.ok(!/high demand/.test(r.reason),
+      'while the caller gets the class, never the transport verbatim');
+
+    // ── the three that ARE about this install, each named apart ───────────
+    for (const [status, re] of [[401, /key/i], [403, /key/i]]) {
+      replies.push({ status: status, body: '{"error":{"message":"nope"}}' });
+      const a = await ai.ask({ prompt: 'x' });
+      assert.match(a.reason, re, 'a ' + status + ' names the key');
+      assert.match(a.reason, /this install/i, 'and says it is this install');
+    }
+
+    replies.push({ status: 404, body: '{"error":{"message":"not found"}}' });
+    const nf = await ai.ask({ prompt: 'x' });
+    assert.match(nf.reason, /does not serve/i,
+      'a 404 is the MODEL NAME, which is the one thing a boot line cannot check');
+    assert.match(nf.reason, new RegExp(ai._model()),
+      'and it names the model asked for, so the fix is on screen');
+
+    // A 400 is this build's own request, and must not blame the operator.
+    replies.push({ status: 400, body: '{"error":{"message":"bad"}}' });
+    const bad = await ai.ask({ prompt: 'x' });
+    assert.match(bad.reason, /refused this request/i);
+    assert.ok(!/this install/i.test(bad.reason));
+  } finally {
+    srv.close();
+    if (before.key === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = before.key;
+    if (before.base === undefined) delete process.env.GEMINI_BASE_URL;
+    else process.env.GEMINI_BASE_URL = before.base;
+    delete require.cache[require.resolve('../src/ai')];
+  }
+});

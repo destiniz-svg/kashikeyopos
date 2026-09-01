@@ -2943,6 +2943,63 @@ whoever scanned, with the control still there to retry — never a half-filled
 GRN. `grn_receive` is untouched either way, because the scan fills a form and
 never posts.
 
+### The first real scan, and what it settled
+
+Reported the first time anybody pressed the control: *"modal refused this
+install error 503"*. **The install was fine.** Google answered — the model
+recognised, the key valid, quota there — and its own words were:
+
+```
+503 UNAVAILABLE — "This model is currently experiencing high demand. Spikes in
+demand are usually temporary. Please try again later."
+```
+
+So the open question above is closed in the good direction: `gemini-3.7-flash`
+IS a name the API serves (a wrong one is 404, not 503), the key works, and only
+capacity was short. What the report exposed instead was two defects in how this
+seam TALKS, and both are ones this build refuses by name elsewhere.
+
+**A BUSY MODEL IS NOT A REFUSED INSTALL.** Every non-2xx read *"the model
+refused this install (HTTP n)"*, so a spike in somebody else's capacity sent
+the person holding the invoice to check the key and the variables. The mail
+seam's own rule is that `reason` tells the person waiting **whether it is
+theirs to fix** — and this said yes when the answer was no. The status decides
+the sentence now: 429/500/502/503/504 is *"the model is busy right now … try
+the scan again in a moment"*, 401/403 names the KEY, **404 names the model**
+(the one thing a boot line structurally cannot check, so it says which name was
+asked for), and everything else is *"refused this request"* — this build's own,
+never the operator's. And a retryable status is **retried once**, 1.5 s later,
+inside the same abort budget: Google says the spike is temporary, the operator
+is standing at the counter, and a spike that clears is not an error anybody
+should have to read.
+
+**AND THE DETAIL WAS EATEN BY NEWLINES.** Google pretty-prints its errors, so
+`console.error` wrote eight lines and the platform's log viewer showed:
+
+```
+[ai] the model refused this install (HTTP 503) — {
+```
+
+…with the sentence that mattered scattered across the next seven, out of order,
+because they share a timestamp. An operator goes to the log, finds a brace, and
+reports the symptom — which is exactly the defect `[sync] BUILD FAULT` exists to
+avoid one router over, and exactly how this one had to be found. `flat()`
+collapses whitespace on every `detail` the seam writes, so one line carries it.
+
+**And the call path is drivable now, which is what closes the round trip.**
+`GEMINI_BASE_URL` defaults to Google, so production is unchanged; what it buys
+is that "what does this build do when the model answers 503" stopped being a
+question only production could ask. `test/wiring.test.js` runs the seam against
+a real local HTTP server replaying Google's own bodies: busy-then-answer (the
+retry, and the operator sees nothing), busy twice (reported, named as busy,
+never as this install), the detail surviving on one line while the caller gets
+only the class, and 401/403/404/400 each named apart. It fails against the
+version that shipped.
+
+That base URL is an env var an operator sets, not a field a request carries —
+which is why it is not the print relay's problem, where the fence exists
+because a stranger could write the address into a body.
+
 **Stated rather than fixed**: two more callers of `window.claude` remain — the
 Today briefing and the CFO advisory. Both are honest about being unreachable
 (they say so on screen), and both want a free-text contract rather than the
@@ -6489,7 +6546,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 608 tests
+npm test                          # 609 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

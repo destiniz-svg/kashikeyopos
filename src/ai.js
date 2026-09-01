@@ -36,6 +36,17 @@ const MODEL = () => String(process.env.GEMINI_MODEL || '').trim() || 'gemini-2.0
    Gemini; `none` is a real answer and turns the whole plane off by name. */
 const PROVIDER = () => String(process.env.AI_PROVIDER || '').trim().toLowerCase() || 'gemini';
 
+/* WHERE THE MODEL LIVES, so the call path can be DRIVEN rather than stubbed.
+   Everything else here was provable without it — the health ladder, the
+   resolution, the clamping — but "what does this build do when Google answers
+   503" is a question only a real HTTP round trip can settle, and it is exactly
+   the question the first live scan asked. Defaults to Google, so production
+   behaviour is what it always was; an operator who sets it is naming a host on
+   purpose, which is not the print relay's problem (there a REQUEST BODY named
+   the address, and the fence exists because a stranger could write it). */
+const BASE = () => String(process.env.GEMINI_BASE_URL || '').trim().replace(/\/+$/, '')
+  || 'https://generativelanguage.googleapis.com';
+
 const configured = () => PROVIDER() === 'gemini' && !!KEY() && !unresolvedRef(KEY());
 
 /* WHY AN ANSWER DID NOT COME IS AN INSTALL-WIDE FACT, and the screen needs it.
@@ -100,6 +111,34 @@ function jsonFrom(text) {
   try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
 }
 
+/* A LOG LINE THAT WRAPS IS A LOG LINE NOBODY READS. Google answers an error as
+   PRETTY-PRINTED JSON, so `console.error` wrote eight lines and the platform's
+   log viewer showed `[ai] … — {` and scattered the message that mattered
+   across the next seven — out of order, since they share a timestamp. The
+   operator goes to the log, finds a brace, and reports the symptom instead:
+   the defect `[sync] BUILD FAULT` already exists to avoid, one router over. */
+const flat = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+
+/* A BUSY MODEL IS NOT A REFUSED INSTALL, and only some of these are ours to
+   fix. Retried once, because the person is standing at the counter with the
+   invoice in their hand and Google's own words are "try again later". */
+const RETRYABLE = { 429: 1, 500: 1, 502: 1, 503: 1, 504: 1 };
+
+function says(status) {
+  if (RETRYABLE[status]) {
+    return status === 429
+      ? 'the model is rate-limited right now (HTTP 429) — try the scan again in a moment'
+      : 'the model is busy right now (HTTP ' + status + ') — try the scan again in a moment';
+  }
+  if (status === 401 || status === 403) {
+    return 'the model refused this install\'s key (HTTP ' + status + ')';
+  }
+  if (status === 404) {
+    return 'this install asks for a model the API does not serve: ' + MODEL();
+  }
+  return 'the model refused this request (HTTP ' + status + ')';
+}
+
 /* THE CALL ITSELF. Bounded by an abort so a model that hangs cannot hold a
    pooled request open — the whole reason the outbox drain was chunked, one
    layer up. */
@@ -129,7 +168,7 @@ async function ask(opts) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), Math.min(120000, Number(o.timeoutMs) || 60000));
   try {
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    const url = BASE() + '/v1beta/models/'
       + encodeURIComponent(MODEL()) + ':generateContent';
     const r = await fetch(url, {
       method: 'POST',
@@ -141,13 +180,30 @@ async function ask(opts) {
     if (!r.ok) {
       /* THE TRANSPORT'S OWN WORDS GO TO THE OPERATOR, NEVER TO THE CALLER.
          Same two sentences the mail seam keeps: `reason` is the class and the
-         status, which is what the person waiting can act on because it tells
-         them it is the install and not their invoice; `detail` is verbatim,
-         for whoever reads the log. */
+         status, which is what the person waiting can act on; `detail` is
+         verbatim, for whoever reads the log.
+
+         AND THE CLASS IS NOT ALWAYS "THIS INSTALL". Every non-2xx used to read
+         `the model refused this install`, which sends whoever is holding the
+         invoice to check the key and the variables — and the first real scan
+         on the live install answered:
+
+           503 UNAVAILABLE — "This model is currently experiencing high demand.
+           Spikes in demand are usually temporary. Please try again later."
+
+         Nothing was wrong with the install at all. That is the wrong half of
+         the mail seam's own rule: the sentence has to tell the person whether
+         it is THEIRS to fix, and here it said yes when the answer was no. So
+         the status decides the sentence, and a busy model is retried once
+         inside the same abort budget rather than reported. */
+      if (RETRYABLE[r.status] && !o._again) {
+        await new Promise((f) => setTimeout(f, 1500));
+        return ask(Object.assign({}, o, { _again: true }));
+      }
       last = {
         ok: false, at: Date.now(),
-        reason: 'the model refused this install (HTTP ' + r.status + ')',
-        detail: text.slice(0, 400)
+        reason: says(r.status),
+        detail: flat(text).slice(0, 400)
       };
       console.error('[ai] ' + last.reason + ' — ' + last.detail);
       return { ok: false, reason: last.reason };
@@ -158,7 +214,7 @@ async function ask(opts) {
     const parsed = jsonFrom(out);
     if (!parsed) {
       last = { ok: false, at: Date.now(), reason: 'the model answered in a shape this build cannot read' };
-      console.error('[ai] unparseable answer — ' + out.slice(0, 200));
+      console.error('[ai] unparseable answer — ' + flat(out).slice(0, 200));
       return { ok: false, reason: last.reason };
     }
     last = { ok: true, at: Date.now() };
@@ -168,7 +224,7 @@ async function ask(opts) {
     last = {
       ok: false, at: Date.now(),
       reason: aborted ? 'the model did not answer in time' : 'the model could not be reached',
-      detail: String((e && e.message) || e).slice(0, 200)
+      detail: flat((e && e.message) || e).slice(0, 200)
     };
     console.error('[ai] ' + last.reason + ' — ' + last.detail);
     return { ok: false, reason: last.reason };
