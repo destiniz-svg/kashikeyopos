@@ -7392,3 +7392,115 @@ test('a declined round reaches the phone, because absence is not an answer', () 
   assert.match(g.slice(from, to), /this\.state\.sent/,
     'against this phone\'s own last round');
 });
+
+test('a line the kitchen cannot make is declined, and the rest still cooks', () => {
+  /* Reported: "reject is for items level. if an item is not available it's
+     selected and let the user knows it." Refusing all three because one ran
+     out sends the guest back to re-type the two that were fine, which is not
+     what a counter does across a table. */
+  const H = require('./harness');
+  const K = FX.kpos();
+  const a = (K.MENU || [])[0], b = (K.MENU || [])[1];
+  const sig = 'go_33333333-3333-3333-3333-333333333333';
+  /* A FRESH ROUND EACH TIME, and it matters: `acceptQr` skips a signal whose
+     lines are already on the ticket, which is the idempotency that stops a
+     second terminal ordering the same round twice. Reusing one table across
+     three scenarios tests that guard rather than the decision. */
+  let q = [];
+  const mk = () => {
+    const F2 = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+    F2.allSignals = () => [{ id: sig, outlet: F2.state.outletId, table: 6,
+      kind: 'order', at: Date.now(), from: 'portal',
+      lines: [{ id: a.id, qty: 2 }, { id: b.id, qty: 1 }] }];
+    q = [];
+    F2.queue = (k, l, e, p) => q.push({ kind: k, payload: p, label: l });
+    F2.toast = () => {};
+    return F2;
+  };
+
+  // ── one of two unavailable: the other is cooked ─────────────────────────
+  let F = mk();
+  F.decideQr(sig, [1], '');
+
+  const adds = q.filter((o) => o.kind === 'add_line');
+  assert.strictEqual(adds.length, 1, 'only the available line is ordered');
+  assert.strictEqual(adds[0].payload.item, a.id, 'and it is the right one');
+  assert.ok(q.some((o) => o.kind === 'fire_course'), 'the rest still reaches the kitchen');
+
+  const close = q.find((o) => o.kind === 'qr_order');
+  assert.ok(close, 'the round is closed once');
+  assert.ok(close.payload.ticketId !== undefined, 'against the ticket it opened');
+  assert.ok(close.payload.reject, 'AND carrying what the guest is told');
+  assert.ok(close.payload.reject.indexOf(b.name) >= 0,
+    'which NAMES the dish — "unavailable" does not tell a guest what to do next');
+  assert.ok(close.payload.reject.indexOf(a.name) < 0,
+    'and never names one that is coming');
+
+  // ── every line unavailable is a decline, and cooks nothing ──────────────
+  F = mk();
+  F.decideQr(sig, [0, 1], 'kitchen is closing');
+  assert.ok(!q.some((o) => o.kind === 'add_line'),
+    'nothing is ordered when nothing can be made');
+  assert.ok(!q.some((o) => o.kind === 'fire_course'), 'and nothing is fired');
+  const all = q.find((o) => o.kind === 'qr_order');
+  assert.ok(all.payload.reject.indexOf('kitchen is closing') >= 0,
+    "the operator's own words ride with the dish names");
+
+  // ── nothing marked is the ordinary accept ───────────────────────────────
+  F = mk();
+  F.decideQr(sig, [], '');
+  assert.strictEqual(q.filter((o) => o.kind === 'add_line').length, 2,
+    'both lines are ordered');
+  assert.ok(!(q.find((o) => o.kind === 'qr_order').payload || {}).reject,
+    'and the guest is told nothing, because nothing was refused');
+});
+
+test('the round decision is a form that can hold a selection', () => {
+  /* It was a `share` sheet, and a share sheet closes on every tap — so "mark
+     this dish unavailable" had nowhere to live, which is why the reject never
+     appeared. One line per dish, and ONE button: the marks already say what
+     the decision is. */
+  const H = require('./harness');
+  const K = FX.kpos();
+  const F = H.makeInstance({ kpos: K, raw: FX.raw(), real: FX.real(), role: 'Cashier' });
+  const sig = 'go_44444444-4444-4444-4444-444444444444';
+  F.allSignals = () => [{ id: sig, outlet: F.state.outletId, table: 2, kind: 'order',
+    at: Date.now(), from: 'portal',
+    lines: [{ id: (K.MENU[0] || {}).id, qty: 1 }, { id: (K.MENU[1] || {}).id, qty: 3 }] }];
+
+  F.setState({ modal: { kind: 'form', name: 'qrround', edit: { sig: sig, table: 2 } } });
+  const spec = F.formSpec('qrround');
+  assert.ok(spec, 'the form exists');
+  const lineFields = spec.fields.filter((f) => /^l\d+$/.test(f.k));
+  assert.strictEqual(lineFields.length, 2, 'one field per line ordered');
+  lineFields.forEach((f) => {
+    assert.strictEqual(f.v, 'y', 'and every line starts AVAILABLE — a decision'
+      + ' nobody made must not refuse a guest\'s food');
+    assert.ok((f.options || []).some((o) => o.v === 'n'),
+      'with the mark that says the kitchen cannot make it');
+  });
+  assert.match(spec.save, /decision/i, 'one button, because the marks are the decision');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('  qrRoundSheet(r) {');
+  const to = src.indexOf('\n  ', src.indexOf('openForm("qrround"', from));
+  assert.ok(from > 0, 'the sheet still exists');
+  assert.ok(!/kind: "share"/.test(src.slice(from, to)),
+    'and is no longer a sheet that cannot hold a selection');
+});
+
+test('the floor card opens the round, not an empty table', () => {
+  /* Reported as "open table from the notification does not work" — and it was
+     doing exactly what it said: opening a table with NO TICKET on it, because
+     the round has not been accepted yet. Before the poll stopped auto-
+     accepting, the lines were always already there. */
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('          const isCode = x.kind === "member_code";');
+  const to = src.indexOf('ackStyle: ACKS', from);
+  assert.ok(from > 0 && to > from, 'found the call card');
+  const card = src.slice(from, to);
+  assert.match(card, /goLabel: x\.kind === "order" \? "Open the round"/,
+    'the card says where it goes');
+  assert.match(card, /qrRoundSheet\(r\)/,
+    'and goes there — the round, with its items and the decision');
+});

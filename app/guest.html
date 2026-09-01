@@ -189,6 +189,10 @@ a:hover{color:#d33d26}
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
           <div style="margin-top:5px;font-size:13.5px;color:#62626a">{{ trackSub }}</div>
 
+          <!-- A line the kitchen could not make, while the rest of the round
+               cooks. The ladder above is right and says nothing about it. -->
+          <div style="{{ declineNoteStyle }}">{{ declineNote }}</div>
+
           <div style="{{ trackWrapStyle }}">
             <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
               <div style="display:flex;gap:13px;align-items:flex-start">
@@ -1562,6 +1566,18 @@ class Component extends DCLogic {
     const at = fs ? Math.max(0, Math.min(STAGES.length - 1, fs.at)) : (s.sent.length ? 0 : -1);
     const paidRow = fs && fs.paid ? fs.paid : null;
     const noRow = fs && fs.declined ? fs.declined : null;
+    /* A PARTIAL DECLINE HAS A LIVE TICKET, so the ladder is right and the
+       message still has to appear. `declinedHere()` is deliberately checked
+       after the open ticket — a guest refused one round who then sent another
+       that WAS accepted is cooking, and that is the later truth — but a round
+       where two lines were accepted and the third was not carries both at
+       once, and the guest needs telling while the two cook. So the notice is
+       read on its own rather than only as a terminal rung. */
+    const alsoNo = noRow ? null : this.declinedHere();
+    V.declineNote = (noRow || alsoNo) ? ((noRow || alsoNo).why || "") : "";
+    V.declineNoteStyle = (alsoNo && alsoNo.why)
+      ? "margin-top:12px;padding:11px 13px;border-radius:11px;background:#fff6ed;border:1px solid #f0c9a0;font-size:13.5px;color:#7a4a12;font-weight:600"
+      : "display:none";
     V.trackSub = s.sent.length
       ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
       : "Nothing sent yet";

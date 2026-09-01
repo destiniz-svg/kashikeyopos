@@ -1584,6 +1584,49 @@ declined row asserted against the same list of things a guest may not see that
 unknown-dish flag, the empty reason refused, and that a decline queues no
 `add_line` and no `fire_course` — a decline is not an accept with a note on it.
 
+### And a refusal belongs to a LINE, not to the round
+
+Reported next, three things in one sentence: *"still reject with reason does
+not appear. also open table from the notification does not work. reject is for
+items level. if an item is not available it's selected and let the user knows
+it."* All three were one shape.
+
+**A `share` sheet cannot hold a selection.** Every tap on it closes the modal
+and runs the action — that is what it is for — so "mark this dish unavailable"
+had nowhere to live, and the decline was one tap away on a sheet that dismissed
+itself first. It is a FORM now: one line per dish, each Available or not, and
+**one button**, because the marks already say what the decision is. Nothing
+marked accepts the round; some marked cooks the rest; everything marked is a
+decline. There is no second button to get wrong, and every line starts
+Available — a decision nobody made must never refuse a guest's food.
+
+**And refusing a whole round because one dish ran out is not what a counter
+does.** It sends the guest back to re-type the two that were fine. So
+`acceptQr(sig, skip, why)` cooks what is left and `H.qr_order` carries BOTH in
+one statement — `ticket_id` for the part that was accepted, `rejected_reason`
+for the part that was not — which the schema has always allowed and nothing had
+ever used. `decideQr()` is the one seam: accept, accept-most and decline are the
+same act with different marks on it, and two of them touch a kitchen.
+
+**The sentence names the dishes.** Composed from what was marked — *"Sorry — no
+Pancakes tonight"* — never the word "unavailable", because naming them is what
+tells a guest to order something else rather than send the same round again.
+The operator's own note rides after it.
+
+**And "Open table" was doing exactly what it said.** It opened a table with no
+ticket on it, because the round has not been accepted yet — before the poll
+stopped auto-accepting, the lines were always already there, so it had always
+landed on something. What somebody wants from that card is the ROUND, so the
+button says **Open the round** and goes there; the table is one tap further on,
+once it has a ticket.
+
+**A partial decline has a live ticket, so the phone needs both.**
+`declinedHere()` is checked after the open ticket on purpose — a guest refused
+one round who then sent another that was accepted is cooking, and that is the
+later truth — but a round where two lines went and the third did not carries
+both at once. The notice is read on its own and drawn beside the ladder, so the
+guest is told what is not coming while the rest cooks.
+
 ## A call the floor answers has to stop coming back
 
 Reported: *"the outlet keeps refusing, acknowledging… outlet keeps refusing
@@ -6685,7 +6728,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 616 tests
+npm test                          # 619 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
