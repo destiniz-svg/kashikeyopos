@@ -963,11 +963,30 @@
               </sc-for>
             </div>
             <div style="{{ actionRowStyle }}">
+              <!-- A SCREEN THAT LISTS THINGS CARRIES ITS OWN FIND BOX. The top
+                   bar's magnifier is display:none on a phone and is cleared on
+                   every view change, so on the device a back office is actually
+                   held in there was no way to search a 300-dish menu at all. -->
+              <div style="{{ findStyle }}">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0;opacity:.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
+                <input value="{{ findValue }}" onChange="{{ findSet }}" placeholder="{{ findHint }}" aria-label="{{ findHint }}" style="{{ findInputStyle }}"/>
+                <button onClick="{{ findClear }}" aria-label="Clear the search" style="{{ findClearStyle }}">✕</button>
+              </div>
               <sc-for list="{{ actions }}" as="a" hint-placeholder-count="0">
                 <button onClick="{{ a.go }}" style="{{ a.style }}" style-hover="{{ a.hover }}">{{ a.label }}</button>
               </sc-for>
             </div>
           </div>
+        </sc-if>
+
+        <!-- A CARD GRID THAT MATCHED NOTHING SAYS SO. `rowsEmpty` needs
+             `cols`, so a screen built from cards had no empty state at all —
+             which is fine while a grid can only be empty on a new store and
+             becomes the lock-screen roster's defect the moment a search can
+             empty it: a blank page under a box somebody just typed into reads
+             as a broken app. -->
+        <sc-if value="{{ cardsEmpty }}">
+          <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px">{{ emptyText }}</div>
         </sc-if>
 
         <sc-if value="{{ hasCards }}">
@@ -5124,8 +5143,51 @@ class Component extends DCLogic {
         style: this.btn(a.primary ? "solid-brand" : "ghost", { size: "sm", fs: 11.5 }),
         hover: this.btnHover(a.primary ? "solid-brand" : "ghost"),
       })),
-      hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)),
+      /* THE FIND BOX A SCREEN ASKS FOR. `g.find` is { value, set, hint } and
+         a screen that declares none draws nothing — this is a capability, not
+         a fixture, because most screens here are cards rather than lists.
+
+         It is a REAL INPUT at every width. The top bar's version is a 32px
+         magnifier that expands on hover and carries `isM ? "display:none"`, so
+         a manager on a phone or a tablet — which is what a back office is
+         actually held in — had no search on any screen; and it is cleared by
+         `setState({ search: "" })` on every view change, so even on a desktop
+         it reads as a global thing that happens to filter rather than as this
+         screen's own control. */
+      hasFind: !!(g.find && g.find.set),
+      findStyle: (g.find && g.find.set)
+        ? "display:flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid "
+          + (g.find.value ? "var(--warn-line)" : "var(--line)")
+          + ";border-radius:9px;padding:0 10px;min-height:" + (bp === "m" ? 38 : 30)
+          + "px;flex:" + (bp === "m" ? "1 1 100%" : "0 1 auto")
+          + ";min-width:0;color:var(--text-dim)"
+        : "display:none",
+      findValue: (g.find && g.find.value) || "",
+      findHint: (g.find && g.find.hint) || "Search",
+      /* A STRING, ALWAYS. `search` is read with `.toLowerCase()` by seven
+         screens, so a caller that hands this nothing does not fail here — it
+         fails later, on a different screen, with a message about a method that
+         does not exist. Coerced at the seam, which is the only place that can
+         know an event without a target means "no query". */
+      findSet: (e) => {
+        if (!g.find || !g.find.set) return;
+        g.find.set((e && e.target && e.target.value != null) ? String(e.target.value) : "");
+      },
+      findInputStyle: "background:transparent;border:none;outline:none;color:var(--text);"
+        + "font-family:inherit;font-size:" + (bp === "m" ? 12.5 : 12)
+        + "px;min-width:0;flex:1 1 auto;width:" + (bp === "m" ? "auto" : "clamp(96px,12vw,170px)"),
+      // Only where there is something to clear — a dead ✕ beside an empty box
+      // is a control that does nothing, which is the defect this build names.
+      findClearStyle: (g.find && g.find.value)
+        ? "flex-shrink:0;color:var(--text-dim);font-size:12px;line-height:1;padding:4px;min-height:24px"
+        : "display:none",
+      findClear: () => { if (g.find && g.find.set) g.find.set(""); },
+      hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)
+        || (g.find && g.find.set)),
       hasCards: !!(g.cards && g.cards.length),
+      // Only where the screen is BUILT from cards: a screen with rows has
+      // `rowsEmpty` for this, and one with neither is not a list at all.
+      cardsEmpty: !!(g.cards && !g.cards.length && !cols.length),
       cardGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (bp === "m" ? "min(100%," + (g.cardMin || 260) + "px)" : (g.cardMin || 260) + "px") + ",1fr));gap:11px;margin-bottom:" + (g.cols && g.cols.length ? "16px" : "0"),
       cards: (g.cards || []).map((c) => ({
         title: c.title, sub: c.sub || "", chip: c.chip || "", big: c.big || "", foot: c.foot || "",
@@ -10252,7 +10314,7 @@ class Component extends DCLogic {
      separated by name — `reconcileQr()` is the bookkeeping and may run on a
      tick; `acceptQr()` is the decision and runs only from a control somebody
      pressed. */
-  acceptQr(sigId, skip, why) {
+  acceptQr(sigId, skip, why, refused) {
     const out = (skip || []).slice();
     const rows = this.signals().filter((x) => x.kind === "order" && x.id === sigId
       && x.lines && x.lines.length)
@@ -10268,6 +10330,10 @@ class Component extends DCLogic {
        fire an empty course on the way to being one. */
     if (rows.length && !rows[0].lines.length) return this.declineQr(sigId, why);
     this._rejectWith = why || null;
+    /* WHICH LINES, beside the sentence about them (055). The sentence is for
+       the guest to read; this is what their phone acts on, so the dish that is
+       not coming leaves their round instead of sitting in it under a note. */
+    this._rejectLines = (refused && refused.length) ? refused : null;
     if (!rows.length) return;
     const t = Object.assign({}, this.state.tickets);
     const done = [];
@@ -10363,7 +10429,8 @@ class Component extends DCLogic {
            and the guest projection publishes it, because a guest whose third
            dish is never coming needs telling while the other two cook. */
         ? { id: String(x.id).slice(3), ticketId: cur.id || null,
-          reject: this._rejectWith || undefined }
+          reject: this._rejectWith || undefined,
+          rejectLines: this._rejectLines || undefined }
         : undefined);
     });
     /* A round somebody has just ACCEPTED leaves the list on that press, not on
@@ -10446,6 +10513,13 @@ class Component extends DCLogic {
     if (!r) return;
     const out = (unavailable || []).slice();
     const names = out.map((i) => (r.lines[i] || {}).name).filter(Boolean);
+    /* The marks are the record, so the same marks compose both halves — the
+       sentence the guest reads and the lines their phone drops. Composing them
+       apart is how two answers about one decision start to disagree. */
+    const refused = out.map((i) => {
+      const l = r.lines[i] || {};
+      return { i: i, id: l.id, name: l.name, qty: l.qty || 1 };
+    }).filter((l) => l.id || l.name);
     const why = names.length
       ? ("Sorry \u2014 no " + names.join(" or ") + " tonight")
         + (note ? " \u00b7 " + note : "")
@@ -10461,7 +10535,7 @@ class Component extends DCLogic {
       return;
     }
     const left = r.lines.length - out.length;
-    this.acceptQr(sigId, out, why);
+    this.acceptQr(sigId, out, why, refused);
     this.setState({ modal: null });
     this.toast(left + " line" + (left === 1 ? "" : "s") + " fired \u00b7 "
       + names.join(", ") + " declined \u2014 " + this.slotName(r.table)
@@ -12442,7 +12516,15 @@ class Component extends DCLogic {
 
     // ── Sections: what a guest browses, in the order they browse it ──────────
     if (s.menuMode === "sections") {
+      /* The two modes below this one never filtered at all — the `q` above was
+         read only by the dish list — so a store with forty sections or a
+         hundred add-ons had a screen with a search box on it that did nothing
+         when you were standing on either of them. */
+      const secs = cats.filter((c) => !q
+        || this.catMeta(c.id).name.toLowerCase().indexOf(q) >= 0);
       return {
+        find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+          hint: "Search sections" },
         guideTitle: "Menu sections", guide: ["Name it, colour it — the colour is what the till and the KDS band by", "Order them the way the menu should read; the till follows", "A hidden section hides its dishes everywhere at once", "Each section carries the station its dishes fire to by default"],
         actions: [
           { label: "Back to dishes", go: () => this.setState({ menuMode: "items" }) },
@@ -12450,7 +12532,11 @@ class Component extends DCLogic {
           { label: "New section", primary: true, go: () => this.openCat(null) }
         ],
         cardMin: 290,
-        cards: cats.map((c, i) => {
+        cards: secs.map((c) => {
+          // The position a section actually holds, never its index in a
+          // FILTERED list — "Position 2 of 3" under a search that matched
+          // three of forty is a figure about the search, not about the menu.
+          const i = cats.indexOf(c);
           const meta = this.catMeta(c.id);
           const n = K0.MENU.filter((m) => m.cat === c.id).length;
           const hid = K0.MENU.filter((m) => m.cat === c.id && m.hidden).length;
@@ -12481,6 +12567,7 @@ class Component extends DCLogic {
             foot: n ? "" : "No dishes yet \u2014 an empty section is hidden from guests automatically."
           };
         }),
+        empty: q ? "No section matches \u201c" + s.search + "\u201d." : "No sections yet.",
         notes: [["Colour is the wayfinding", "The section colour is not decoration: it bands the till grid, tints the dish artifact where no photograph exists, and colours the KDS docket rail. One hue per section, reused everywhere, is what lets a cashier aim at a section pre-verbally."]]
       };
     }
@@ -12488,8 +12575,16 @@ class Component extends DCLogic {
     // ── Dishes ───────────────────────────────────────────────────────────────
     if (s.menuMode === "addons") {
       const mods = this.modList();
+      // Matched on the add-on's own name and on the sections it publishes to,
+      // because "which of these is on the drinks menu" is the other question
+      // this screen is opened to answer.
+      const shown = mods.filter((a) => !q
+        || a.name.toLowerCase().indexOf(q) >= 0
+        || (a.cats || []).some((c) => this.catMeta(c).name.toLowerCase().indexOf(q) >= 0));
       const gate = (fn) => () => mayEdit ? fn() : this.toast("Editing add-ons needs menu edit rights", "warn");
       return {
+        find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+          hint: "Search add-ons" },
         guideTitle: "How an add-on reaches a dish",
         guide: ["Price it once here — the till and the QR menu read the same figure", "Publish it to the sections it belongs to", "A dish inherits its section's add-ons unless it names its own", "A free add-on is still an add-on: it prints on the kitchen docket"],
         actions: [
@@ -12535,7 +12630,7 @@ class Component extends DCLogic {
           { label: "New add-on", primary: true, go: gate(() => this.openForm("addon")) }
         ]),
         cols: [{ label: "Add-on", w: "1.8fr" }, { label: "Published to", w: "2.4fr" }, { label: "Dishes offering it", w: "1fr", a: "right", mono: 1 }, { label: "Price", w: ".9fr", a: "right", mono: 1 }],
-        rows: mods.map((a) => {
+        rows: shown.map((a) => {
           const secs = (a.cats || []).map((c) => this.catMeta(c).name);
           const used = (K0.MENU || []).filter((m) => this.addonsFor(m).some((x) => x.id === a.id)).length;
           return {
@@ -12548,7 +12643,8 @@ class Component extends DCLogic {
             ]
           };
         }),
-        empty: "No add-ons yet. Create one and every dish in its sections offers it at the next order.",
+        empty: q ? "No add-on matches \u201c" + s.search + "\u201d."
+          : "No add-ons yet. Create one and every dish in its sections offers it at the next order.",
         notes: [["Priced once, everywhere", "An add-on carries its own price, and the till re-prices every line from this list at settlement — the terminal never sends a price of its own. Change it here and the next order charges the new figure on both the till and the guest's phone."]]
       };
     }
@@ -12578,6 +12674,10 @@ class Component extends DCLogic {
       /* Each tab carries its section's own hue and its own count, so the track
          reads as the menu's shape rather than as a row of words. "All dishes"
          leads with the total; the picker that used to hide both is gone. */
+      /* The dish list has filtered on `q` since it was written — what it never
+         had was anywhere to type one on the screen it filters. */
+      find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+        hint: "Search dishes" },
       tabs: [{ label: "All dishes", count: K0.MENU.length }]
         .concat(cats.map((c) => ({
           label: this.catMeta(c.id).name, hue: this.catHue(c.id),

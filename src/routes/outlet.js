@@ -805,6 +805,54 @@ r.get('/snapshot', sameOutlet, async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ═══ WHAT THIS STORE ACTUALLY SELLS ══════════════════════════════════════
+   "Most ordered" is a section a guest reads as a recommendation, so it has to
+   be a MEASUREMENT of this outlet's own trade and never a guess. It is counted
+   off `sale_line` — bills that were actually settled — rather than off open
+   tickets or guest rounds, because a round somebody sent and the counter
+   declined is not something the shop sells.
+
+   IT IS CACHED, and that is not an optimisation — it is the difference between
+   this feature and the defect migration 030 exists for. Every guest's phone
+   polls `/snapshot` every eight seconds; a thirty-day aggregate over a table
+   that only ever grows, run once per phone per eight seconds, is the sequential
+   scan that took the guest tables down before anybody noticed. Popularity moves
+   over weeks, so an answer up to ten minutes old is not stale in any sense a
+   guest could detect, and the read happens at most once per outlet per window
+   however many phones are in the room.
+
+   A FAILED REFRESH KEEPS SERVING THE LAST ANSWER, the rule `src/directory.js`
+   already keeps on the hot path: a menu rail is not worth failing a whole
+   snapshot for, and a ranking a few minutes older than intended is a better
+   answer than none. An outlet that has never sold anything gets an EMPTY list
+   and the phone draws no tab at all — a "Most ordered" section on a store with
+   no sales is exactly the invented figure `test/audit.test.js` refuses. */
+const POPULAR_TTL_MS = 10 * 60 * 1000;
+const POPULAR_WINDOW_DAYS = 30;
+const POPULAR_LIMIT = 24;
+const popCache = new Map();
+
+async function popularItems(c, outletId) {
+  const hit = popCache.get(outletId);
+  if (hit && Date.now() - hit.at < POPULAR_TTL_MS) return hit.ids;
+  try {
+    /* `business_date` rather than `at`, for the index (`sale_date`) and
+       because a trading day is the outlet's own — the same clock every other
+       figure in this build is filed under. A voided sale sold nothing. */
+    const r = await c.query('SELECT l.item_id, sum(l.qty) AS n'
+      + ' FROM sale_line l JOIN sale s ON s.id = l.sale_id'
+      + " WHERE s.business_date > current_date - $1::int"
+      + ' AND s.voided_at IS NULL'
+      + ' GROUP BY l.item_id ORDER BY n DESC, l.item_id LIMIT $2',
+    [POPULAR_WINDOW_DAYS, POPULAR_LIMIT]);
+    const ids = r.rows.map((x) => String(x.item_id));
+    popCache.set(outletId, { at: Date.now(), ids: ids });
+    return ids;
+  } catch (e) {
+    return hit ? hit.ids : [];
+  }
+}
+
 async function snapshot(c, outletId) {
   const q = await all(c, {
     outlet: ['SELECT id, name, currency, service_pct, tax_code, slug, brand'
@@ -883,7 +931,26 @@ async function snapshot(c, outletId) {
        still sees it, short enough that tomorrow's guest on the same table is
        never shown yesterday's bill. The phone guards it further against its
        own last round. */
-    settled: ["SELECT t.table_no, s.receipt_no, s.total, s.at"
+    settled: ["SELECT t.table_no, s.receipt_no, s.total, s.at,"
+      /* WHAT THEY ACTUALLY PAID FOR, line by line. The settled row carried a
+         total and a receipt number, so the guest's bill after settlement was
+         one sentence — "Paid MVR 218.40 by cash" — over the tab whose whole
+         subject is what the table had. A receipt that states a figure and
+         names nothing is the one document a guest checks against their memory
+         and cannot.
+
+         And it answers "only what was delivered" by construction rather than
+         by filtering: a line the counter declined never reached the ticket, so
+         it was never on the sale, so it is not here. There is nothing to
+         exclude — which is the reason to read the SALE rather than to subtract
+         a decline from the phone's own record of what it sent.
+
+         NOTHING A GUEST MAY NOT SEE. `sale_line` also carries `unit_cost` and
+         `line_cost` — this outlet's margin on every dish — and they are the
+         reason this is a named list of four fields and never `l.*`. */
+      + " coalesce((SELECT json_agg(json_build_object('name', l.name,"
+      + "     'qty', l.qty, 'amt', l.line_total) ORDER BY l.id)"
+      + '   FROM sale_line l WHERE l.sale_id = s.id), \'[]\') AS lines'
       + ' FROM sale s JOIN ticket t ON t.id = s.ticket_id'
       + " WHERE s.at > now() - interval '2 hours' AND s.voided_at IS NULL"
       + ' ORDER BY s.at DESC LIMIT 60'],
@@ -902,7 +969,14 @@ async function snapshot(c, outletId) {
        for the guest still sitting there, short enough that tomorrow's guest on
        the same table never reads it. Nothing here a guest may not see: the
        table, the words the counter wrote, and the two times. */
-    declined: ['SELECT table_no, rejected_reason, at, accepted_at AS decided_at'
+    declined: ['SELECT id, table_no, rejected_reason, at, accepted_at AS decided_at,'
+      /* AND WHICH LINES (055), because the sentence is prose and the phone has
+         to act on it. Without this the guest's round went on listing the dish
+         that was refused, beside the two that were coming, under a note saying
+         one of them was not — leaving them to match a sentence against a list.
+         NULL is a real answer and stays one: a whole round declined names no
+         subset, and neither does a decision taken by an older build. */
+      + ' rejected_lines, ticket_id IS NOT NULL AS partial'
       + ' FROM guest_order WHERE rejected_reason IS NOT NULL'
       + " AND accepted_at > now() - interval '2 hours'"
       + ' ORDER BY accepted_at DESC LIMIT 60'],
@@ -968,10 +1042,19 @@ async function snapshot(c, outletId) {
       .map((itemId) => catOfItem[itemId]).filter(Boolean)))
   }));
 
+  /* The RANKING, never a re-ordered menu: the phone keeps the outlet's own
+     section order and draws this as one more chip, so a store's menu is not
+     silently rearranged by what sold last month. Filtered to what this
+     snapshot is actually publishing — a dish since hidden, 86'd or taken off
+     the QR channel must not reappear because it sold well in August. */
+  const live = new Set(q.items.rows.map((i) => String(i.id)));
+  const popular = (await popularItems(c, outletId)).filter((id) => live.has(id));
+
   return {
     v: 5, at: Date.now(),
     outlet: q.outlet.rows[0] || null,
     tax: q.tax.rows[0] || null,
+    popular: popular,
     categories: q.cats.rows,
     items: q.items.rows,
     floor: q.floor.rows.map((t) => ({

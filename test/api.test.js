@@ -10,6 +10,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 /* THE SAME TABLE THE TILL AND THE SERVER BOTH READ. A fixture that spells its
    own quantities is a third opinion: these figures used to be written by hand
    as the PLATED amount, which is not what any real terminal has ever sent —
@@ -811,6 +813,209 @@ test('a declined round cooks nothing and tells the guest why', opts, async () =>
   ['cost', 'margin', 'staff', 'device', 'member_id', 'accepted_by', 'lines']
     .forEach((bad) => assert.ok(k.indexOf(bad) < 0,
       'a declined row must not carry ' + bad));
+});
+
+/* ═══ A PARTIAL DECLINE NAMES ITS LINES, AND THE BILL LISTS WHAT CAME ═══════
+   Reported: "when the floor receives it with an item unavailable, the qr
+   portal should remove the item from list. Also when settled the bill should
+   show only the items delivered."
+
+   Both halves are one property: the outlet has to SAY, as data, which lines it
+   refused — a sentence is for a person to read and leaves the phone matching
+   prose against a list — and the settled bill has to name what was charged,
+   which is what was delivered by construction.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a partial decline names the refused line and the bill lists the rest', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T14');
+  const table = { 'x-table-token': t.body.token };
+
+  // Two dishes; the counter can make one of them.
+  const sent = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }, { id: 'm2', qty: 2 }],
+      name: 'Partial Guest', opId: uuid() }, table);
+  assert.strictEqual(sent.status, 201, JSON.stringify(sent.body));
+
+  /* The accepted half becomes lines on the table's ticket exactly as a whole
+     round does — that is what makes this a PARTIAL rather than a decline. */
+  const lineOp = await push([{ opId: uuid(), kind: 'add_line',
+    payload: { table: 'T14', item: 'm1', name: 'First Dish', qty: 1,
+      price: 40, lid: uuid() } }]);
+  assert.strictEqual(lineOp.status, 200, JSON.stringify(lineOp.body));
+  const tk14 = await one("SELECT id FROM ticket WHERE table_no = 'T14'"
+    + " AND status = 'open'");
+  assert.ok(tk14, 'the accepted line opened a ticket');
+
+  const why = 'Sorry — no Second Dish tonight';
+  const res = await push([{ opId: uuid(), kind: 'qr_order',
+    payload: { id: sent.body.id, ticketId: tk14.id, reject: why,
+      rejectLines: [{ i: 1, id: 'm2', name: 'Second Dish', qty: 2 }] } }]);
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  (res.body.results || []).forEach((r) => assert.ok(!r.error, JSON.stringify(r)));
+
+  const row = await one('SELECT rejected_reason, rejected_lines, ticket_id'
+    + ' FROM guest_order WHERE id = $1', [sent.body.id]);
+  assert.strictEqual(row.rejected_reason, why, "the counter's words are kept");
+  assert.ok(Array.isArray(row.rejected_lines), 'and WHICH lines, as data');
+  assert.strictEqual(row.rejected_lines.length, 1, 'exactly the one refused');
+  assert.strictEqual(row.rejected_lines[0].id, 'm2', 'named by id');
+  assert.strictEqual(row.rejected_lines[0].i, 1, 'and by its place in the round');
+  assert.strictEqual(row.rejected_lines[0].name, 'Second Dish',
+    'with the name the till resolved, for a phone whose menu no longer holds it');
+
+  /* THE PROJECTION CARRIES IT, or the phone is back to reading prose. */
+  const menu = await getWith('/api/g/' + slug + '/menu', table);
+  const mine = (menu.body.declined || []).filter((d) => d.table_no === 'T14')[0];
+  assert.ok(mine, 'the decline reaches the phone');
+  assert.strictEqual(mine.rejected_lines.length, 1, 'with the refused line');
+  assert.ok(mine.id, 'and an id, so the phone can tie it to its own round');
+  /* `partial` is the outlet's own answer to "is any of this coming" — the
+     phone must never have to infer that from an empty list. */
+  assert.strictEqual(mine.partial, true, 'and says the rest was accepted');
+
+  /* A SUBSET CANNOT EXIST WITHOUT A REASON — 055's CHECK, and the handler
+     stores no lines rather than being refused, because the round must close. */
+  const s2 = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() }, table);
+  const r2 = await push([{ opId: uuid(), kind: 'qr_order',
+    payload: { id: s2.body.id, ticketId: null,
+      rejectLines: [{ i: 0, id: 'm1', name: 'X', qty: 1 }] } }]);
+  assert.strictEqual(r2.status, 200, JSON.stringify(r2.body));
+  (r2.body.results || []).forEach((r) => assert.ok(!r.error, JSON.stringify(r)));
+  const row2 = await one('SELECT rejected_reason, rejected_lines'
+    + ' FROM guest_order WHERE id = $1', [s2.body.id]);
+  assert.strictEqual(row2.rejected_reason, null, 'no reason was given');
+  assert.strictEqual(row2.rejected_lines, null, 'so no subset is recorded either');
+});
+
+test('055 adds the column to an outlet that already existed', opts, async () => {
+  /* THE PATH PRODUCTION ACTUALLY TAKES. Every store on the live install has
+     its outlet schema already, so what upgrades it is 055's ALTER — and
+     nothing here would have exercised that: this suite migrates a cold
+     database and then provisions, so its outlets get the column from 003's own
+     table definition and the migration's own branch never runs.
+
+     Run on a SCRATCH SCHEMA shaped like a pre-055 outlet rather than on a real
+     one. The first draft dropped the column from outlet_1 to prove the ALTER
+     puts it back — which also destroyed the `rejected_lines` the test above had
+     just written, so the suite silently deleted its own evidence and any later
+     test reading that row would have failed for a reason nowhere near its
+     cause. A destructive check owns what it destroys.
+
+     The scratch name matters too: the migration DISCOVERS its schemas with
+     `nspname LIKE 'outlet\_%'`, so a schema called anything else would prove
+     the ALTER and not the loop that finds it. */
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '055_a_decline_names_its_lines.sql'), 'utf8');
+  const scratch = 'outlet_9055';
+  const o = db.owner();
+  await o.query('DROP SCHEMA IF EXISTS ' + scratch + ' CASCADE');
+  await o.query('CREATE SCHEMA ' + scratch);
+  try {
+    // Exactly the shape a store provisioned before 055 carries.
+    await o.query('CREATE TABLE ' + scratch + '.guest_order ('
+      + ' id uuid PRIMARY KEY DEFAULT gen_random_uuid(),'
+      + ' table_no text NOT NULL, lines jsonb NOT NULL,'
+      + ' accepted_at timestamptz, rejected_reason text)');
+
+    await o.query(sql);
+
+    const back = await o.query('SELECT data_type FROM information_schema.columns'
+      + ' WHERE table_schema = $1 AND table_name = $2 AND column_name = $3',
+    [scratch, 'guest_order', 'rejected_lines']);
+    assert.strictEqual(back.rows.length, 1,
+      '055 adds the column to a schema that already existed');
+    assert.strictEqual(back.rows[0].data_type, 'jsonb');
+
+    const chk = await o.query('SELECT 1 FROM pg_constraint'
+      + " WHERE conname = 'guest_order_rejected_lines_need_a_reason'"
+      + " AND conrelid = ($1 || '.guest_order')::regclass", [scratch]);
+    assert.strictEqual(chk.rows.length, 1,
+      'and the rule that a subset can only exist beside a reason');
+
+    /* THE RULE ACTUALLY HOLDS. A CHECK that was created is not a CHECK that
+       refuses — and this one is the database's half of a promise the handler
+       also keeps, so it is worth asking Postgres rather than pg_constraint. */
+    await assert.rejects(
+      () => o.query('INSERT INTO ' + scratch + ".guest_order (table_no, lines,"
+        + " rejected_lines) VALUES ('T1', '[]'::jsonb, '[]'::jsonb)"),
+      /guest_order_rejected_lines_need_a_reason/,
+      'lines named with no reason are refused');
+    await o.query('INSERT INTO ' + scratch + '.guest_order (table_no, lines,'
+      + " rejected_reason, rejected_lines)"
+      + " VALUES ('T1', '[]'::jsonb, 'no pancakes', '[{\"i\":0}]'::jsonb)");
+
+    /* Idempotent: a deploy re-runs the fleet, and a migration that only works
+       once is one that fails the second time somebody runs it. */
+    await o.query(sql);
+    const still = await o.query('SELECT 1 FROM information_schema.columns'
+      + ' WHERE table_schema = $1 AND table_name = $2 AND column_name = $3',
+    [scratch, 'guest_order', 'rejected_lines']);
+    assert.strictEqual(still.rows.length, 1, 'and applying it twice converges');
+  } finally {
+    await o.query('DROP SCHEMA IF EXISTS ' + scratch + ' CASCADE');
+  }
+});
+
+test('the settled bill a guest reads lists what was delivered, and no cost', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T15');
+  const table = { 'x-table-token': t.body.token };
+
+  /* The settled projection joins the sale to its TICKET — a bill belongs to a
+     table — so the bill has to be opened before it can be settled, which is
+     also the only order a real till can produce. */
+  const opened = await push([{ opId: uuid(), kind: 'add_line',
+    payload: { table: 'T15', item: 'm1', name: 'Delivered Dish', qty: 2,
+      price: 40, lid: uuid() } }]);
+  assert.strictEqual(opened.status, 200, JSON.stringify(opened.body));
+
+  const sale = await push([{ opId: uuid(), kind: 'sale', lamport: 20, at: Date.now(),
+    payload: {
+      bizDate: today(), table: 'T15', channel: 'dine_in', covers: 2,
+      sub: 80, disc: 0, net: 80, svc: 0, tax: 0, round: 0, total: 80,
+      taxCode: 'NONE', taxLabel: '', taxRate: 0, cogs: 0,
+      server: 'Test Cashier', cur: 'MVR', rate: 1, fgn: 0,
+      sold: [{ id: 'm1', name: 'Delivered Dish', qty: 2, price: 40, amount: 80, cost: 0 }],
+      payments: [{ method: 'cash', amt: 80, tendered: 80, chg: 0 }],
+      stockMoves: []
+    } }]);
+  assert.strictEqual(sale.status, 200, JSON.stringify(sale.body));
+  (sale.body.results || []).forEach((r) => assert.ok(!r.error, JSON.stringify(r)));
+
+  const menu = await getWith('/api/g/' + slug + '/menu', table);
+  const paid = (menu.body.settled || []).filter((x) => x.table_no === 'T15')[0];
+  assert.ok(paid, 'the settled bill reaches the phone');
+  assert.ok(Array.isArray(paid.lines) && paid.lines.length,
+    'and names what was on it — a receipt that states a figure and lists no dish'
+    + ' is the one document a guest cannot check');
+  assert.strictEqual(paid.lines[0].name, 'Delivered Dish');
+  assert.strictEqual(Number(paid.lines[0].qty), 2);
+  assert.strictEqual(Number(paid.lines[0].amt), 80);
+
+  /* NOTHING A GUEST MAY NOT SEE. `sale_line` carries this outlet's margin on
+     every dish, which is why the query names four fields rather than `l.*`. */
+  Object.keys(paid.lines[0]).forEach((k) => {
+    assert.ok(['name', 'qty', 'amt'].indexOf(k) >= 0,
+      'a settled line must not carry ' + k);
+  });
+});
+
+test("most ordered is the outlet's own count, and never a guess", opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T16');
+  const menu = await getWith('/api/g/' + slug + '/menu',
+    { 'x-table-token': t.body.token });
+  assert.strictEqual(menu.status, 200);
+  assert.ok(Array.isArray(menu.body.popular), 'the ranking is published');
+  /* Held to what this snapshot is still publishing: a dish since hidden, 86'd
+     or taken off the QR channel must not reappear because it sold well. */
+  const live = new Set((menu.body.items || []).map((i) => String(i.id)));
+  menu.body.popular.forEach((id) => assert.ok(live.has(id),
+    'a ranked dish this projection is not publishing must not be offered: ' + id));
 });
 
 /* ═══ A MEMBER'S ORDER REACHES THE FLOOR ════════════════════════════════════

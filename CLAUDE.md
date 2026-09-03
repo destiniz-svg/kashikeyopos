@@ -66,6 +66,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        052 a batch says where its date came from
                        053 a delivery lands somewhere
                        054 a punch the till can name
+                       055 a decline names its lines
                        control/004 the archive shelf
 src/ai.js              the one model seam — Gemini, honest when it has none
 src/backup.js          taking a copy, and putting it back
@@ -1626,6 +1627,182 @@ one round who then sent another that was accepted is cooking, and that is the
 later truth — but a round where two lines went and the third did not carries
 both at once. The notice is read on its own and drawn beside the ladder, so the
 guest is told what is not coming while the rest cooks.
+
+### A sentence is for a person; the phone needed the lines
+
+Reported next, and it is the same decision seen from the guest's side: *"when
+the floor receives it with an item unavailable, the qr portal should remove the
+item from list. Also when settled the bill should show only the items
+delivered."*
+
+**The outlet recorded the refusal as PROSE.** `rejected_reason` is a sentence a
+person composed for a guest to read — *"Sorry — no Pancakes tonight"* — and it
+is exactly right for that and useless to anything downstream. So the phone,
+holding a list of three dishes and one sentence, went on showing the pancakes
+beside the two that were coming, with a note underneath saying one of them was
+not. The guest was left to match a sentence against a list to work out which of
+their own dishes to stop waiting for.
+
+That is the settled-receipt defect one field along, and it takes the answer this
+build already gives everywhere else: **say it as data.** Migration 055 gives
+`guest_order` a `rejected_lines` — the index within the round, the item id, the
+name the till resolved, and the quantity — written from THE SAME MARKS that
+compose the sentence, because composing the two apart is how two answers about
+one decision start to disagree. The name rides with the id on purpose: a guest's
+phone holds no menu row for a dish the kitchen has since taken off, and naming
+the refused dish is the entire point of the message.
+
+**NULL stays a real answer, and it is two of them.** A whole round declined
+names no subset — `ticket_id` is NULL and the reason says everything — and a
+decision taken by a build older than 055 names none either. Both read as "this
+did not name a subset", which is honest, and the phone falls back to the
+sentence exactly as it does today. `partial` is the outlet's own answer to which
+of the two it was, so the phone never infers "is any of this coming" from an
+empty list. A CHECK refuses lines with no reason beside them, which is the
+database keeping the same rule `declineQr()` keeps at the till.
+
+**And the round DROPS the line rather than striking it through.** That list
+answers "what is coming", and a dish that is not coming is not an entry in it.
+What was refused is said once, under the round it belonged to, in the counter's
+own words — and **Order this again** copies only what can actually be cooked.
+
+**Matched by the outlet's own id for the round, never by a clock.** The phone
+holds what it SENT and the outlet holds what it DECIDED, and nothing joined
+them: "which of my three rounds had the pancakes in it" could only have been
+answered by comparing two clocks, which is a guess about somebody's dinner. The
+POST has always answered with the round's id and the phone threw it away; it
+keeps it now, against `rid` — this phone's own name for the round, minted before
+the POST because a round is sent from a device that may be offline. A round that
+never reached the outlet gets no id and falls back to the sentence.
+
+### A receipt that states a figure and names nothing
+
+The settled row carried a table, a receipt number and a total, so the guest's
+bill after settlement was one sentence — *"Paid MVR 218.40 by cash"* — on the
+tab whose whole subject is what the table had. That is the one document a guest
+checks against their own memory and cannot.
+
+It carries the sale's own lines now, and that answers **"only what was
+delivered" by construction rather than by filtering**: a line the counter
+declined never reached the ticket, so it was never on the sale, so there is
+nothing to exclude. Which is the reason to read the SALE rather than to subtract
+a decline from the phone's record of what it sent.
+
+`sale_line` also carries `unit_cost` and `line_cost` — this outlet's margin on
+every dish — so the query names four fields and never `l.*`, and the test holds
+the published row to that list. The card is drawn from `settledHere()`, the
+OUTLET's row, not `paidReceipt()`, which reads a co-located till's localStorage
+and is only ever populated when the phone and the till share a browser.
+
+### Ordering more is an offer, not a rediscovery
+
+Nothing ever stopped a guest tapping Menu and sending a second round — the tabs
+have always been live — but neither the tracker nor the bill said so, and those
+are the two screens somebody is on when they decide they want another. A guest
+who does not know they may add to a table they have already ordered on either
+flags somebody down or does without. **Add more items** sits on both, drawn only
+while the table is unsettled: once the counter has taken the money, a control
+that quietly starts a new bill on a table somebody is leaving is worse than no
+control at all.
+
+### The card reads its own words, and the rail leads with what sells
+
+**The description was in the sheet and nowhere else**, so choosing between two
+unfamiliar dishes meant opening both — two taps and a lost place in the grid,
+for a sentence the menu was already carrying. It is on the card now, clamped to
+two lines because a card is a glance and the sheet is where the rest of it is.
+The allergen line is **not displaced by it**: that line is a safety statement
+derived from the recipe and a description is a merchant's, so a dish with both
+prints both, and a dish with no description simply reads as it does today.
+
+**Most ordered is a MEASUREMENT.** Counted off settled bills over the outlet's
+last thirty days, published with the menu, and drawn as the leading chip on both
+the guest menu and the member card — one product, so a section on one and not
+the other is the parity defect this build has paid for once. Three properties
+carry it:
+
+- **it is cached, and that is not an optimisation.** Every guest's phone polls
+  `/snapshot` every eight seconds; a thirty-day aggregate over a table that only
+  grows, once per phone per eight seconds, is the sequential scan migration 030
+  exists for. Popularity moves over weeks, so a ten-minute window is not stale
+  in any sense a guest could detect, and a failed refresh keeps serving the last
+  answer — the rule `src/directory.js` already keeps on the hot path;
+- **it ranks, it does not rearrange.** Every other chip keeps the outlet's own
+  menu order: what sold last month must not silently reorder a shop's menu. And
+  it is filtered to what the snapshot is still publishing, so a dish since
+  hidden, 86'd or taken off the QR channel cannot reappear because it sold well
+  in August;
+- **a store with nothing to rank gets no chip at all.** Three ranked dishes
+  before it is offered — a "Most ordered" tab on a store that has never traded
+  is the invented figure `test/audit.test.js` refuses by name, and a tab holding
+  one dish is not a ranking either. A chip the outlet stops publishing between
+  two polls falls back to the whole menu rather than to a blank grid.
+
+### Menu Master had a search that filtered and nowhere to type
+
+`g_menu` has filtered on `s.search` since it was written. The only input was the
+top bar's magnifier — which carries `isM ? "display:none"`, so on a phone or a
+tablet, which is what a back office is actually held in, there was **no search
+on any screen at all**; and it is cleared by `setState({ search: "" })` on every
+view change, so even on a desktop it reads as a global thing that happens to
+filter rather than as this screen's own control.
+
+`g.find` is a capability of the screen shell now — `{ value, set, hint }`, a
+real input at every width, drawn only where a screen asks for one, because most
+screens here are cards rather than lists. Menu Master declares one on all three
+of its modes, and **the two below the dish list never filtered at all**: a store
+with forty sections or a hundred add-ons had a search box that did nothing while
+you stood on either. A section still reports the position it actually holds, not
+its index in a filtered list.
+
+Two things fell out of writing it. A card grid had **no empty state** —
+`rowsEmpty` needs `cols` — which is fine while a grid can only be empty on a new
+store and becomes the lock-screen roster's defect the moment a search can empty
+it: a blank page under a box somebody has just typed into reads as a broken app.
+And the setter **coerces to a string**: `search` is read with `.toLowerCase()` by
+seven screens, so a caller that hands it nothing failed on a different screen
+with a message about a method that does not exist — which is how the harness
+found it, by calling the handler with no argument.
+
+### Measured, in a real browser this time
+
+The guest portal is anonymous, so the sandbox's block on the till's sign-in does
+not apply to it — and the till itself drove too, once the terminal was stamped
+with its store the way `/account` stamps it. At 390 px, against a real outlet on
+a real database:
+
+```
+the card          Grilled Reef Fish · "Line-caught reef fish, charred over
+                  coconut husk, with a lime and chilli relish." · Fish · MVR 185
+the rail          Most ordered 4 | Everything 10 | Hot food 2 | Sides 2 | Mains 2
+ranked            Bottled water (21 sold) · Grilled Reef Fish (9) · Drift dish (2)
+a round sent      Round 1 · Garlic Rice MVR 45 · Grilled Reef Fish MVR 185
+                  + Add more items
+the counter declines the fish, and 11 s later, untouched:
+                  Round 1 · Garlic Rice MVR 45
+                  Not coming: Grilled Reef Fish
+                  Sorry — no Grilled Reef Fish tonight
+the settled bill  WHAT YOU HAD · Delivered Dish ×2 · MVR 80.00
+                  Paid MVR 80.00 · Receipt TSTO-R-000501
+Menu Master       the find box at 1440 px and at 390 px, "prawn" narrowing the
+                  list, "No section matches" on a search that matched none,
+                  and a box on all three modes. No sideways scroll at either.
+```
+
+**What that drive did NOT prove**: the decline was written into `guest_order`
+exactly as `H.qr_order` writes it rather than pushed through the op from a
+signed-in till, because what was being proved there is the phone's rendering of
+that state — the handler's own half is proved against a real database in
+`test/api.test.js`, including the subset, the reason-less refusal and `partial`.
+
+And **055's ALTER is now tested on a schema that already had the table**. It was
+not: this suite migrates a cold database and then provisions, so its outlets get
+the column from 003's own definition and the migration's branch never ran — while
+every store on the live install takes exactly that branch. It runs on a scratch
+`outlet_9055` rather than a real outlet, because the first draft dropped the
+column from `outlet_1` to prove the ALTER put it back and thereby destroyed the
+`rejected_lines` the test above it had just written: a destructive check owns
+what it destroys.
 
 ## A call the floor answers has to stop coming back
 
@@ -6728,7 +6905,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 619 tests
+npm test                          # 631 tests
 npm run leak-test                 # isolation, on its own
 node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```

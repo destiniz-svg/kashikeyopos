@@ -2112,11 +2112,25 @@ class Component extends DCLogic {
        the section's dot, and the count is a bare numeral. The same design at
        the counter, on the guest's phone and on this card. */
     const railMenu = this.menu();
-    V.cats = [{ id: "all", name: "All dishes" }].concat(k.MENU_CATEGORIES || []).map((c) => {
-      const on = s.cat === c.id;
+    /* MOST ORDERED, the same measurement the guest portal draws and from the
+       same published ranking — this card and the table menu are one product,
+       so a section that exists on one and not the other is the parity defect
+       this build has already paid for once. Three ranked dishes before it is
+       offered at all; a store that has never traded gets no such chip. */
+    const popIds = (k.POPULAR || []).filter((id) => railMenu.some((m2) => m2.id === id));
+    const popRank = {};
+    popIds.forEach((id, i) => { popRank[id] = i; });
+    const hasPop = popIds.length >= 3;
+    // A chip the outlet has stopped publishing must not leave a guest looking
+    // at an empty grid, and the rail has to agree about which chip is lit.
+    const cat = (s.cat === "popular" && !hasPop) ? "all" : s.cat;
+    V.cats = (hasPop ? [{ id: "popular", name: "Most ordered" }] : [])
+      .concat([{ id: "all", name: "All dishes" }]).concat(k.MENU_CATEGORIES || []).map((c) => {
+      const on = cat === c.id;
       const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
       const cn = c.id === "all" ? railMenu.length
-        : railMenu.filter((m2) => m2.cat === c.id).length;
+        : c.id === "popular" ? popIds.length
+          : railMenu.filter((m2) => m2.cat === c.id).length;
       return {
         name: c.name + (cn ? "\u2002" + cn : ""),
         pick: () => this.setState({ cat: c.id }),
@@ -2131,10 +2145,13 @@ class Component extends DCLogic {
     const q = s.q.trim().toLowerCase();
     V.menuGridStyle = "margin-top:8px;display:grid;grid-template-columns:repeat(" + M.cols + ",minmax(0,1fr));gap:13px";
     V.dishes = this.menu().filter((d) => {
-      if (s.cat !== "all" && d.cat !== s.cat) return false;
+      if (cat === "popular") { if (popRank[d.id] === undefined) return false; }
+      else if (cat !== "all" && d.cat !== cat) return false;
       if (!q) return true;
       return (d.name + " " + d.desc).toLowerCase().indexOf(q) >= 0;
-    }).map((d) => {
+    // Ranked, so the most ordered leads. Every other chip keeps the outlet's
+    // own menu order: what sold last month must not rearrange a shop's menu.
+    }).sort((a, b) => (cat === "popular" ? popRank[a.id] - popRank[b.id] : 0)).map((d) => {
       const sold = off.indexOf(d.id) >= 0;
       const n = inCart[d.id] || 0;
       const k2 = window.KPOS || {};

@@ -239,7 +239,16 @@
        kitchen had their order. */
     K.SETTLED = (snap.settled || []).map(function (s) {
       return { table: s.table_no, no: s.receipt_no,
-        total: Number(s.total) || 0, at: s.at };
+        total: Number(s.total) || 0, at: s.at,
+        /* WHAT WAS ON IT. The row carried a total and a number, so a guest's
+           own record of what they paid for named nothing they had eaten.
+           These are the SALE's lines, so they are what was delivered by
+           construction: a line the counter declined never reached the ticket
+           and was never on the bill. */
+        lines: (s.lines || []).map(function (l) {
+          return { name: l.name, qty: Number(l.qty) || 0,
+            amt: Number(l.amt) || 0 };
+        }) };
     });
     /* AND A ROUND THE COUNTER DECLINED, for the same reason one line up: it
        leaves every other list the outlet publishes, so without this the phone
@@ -247,9 +256,24 @@
        cooking. `decided` is when the counter answered, which is what the
        phone's own guard compares against its last round. */
     K.DECLINED = (snap.declined || []).map(function (d) {
-      return { table: d.table_no, why: d.rejected_reason || "",
-        at: d.at, decided: d.decided_at };
+      return { id: d.id, table: d.table_no, why: d.rejected_reason || "",
+        at: d.at, decided: d.decided_at,
+        /* `partial` is the outlet's own answer to "is any of this coming" —
+           a round with a ticket had most of it accepted — and `lines` names
+           the dishes that were not, so the phone drops exactly those rather
+           than reading the sentence and guessing. Absent on a whole-round
+           decline and on a decision an older build took, which is why the
+           phone still falls through to the sentence. */
+        partial: !!d.partial,
+        lines: (d.rejected_lines || []).map(function (l) {
+          return { i: Number(l.i), id: l.id == null ? null : String(l.id),
+            name: l.name || "", qty: Number(l.qty) || 1 };
+        }) };
     });
+    /* WHAT THIS STORE ACTUALLY SELLS — a ranking measured off settled bills,
+       never a shape the phone works out for itself. An outlet that has sold
+       nothing publishes an empty list and the rail draws no tab at all. */
+    K.POPULAR = (snap.popular || []).map(String);
     if (snap.table) state.table = snap.table;
     root.KPOS_GUEST.snapshot = snap;
     try { root.dispatchEvent(new Event("kpos-data-ready")); } catch (e) {}

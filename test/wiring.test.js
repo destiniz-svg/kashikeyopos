@@ -7370,11 +7370,11 @@ test('a declined round reaches the phone, because absence is not an answer', () 
      what the PHONE last sent — "Received", for food nobody will cook. Exactly
      the settled-receipt defect, and it needs the same answer: the projection
      says it. */
-  assert.match(out, /declined:\s*\['SELECT table_no, rejected_reason/,
+  assert.match(out, /declined:\s*\['SELECT id, table_no, rejected_reason/,
     'the snapshot carries the declined rounds');
   assert.match(out, /declined: q\.declined\.rows/, 'and returns them');
   assert.ok(/rejected_reason IS NOT NULL/.test(out), 'only the declined ones');
-  assert.ok(/declined:[\s\S]{0,400}interval '2 hours'/.test(out),
+  assert.ok(/declined:[\s\S]{0,1600}interval '2 hours'/.test(out),
     'bounded, so tomorrow\'s guest on this table never reads it');
 
   const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
@@ -7503,4 +7503,214 @@ test('the floor card opens the round, not an empty table', () => {
     'the card says where it goes');
   assert.match(card, /qrRoundSheet\(r\)/,
     'and goes there — the round, with its items and the decision');
+});
+
+/* ═══ A DECLINE NAMES ITS LINES, AND THE GUEST'S ROUND DROPS THEM ══════════
+   Reported: "when the floor receives it with an item unavailable, the qr
+   portal should remove the item from list." It could not: the outlet recorded
+   the refusal as a SENTENCE, so the phone had prose where it needed data and
+   went on listing the dish that was never coming. */
+test('a decline records which lines, not only that some were refused', () => {
+  const ap = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const from = ap.indexOf('H.qr_order = async');
+  const to = ap.indexOf('H.qr_pay_intent', from);
+  assert.ok(from > 0 && to > from, 'found the handler');
+  const h = ap.slice(from, to);
+  assert.match(h, /rejected_lines = \$5::jsonb/, 'the refused subset is stored');
+  /* Only beside a reason — which is what 055's CHECK enforces underneath, and
+     a caller that names lines without one must not be refused outright: the
+     decision still has to close the round. */
+  assert.match(h, /why \? rejectedLines\(p\.rejectLines\) : null/,
+    'and only where there is a reason to go with it');
+
+  // An open door does not store whatever shape it is handed.
+  const rl = ap.slice(ap.indexOf('const rejectedLines ='), from);
+  assert.match(rl, /slice\(0, 60\)/, 'the list is capped');
+  assert.match(rl, /String\(l2\.id\)\.slice\(0, 64\)/, 'the id is truncated');
+  assert.match(rl, /String\(l2\.name\)\.slice\(0, 120\)/, 'so is the name');
+  assert.match(rl, /Math\.max\(1, Math\.min\(999/, 'the quantity is clamped');
+  assert.match(rl, /rows\.length \? JSON\.stringify\(rows\) : null/,
+    'and naming no usable line stores NULL, never an empty subset');
+
+  const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '055_a_decline_names_its_lines.sql'), 'utf8');
+  assert.match(mig, /ADD COLUMN IF NOT EXISTS rejected_lines jsonb/, '055 adds it');
+  assert.match(mig, /rejected_lines IS NULL OR rejected_reason IS NOT NULL/,
+    'a subset can only exist beside a reason');
+  // A new outlet gets the column too, or only migrated stores have it.
+  const prov = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '003_outlet_provision.sql'), 'utf8');
+  assert.match(prov, /rejected_lines jsonb/, 'and so does a freshly provisioned one');
+});
+
+test('the till sends the lines it marked, from the same marks as the sentence', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('  decideQr(sigId, unavailable, note) {');
+  const to = src.indexOf('  declineQr(sigId, reason) {', from);
+  assert.ok(from > 0 && to > from, 'found decideQr');
+  const d = src.slice(from, to);
+  /* ONE SET OF MARKS COMPOSES BOTH HALVES. Composing the sentence and the
+     subset apart is how two answers about one decision start to disagree. */
+  assert.match(d, /const refused = out\.map/, 'the marks compose the subset');
+  assert.match(d, /this\.acceptQr\(sigId, out, why, refused\)/,
+    'and it rides with the sentence on a partial decline');
+
+  const a = src.slice(src.indexOf('  acceptQr(sigId, skip, why, refused) {'),
+    src.indexOf('  qrWaiting() {'));
+  assert.ok(a.length > 0, 'acceptQr takes it');
+  assert.match(a, /rejectLines: this\._rejectLines \|\| undefined/,
+    'and the op carries it');
+});
+
+test("the guest's round drops the line the counter could not make", () => {
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  /* Matched by the OUTLET's own id for the round, never by comparing two
+     clocks: "which of my three rounds had the pancakes in it" is a question
+     about somebody's dinner and must not be answered by a guess. */
+  assert.match(g, /declineOf\(round\) \{/, 'the phone can name its own round');
+  assert.match(g, /if \(!round \|\| !round\.oid\) return null;/,
+    'and a round the outlet never acknowledged matches nothing');
+  assert.match(g, /stampRound\(rid, oid\)/, 'the outlet id is kept when it answers');
+  assert.match(g, /_rid: rid/, "against this phone's own name for the round");
+
+  const from = g.indexOf('    V.rounds = s.sent.slice()');
+  const to = g.indexOf('V.trackEmpty =', from);
+  const r = g.slice(from, to);
+  assert.match(r, /const live = whole \? \[\] : r\.lines\.filter/,
+    'the refused lines come out of the round');
+  assert.match(r, /const whole = !!no && !no\.partial;/,
+    'and a whole-round decline is the outlet\'s own answer, not an inference');
+  assert.match(r, /lines: live\.map/, 'what is listed is what is coming');
+  assert.match(r, /off: offLines\.map/, 'what is not is named');
+  assert.match(r, /g\.name \|\| \(m \? m\.name : ""\)/,
+    "using the name the outlet resolved, not this phone's menu");
+  // Reordering a round must copy what can actually be cooked.
+  assert.match(r, /cart: s\.cart\.concat\(live\.map/,
+    'and ordering it again does not re-order the refused dish');
+
+  const b = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
+  assert.match(b, /partial: !!d\.partial/, 'the bridge carries which kind it was');
+  assert.match(b, /lines: \(d\.rejected_lines \|\| \[\]\)\.map/, 'and the lines');
+});
+
+/* ═══ THE SETTLED BILL LISTS WHAT WAS DELIVERED ════════════════════════════ */
+test('a settled bill names the dishes, and never a cost', () => {
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const from = out.indexOf('    settled: [');
+  const to = out.indexOf('    declined: [', from);
+  assert.ok(from > 0 && to > from, 'found the settled query');
+  const q = out.slice(from, to);
+  assert.match(q, /FROM sale_line l WHERE l\.sale_id = s\.id/, 'the lines are published');
+  /* `sale_line` also carries unit_cost and line_cost — this outlet's margin on
+     every dish — which is why this is a named list of four fields and never
+     `l.*`. A guest may not see what the shop paid.
+
+     Asserted against the SQL rather than the source: the comment above the
+     query names both columns in order to say they are excluded, and a check
+     that reads the prose fails on the sentence explaining itself. */
+  const sql = q.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/unit_cost|line_cost/.test(sql), 'and nothing a guest may not see');
+  assert.ok(!/\bl\.\*/.test(sql), 'never a whole row');
+  assert.match(q, /'qty', l\.qty, 'amt', l\.line_total/, 'name, quantity, amount');
+
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(g, /V\.paidLines = paidLines\.map/, 'the phone draws them');
+  /* The OUTLET's row, not paidReceipt(): that one reads a co-located till's
+     localStorage, which a guest's phone never shares. */
+  assert.match(g, /const done = b \? null : this\.settledHere\(\);/,
+    "read from the outlet's own record");
+  assert.match(g, /V\.paidTotal = this\.money\(/,
+    'money(), never fmt() — a settled total is not rounded to whole rufiyaa');
+});
+
+/* ═══ ADDING TO THE ORDER BEFORE IT SETTLES ════════════════════════════════ */
+test('a guest is offered more items while the table is unsettled', () => {
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(g, /V\.addMore = \(\) => self\.setState\(\{ tab: "menu" \}\)/,
+    'the offer goes to the menu');
+  /* Once the counter has taken the money, a control that quietly starts a new
+     bill on a table somebody is leaving is worse than no control. */
+  assert.match(g, /const settledNow = !!this\.settledHere\(\);/,
+    "gated on the outlet's own answer about settlement");
+  assert.match(g, /V\.addMoreTrackStyle = \(s\.sent\.length && !settledNow\)/,
+    'drawn on the tracker');
+  assert.match(g, /V\.addMoreBillStyle = \(b && !settledNow\)/, 'and on the bill');
+  assert.ok(g.split('onClick="{{ addMore }}"').length - 1 === 2,
+    'exactly two controls, one per screen');
+});
+
+/* ═══ THE CARD READS ITS OWN DESCRIPTION ═══════════════════════════════════ */
+test('the QR menu card prints the description without being opened', () => {
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(g, /\{\{ it\.desc \}\}/, 'the card renders it');
+  assert.match(g, /desc: m\.desc \|\| "",/, "from the dish's own words");
+  assert.match(g, /-webkit-line-clamp:2/, 'clamped, because a card is a glance');
+  /* The allergen line is a SAFETY statement derived from the recipe and a
+     description is a merchant's — a dish with both prints both. */
+  assert.match(g, /\{\{ it\.tags \}\}/, 'and the allergen line is not displaced');
+});
+
+/* ═══ MOST ORDERED IS MEASURED, NEVER GUESSED ══════════════════════════════ */
+test('most ordered is the outlet\'s own count, and is absent where there is none', () => {
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(out, /FROM sale_line l JOIN sale s ON s\.id = l\.sale_id/,
+    'counted off bills that were actually settled');
+  assert.match(out, /s\.voided_at IS NULL/, 'a voided sale sold nothing');
+  /* Every guest's phone polls this every eight seconds. A thirty-day aggregate
+     per phone per poll is the sequential scan migration 030 exists for. */
+  assert.match(out, /POPULAR_TTL_MS/, 'the ranking is cached');
+  assert.match(out, /return hit \? hit\.ids : \[\];/,
+    'and a failed refresh keeps serving the last answer');
+  assert.match(out, /popular: popular,/, 'published with the menu');
+  assert.match(out, /\.filter\(\(id\) => live\.has\(id\)\)/,
+    'held to what this snapshot is still publishing');
+
+  for (const f of ['guest.html', 'member.html']) {
+    const p2 = fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8');
+    assert.match(p2, /const hasPop = popIds\.length >= 3;/,
+      f + ': a ranking of one dish is not a ranking');
+    assert.match(p2, /hasPop \? \[\{ id: "popular", name: "Most ordered" \}\] : \[\]/,
+      f + ': and a store with none draws no chip at all');
+    assert.match(p2, /const cat = \(s\.cat === "popular" && !hasPop\) \? "all" : s\.cat;/,
+      f + ': a chip the outlet stopped publishing does not empty the grid');
+  }
+});
+
+/* ═══ MENU MASTER CARRIES ITS OWN SEARCH ═══════════════════════════════════ */
+test('Menu Master has a find box on every one of its three modes', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('  g_menu() {');
+  const to = src.indexOf('  MENUSORTS()', from) > from
+    ? src.indexOf('  MENUSORTS()', from) : from + 40000;
+  const m = src.slice(from, to);
+  const boxes = m.match(/find: \{ value: s\.search/g) || [];
+  assert.strictEqual(boxes.length, 3,
+    'dishes, sections and add-ons each declare one');
+  assert.match(m, /hint: "Search dishes"/, 'dishes');
+  assert.match(m, /hint: "Search sections"/, 'sections');
+  assert.match(m, /hint: "Search add-ons"/, 'add-ons');
+  /* The two modes below the dish list never filtered at all — the screen had a
+     search box on it that did nothing while you stood on either. */
+  assert.match(m, /const secs = cats\.filter\(\(c\) => !q/, 'sections filter');
+  assert.match(m, /const shown = mods\.filter\(\(a\) => !q/, 'add-ons filter');
+  assert.match(m, /const i = cats\.indexOf\(c\);/,
+    'and a section still reports the position it actually holds');
+
+  /* A STRING, ALWAYS: `search` is read with .toLowerCase() by seven screens,
+     so a caller that hands the setter nothing must not fail on a different
+     screen with a message about a missing method. */
+  assert.match(src, /search: v == null \? "" : String\(v\)/,
+    'the setter coerces');
+  assert.match(src, /e && e\.target && e\.target\.value != null/,
+    'and so does the shell');
+
+  // Rendered at every width — the top bar's magnifier is display:none on a
+  // phone, which is the device a back office is actually held in.
+  assert.match(src, /findStyle: \(g\.find && g\.find\.set\)/, 'the shell draws it');
+  assert.ok(!/findStyle: isM \? "display:none"/.test(src),
+    'and never hides it on a phone');
+  /* A card grid that a search can empty needs an empty state, or it is the
+     lock-screen roster's defect: a blank page under a box somebody typed in. */
+  assert.match(src, /cardsEmpty: !!\(g\.cards && !g\.cards\.length && !cols\.length\)/,
+    'a card grid that matched nothing says so');
 });

@@ -3014,11 +3014,51 @@ H.seat_walkin = async (c, p, ctx) => {
   return { ticketId: t.id };
 };
 
+/* WHICH LINES WERE REFUSED, and not only that some were (055).
+
+   `rejected_reason` is a sentence a person composed for a guest to read —
+   "Sorry — no Pancakes tonight" — and prose is the wrong shape for the phone,
+   which has to work out which of the three lines it is still holding is not
+   coming. It was left to match the sentence against its own list, so it
+   matched nothing and went on showing the pancakes.
+
+   So the subset arrives as DATA. Held to what the phone actually needs and
+   nothing else: the index within the round, the item id, the name the till
+   resolved at the moment of the decision, and the quantity. The name travels
+   with the id because a guest's phone may hold no menu row for a dish this
+   outlet has since renamed, and naming the refused dish is the entire point of
+   the message.
+
+   An open door does not store whatever shape it is handed — the same rule
+   `guest_request.pay` keeps (047) — so every field is taken by name, clamped
+   and truncated, and the list is capped at what a round can hold. A payload
+   that names no usable line stores NULL rather than an empty array: "this
+   decline did not say which lines" and "it said none" are the same answer
+   here, and neither may read as "a subset was named". */
+const rejectedLines = (v) => {
+  const rows = arr(v).slice(0, 60).map((l, n) => {
+    const l2 = l && typeof l === 'object' ? l : {};
+    const i = Number(l2.i);
+    return {
+      i: Number.isFinite(i) && i >= 0 ? Math.floor(i) : n,
+      id: l2.id == null ? null : String(l2.id).slice(0, 64),
+      name: l2.name == null ? null : String(l2.name).slice(0, 120),
+      qty: Math.max(1, Math.min(999, Math.floor(Number(l2.qty) || 1)))
+    };
+  }).filter((l) => l.id || l.name);
+  return rows.length ? JSON.stringify(rows) : null;
+};
 H.qr_order = async (c, p, ctx) => {
+  /* The subset is only meaningful beside a reason, which is also what the
+     CHECK in 055 enforces — so a caller that names lines and no reason stores
+     no lines rather than being refused: the decision itself is what matters
+     and the round must still close. */
+  const why = p.reject || null;
   const row = await one(c, 'UPDATE guest_order SET accepted_at = now(), accepted_by = $2,'
-    + ' ticket_id = $3, rejected_reason = $4 WHERE id = $1 AND accepted_at IS NULL'
+    + ' ticket_id = $3, rejected_reason = $4, rejected_lines = $5::jsonb'
+    + ' WHERE id = $1 AND accepted_at IS NULL'
     + ' RETURNING table_no, member_id', [p.id, ctx.actor, p.ticketId || null,
-    p.reject || null]);
+    why, why ? rejectedLines(p.rejectLines) : null]);
   /* A member's round attaches their membership to the TICKET — which is what
      the card's live tracker reads (`/member/me` finds the open ticket by
      member_id) and what puts the member on the sale when the table settles.

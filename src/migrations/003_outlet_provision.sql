@@ -1005,7 +1005,13 @@ BEGIN
       at        timestamptz NOT NULL DEFAULT now(),
       accepted_at timestamptz, accepted_by uuid,
       ticket_id uuid REFERENCES %1$I.ticket(id),
-      rejected_reason text
+      rejected_reason text,
+      -- WHICH lines were refused, not only that some were (055). The sentence
+      -- is what the guest reads; this is what their phone acts on, so a
+      -- declined dish leaves the round rather than sitting in it under a note.
+      rejected_lines jsonb,
+      CONSTRAINT guest_order_rejected_lines_need_a_reason
+        CHECK (rejected_lines IS NULL OR rejected_reason IS NOT NULL)
     );
     -- Read by the five-second poll as "the open ones, oldest first". Partial,
     -- because that predicate is the whole point: the index holds a handful of

@@ -169,6 +169,7 @@ a:hover{color:#d33d26}
                   <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
                 </span>
                 <span style="display:block;margin-top:9px;font-size:13.5px;font-weight:600;color:#1a1a1a;line-height:1.3;letter-spacing:-.015em">{{ it.name }}</span>
+                <span style="{{ it.descStyle }}">{{ it.desc }}</span>
                 <span style="{{ it.tagStyle }}">{{ it.tags }}</span>
                 <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
                   <span style="font-size:14px;font-weight:700;color:#f4553c;letter-spacing:-.02em">{{ it.price }}</span>
@@ -224,10 +225,19 @@ a:hover{color:#d33d26}
                     <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
                   </div>
                 </sc-for>
-                <button onClick="{{ r.again }}" style="margin-top:12px;width:100%;padding:10px;border-radius:12px;background:#fff4f2;color:#f4553c;font-size:13px;font-weight:700;text-align:center;min-height:42px">Order this again</button>
+                <!-- What the counter could not make, under the round it was
+                     ordered in. The lines above are what IS coming. -->
+                <div style="{{ r.offStyle }}">
+                  <span style="display:block;font-weight:700">Not coming: {{ r.off }}</span>
+                  <span style="display:block;margin-top:3px">{{ r.offWhy }}</span>
+                </div>
+                <button onClick="{{ r.again }}" style="{{ r.againStyle }}">Order this again</button>
               </div>
             </sc-for>
           </div>
+
+          <!-- Still hungry. Drawn only while the table is unsettled. -->
+          <button onClick="{{ addMore }}" style="{{ addMoreTrackStyle }}">Add more items</button>
 
           <div style="{{ trackEmptyStyle }}">{{ trackEmpty }}</div>
         </div>
@@ -252,6 +262,8 @@ a:hover{color:#d33d26}
                 </sc-for>
               </div>
             </div>
+
+            <button onClick="{{ addMore }}" style="{{ addMoreBillStyle }}">Add more items</button>
 
             <div style="margin-top:20px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -327,6 +339,30 @@ a:hover{color:#d33d26}
 
             <button onClick="{{ askPay }}" style="{{ askPayStyle }}">{{ askPayLabel }}</button>
             <div style="{{ askedNoteStyle }}">{{ askedNote }}</div>
+          </div>
+
+          <!-- THE BILL THAT WAS PAID. The open ticket above is gone the moment
+               the counter settles, so this is the guest's own record of what
+               they were charged for — the SALE's lines, which are the lines
+               that were delivered, because a declined one never reached the
+               ticket and so was never on the bill. -->
+          <div style="{{ paidWrapStyle }}">
+            <div style="margin-top:18px;border:1px solid #d8ecdd;border-radius:18px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+              <div style="font-size:12px;font-weight:700;color:#1f7a3d;letter-spacing:.08em">{{ paidHead }}</div>
+              <div style="margin-top:12px">
+                <sc-for list="{{ paidLines }}" as="l" hint-placeholder-count="3">
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                    <span style="min-width:0">{{ l.name }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ l.amt }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111">
+                <span>{{ paidTotalLabel }}</span>
+                <span style="font-family:'JetBrains Mono',monospace">{{ paidTotal }}</span>
+              </div>
+              <div style="margin-top:10px;font-size:12.5px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ paidFoot }}</div>
+            </div>
           </div>
 
           <div style="{{ billEmptyStyle }}">{{ billEmpty }}</div>
@@ -982,9 +1018,39 @@ class Component extends DCLogic {
         phone: (this.state.ident || {}).phone || "", note: detail
       })
       : G.request(kind, detail, undefined, pay);
-    done.then(() => { this.setState({ tick: this.state.tick + 1 }); })
+    done.then((r) => {
+      /* THE OUTLET'S OWN NAME FOR THIS ROUND, kept the moment it answers.
+
+         Without it the phone holds a list of what it SENT and the outlet holds
+         a list of what it DECIDED, and nothing joins the two — so "which of my
+         three rounds was the one with the pancakes in it" could only be
+         answered by comparing timestamps across two clocks, which is a guess
+         about somebody's dinner. `rid` is this phone's own name for the round,
+         minted before the POST because a round is sent from a device that may
+         be offline; the outlet's id is written beside it when it arrives, and
+         a round that never reached the outlet simply never gets one and falls
+         back to the sentence, exactly as it does today. */
+      if (kind === "order" && r && r.id && body._rid) this.stampRound(body._rid, r.id);
+      this.setState({ tick: this.state.tick + 1 });
+    })
       .catch((e) => { this.toast(e.message); });
     return true;
+  }
+
+  stampRound(rid, oid) {
+    const sent = (this.state.sent || []).map((x) =>
+      (x.rid === rid && !x.oid) ? Object.assign({}, x, { oid: oid }) : x);
+    this.setState({ sent: sent });
+  }
+
+  /* THE COUNTER'S DECISION ABOUT ONE ROUND, matched by the outlet's own id and
+     never by a clock. Returns the declined row only where it names THIS round;
+     a decline the phone cannot tie to a round is still shown, as the
+     table-level notice it has always been. */
+  declineOf(round) {
+    if (!round || !round.oid) return null;
+    return ((window.KPOS || {}).DECLINED || [])
+      .filter((d) => String(d.id) === String(round.oid))[0] || null;
   }
 
   cartSub() {
@@ -1006,13 +1072,18 @@ class Component extends DCLogic {
       note: [l.opt, l.note].filter(Boolean).join(" · ") || "QR"
     }));
     const n = this.state.cart.reduce((a, l) => a + l.qty, 0);
+    // This phone's own name for the round, so the outlet's answer about it can
+    // be tied back to the lines the guest is looking at. Never sent: `G.order`
+    // composes its body from named fields, so this stays on the device.
+    const rid = "r" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
     const ok = this.push("order", n + " item" + (n === 1 ? "" : "s") + " from table " + this.tbl(), {
       lines: lines,
       promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
-      pct: this.state.promoOk ? 5 : 0
+      pct: this.state.promoOk ? 5 : 0,
+      _rid: rid
     });
     this.setState({
-      sent: this.state.sent.concat([{ at: Date.now(), lines: this.state.cart.slice() }]),
+      sent: this.state.sent.concat([{ at: Date.now(), rid: rid, lines: this.state.cart.slice() }]),
       cart: [], cartOpen: false, tab: "track"
     });
     this.toast(ok ? "Sent to the kitchen" : "Saved — it will send when you are back online");
@@ -1387,11 +1458,36 @@ class Component extends DCLogic {
        bare numeral, because "19 dishes" on every tab says nothing on any of
        them. One design across the counter and the phone. */
     const allMenu = this.menu();
-    V.cats = [{ id: "all", name: "Everything" }].concat(k.MENU_CATEGORIES || []).map((c) => {
-      const on = s.cat === c.id;
+    /* MOST ORDERED IS A MEASUREMENT, NOT A SHAPE THE PHONE WORKS OUT.
+
+       The ranking is the outlet's own, counted off settled bills over its last
+       thirty days and published with the menu — so it is what this shop
+       actually sells rather than what this phone happens to have seen. Held to
+       what the projection is still publishing, so a dish since hidden, 86'd or
+       taken off the QR channel cannot reappear because it sold well in August.
+
+       DRAWN ONLY WHERE THERE IS SOMETHING TO RANK. A "Most ordered" tab on a
+       store that has never traded is the invented figure `test/audit.test.js`
+       refuses by name, and a tab holding one dish is not a ranking either — so
+       it needs three before it is offered at all, and a store below that reads
+       exactly as it does today. */
+    const popIds = (k.POPULAR || []).filter((id) => allMenu.some((m2) => m2.id === id));
+    const popRank = {};
+    popIds.forEach((id, i) => { popRank[id] = i; });
+    const hasPop = popIds.length >= 3;
+    /* A GUEST WHOSE CHIP HAS GONE is not shown an empty room: the outlet can
+       stop publishing a ranking between two polls (a store just reset, a
+       window that has rolled), and a selection nothing can satisfy falls back
+       to the whole menu rather than to a blank grid — and the rail has to
+       agree, or "Everything" is drawn unselected over the whole menu. */
+    const cat = (s.cat === "popular" && !hasPop) ? "all" : s.cat;
+    V.cats = (hasPop ? [{ id: "popular", name: "Most ordered" }] : [])
+      .concat([{ id: "all", name: "Everything" }]).concat(k.MENU_CATEGORIES || []).map((c) => {
+      const on = cat === c.id;
       const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
       const n = c.id === "all" ? allMenu.length
-        : allMenu.filter((m2) => m2.cat === c.id).length;
+        : c.id === "popular" ? popIds.length
+          : allMenu.filter((m2) => m2.cat === c.id).length;
       return {
         name: c.name + (n ? "\u2002" + n : ""),
         thumb: on ? "display:none"
@@ -1405,11 +1501,16 @@ class Component extends DCLogic {
     });
 
     const q = s.q.trim().toLowerCase();
-    const list = this.menu().filter((m) => {
-      if (s.cat !== "all" && m.cat !== s.cat) return false;
+    let list = this.menu().filter((m) => {
+      if (cat === "popular") { if (popRank[m.id] === undefined) return false; }
+      else if (cat !== "all" && m.cat !== cat) return false;
       if (q && (m.name + " " + (m.desc || "")).toLowerCase().indexOf(q) < 0) return false;
       return s.diet.every((d) => (k.dishSuits ? k.dishSuits(m, d) : true));
     });
+    // Ranked, so the most ordered dish leads. Everywhere else keeps the
+    // outlet's own menu order: what sold last month must not silently
+    // rearrange a shop's menu.
+    if (cat === "popular") list = list.slice().sort((a, b) => popRank[a.id] - popRank[b.id]);
     V.filterNote = s.diet.length
       ? "Showing dishes that suit " + s.diet.map((d) => (k.DIETS.filter((x) => x.k === d)[0] || {}).label.toLowerCase()).join(" and ") + ". Worked out from each recipe, not from a label."
       : "";
@@ -1418,12 +1519,27 @@ class Component extends DCLogic {
     // only when its NAME changes, so the grid lifts in each time the guest
     // narrows the menu and it is obvious the list is now different.
     V.gridStyle = "margin-top:12px;padding:0 20px;display:grid;grid-template-columns:repeat(" + SH.cols + ",1fr);gap:12px;animation:"
-      + ((s.cat.length + s.diet.length + q.length) % 2 ? "qrise" : "qriseb") + " .26s cubic-bezier(.2,.7,.3,1)";
+      + ((cat.length + s.diet.length + q.length) % 2 ? "qrise" : "qriseb") + " .26s cubic-bezier(.2,.7,.3,1)";
     V.items = list.map((m) => {
       const dead = !!off[m.id];
       const al = this.allergensOf(m);
       return {
         name: m.name, price: this.fmt(this.price(m)),
+        /* THE DISH'S OWN WORDS, ON THE CARD. They lived only in the sheet, so
+           choosing between two unfamiliar dishes meant opening both — which is
+           two taps and a lost place in the grid for a sentence the menu was
+           already carrying. Clamped to two lines, because a card is a glance
+           and the sheet is where the rest of it is.
+
+           The allergen line is NOT displaced by it. That line is a safety
+           statement derived from the recipe, and a description is a
+           merchant's; a dish with both prints both. Where there is no
+           description the allergen line simply moves up, which is the state
+           every dish is in today. */
+        desc: m.desc || "",
+        descStyle: m.desc
+          ? "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:11.5px;color:#62626a;line-height:1.4;text-align:left"
+          : "display:none",
         tags: al.length ? al.map((a) => a.label).join(" · ") : (k.dishHasMeat && !k.dishHasMeat(m) ? "Vegetarian" : ""),
         tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
           ? "display:block;margin-top:4px;font-size:11px;color:#6a6a72;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -1615,41 +1731,142 @@ class Component extends DCLogic {
       };
     });
     V.roundsWrapStyle = s.sent.length ? "margin-top:6px;display:block" : "display:none";
-    V.rounds = s.sent.slice().reverse().map((r, ri) => ({
-      title: "Round " + (s.sent.length - ri),
-      at: new Date(r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      lines: r.lines.map((l) => {
-        const m = self.item(l.id);
-        return { name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: self.fmt(((m ? self.price(m) : 0) + (l.extra || 0)) * l.qty) };
-      }),
-      // Reordering copies the round into the cart rather than sending it: the
-      // guest still confirms, because a stray tap must not put food on a bill.
-      again: () => {
-        self.setState({ cart: s.cart.concat(r.lines.map((l) => Object.assign({}, l))), cartOpen: true });
-        self.toast("Copied into this round — check it and send");
-      }
-    }));
+    V.rounds = s.sent.slice().reverse().map((r, ri) => {
+      /* A LINE THE COUNTER COULD NOT MAKE LEAVES THE ROUND.
+
+         It used to sit here beside the dishes that WERE coming, with a note
+         underneath saying one of them was not — so the guest had to match a
+         sentence against a list to work out which of their own dishes to stop
+         waiting for. The outlet names the refused lines now (055), so they
+         come out, and what is left is what the kitchen is actually cooking.
+
+         Removed rather than struck through: this list answers "what is
+         coming", and a dish that is not coming is not an entry in it. What was
+         refused is said once, in the counter's own words, under the round it
+         belonged to — where a guest reading that round finds it. */
+      const no = self.declineOf(r);
+      const gone = (no && no.lines && no.lines.length) ? no.lines : [];
+      const hit = (l, i) => gone.some((g) =>
+        (Number.isFinite(g.i) && g.i === i) || (g.id && String(g.id) === String(l.id)));
+      /* A WHOLE round declined names no subset, and every line of it is off.
+         `partial` is the OUTLET's own answer to which of the two this was, so
+         the phone never infers it from an empty list — and a decision taken by
+         a build older than 055 carries neither, which reads as a whole-round
+         decline and says so in the sentence, exactly as it does today. */
+      const whole = !!no && !no.partial;
+      const live = whole ? [] : r.lines.filter((l, i) => !hit(l, i));
+      const offLines = whole ? r.lines.map((l, i) => ({ i: i, id: l.id, qty: l.qty })) : gone;
+      return {
+        title: "Round " + (s.sent.length - ri),
+        at: new Date(r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        lines: live.map((l) => {
+          const m = self.item(l.id);
+          return { name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: self.fmt(((m ? self.price(m) : 0) + (l.extra || 0)) * l.qty) };
+        }),
+        /* THE REFUSED DISHES BY NAME, from the outlet's own record of the
+           decision — the name it resolved at the moment the counter decided,
+           never this phone's menu, which may no longer carry a dish the
+           kitchen has since taken off. */
+        off: offLines.map((g) => {
+          const m = self.item(g.id);
+          const nm = g.name || (m ? m.name : "");
+          return nm ? nm + (g.qty > 1 ? " ×" + g.qty : "") : "";
+        }).filter(Boolean).join(", "),
+        offWhy: no ? (no.why || "The counter could not make this") : "",
+        offStyle: (no && offLines.length)
+          ? "margin-top:10px;padding:9px 11px;border-radius:10px;background:#fff6ed;border:1px solid #f0c9a0;font-size:12.5px;color:#7a4a12;line-height:1.5;text-wrap:pretty"
+          : "display:none",
+        // Nothing left of a round is not an empty card: the notice above is
+        // the whole of what happened to it.
+        againStyle: live.length
+          ? "margin-top:12px;width:100%;padding:10px;border-radius:12px;background:#fff4f2;color:#f4553c;font-size:13px;font-weight:700;text-align:center;min-height:42px"
+          : "display:none",
+        // Reordering copies the round into the cart rather than sending it: the
+        // guest still confirms, because a stray tap must not put food on a bill.
+        again: () => {
+          self.setState({ cart: s.cart.concat(live.map((l) => Object.assign({}, l))), cartOpen: true });
+          self.toast("Copied into this round — check it and send");
+        }
+      };
+    });
     V.trackEmpty = "Your order will appear here the moment you send it, and the steps above follow what the kitchen is actually doing.";
     V.trackEmptyStyle = s.sent.length ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
 
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
+    /* ORDERING MORE IS AN OFFER, NOT A REDISCOVERY.
+
+       Nothing stopped a guest tapping Menu and sending a second round — the
+       tabs have always been live — but neither the tracker nor the bill said
+       so, and those are the two screens somebody is on when they decide they
+       want another. A guest who does not know they may add to a table they
+       have already ordered on either flags somebody down or does without.
+
+       Drawn only while the table is UNSETTLED. Once the counter has taken the
+       money, a control that quietly starts a new bill on a table somebody is
+       leaving is worse than no control at all — and `settledHere()` is the
+       outlet's own answer to that, guarded against an earlier sitting exactly
+       as the receipt above it is. */
+    const settledNow = !!this.settledHere();
+    V.addMore = () => self.setState({ tab: "menu" });
+    const addBtn = "width:100%;padding:13px;border-radius:15px;background:#fff;"
+      + "border:1.4px solid #f4553c;color:#f4553c;font-size:14px;font-weight:700;"
+      + "text-align:center;min-height:48px";
+    V.addMoreTrackStyle = (s.sent.length && !settledNow) ? "margin-top:18px;" + addBtn : "display:none";
+    V.addMoreBillStyle = (b && !settledNow) ? "margin-top:16px;" + addBtn : "display:none";
     // A ticket disappears from the published session the moment it settles, so
     // this told someone who had just paid that nothing had happened — the app's
     // answer to the one thing they had just done.
     const paid = b ? null : this.paidReceipt();
+    /* THE OUTLET'S OWN RECORD OF THE SETTLED BILL, and the reason there are
+       two of these: `paidReceipt()` reads a CO-LOCATED till's localStorage,
+       which is only ever populated when the phone and the till share a
+       browser — and a guest's phone never does. `settledHere()` is the outlet's
+       answer and is the one a real guest gets. It is what carries the LINES,
+       so it is the row this receipt is drawn from; the local one still
+       supplies the tender and the tip, which the projection deliberately does
+       not publish. */
+    const done = b ? null : this.settledHere();
+    const rec = done || paid;
     V.billSub = b
       ? "Table " + tno + " · as the till has it right now"
-      : paid ? "Table " + tno + " · settled" : "Nothing on this table yet";
+      : rec ? "Table " + tno + " · settled" : "Nothing on this table yet";
     V.billBodyStyle = b ? "display:block" : "display:none";
-    V.billEmpty = paid
-      ? "Paid " + this.money(paid.total) + " by " + (paid.tenderName || paid.tender)
-        + " · Receipt " + paid.no
-        + (paid.tip ? " · including a " + paid.tip + "% tip" : "")
+
+    /* WHAT WAS ON IT, LINE BY LINE. This said "Paid MVR 218.40 by cash" and
+       named nothing — a receipt that states a figure and lists no dish is the
+       one document a guest checks against their own memory and cannot. Only
+       the delivered lines are here, and not by filtering: the sale is what the
+       counter charged, and a line it declined never reached the ticket. */
+    const paidLines = (done && done.lines && done.lines.length) ? done.lines : [];
+    V.paidWrapStyle = (!b && rec && paidLines.length) ? "display:block" : "display:none";
+    V.paidHead = "WHAT YOU HAD";
+    V.paidLines = paidLines.map((l) => ({
+      name: l.name + (Number(l.qty) > 1 ? " ×" + (+Number(l.qty).toFixed(3)) : ""),
+      amt: this.money(l.amt)
+    }));
+    V.paidTotalLabel = "Paid";
+    // money(), never fmt(): fmt() rounds to whole units, which is right for a
+    // menu price and a lie on the figure somebody actually handed over.
+    V.paidTotal = this.money(rec ? rec.total : 0);
+    V.paidFoot = "Receipt " + ((rec && rec.no) || "—")
+      + (paid && (paid.tenderName || paid.tender) ? " · paid by " + (paid.tenderName || paid.tender) : "")
+      + (paid && paid.tip ? " · including a " + paid.tip + "% tip" : "")
+      + ". Thank you — we hope to see you again.";
+
+    /* The sentence stays for the one case the card cannot cover: a bill this
+       phone knows was settled and whose lines it was never given — an older
+       build, or a settlement outside the projection's two-hour window. */
+    V.billEmpty = rec
+      ? "Paid " + this.money(rec.total)
+        + (paid && (paid.tenderName || paid.tender) ? " by " + (paid.tenderName || paid.tender) : "")
+        + " · Receipt " + (rec.no || "—")
+        + (paid && paid.tip ? " · including a " + paid.tip + "% tip" : "")
         + ". Thank you — we hope to see you again."
       : "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
-    V.billEmptyStyle = b ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:"
-      + (paid ? "#1f7a3d" : "#6a6a72") + ";line-height:1.65;text-wrap:pretty";
+    V.billEmptyStyle = (b || (rec && paidLines.length)) ? "display:none"
+      : "margin-top:40px;text-align:center;font-size:13.5px;color:"
+      + (rec ? "#1f7a3d" : "#6a6a72") + ";line-height:1.65;text-wrap:pretty";
     const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
     V.billLines = b ? b.lines : [];
     V.billTotals = b ? [
