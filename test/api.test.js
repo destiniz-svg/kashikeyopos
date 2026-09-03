@@ -671,11 +671,28 @@ test('the guest projection carries the floor and only this table', opts, async (
     assert.strictEqual(typeof f.seats, 'number');
   });
 
-  // Another table's bill is not this guest's business.
-  await push([{ opId: uuid(), kind: 'add_line', payload: {
-    table: 'T02', lines: [{ id: 'm1', qty: 1, name: 'Test dish', price: 100 }]
+  /* Another table's bill is not this guest's business.
+
+     `H.add_line` reads `p.item` and returns `{ skipped: 'no item' }` for
+     anything else — and this sent `lines: [...]`, so no T02 ticket was ever
+     created and the assertion below passed over a list that had never
+     contained one. A test that proves an isolation rule by never creating the
+     row it must not see is a test that passes by luck, so it is asserted that
+     the other table's ticket EXISTS before asking whether this guest can see
+     it. */
+  const other = await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: 'T02', item: 'm1', name: 'Test dish', qty: 1, price: 100, lid: uuid()
   } }]);
+  assert.strictEqual(other.status, 200, JSON.stringify(other.body));
+  assert.ok((other.body.results || [])[0] && (other.body.results[0].result || {}).ticketId,
+    "the other table's bill is really open");
+  assert.ok(await one("SELECT id FROM ticket WHERE table_no = 'T02'"
+    + " AND status = 'open'"), 'and it is really open at the outlet');
+
   const again = await getWith('/api/g/' + slug + '/menu', { 'x-table-token': table });
+  assert.ok(!again.body.tickets.some((tk) => tk.table_no === 'T02'),
+    "and the guest is not shown it — which is a real assertion now that the"
+    + ' row it must not see actually exists');
   again.body.tickets.forEach((tk) => {
     assert.strictEqual(tk.table_no, 'T01', 'a guest reads their OWN table only');
   });
