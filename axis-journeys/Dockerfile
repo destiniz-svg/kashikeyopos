@@ -37,8 +37,12 @@ COPY --from=build --chown=node:node /app/.next/static ./.next/static
 
 # The file store is only used where STORE_DRIVER=file; on AWS the store is DynamoDB and this stays
 # empty. It exists so a single-node deploy has somewhere writable that is not the image.
+#
+# There is deliberately no `VOLUME` instruction. It would force an anonymous volume on every run —
+# including the DynamoDB deploy, which never touches this path — and leave orphaned volumes behind
+# each time a container is replaced. Where the store IS on disk, the mount is named by whoever runs
+# it: `-v axis-data:/app/.data`, an ECS bind mount, or a platform volume at whatever STORE_DIR says.
 RUN mkdir -p /app/.data && chown node:node /app/.data
-VOLUME ["/app/.data"]
 
 USER node
 EXPOSE 3000

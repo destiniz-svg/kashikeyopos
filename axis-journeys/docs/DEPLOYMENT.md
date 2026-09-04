@@ -217,6 +217,40 @@ independent.
 
 ---
 
+## 6a. A container deploy with the store on a disk
+
+The AWS shape above puts the store in DynamoDB and the operator seeds it from a checkout. A
+single-node container deploy — a review environment, or a small install that does not want a table —
+puts the store on a mounted disk instead, and that changes one thing worth stating: **the runtime
+image carries no source, so `npm run seed` cannot run inside it.** That is deliberate (it is what
+keeps the image to the standalone server and nothing else) and it means a volume-backed container
+has no way to get its catalogue from the image alone.
+
+So a deploy of that shape builds from the repository rather than from the Dockerfile, and seeds on
+boot. `railway.json` describes it, so the deployment is in the repository rather than in a
+dashboard:
+
+```json
+{
+  "build": { "builder": "NIXPACKS" },
+  "deploy": {
+    "startCommand": "npm run seed && npm start",
+    "healthcheckPath": "/api/ready"
+  }
+}
+```
+
+Seeding on every boot is safe and nearly free: `seedWorkspace()` leaves an existing document alone
+unless `--force` is given, and `ensureFirstOwner()` creates an account only when the workspace has
+no users at all. Set `STORE_DIR` to the mount path (`/data`), and the media library lands on the
+same disk.
+
+**The gap this leaves**, stated rather than left to be found: if you want the Dockerfile image
+itself to seed a fresh volume, it needs a compiled seed entry point in the runtime stage. Nothing in
+this build has one, because the AWS deploy this image was written for does not need it.
+
+---
+
 ## 7. Environments
 
 | | Development | Staging | Production |
