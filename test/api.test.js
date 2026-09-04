@@ -1035,6 +1035,134 @@ test("most ordered is the outlet's own count, and never a guess", opts, async ()
     'a ranked dish this projection is not publishing must not be offered: ' + id));
 });
 
+/* ═══ ONE ORDER, OPEN UNTIL THE BILL IS SETTLED ════════════════════════════
+   Reported: "when I order two items, the floor tells one is not available,
+   then I add another item — that creates another round. What should happen is
+   when a customer comes and initiates an order, this round should stay until
+   the bill gets cleared."
+
+   Exactly right, and the round model was the defect. The Order tab was a list
+   of this phone's POSTs, so adding a dish drew a second card and the refusal
+   scrolled away under it. The accumulating object has always been the outlet's
+   open TICKET; what the projection could not say is the third state a round
+   can be in — the counter has not answered it yet — which the phone had to
+   infer by elimination, and cannot: two phones on one table, or one guest
+   ordering the same dish twice, make it unanswerable.
+
+   So this walks the whole life of ONE order over HTTP: a round waiting, one
+   line refused while the rest cooks, a second round added to the SAME ticket,
+   and the refusal still published while it does.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('one order stays open across rounds, and the refusal stays with it', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T21');
+  const table = { 'x-table-token': t.body.token };
+  const mine = (r) => (r.body.pending || []).filter((g) => g.table_no === 'T21');
+
+  // ── round one: two dishes, and the counter has not answered ────────────
+  const one1 = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }, { id: 'm2', qty: 2 }],
+      name: 'Open Order Guest', opId: uuid() }, table);
+  assert.strictEqual(one1.status, 201, JSON.stringify(one1.body));
+
+  let menu = await getWith('/api/g/' + slug + '/menu', table);
+  let pend = mine(menu);
+  assert.strictEqual(pend.length, 1, 'the outlet says the round is still with the counter');
+  assert.strictEqual(pend[0].id, one1.body.id, 'and names it');
+  /* THE NAMES ARE RESOLVED AT THE OUTLET. A second phone at this table holds
+     no record of what the first one sent, and the row's own lines carry ids
+     nobody can read. */
+  const nameOf = (id) => ((menu.body.items || [])
+    .filter((i) => String(i.id) === id)[0] || {}).name;
+  assert.deepStrictEqual(pend[0].lines.map((l) => l.name).sort(),
+    [nameOf('m1'), nameOf('m2')].sort(),
+    "with the dishes named as the OUTLET names them, not as the phone sent them");
+  assert.ok(pend[0].lines.every((l) => l.price != null), 'and priced');
+  /* Nothing a guest may not see — the same list `settled` and `declined` are
+     held to. */
+  const flat = JSON.stringify(pend[0]);
+  ['unit_cost', 'line_cost', 'avg_cost', 'member_id', 'accepted_by']
+    .forEach((bad) => assert.ok(flat.indexOf(bad) < 0,
+      'a pending round must not carry ' + bad));
+
+  /* ── the counter cooks one and refuses the other, in one act. `ticket_id`
+     for the part accepted and `rejected_reason` for the part that was not —
+     which is what makes this a partial rather than a decline. */
+  const lineOp = await push([{ opId: uuid(), kind: 'add_line',
+    payload: { table: 'T21', item: 'm1', name: 'First Dish', qty: 1,
+      price: 100, lid: 'oo-l1' } }]);
+  assert.strictEqual(lineOp.status, 200, JSON.stringify(lineOp.body));
+  const tk1 = await one("SELECT id FROM ticket WHERE table_no = 'T21'"
+    + " AND status = 'open'");
+  assert.ok(tk1, 'the accepted half opened the ticket');
+
+  const why = 'Sorry — no Second Dish tonight';
+  const dec = await push([{ opId: uuid(), kind: 'qr_order',
+    payload: { id: one1.body.id, ticketId: tk1.id, reject: why,
+      rejectLines: [{ i: 1, id: 'm2', name: 'Second Dish', qty: 2 }] } }]);
+  assert.strictEqual(dec.status, 200, JSON.stringify(dec.body));
+
+  menu = await getWith('/api/g/' + slug + '/menu', table);
+  assert.strictEqual(mine(menu).length, 0,
+    'a round the counter has answered leaves pending');
+  const no1 = (menu.body.declined || []).filter((d) => d.table_no === 'T21');
+  assert.strictEqual(no1.length, 1, 'and is published as the refusal it was');
+  assert.strictEqual(no1[0].partial, true, 'partial, because the rest is cooking');
+  assert.deepStrictEqual((no1[0].rejected_lines || []).map((l) => l.name),
+    ['Second Dish'], 'naming the dish that is not coming');
+
+  // ── round two: the guest adds a dish. It joins the SAME ticket ──────────
+  const one2 = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], name: 'Open Order Guest', opId: uuid() }, table);
+  assert.strictEqual(one2.status, 201, JSON.stringify(one2.body));
+
+  menu = await getWith('/api/g/' + slug + '/menu', table);
+  pend = mine(menu);
+  assert.strictEqual(pend.length, 1, 'the new round is with the counter');
+  assert.strictEqual(pend[0].id, one2.body.id, 'and it is the new one');
+  /* THE REFUSAL IS STILL PUBLISHED. This is the half that was reported: the
+     phone's own notice was a property of the LATEST round, so ordering the
+     replacement is exactly what made the explanation disappear. The outlet
+     never stopped saying it; the reader was looking at the wrong thing. */
+  assert.strictEqual((menu.body.declined || [])
+    .filter((d) => d.table_no === 'T21').length, 1,
+  'and the refusal is still there while the rest cooks');
+
+  const acc = await push([{ opId: uuid(), kind: 'add_line',
+    payload: { table: 'T21', item: 'm1', name: 'First Dish', qty: 1,
+      price: 100, lid: 'oo-l2' } },
+  { opId: uuid(), kind: 'qr_order',
+    payload: { id: one2.body.id, ticketId: tk1.id } }]);
+  assert.strictEqual(acc.status, 200, JSON.stringify(acc.body));
+
+  /* ONE TICKET, NOT TWO. The whole complaint in one assertion: an order is
+     what the table has, and a round is only how it got there. */
+  const tks = await all2("SELECT id FROM ticket WHERE table_no = 'T21'"
+    + " AND status = 'open'");
+  assert.strictEqual(tks.length, 1, 'both rounds are on one open bill');
+
+  menu = await getWith('/api/g/' + slug + '/menu', table);
+  const mytk = (menu.body.tickets || []).filter((x) => x.table_no === 'T21');
+  assert.strictEqual(mytk.length, 1, 'and the guest reads one ticket');
+  assert.strictEqual((mytk[0].lines || []).length, 2,
+    'carrying both accepted lines and neither refused one');
+  assert.strictEqual(mine(menu).length, 0, 'with nothing left waiting');
+
+  /* A REPLAY IS NOT A SECOND DINNER. The round carries its own op id so a
+     phone that could not deliver one can send it again — which is what makes
+     "it goes as soon as you are back online" a sentence something keeps. */
+  const opId = uuid();
+  const first = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: opId }, table);
+  const again = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: opId }, table);
+  assert.strictEqual(again.body.id, first.body.id,
+    'the same op id answers with the round it already made');
+  assert.strictEqual(mine(await getWith('/api/g/' + slug + '/menu', table)).length, 1,
+    'and there is one round waiting, not two');
+});
+
 /* ═══ A MEMBER'S ORDER REACHES THE FLOOR ════════════════════════════════════
    The member card's round used to go out TABLE-LESS — `table: undefined`
    clobbered the bound table in the bridge — so the outlet refused every one

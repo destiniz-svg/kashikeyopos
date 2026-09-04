@@ -1705,6 +1705,114 @@ while the table is unsettled: once the counter has taken the money, a control
 that quietly starts a new bill on a table somebody is leaving is worse than no
 control at all.
 
+### One order, open from the table until the bill is cleared
+
+Reported next, and it is the model rather than a defect on top of it: *"when I
+order two items, the floor tells one is not available, then I add another item,
+that creates another round … the round should stay until the bill gets cleared.
+Round closes with settlement."*
+
+**The Order tab was `state.sent` — this phone's list of the POSTs it had made.**
+A round is the TRANSPORT; an order is what the table has. Drawing the transport
+gave three symptoms, all reported together: adding a dish drew a SECOND CARD,
+because it was a second POST; the "not available" notice was a property of the
+newest round, so `declinedHere()`'s guard suppressed it the moment the guest
+ordered the replacement — exactly when they wanted to read it; and every card
+was composed from what the phone SENT rather than from what the counter
+accepted, so a refused dish came back whenever the phone could not match the
+outlet's answer to a round (a lost POST reply, a reload, a decline aged past
+its two-hour window).
+
+The outlet has always held the right object — the open TICKET, which `billMath()`
+has read in realtime since it was written. The Order tab was the one screen not
+reading it.
+
+**Three parts, each read from whoever actually knows:**
+
+| | |
+| --- | --- |
+| **WITH THE KITCHEN** | the outlet's own open ticket for this table, priced as the counter priced it. A refused line is not here BY CONSTRUCTION — it never reached the ticket — which is the same reason the settled bill needs no filter |
+| **WITH THE COUNTER** | rounds the outlet is still holding, plus a round this phone sent that the outlet has not yet had a chance to mention |
+| **NOT COMING** | every refusal in this sitting, in the counter's own words |
+
+A round in NEITHER pending nor declined has been accepted, and its lines are
+already in the first part — so it is never drawn twice. That is the whole of
+why this stops growing a card per round.
+
+**THE THIRD STATE IS A PROJECTION, NOT AN INFERENCE.** `snapshot()` publishes
+`pending` — `guest_order` rows with `accepted_at IS NULL AND rejected_reason IS
+NULL` — because the phone cannot work out "has the counter dealt with my last
+round" by elimination: two phones at one table, or one guest ordering the same
+dish twice, make it unanswerable. Same doctrine as `settled` and `declined`
+before it, and bounded the same way — two hours and the `guest_order_open`
+partial index, because every phone in the room reads this every eight seconds
+and migration 030 is what that lesson cost. The dish NAMES are resolved at the
+outlet, for the reason `rejected_lines` carries them: a second phone holds no
+record of what the first one sent, and the row's own lines carry ids nobody can
+read.
+
+**And the phone keeps drawing its own round until the outlet could have
+answered.** The projection is eight seconds wide, so a round just sent is not
+in it — and a screen that shows nothing after Send is how a guest presses Send
+twice. `polledFrom` is when a snapshot's REQUEST began, published by the
+bridge: a request that started after the order POST answered certainly carries
+that round, where one already in flight may not. Comparing arrival times loses
+that race, and a round that appears and then vanishes for eight seconds is
+worse than one that is slow.
+
+**A round that never left the device has a way out, and that is what makes the
+old sentence true.** *"Saved — it will send when you are back online"* was said
+over a round nothing was going to send: this portal keeps no outbox, and the
+localStorage half reaches a till only where the till shares the browser. The
+round carries its own `opId` now — minted with the round rather than per call,
+so `/order` replays it and answers with the order it already made instead of
+making a second one — and `flushHeld()` sends it on the two-second tick, one at
+a time, fifteen seconds apart, only where the bridge can reach the outlet. It
+is drawn as **NOT SENT YET** with its own button meanwhile. The same sentence
+was on `requestBill()` and has the same answer there: an ask has no lines and
+no money, so there is nothing worth replaying, and it says what is true and
+points at the one thing that works from a table. `asked` is stamped only where
+the ask actually went, or the Bill tab's dot marks a call nobody received.
+
+**The refusal's guard moved to the sitting's floor.** `declinedHere()` answers
+with the latest refusal and discards one older than this phone's NEWEST round —
+right for the LADDER, where a table whose last word from the counter was a
+refusal ends there. `declinesHere()` is the order's list and compares against
+the FIRST round of the sitting instead: a refusal older than that belongs to an
+earlier sitting, and one after it is this guest's whatever they have ordered
+since. And the ladder asks the outlet whether a round is still with the counter
+rather than falling through to localStorage, which happened to read "Received"
+and so happened to be right — until the round came from another phone.
+
+Measured by driving the shipped portal in Chromium at 390 px against a real
+database, with the counter's half written as `H.qr_order` writes it:
+
+```
+send two dishes    WITH THE COUNTER · Grilled Reef Fish 185 · Garlic Rice 45
+                   MVR 230.00 — drawn on the press, before any poll answered
+the counter cooks the rice and refuses the fish:
+                   WITH THE KITCHEN · Garlic Rice 45
+                   NOT COMING · Grilled Reef Fish
+                                "Sorry — no Grilled Reef Fish tonight"
+add a third dish   WITH THE KITCHEN · Garlic Rice 45
+                   WITH THE COUNTER · Drift dish 120
+                   NOT COMING · Grilled Reef Fish  ← still there
+                   MVR 165.00 · one ticket at the outlet, not two
+the counter accepts it onto the same ticket:
+                   WITH THE KITCHEN · Garlic Rice 45 · Drift dish 120
+a SECOND phone, no local history at all, reads the same order
+the counter settles:
+                   Paid · Settled · MVR 196.02 · T30-…  · "Add more items" gone
+```
+
+`test/api.test.js` walks the same road over HTTP — the round waiting with its
+names resolved and nothing a guest may not see, the partial decline, the second
+round joining the SAME ticket, the refusal still published while it cooks, and
+a replayed `opId` answering with the round it already made rather than a second
+one. `test/wiring.test.js` pins the composition, the projection's filters and
+bounds, the guard that moved, and that `V.rounds = s.sent` is gone. Both fail
+against the version that shipped.
+
 ### The card reads its own words, and the rail leads with what sells
 
 **The description was in the sheet and nowhere else**, so choosing between two

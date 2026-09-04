@@ -190,10 +190,6 @@ a:hover{color:#d33d26}
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
           <div style="margin-top:5px;font-size:13.5px;color:#62626a">{{ trackSub }}</div>
 
-          <!-- A line the kitchen could not make, while the rest of the round
-               cooks. The ladder above is right and says nothing about it. -->
-          <div style="{{ declineNoteStyle }}">{{ declineNote }}</div>
-
           <div style="{{ trackWrapStyle }}">
             <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
               <div style="display:flex;gap:13px;align-items:flex-start">
@@ -211,29 +207,68 @@ a:hover{color:#d33d26}
             </sc-for>
           </div>
 
-          <div style="{{ roundsWrapStyle }}">
-            <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">ROUNDS SENT</div>
-            <sc-for list="{{ rounds }}" as="r" hint-placeholder-count="1">
-              <div style="margin-top:11px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:14px 15px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
-                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
-                  <span style="font-size:14px;font-weight:700;color:#111">{{ r.title }}</span>
-                  <span style="font-size:12px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ r.at }}</span>
-                </div>
-                <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="2">
-                  <div style="margin-top:7px;display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#4a4a4f">
-                    <span style="min-width:0">{{ l.name }}</span>
+          <!-- ONE OPEN ORDER, not a card per round. It stays until the bill
+               is settled and everything the guest adds joins it. -->
+          <div style="{{ ooWrapStyle }}">
+            <div style="margin-top:11px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:15px 16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+
+              <!-- What the counter accepted. A refused line is not here by
+                   construction: it never reached the ticket. -->
+              <div style="{{ ooOnStyle }}">
+                <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">WITH THE KITCHEN</div>
+                <sc-for list="{{ ooOn }}" as="l" hint-placeholder-count="2">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                    <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span><span style="{{ l.readyStyle }}"> · ready</span></span>
                     <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
                   </div>
                 </sc-for>
-                <!-- What the counter could not make, under the round it was
-                     ordered in. The lines above are what IS coming. -->
-                <div style="{{ r.offStyle }}">
-                  <span style="display:block;font-weight:700">Not coming: {{ r.off }}</span>
-                  <span style="display:block;margin-top:3px">{{ r.offWhy }}</span>
-                </div>
-                <button onClick="{{ r.again }}" style="{{ r.againStyle }}">Order this again</button>
               </div>
-            </sc-for>
+
+              <!-- Sent, and the counter has not answered yet. The OUTLET says
+                   this, so a round from another phone at this table is here
+                   too and one this phone sent twice is not. -->
+              <div style="{{ ooWaitingStyle }}">
+                <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">WITH THE COUNTER</div>
+                <sc-for list="{{ ooWaiting }}" as="l" hint-placeholder-count="1">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                    <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span></span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- And a round this phone could not deliver at all, which the
+                   outlet cannot know about. It carries its own op id, so
+                   sending it again is a replay and never a second dinner. -->
+              <div style="{{ ooHeldStyle }}">
+                <div style="font-size:12px;font-weight:700;color:#b5651d;letter-spacing:.08em">NOT SENT YET</div>
+                <sc-for list="{{ ooHeld }}" as="l" hint-placeholder-count="1">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                    <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span></span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                  </div>
+                </sc-for>
+                <div style="margin-top:7px;font-size:12.5px;color:#7a4a12;line-height:1.5;text-wrap:pretty">This phone is holding it — it goes on its own as soon as you are back online.</div>
+                <button onClick="{{ ooSendAgain }}" style="margin-top:9px;width:100%;padding:10px;border-radius:12px;background:#fff6ed;border:1px solid #f0c9a0;color:#7a4a12;font-size:13px;font-weight:700;text-align:center;min-height:42px">Try sending it now</button>
+              </div>
+
+              <!-- WHAT IS NOT COMING, in the counter's own words, for every
+                   refusal in this sitting. It stays while the rest cooks. -->
+              <div style="{{ ooOffStyle }}">
+                <div style="font-size:12px;font-weight:700;color:#b5651d;letter-spacing:.08em">NOT COMING</div>
+                <sc-for list="{{ ooOff }}" as="d" hint-placeholder-count="1">
+                  <div style="margin-top:8px;padding:10px 12px;border-radius:11px;background:#fff6ed;border:1px solid #f0c9a0;font-size:13px;color:#7a4a12;line-height:1.5;text-wrap:pretty">
+                    <span style="{{ d.namesStyle }}">{{ d.names }}</span>
+                    <span style="display:block;margin-top:3px">{{ d.why }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="{{ ooTotalStyle }}">
+                <span style="font-size:12.5px;color:#6a6a72;line-height:1.45;text-wrap:pretty;min-width:0">{{ ooTotalNote }}</span>
+                <span style="flex-shrink:0;font-size:15px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace">{{ ooTotal }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- Still hungry. Drawn only while the table is unsettled. -->
@@ -701,7 +736,16 @@ class Component extends DCLogic {
     }, 1000);
     // The till is another tab or another device; poll and also listen, because
     // the storage event does not fire in the tab that wrote it.
-    this._t = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 2000);
+    this._t = setInterval(() => {
+      this.setState({ tick: this.state.tick + 1 });
+      /* A ROUND THIS PHONE COULD NOT DELIVER GOES ON ITS OWN. The send toast
+         has always said it would; nothing kept that until the round carried
+         its own op id, which is what makes a re-send a replay at the door
+         rather than a second dinner. Bounded inside flushHeld(): one at a
+         time, fifteen seconds apart, and only where the bridge can reach the
+         outlet — so a phone with no signal costs nothing but the check. */
+      this.flushHeld();
+    }, 2000);
     this._on = (e) => { if (!e.key || e.key === FKEY || e.key === POSKEY) this.setState({ tick: this.state.tick + 1 }); };
     window.addEventListener("storage", this._on);
     if (!this.K()) {
@@ -1014,7 +1058,8 @@ class Component extends DCLogic {
     } : undefined;
     const done = kind === "order"
       ? G.order(body.lines || [], {
-        promo: body.promo || "", name: (this.state.ident || {}).name || "",
+        opId: body._opId, promo: body.promo || "",
+        name: (this.state.ident || {}).name || "",
         phone: (this.state.ident || {}).phone || "", note: detail
       })
       : G.request(kind, detail, undefined, pay);
@@ -1038,19 +1083,13 @@ class Component extends DCLogic {
   }
 
   stampRound(rid, oid) {
+    /* AND WHEN IT WAS STAMPED, which is when the outlet answered the POST.
+       Any snapshot whose request began after that moment carries this round,
+       so it is what decides when the phone may stop drawing its own copy. */
+    const at = Date.now();
     const sent = (this.state.sent || []).map((x) =>
-      (x.rid === rid && !x.oid) ? Object.assign({}, x, { oid: oid }) : x);
+      (x.rid === rid && !x.oid) ? Object.assign({}, x, { oid: oid, oidAt: at }) : x);
     this.setState({ sent: sent });
-  }
-
-  /* THE COUNTER'S DECISION ABOUT ONE ROUND, matched by the outlet's own id and
-     never by a clock. Returns the declined row only where it names THIS round;
-     a decline the phone cannot tie to a round is still shown, as the
-     table-level notice it has always been. */
-  declineOf(round) {
-    if (!round || !round.oid) return null;
-    return ((window.KPOS || {}).DECLINED || [])
-      .filter((d) => String(d.id) === String(round.oid))[0] || null;
   }
 
   cartSub() {
@@ -1058,6 +1097,26 @@ class Component extends DCLogic {
       const m = this.item(l.id);
       return a + ((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty;
     }, 0);
+  }
+
+  /* A ROUND'S NAME AT THE OUTLET. `op_log.op_id` is a uuid and it is what
+     makes a re-send a replay rather than a second order, so it comes from the
+     platform CSPRNG — and a browser that has none REGISTERS the fact rather
+     than falling back quietly, because a collision here costs somebody's
+     dinner twice. Same rule as the till's newId(). */
+  opId() {
+    const c = window.crypto;
+    if (c && c.randomUUID) return c.randomUUID();
+    if (!this._noRng) {
+      this._noRng = true;
+      try { console.error("[kpos-guest] no CSPRNG — round ids are degraded"); } catch (e) {}
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
+      let r;
+      if (c && c.getRandomValues) r = c.getRandomValues(new Uint8Array(1))[0] % 16;
+      else r = Math.floor(Math.random() * 16);
+      return (ch === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
   }
 
   sendOrder() {
@@ -1076,17 +1135,31 @@ class Component extends DCLogic {
     // be tied back to the lines the guest is looking at. Never sent: `G.order`
     // composes its body from named fields, so this stays on the device.
     const rid = "r" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+    /* AND THE ROUND'S OWN OP ID, minted here rather than per call, because a
+       round that could not be delivered has to be sendable AGAIN and the door
+       replays an op it has already seen. A phone with no CSPRNG says so
+       rather than degrading quietly — same rule as the till's newId(). */
+    const opId = this.opId();
+    const promo = this.state.promoOk ? this.state.promo.trim().toUpperCase() : "";
     const ok = this.push("order", n + " item" + (n === 1 ? "" : "s") + " from table " + this.tbl(), {
       lines: lines,
-      promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
+      promo: promo,
       pct: this.state.promoOk ? 5 : 0,
-      _rid: rid
+      _rid: rid, _opId: opId
     });
     this.setState({
-      sent: this.state.sent.concat([{ at: Date.now(), rid: rid, lines: this.state.cart.slice() }]),
+      sent: this.state.sent.concat([{ at: Date.now(), rid: rid, opId: opId,
+        promo: promo, lines: this.state.cart.slice() }]),
       cart: [], cartOpen: false, tab: "track"
     });
-    this.toast(ok ? "Sent to the kitchen" : "Saved — it will send when you are back online");
+    /* WHAT ACTUALLY HAPPENED. This said "it will send when you are back
+       online" for a round nothing was going to send — the localStorage write
+       above reaches a till only when the till shares this browser, and a
+       guest's phone never does. It is held on the device now, it is on the
+       order as held, and `flushHeld()` sends it the moment the outlet is
+       reachable, which is what makes the sentence true. */
+    this.toast(ok ? "Sent to the kitchen"
+      : "Held on this phone — it goes as soon as you are back online");
   }
 
   // The stage the TILL published, never one this phone inferred from the
@@ -1136,6 +1209,231 @@ class Component extends DCLogic {
     if (last && new Date(hit.decided || 0).getTime() < last) return null;
     return hit;
   }
+  /* ═══ THE ONE OPEN ORDER ══════════════════════════════════════════════════
+     A guest's order is everything they have going at this table, from sitting
+     down until the bill is settled. A ROUND is not that — it is the transport,
+     one POST — and this screen used to draw the transport: `state.sent`, the
+     phone's own list of what it had sent, one card each.
+
+     Three things followed from that and all three were reported together.
+     Adding a dish drew a SECOND CARD, because it was a second POST. The
+     "not available" notice was a property of the newest round, so sending the
+     replacement made it vanish — at exactly the moment the guest wanted to
+     read it. And every card was composed from what this PHONE sent rather than
+     from what the counter accepted, so a refused dish came back the moment the
+     phone could not match the outlet's answer to a round.
+
+     The outlet has always held the right object: the open TICKET, which is
+     what the counter accepted, priced as the counter priced it, arriving on
+     the same eight-second poll the bill already reads. So the order is
+     composed from whoever actually knows each part:
+
+       · ON THE TICKET   the outlet's own open bill for this table. A refused
+                         line is not here BY CONSTRUCTION — it never reached
+                         the ticket — which is why nothing has to filter it;
+       · WITH THE COUNTER  rounds the outlet is still holding, from `PENDING`,
+                         plus a round this device has not managed to deliver,
+                         which only the phone can know;
+       · NOT COMING      every refusal in this sitting, in the counter's own
+                         words, which stay while the rest of the order cooks.
+
+     A round the phone sent that is in NEITHER pending nor declined has been
+     accepted, and its lines are already in the first part — so it is never
+     drawn twice. That is the whole of why this stops growing a card per
+     round. */
+
+  /* ROUNDS THIS TABLE HAS WITH THE COUNTER, as the OUTLET holds them. The
+     phone used to infer this by elimination, which is unanswerable the moment
+     two phones share a table or one guest orders the same dish twice. */
+  pendingHere() {
+    return ((window.KPOS || {}).PENDING || [])
+      .filter((p) => this.sameTable(p.table, this.state.table))
+      .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
+  }
+
+  /* EVERY REFUSAL IN THIS SITTING, oldest first — not the latest one.
+
+     `declinedHere()` answers with the most recent, which is right for the
+     LADDER (a table whose last word from the counter was a refusal ends
+     there) and wrong for the order, where a dish refused twenty minutes ago
+     is still a dish that is never coming. Its guard made that worse: it
+     suppressed the row as soon as a NEWER round existed, so ordering the
+     replacement is precisely what made the explanation disappear.
+
+     The guard stays and moves to the sitting's own floor. A refusal older
+     than the FIRST round this phone sent belongs to an earlier sitting and is
+     not this guest's; one after it is theirs, whatever they have ordered
+     since. */
+  declinesHere() {
+    const sent = this.state.sent || [];
+    const first = sent.length
+      ? Math.min.apply(null, sent.map((r) => r.at || 0)) : 0;
+    return ((window.KPOS || {}).DECLINED || [])
+      .filter((d) => this.sameTable(d.table, this.state.table))
+      .filter((d) => !first || new Date(d.decided || 0).getTime() >= first)
+      .sort((a, b) => new Date(a.decided || 0) - new Date(b.decided || 0));
+  }
+
+  /* A ROUND THIS DEVICE NEVER DELIVERED. The outlet cannot publish what it
+     did not receive, so this is the one part only the phone can answer — and
+     it is deliberately narrow: `oid` is stamped from the outlet's own answer,
+     so a round without one is a round whose POST never came back. This is
+     what `flushHeld()` sends again; `openOrder()` re-derives the same set
+     while it composes, because it is deciding a bucket rather than a queue. */
+  heldHere() {
+    return (this.state.sent || []).filter((r) => !r.oid);
+  }
+
+  /* SEND A HELD ROUND AGAIN, which is safe because the round carries its own
+     `opId` and the door replays it: `/order` looks the op up and returns the
+     round it already made rather than making a second one. Without that a
+     retry would be a second dinner, which is why the id is minted with the
+     round and kept on it rather than freshly per call.
+
+     Automatic and bounded: fifteen seconds between attempts on one round, one
+     flush at a time, and only where the bridge can actually reach the outlet.
+     A guest whose signal dropped for a moment should not have to notice; a
+     guest whose signal is gone gets the card saying so, and its button. */
+  flushHeld() {
+    const G = window.KPOS_GUEST_API;
+    if (this._flushing || !G || !G.ready()) return;
+    const now = Date.now();
+    const due = this.heldHere().filter((r) => !(r.tried && now - r.tried < 15000));
+    if (!due.length) return;
+    this._flushing = true;
+    this.setState({
+      sent: (this.state.sent || []).map((r) =>
+        due.indexOf(r) >= 0 ? Object.assign({}, r, { tried: now }) : r)
+    });
+    const one = due[0];
+    G.order(one.lines.map((l) => ({
+      id: l.id, qty: l.qty, addons: l.extra || 0,
+      note: [l.opt, l.note].filter(Boolean).join(" · ") || "QR"
+    })), { opId: one.opId, promo: one.promo || "",
+      name: (this.state.ident || {}).name || "",
+      phone: (this.state.ident || {}).phone || "" })
+      .then((r) => {
+        this._flushing = false;
+        if (r && r.id) this.stampRound(one.rid, r.id);
+      })
+      .catch(() => { this._flushing = false; });
+  }
+
+  openOrder() {
+    const K = window.KPOS || {};
+    /* One priced line, and the running total is kept as NUMBERS while the row
+       is kept as text: summing formatted strings is how a total starts
+       disagreeing with the lines above it. */
+    const raw = [];
+    const price = (id, given, extra, qty) => {
+      const m = this.item(id);
+      const unit = (given !== undefined && given !== null) ? given
+        : (m ? this.price(m) : 0);
+      const amt = (unit + (extra || 0)) * (qty || 0);
+      raw.push(amt);
+      return amt;
+    };
+    /* WHAT THE COUNTER ACCEPTED. `l.price` is the price the till rang — an
+       override at the counter is what the guest will actually be asked for —
+       and the menu price is only the fallback for a line that carries none. */
+    const on = [];
+    (K.TICKETS || []).filter((t) => this.sameTable(t.table, this.state.table))
+      .forEach((t) => (t.lines || []).forEach((l) => {
+        const m = this.item(l.id);
+        on.push({
+          key: "t" + t.id + ":" + on.length,
+          name: l.name || (m ? m.name : "Item"),
+          qty: l.qty, qtyStyle: l.qty > 1 ? "" : "display:none",
+          amt: this.fmt(price(l.id, l.price, 0, l.qty)),
+          // Plated and waiting to come over, on the outlet's own record.
+          readyStyle: l.ready ? "color:#2ea44f;font-weight:600" : "display:none"
+        });
+      }));
+
+    // STILL WITH THE COUNTER, named by the outlet: a phone at this table holds
+    // no record of what another phone at the same table sent.
+    const waiting = [];
+    const spokeOf = {};
+    const pend = this.pendingHere();
+    pend.forEach((g) => {
+      spokeOf[String(g.id)] = 1;
+      (g.lines || []).forEach((l) => {
+        const m = this.item(l.id);
+        waiting.push({
+          key: "p" + g.id + ":" + l.i,
+          name: l.name || (m ? m.name : "Item"),
+          qty: l.qty, qtyStyle: l.qty > 1 ? "" : "display:none",
+          amt: this.fmt(price(l.id, l.price, l.addons, l.qty))
+        });
+      });
+    });
+    this.declinesHere().forEach((d) => { spokeOf[String(d.id)] = 1; });
+
+    /* AND THIS PHONE'S OWN ROUND UNTIL THE OUTLET HAS SPOKEN ABOUT IT.
+
+       The projection is eight seconds wide, so a round pressed Send on is not
+       in it yet — and drawing nothing for eight seconds is how a guest comes
+       to press Send twice. So the phone draws what it sent, and stops the
+       moment the outlet could have answered: `polledFrom` is when a snapshot's
+       REQUEST began, so one that began after the order POST answered certainly
+       carries that round. A round the outlet has since accepted is on the
+       ticket above; one it refused is under NOT COMING; and one it never
+       received has no id at all and is held on the device. */
+    const held = [];
+    const spoke = Number((window.KPOS_GUEST || {}).polledFrom) || 0;
+    (this.state.sent || []).forEach((r) => {
+      if (r.oid && spokeOf[String(r.oid)]) return;      // the outlet's copy is drawn
+      if (r.oid && spoke > (r.oidAt || 0)) return;      // and it has answered
+      const into = r.oid ? waiting : held;
+      (r.lines || []).forEach((l, i) => {
+        const m = this.item(l.id);
+        into.push({
+          key: (r.oid ? "s" : "h") + r.rid + ":" + i,
+          name: (m ? m.name : "Item"),
+          qty: l.qty, qtyStyle: l.qty > 1 ? "" : "display:none",
+          amt: this.fmt(price(l.id, null, l.extra, l.qty))
+        });
+      });
+    });
+
+    /* AND WHAT IS NOT COMING, from the outlet's own record of each decision.
+       A WHOLE round declined names no subset — `partial` is the outlet's
+       answer to which of the two it was, so the phone never infers "is any of
+       this coming" from an empty list — and a decision taken by a build older
+       than 055 names none either, which reads as a whole round and falls back
+       to the sentence exactly as it does today. */
+    const off = [];
+    this.declinesHere().forEach((d) => {
+      const named = (d.lines || []).map((g) => {
+        const m = this.item(g.id);
+        const nm = g.name || (m ? m.name : "");
+        return nm ? nm + (g.qty > 1 ? " ×" + g.qty : "") : "";
+      }).filter(Boolean);
+      /* A whole-round refusal cannot name its dishes from the outlet, so it
+         names them from the round this phone sent — matched by the outlet's
+         own id for it and never by a clock. Where even that is missing the
+         sentence stands alone, which is what it was written to do. */
+      const mine = named.length ? named
+        : (d.partial ? [] : ((this.state.sent || [])
+          .filter((r) => String(r.oid) === String(d.id))[0] || { lines: [] })
+          .lines.map((l) => {
+            const m = this.item(l.id);
+            return m ? m.name + (l.qty > 1 ? " ×" + l.qty : "") : "";
+          }).filter(Boolean));
+      off.push({ key: "d" + d.id,
+        names: mine.length ? "Not coming: " + mine.join(", ") : "",
+        /* A refusal that could name no dish is not a blank heading over a
+           sentence — it is the sentence, which is what it was written to be. */
+        namesStyle: mine.length ? "display:block;font-weight:700" : "display:none",
+        why: d.why || "The counter could not make this",
+        at: d.decided || d.at });
+    });
+
+    const total = raw.reduce((a, n) => a + n, 0);
+    return { on: on, waiting: waiting, held: held, off: off,
+      total: total, any: !!(on.length || waiting.length || held.length || off.length) };
+  }
+
   stage() {
     /* THE STAGE IS AN INDEX, and the row carries its own step names.
 
@@ -1170,6 +1468,16 @@ class Component extends DCLogic {
        then sent another that WAS accepted has a live ticket, and that is the
        later truth. Only where nothing is open and nothing was paid does a
        refusal describe where this table actually stands. */
+    /* A ROUND STILL WITH THE COUNTER IS "RECEIVED", on the outlet's own word.
+
+       This used to fall through to the localStorage rung — this phone's record
+       of what it last SENT — which happened to read "Received" and so happened
+       to be right. It stops being right the moment the round came from another
+       phone at this table, and a ladder that is accidentally correct is one
+       nobody can reason about. It is checked BEFORE the refusal below because
+       a guest refused one round who has since sent another is waiting on the
+       new one, and that is the later truth. */
+    if (this.pendingHere().length) return { at: 0, steps: STEPS, when: null };
     const no = this.declinedHere();
     if (no) {
       return { at: 1, steps: ["Received", "Declined"], when: no.decided,
@@ -1234,8 +1542,17 @@ class Component extends DCLogic {
       promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
       split: this.state.split, parts: this.state.splitN
     });
-    this.setState({ asked: Date.now() });
-    this.toast(ok ? "Your server is on the way with the card machine" : "Saved — it will send when you are back online");
+    /* AND THE SAME SENTENCE HAD THE SAME DEFECT HERE. "It will send when you
+       are back online" was said over an ask nothing was going to send: the
+       guest portal keeps no outbox, and the localStorage half above reaches a
+       till only where the till shares this browser. An ask is not a round —
+       it has no lines and no money, so there is nothing to hold and nothing
+       worth replaying — so this says what is true and points at the one thing
+       that works from a table. `asked` is stamped only where the ask actually
+       went, or the Bill tab's dot marks a call nobody received. */
+    if (ok) this.setState({ asked: Date.now() });
+    this.toast(ok ? "Your server is on the way with the card machine"
+      : "That did not reach the counter — please catch a server's eye");
   }
 
   // ── the bill, as the till computes it ────────────────────────────────────
@@ -1682,22 +1999,19 @@ class Component extends DCLogic {
     const at = fs ? Math.max(0, Math.min(STAGES.length - 1, fs.at)) : (s.sent.length ? 0 : -1);
     const paidRow = fs && fs.paid ? fs.paid : null;
     const noRow = fs && fs.declined ? fs.declined : null;
-    /* A PARTIAL DECLINE HAS A LIVE TICKET, so the ladder is right and the
-       message still has to appear. `declinedHere()` is deliberately checked
-       after the open ticket — a guest refused one round who then sent another
-       that WAS accepted is cooking, and that is the later truth — but a round
-       where two lines were accepted and the third was not carries both at
-       once, and the guest needs telling while the two cook. So the notice is
-       read on its own rather than only as a terminal rung. */
-    const alsoNo = noRow ? null : this.declinedHere();
-    V.declineNote = (noRow || alsoNo) ? ((noRow || alsoNo).why || "") : "";
-    V.declineNoteStyle = (alsoNo && alsoNo.why)
-      ? "margin-top:12px;padding:11px 13px;border-radius:11px;background:#fff6ed;border:1px solid #f0c9a0;font-size:13.5px;color:#7a4a12;font-weight:600"
-      : "display:none";
-    V.trackSub = s.sent.length
-      ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
+    /* THE NOTICE MOVED ONTO THE ORDER, and every refusal moved with it.
+
+       This drew the LATEST decline, once, above the ladder — and
+       `declinedHere()` suppresses a refusal older than this phone's newest
+       round, so sending the replacement dish is exactly what made the
+       explanation disappear. `declinesHere()` is the sitting's whole list and
+       it sits inside the order, under NOT COMING, where a guest reading their
+       own order finds it beside what IS coming. */
+    const oo = this.openOrder();
+    V.trackSub = oo.any
+      ? "Table " + tno + " · open until the bill is settled"
       : "Nothing sent yet";
-    V.trackWrapStyle = s.sent.length ? "margin-top:20px;display:block" : "display:none";
+    V.trackWrapStyle = oo.any ? "margin-top:20px;display:block" : "display:none";
     V.stages = STAGES.map((label, i) => {
       const done = i < at, on = i === at;
       return {
@@ -1730,67 +2044,35 @@ class Component extends DCLogic {
         rail: "width:2px;flex:1;min-height:14px;background:" + (done ? "#2ea44f" : "#eeeef0") + ";display:" + (i === STAGES.length - 1 ? "none" : "block")
       };
     });
-    V.roundsWrapStyle = s.sent.length ? "margin-top:6px;display:block" : "display:none";
-    V.rounds = s.sent.slice().reverse().map((r, ri) => {
-      /* A LINE THE COUNTER COULD NOT MAKE LEAVES THE ROUND.
-
-         It used to sit here beside the dishes that WERE coming, with a note
-         underneath saying one of them was not — so the guest had to match a
-         sentence against a list to work out which of their own dishes to stop
-         waiting for. The outlet names the refused lines now (055), so they
-         come out, and what is left is what the kitchen is actually cooking.
-
-         Removed rather than struck through: this list answers "what is
-         coming", and a dish that is not coming is not an entry in it. What was
-         refused is said once, in the counter's own words, under the round it
-         belonged to — where a guest reading that round finds it. */
-      const no = self.declineOf(r);
-      const gone = (no && no.lines && no.lines.length) ? no.lines : [];
-      const hit = (l, i) => gone.some((g) =>
-        (Number.isFinite(g.i) && g.i === i) || (g.id && String(g.id) === String(l.id)));
-      /* A WHOLE round declined names no subset, and every line of it is off.
-         `partial` is the OUTLET's own answer to which of the two this was, so
-         the phone never infers it from an empty list — and a decision taken by
-         a build older than 055 carries neither, which reads as a whole-round
-         decline and says so in the sentence, exactly as it does today. */
-      const whole = !!no && !no.partial;
-      const live = whole ? [] : r.lines.filter((l, i) => !hit(l, i));
-      const offLines = whole ? r.lines.map((l, i) => ({ i: i, id: l.id, qty: l.qty })) : gone;
-      return {
-        title: "Round " + (s.sent.length - ri),
-        at: new Date(r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-        lines: live.map((l) => {
-          const m = self.item(l.id);
-          return { name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: self.fmt(((m ? self.price(m) : 0) + (l.extra || 0)) * l.qty) };
-        }),
-        /* THE REFUSED DISHES BY NAME, from the outlet's own record of the
-           decision — the name it resolved at the moment the counter decided,
-           never this phone's menu, which may no longer carry a dish the
-           kitchen has since taken off. */
-        off: offLines.map((g) => {
-          const m = self.item(g.id);
-          const nm = g.name || (m ? m.name : "");
-          return nm ? nm + (g.qty > 1 ? " ×" + g.qty : "") : "";
-        }).filter(Boolean).join(", "),
-        offWhy: no ? (no.why || "The counter could not make this") : "",
-        offStyle: (no && offLines.length)
-          ? "margin-top:10px;padding:9px 11px;border-radius:10px;background:#fff6ed;border:1px solid #f0c9a0;font-size:12.5px;color:#7a4a12;line-height:1.5;text-wrap:pretty"
-          : "display:none",
-        // Nothing left of a round is not an empty card: the notice above is
-        // the whole of what happened to it.
-        againStyle: live.length
-          ? "margin-top:12px;width:100%;padding:10px;border-radius:12px;background:#fff4f2;color:#f4553c;font-size:13px;font-weight:700;text-align:center;min-height:42px"
-          : "display:none",
-        // Reordering copies the round into the cart rather than sending it: the
-        // guest still confirms, because a stray tap must not put food on a bill.
-        again: () => {
-          self.setState({ cart: s.cart.concat(live.map((l) => Object.assign({}, l))), cartOpen: true });
-          self.toast("Copied into this round — check it and send");
-        }
-      };
-    });
-    V.trackEmpty = "Your order will appear here the moment you send it, and the steps above follow what the kitchen is actually doing.";
-    V.trackEmptyStyle = s.sent.length ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
+    /* ═══ THE ORDER ITSELF ══════════════════════════════════════════════════
+       One card, three parts, and it stays until the bill is settled. What
+       stood here was `state.sent.map(...)` — a card per POST, which is why
+       adding a dish drew a second one — composed from what this phone SENT
+       rather than from what the counter accepted. */
+    V.ooWrapStyle = oo.any ? "margin-top:6px;display:block" : "display:none";
+    V.ooOn = oo.on;
+    V.ooOnStyle = oo.on.length ? "display:block" : "display:none";
+    V.ooWaiting = oo.waiting;
+    V.ooWaitingStyle = oo.waiting.length ? "margin-top:15px;display:block" : "display:none";
+    V.ooHeld = oo.held;
+    V.ooHeldStyle = oo.held.length ? "margin-top:15px;display:block" : "display:none";
+    /* A HELD ROUND HAS A WAY OUT. The old copy promised it would send when
+       the phone was back online and nothing kept that promise; the round
+       carries its own op id now, so this is a replay at the door rather than
+       a second dinner. */
+    V.ooSendAgain = () => { self.flushHeld(); self.toast("Trying again"); };
+    V.ooOff = oo.off;
+    V.ooOffStyle = oo.off.length ? "margin-top:15px;display:block" : "display:none";
+    V.ooTotal = this.money(oo.total);
+    V.ooTotalStyle = (oo.on.length || oo.waiting.length || oo.held.length)
+      ? "margin-top:14px;padding-top:12px;border-top:1px solid #efefef;display:flex;justify-content:space-between;align-items:baseline;gap:10px"
+      : "display:none";
+    /* GOODS ONLY, and it says so. Service and tax are the till's arithmetic
+       and they are on the Bill tab; a figure here that quietly matched
+       neither would be the invented number this build refuses by name. */
+    V.ooTotalNote = "Items so far — service and " + (o.tax || "tax") + " are added on the bill";
+    V.trackEmpty = "Your order opens the moment you send a round, and it stays open — everything you add joins it — until the bill is settled.";
+    V.trackEmptyStyle = oo.any ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
 
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
@@ -1812,7 +2094,7 @@ class Component extends DCLogic {
     const addBtn = "width:100%;padding:13px;border-radius:15px;background:#fff;"
       + "border:1.4px solid #f4553c;color:#f4553c;font-size:14px;font-weight:700;"
       + "text-align:center;min-height:48px";
-    V.addMoreTrackStyle = (s.sent.length && !settledNow) ? "margin-top:18px;" + addBtn : "display:none";
+    V.addMoreTrackStyle = (oo.any && !settledNow) ? "margin-top:18px;" + addBtn : "display:none";
     V.addMoreBillStyle = (b && !settledNow) ? "margin-top:16px;" + addBtn : "display:none";
     // A ticket disappears from the published session the moment it settles, so
     // this told someone who had just paid that nothing had happened — the app's
@@ -2048,7 +2330,7 @@ class Component extends DCLogic {
       : "display:none";
     V.tabs = [
       { k: "menu", label: "Menu", icon: "M4 6h16M4 12h16M4 18h10", on: false },
-      { k: "track", label: "Order", icon: "M6 2h9l5 5v15H6zM9 12h7M9 16h5", on: s.sent.length > 0 && at >= 0 && at < 3 },
+      { k: "track", label: "Order", icon: "M6 2h9l5 5v15H6zM9 12h7M9 16h5", on: oo.any && at >= 0 && at < 3 },
       { k: "bill", label: "Bill", icon: "M3 7h18v11H3zM3 11h18M7 15h4", on: !!s.asked },
       { k: "you", label: "You", icon: "M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z", on: served && !s.rated }
     ].map((x) => ({

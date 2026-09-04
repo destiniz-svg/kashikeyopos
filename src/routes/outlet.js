@@ -980,6 +980,45 @@ async function snapshot(c, outletId) {
       + ' FROM guest_order WHERE rejected_reason IS NOT NULL'
       + " AND accepted_at > now() - interval '2 hours'"
       + ' ORDER BY accepted_at DESC LIMIT 60'],
+    /* AND A ROUND THE COUNTER HAS NOT ANSWERED YET, which is the third of the
+       three states a round can be in and the only one the phone had to INFER.
+
+       An order is one thing that stays open from the guest sitting down until
+       the bill is settled; a ROUND is only the transport — one POST. The Order
+       tab was drawing the transport, so adding a dish drew a second card, a
+       refusal scrolled away under it, and every card was composed from what
+       this PHONE sent rather than from what the outlet accepted. The open
+       ticket is the accumulating object and always was; what was missing is
+       the outlet's answer to "have you dealt with my last round", because
+       absence cannot say it: a round that has left `pending` was either put on
+       the ticket or refused, and those are the two lists beside this one.
+
+       Inferring it from the ticket is not available and that is not a matter
+       of effort: a guest who orders the same dish twice, or two phones on one
+       table, make "is this line mine and has it landed" unanswerable by
+       comparison. So the outlet says it.
+
+       The names are RESOLVED HERE, for the reason `rejected_lines` carries
+       them: a second phone at the same table holds no record of what the first
+       one sent, and the row's own `lines` carry ids the guest cannot read.
+
+       Two hours and the `guest_order_open` partial index, both matching the
+       lists above: this is read by every phone in the room every eight
+       seconds, which is what migration 030 exists to have learned once. */
+    pending: ["SELECT g.id, g.table_no, g.at,"
+      + " coalesce((SELECT json_agg(json_build_object("
+      + "     'i', el.n - 1, 'id', el.v->>'id',"
+      + "     'name', coalesce(i.name, el.v->>'name'),"
+      + "     'qty', coalesce((el.v->>'qty')::numeric, 1),"
+      + "     'price', i.price,"
+      + "     'addons', coalesce((el.v->>'addons')::numeric, 0),"
+      + "     'note', el.v->>'note') ORDER BY el.n)"
+      + '   FROM jsonb_array_elements(g.lines) WITH ORDINALITY el(v, n)'
+      + "   LEFT JOIN item i ON i.id = el.v->>'id'), '[]') AS lines"
+      + ' FROM guest_order g'
+      + ' WHERE g.accepted_at IS NULL AND g.rejected_reason IS NULL'
+      + "   AND g.at > now() - interval '2 hours'"
+      + ' ORDER BY g.at LIMIT 60'],
     /* Only what a guest should SEE tonight: live, and inside its own date
        window. The slot switch is applied below — a merchant who turned the
        strip off must empty it on every phone, not only on the till. */
@@ -1064,6 +1103,7 @@ async function snapshot(c, outletId) {
     stages: q.stages.rows,
     settled: q.settled.rows,
     declined: q.declined.rows,
+    pending: q.pending.rows,
     banners: ((q.bannerSlot.rows[0] || {}).value === true) ? q.banners.rows : [],
     promos: q.promos.rows,
     company: q.company.rows[0]

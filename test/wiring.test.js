@@ -7562,35 +7562,92 @@ test('the till sends the lines it marked, from the same marks as the sentence', 
     'and the op carries it');
 });
 
-test("the guest's round drops the line the counter could not make", () => {
+test('the QR order is one open order, not a card per round', () => {
   const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
-  /* Matched by the OUTLET's own id for the round, never by comparing two
-     clocks: "which of my three rounds had the pancakes in it" is a question
-     about somebody's dinner and must not be answered by a guess. */
-  assert.match(g, /declineOf\(round\) \{/, 'the phone can name its own round');
-  assert.match(g, /if \(!round \|\| !round\.oid\) return null;/,
-    'and a round the outlet never acknowledged matches nothing');
-  assert.match(g, /stampRound\(rid, oid\)/, 'the outlet id is kept when it answers');
-  assert.match(g, /_rid: rid/, "against this phone's own name for the round");
-
-  const from = g.indexOf('    V.rounds = s.sent.slice()');
-  const to = g.indexOf('V.trackEmpty =', from);
-  const r = g.slice(from, to);
-  assert.match(r, /const live = whole \? \[\] : r\.lines\.filter/,
-    'the refused lines come out of the round');
-  assert.match(r, /const whole = !!no && !no\.partial;/,
-    'and a whole-round decline is the outlet\'s own answer, not an inference');
-  assert.match(r, /lines: live\.map/, 'what is listed is what is coming');
-  assert.match(r, /off: offLines\.map/, 'what is not is named');
-  assert.match(r, /g\.name \|\| \(m \? m\.name : ""\)/,
-    "using the name the outlet resolved, not this phone's menu");
-  // Reordering a round must copy what can actually be cooked.
-  assert.match(r, /cart: s\.cart\.concat\(live\.map/,
-    'and ordering it again does not re-order the refused dish');
-
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
   const b = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest-bridge.js'), 'utf8');
-  assert.match(b, /partial: !!d\.partial/, 'the bridge carries which kind it was');
-  assert.match(b, /lines: \(d\.rejected_lines \|\| \[\]\)\.map/, 'and the lines');
+
+  /* THE DEFECT THIS PINS. The Order tab was `state.sent.map(...)` — a card per
+     POST — so adding a dish drew a second round, the "not available" notice
+     was a property of the newest round and vanished when the guest ordered
+     the replacement, and every card was composed from what this PHONE sent
+     rather than from what the counter accepted. */
+  assert.ok(!/V\.rounds = s\.sent/.test(g),
+    'the order is no longer a list of this phone\'s POSTs');
+  assert.match(g, /const oo = this\.openOrder\(\);/, 'it is one composed order');
+
+  // ── what the counter accepted, from the outlet's own open ticket ────────
+  const from = g.indexOf('  openOrder() {');
+  const to = g.indexOf('\n  }\n', from);
+  assert.ok(from > 0 && to > from, 'found openOrder()');
+  const oo = g.slice(from, to);
+  assert.match(oo, /K\.TICKETS \|\| \[\]\)\.filter\(\(t\) => this\.sameTable/,
+    'the accepted part is the outlet\'s ticket for this table');
+  /* A refused line is not on the ticket BY CONSTRUCTION — it never reached
+     one — which is why nothing here filters it out. */
+  assert.ok(!/on\s*=\s*on\.filter/.test(oo), 'nothing has to filter the refused lines out');
+  assert.match(oo, /const pend = this\.pendingHere\(\);/, 'the waiting part is the outlet\'s');
+  assert.match(oo, /this\.declinesHere\(\)\.forEach/,
+    'with every refusal in the sitting, not only the latest');
+  /* AND THE PHONE'S OWN ROUND UNTIL THE OUTLET HAS HAD A CHANCE TO SPEAK. The
+     projection is eight seconds wide, so a round just sent is not in it yet,
+     and drawing nothing is how a guest presses Send twice. `polledFrom` is
+     when a snapshot's REQUEST began — one that began after the POST answered
+     certainly carries the round — so comparing against it never loses the
+     race the way an arrival time does. */
+  assert.match(oo, /if \(r\.oid && spokeOf\[String\(r\.oid\)\]\) return;/,
+    "the outlet's own copy replaces the phone's, so a round is never drawn twice");
+  assert.match(oo, /if \(r\.oid && spoke > \(r\.oidAt \|\| 0\)\) return;/,
+    'and the phone stops drawing its own once the outlet could have answered');
+  assert.match(oo, /const into = r\.oid \? waiting : held;/,
+    'a round with no id at the outlet is held on the device, not merely waiting');
+  assert.match(b, /root\.KPOS_GUEST\.polledFrom = began;/,
+    "and the bridge reports when the ask BEGAN, not when it landed");
+
+  // ── the outlet says "not decided yet"; the phone never infers it ────────
+  const pf = out.indexOf('    pending: [');
+  const pt = out.indexOf('\n    /* Only what a guest should SEE tonight', pf);
+  assert.ok(pf > 0 && pt > pf, 'found the pending query');
+  const pq = out.slice(pf, pt);
+  assert.match(pq, /g\.accepted_at IS NULL AND g\.rejected_reason IS NULL/,
+    'a round the counter has not answered');
+  /* Names resolved AT THE OUTLET, for the same reason rejected_lines carries
+     them: a second phone at this table holds no record of what the first
+     one sent, and the row's own lines carry ids a guest cannot read. */
+  assert.match(pq, /LEFT JOIN item i ON i\.id = el\.v->>'id'/, 'with the names resolved there');
+  /* Every phone in the room reads this every eight seconds — the partial
+     index and the two-hour window are what keep it off a sequential scan. */
+  assert.match(pq, /interval '2 hours'/, 'bounded like settled and declined');
+  const psql = pq.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/unit_cost|line_cost|avg_cost/.test(psql), 'and nothing a guest may not see');
+  assert.match(out, /pending: q\.pending\.rows,/, 'published');
+  assert.match(b, /K\.PENDING = \(snap\.pending \|\| \[\]\)\.map/, 'and mapped by the bridge');
+
+  // ── the refusal stays while the rest cooks ─────────────────────────────
+  const df = g.indexOf('  declinesHere() {');
+  const dt = g.indexOf('\n  }\n', df);
+  assert.ok(df > 0, 'found declinesHere()');
+  const dh = g.slice(df, dt);
+  /* THE GUARD MOVED TO THE SITTING'S FLOOR. `declinedHere()` discards a
+     refusal older than this phone's NEWEST round, so ordering the
+     replacement is exactly what used to make the explanation disappear. */
+  assert.match(dh, /Math\.min\.apply\(null, sent\.map/,
+    'guarded against an earlier sitting, never against a newer round');
+  assert.ok(!/Math\.max\.apply/.test(dh), 'so a newer round cannot suppress it');
+
+  // ── a held round has a way out, and it is a replay, not a second dinner ──
+  assert.match(g, /const opId = this\.opId\(\);/, 'the round mints its own op id');
+  assert.match(g, /opId: opId,/, 'and keeps it');
+  assert.match(b, /opId: e\.opId \|\| uuid\(\)/, 'the bridge sends the caller\'s');
+  assert.match(g, /this\.flushHeld\(\);/, 'and an undelivered round goes on its own');
+  /* The old toast said it would send when the phone was back online and
+     nothing kept that promise. */
+  assert.ok(!/it will send when you are back online/.test(g),
+    'the send message says what actually happened');
+
+  // ── and the outlet is asked whether a round is still with the counter ───
+  assert.match(g, /if \(this\.pendingHere\(\)\.length\) return \{ at: 0, steps: STEPS/,
+    'the ladder reads pending rather than falling through to localStorage');
 });
 
 /* ═══ THE SETTLED BILL LISTS WHAT WAS DELIVERED ════════════════════════════ */
@@ -7632,8 +7689,8 @@ test('a guest is offered more items while the table is unsettled', () => {
      bill on a table somebody is leaving is worse than no control. */
   assert.match(g, /const settledNow = !!this\.settledHere\(\);/,
     "gated on the outlet's own answer about settlement");
-  assert.match(g, /V\.addMoreTrackStyle = \(s\.sent\.length && !settledNow\)/,
-    'drawn on the tracker');
+  assert.match(g, /V\.addMoreTrackStyle = \(oo\.any && !settledNow\)/,
+    'drawn on the tracker, keyed off the open order rather than a round count');
   assert.match(g, /V\.addMoreBillStyle = \(b && !settledNow\)/, 'and on the bill');
   assert.ok(g.split('onClick="{{ addMore }}"').length - 1 === 2,
     'exactly two controls, one per screen');

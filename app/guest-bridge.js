@@ -270,6 +270,21 @@
             name: l.name || "", qty: Number(l.qty) || 1 };
         }) };
     });
+    /* AND A ROUND THE COUNTER HAS NOT ANSWERED YET. The third state, and the
+       only one the phone used to infer: a round it had sent and could not find
+       in either list above was assumed to be waiting, which is unanswerable
+       once two phones share a table or one guest orders the same dish twice.
+       The outlet says it, with the dish NAMES resolved there — a second phone
+       at this table holds no record of what the first one sent. */
+    K.PENDING = (snap.pending || []).map(function (g) {
+      return { id: g.id, table: g.table_no, at: g.at,
+        lines: (g.lines || []).map(function (l) {
+          return { i: Number(l.i) || 0, id: l.id == null ? null : String(l.id),
+            name: l.name || "", qty: Number(l.qty) || 1,
+            price: l.price == null ? null : Number(l.price),
+            addons: Number(l.addons) || 0, note: l.note || "" };
+        }) };
+    });
     /* WHAT THIS STORE ACTUALLY SELLS — a ranking measured off settled bills,
        never a shape the phone works out for itself. An outlet that has sold
        nothing publishes an empty list and the rail draws no tab at all. */
@@ -282,8 +297,20 @@
 
   function refresh() {
     if (!state.token) return Promise.resolve(null);
+    /* WHEN THIS ASK BEGAN, not when it landed. A round the phone sent is drawn
+       from the phone until the OUTLET has had a chance to mention it, and
+       "had a chance" is a question about when the server ran the query — a
+       snapshot whose request started after the order POST answered certainly
+       contains that round, where one already in flight may not. Comparing
+       arrival times instead loses the race, and a round that appears on send
+       and vanishes for eight seconds is worse than one that is slow. */
+    var began = Date.now();
     return api("/api/g/" + encodeURIComponent(state.slug) + "/menu")
-      .then(function (s) { hydrate(s); return s; })
+      .then(function (s) {
+        hydrate(s);
+        root.KPOS_GUEST.polledFrom = began;
+        return s;
+      })
       .catch(function () { return null; });
   }
 
@@ -320,7 +347,14 @@
          token, because a client-claimed member id on an anonymous door would
          let anybody earn on anybody's card. */
       var e = extra || {};
-      var b = { table: e.table || state.table, lines: lines, opId: uuid(),
+      /* THE CALLER'S OWN OP ID WHERE IT HAS ONE, so a round that has to be
+         sent again is the same round. `/order` looks the op up and answers
+         with the order it already made; minting a fresh id per CALL — which
+         is what this did — made every retry a second dinner, so there could
+         be no retry at all and "it will send when you are back online" was a
+         sentence nothing kept. */
+      var b = { table: e.table || state.table, lines: lines,
+        opId: e.opId || uuid(),
         promo: e.promo, name: e.name, phone: e.phone, note: e.note };
       return api("/api/g/" + encodeURIComponent(state.slug) + "/order",
         { method: "POST", body: b,
