@@ -29,6 +29,7 @@ export function Sidebar({
   can,
   go,
   say,
+  onNavigate,
 }: {
   user: SessionUser
   view: View
@@ -36,6 +37,8 @@ export function Sidebar({
   can(p: Permission): boolean
   go(path: string): void
   say(m: string, tone?: 'ok' | 'err'): void
+  /** Called after anything here moves the workspace, so a drawer can close itself. */
+  onNavigate?(): void
 }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
@@ -87,7 +90,10 @@ export function Sidebar({
                 key={n.view}
                 as="button"
                 type="button"
-                onClick={() => go(href(n.view))}
+                onClick={() => {
+                  go(href(n.view))
+                  onNavigate?.()
+                }}
                 aria-current={active ? 'page' : undefined}
                 style={{
                   ...css('display:flex;align-items:center;gap:10px;text-align:left;border:0;padding:11px 14px;font-size:14px;border-radius:3px;min-height:42px;transition:all .2s;width:100%;'),
@@ -110,7 +116,7 @@ export function Sidebar({
       </div>
 
       <div style={css('border-top:1px solid var(--line-06);padding:18px 20px;display:flex;flex-direction:column;gap:14px;')}>
-        <a href="/" target="_blank" rel="noopener" style={css('font-size:13px;color:var(--ink);')}>
+        <a href="/" target="_blank" rel="noopener" onClick={() => onNavigate?.()} style={css('font-size:13px;color:var(--ink);min-height:24px;display:inline-block;')}>
           View live site ↗
         </a>
         <button type="button" onClick={toggleTheme} style={css('background:none;border:0;padding:0;text-align:left;color:var(--ink);font-size:13px;')}>

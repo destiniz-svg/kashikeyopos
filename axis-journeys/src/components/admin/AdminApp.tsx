@@ -7,7 +7,7 @@
  * views and the editor from the prototype. Routing is by URL segment rather than by state, so a
  * specialist can send a colleague a link to the property they are both looking at.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { css } from '@/components/ui/css'
 import { api, type DocView, type SessionUser } from '@/lib/admin/client'
@@ -36,6 +36,19 @@ export interface Workspace {
 
 const EMPTY_COLS: Record<ContentCollection, DocView[]> = { properties: [], offers: [], destinations: [], homepage: [], settings: [] }
 
+/** What the narrow bar calls the screen you are on. */
+const VIEW_LABEL: Record<View, string> = {
+  dashboard: 'Dashboard',
+  properties: 'Properties',
+  offers: 'Offers',
+  destinations: 'Destinations',
+  homepage: 'Homepage',
+  settings: 'Settings',
+  enquiries: 'Enquiries',
+  media: 'Media',
+  team: 'Team',
+}
+
 export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id: string | null }) {
   const router = useRouter()
   const [ws, setWs] = useState<Workspace>({
@@ -49,6 +62,13 @@ export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id
   })
   const [toast, setToast] = useState<{ message: string; tone: 'ok' | 'err' } | null>(null)
   const [loading, setLoading] = useState(true)
+  /**
+   * The sidebar is the only way to reach seven of the nine sections, and below 820px it used to be
+   * `display:none` with nothing in its place — so on a phone the workspace was three dashboard
+   * cards and no way back. It is a drawer at that width now; above it, nothing about this changes.
+   */
+  const [navOpen, setNavOpen] = useState(false)
+  const menuButton = useRef<HTMLButtonElement>(null)
 
   const can = useCallback((p: Permission) => ROLES[user.role].can.includes(p), [user.role])
 
@@ -97,6 +117,22 @@ export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id
   )
 
   const go = useCallback((path: string) => router.push(path), [router])
+  const closeNav = useCallback(() => setNavOpen(false), [])
+
+  // A drawer left open across a navigation covers the screen it just opened.
+  useEffect(() => setNavOpen(false), [view, id])
+
+  useEffect(() => {
+    if (!navOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setNavOpen(false)
+      // Focus goes back to what opened it, or a keyboard user is left at the top of the document.
+      menuButton.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [navOpen])
 
   const body = useMemo(() => {
     if (view === 'dashboard') return <Dashboard ws={ws} go={go} can={can} />
@@ -110,9 +146,54 @@ export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id
     return <CollectionList col={col} ws={ws} reload={reload} say={say} can={can} go={go} />
   }, [view, id, ws, reload, say, can, go, resolveImage])
 
+  const newEnquiries = ws.enquiries.filter((e) => e.status === 'new').length
+
   return (
-    <div id="app-grid" style={css('display:grid;grid-template-columns:232px 1fr;min-height:100vh;background:var(--bg);color:var(--ink);')}>
-      <Sidebar user={ws.user} view={view} newEnquiries={ws.enquiries.filter((e) => e.status === 'new').length} can={can} go={go} say={say} />
+    <div id="app-grid" data-nav={navOpen ? 'open' : 'shut'} style={css('display:grid;grid-template-columns:232px 1fr;min-height:100vh;background:var(--bg);color:var(--ink);')}>
+      {/* Drawn only below 820px, by admin.css. Above it the sidebar is always there and this is not. */}
+      <header id="studio-bar" style={css('display:none;align-items:center;gap:12px;padding:0 14px;height:60px;background:var(--bg-deep);border-bottom:1px solid var(--line-06);position:sticky;top:0;z-index:120;')}>
+        <button
+          ref={menuButton}
+          type="button"
+          onClick={() => setNavOpen((v) => !v)}
+          aria-expanded={navOpen}
+          aria-controls="sidebar"
+          aria-label={navOpen ? 'Close the sections menu' : 'Open the sections menu'}
+          style={css('display:flex;align-items:center;justify-content:center;gap:9px;background:none;border:1px solid var(--line-16);color:var(--ink);height:44px;min-width:44px;padding:0 13px;border-radius:3px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;')}
+        >
+          Menu
+          <span style={css('display:flex;flex-direction:column;gap:4px;')}>
+            <span style={css('display:block;width:15px;height:1px;background:currentColor;')} />
+            <span style={css('display:block;width:15px;height:1px;background:currentColor;')} />
+          </span>
+        </button>
+        <span style={css('flex:1;min-width:0;font-size:13px;text-transform:capitalize;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;')}>{VIEW_LABEL[view]}</span>
+        {newEnquiries > 0 && (
+          <span style={css('background:#E0B94F;color:#00102F;font-size:11px;font-weight:600;min-width:20px;height:20px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 6px;flex:none;')}>
+            {newEnquiries}
+          </span>
+        )}
+      </header>
+
+      {/* The scrim is a real button so the drawer can be dismissed by tapping beside it. */}
+      <button
+        id="studio-scrim"
+        type="button"
+        tabIndex={navOpen ? 0 : -1}
+        aria-label="Close the sections menu"
+        onClick={closeNav}
+        style={css('display:none;position:fixed;inset:0;z-index:130;border:0;background:rgba(5,7,14,.6);')}
+      />
+
+      <Sidebar
+        user={ws.user}
+        view={view}
+        newEnquiries={newEnquiries}
+        can={can}
+        go={go}
+        say={say}
+        onNavigate={closeNav}
+      />
       <main id="main" style={css('padding:28px 32px 80px;min-width:0;')}>
         {loading ? <div style={css('color:var(--muted);font-size:13px;padding:40px 0;')}>Loading the workspace…</div> : body}
       </main>

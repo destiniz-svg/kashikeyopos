@@ -318,3 +318,35 @@ can hold one, and the logger is called from catch blocks with values nobody chos
 throw takes the request with it, and the thing it was reporting is the thing that is lost. Cycles
 are marked `[circular]` now, depth is `[deep]`, and `emit()` has a last fence that still writes the
 level, the scope and the message when a field cannot be serialised at all.
+
+---
+
+## 15. The CMS had no navigation on a phone
+
+Reported from a real device, and it was exactly what it sounded like. `admin.css` hid the sidebar
+below 820px:
+
+```css
+@media (max-width: 820px) { .axis-studio #sidebar { display: none !important; } }
+```
+
+Nothing took its place. The sidebar is the only way to reach seven of the nine sections, so what was
+left on a phone was three dashboard cards — Properties, Offers, Enquiries — and no route at all to
+Destinations, Homepage, Media, Settings or Team, no theme toggle, no link to the live site, and no
+way to sign out. Once you were on one of those three screens there was no way back to the dashboard
+but the browser's own button. Measured before the fix: 27 reachable controls at 1440px, 15 at 390px.
+
+The sidebar is a **drawer** at that width now, opened from a bar carrying the menu button and the
+name of the screen you are on. It is the same sidebar — the same markup, the same items, the same
+styling — and only where it sits changes; above 820px nothing about the rendering is different,
+which matters because the desktop layout is the prototype's.
+
+It closes on navigating, on the scrim, and on Escape, which hands focus back to the button that
+opened it. The transition is disabled under `prefers-reduced-motion`, because a drawer that arrives
+by transform is a drawer that never arrives when the animation does not run.
+
+**Why the suite did not catch it.** There was already a responsive test for the CMS at 390px, and it
+passed: it asserts no screen scrolls sideways, and it reaches each screen **by URL**. A drive that
+never clicks cannot notice that the navigation is gone. The replacement drives it the way a person
+does — open the menu, read what is in it, tap one — at 820, 390 and 320px, and asserts the desktop
+still has no menu button at all.

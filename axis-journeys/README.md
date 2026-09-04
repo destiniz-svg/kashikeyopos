@@ -133,3 +133,6 @@ Stated here rather than left to be discovered:
   resolve is not.
 - **No screen reader has been driven.** Contrast, keyboard reachability, focus rings and WCAG 2.5.8
   target sizes are measured in a real browser; the rest is not automated.
+- **Responsive tests drive the screens rather than the URLs.** That distinction cost something once:
+  a CMS test that navigated by URL passed while the sidebar was hidden on every phone, with nothing
+  in its place. A drive that never clicks cannot notice that the navigation is gone.

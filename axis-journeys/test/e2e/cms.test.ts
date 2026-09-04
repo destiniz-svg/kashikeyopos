@@ -206,6 +206,90 @@ describe('the CRM', () => {
 })
 
 describe('the CMS on a phone', () => {
+  /**
+   * The sidebar is the only way to reach seven of the nine sections, and below 820px it was
+   * `display:none` with nothing in its place — so the whole workspace was three dashboard cards and
+   * no way back but the browser's own button. Reported from a real phone, and invisible to the
+   * responsive test that already existed here, because that one navigates by URL: a drive that never
+   * clicks cannot notice that the navigation is gone.
+   */
+  for (const width of [820, 390, 320]) {
+    it(`every section is reachable at ${width}px`, async () => {
+      const ctx = await newContext(s, { width, height: 844 }, { hasTouch: true })
+      const page = await ctx.newPage()
+      await page.goto(h.base + '/admin/login', { waitUntil: 'domcontentloaded' })
+      await page.waitForLoadState('networkidle').catch(() => undefined)
+      await page.fill('input[type="email"]', OWNER.email)
+      await page.fill('input[type="password"]', OWNER.password)
+      await page.click('button[type="submit"]')
+      await page.waitForURL(/\/admin(?!\/login)/, { timeout: 20_000 })
+      await page.waitForTimeout(900)
+
+      const menu = page.locator('#studio-bar button[aria-expanded]')
+      assert.equal(await menu.isVisible(), true, 'there is no way to open the sections')
+      const box = await menu.boundingBox()
+      assert.ok(box && box.height >= 44, `the menu button is ${box?.height}px tall`)
+      assert.equal(await menu.getAttribute('aria-expanded'), 'false')
+
+      await menu.click()
+      await page.waitForTimeout(450)
+      assert.equal(await menu.getAttribute('aria-expanded'), 'true')
+
+      const reachable = await page.locator('#sidebar button, #sidebar a').allInnerTexts()
+      for (const section of ['Dashboard', 'Properties', 'Offers', 'Destinations', 'Homepage', 'Enquiries', 'Media', 'Settings', 'Team']) {
+        assert.ok(reachable.some((t) => t.trim().startsWith(section)), `${section} cannot be reached at ${width}px`)
+      }
+      // And the two that are not sections but are the only way out of the workspace.
+      assert.ok(reachable.some((t) => /live site/i.test(t)), 'no link to the live site')
+      assert.ok(reachable.some((t) => /^Out$/m.test(t.trim())), 'no way to sign out')
+
+      // Tapping one navigates AND closes the drawer: one left open covers the screen it just opened.
+      await page.locator('#sidebar button').filter({ hasText: /^Settings/ }).first().click()
+      await page.waitForTimeout(1400)
+      assert.match(page.url(), /\/admin\/settings$/)
+      const stillOpen = await page.locator('#sidebar').evaluate((el) => el.getBoundingClientRect().left > -5)
+      assert.equal(stillOpen, false, 'the drawer stayed open over the screen it opened')
+
+      // And the scrim dismisses it without going anywhere. The click has to land on the part of the
+      // scrim that is actually uncovered — the drawer sits over its left side, and its centre is
+      // behind the drawer, which is where a click would go by default and not where a thumb goes.
+      await menu.click()
+      await page.waitForTimeout(450)
+      const drawer = await page.locator('#sidebar').boundingBox()
+      assert.ok(drawer && drawer.width < width - 40, `the drawer leaves only ${width - (drawer?.width ?? 0)}px to tap beside it`)
+      await page.mouse.click(width - 20, 300)
+      await page.waitForTimeout(450)
+      assert.equal(await menu.getAttribute('aria-expanded'), 'false')
+      assert.match(page.url(), /\/admin\/settings$/, 'dismissing the drawer navigated somewhere')
+
+      // Escape closes it too, and hands focus back to what opened it.
+      await menu.click()
+      await page.waitForTimeout(450)
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(450)
+      assert.equal(await menu.getAttribute('aria-expanded'), 'false')
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-controls')), 'sidebar')
+      await ctx.close()
+    })
+  }
+
+  it('the sidebar is simply there above 820px, with no menu button', async () => {
+    // The desktop rendering is the prototype's and must not change.
+    const ctx = await newContext(s, { width: 1440, height: 900 })
+    const page = await ctx.newPage()
+    await page.goto(h.base + '/admin/login', { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('networkidle').catch(() => undefined)
+    await page.fill('input[type="email"]', OWNER.email)
+    await page.fill('input[type="password"]', OWNER.password)
+    await page.click('button[type="submit"]')
+    await page.waitForURL(/\/admin(?!\/login)/, { timeout: 20_000 })
+    await page.waitForTimeout(900)
+    assert.equal(await page.locator('#studio-bar').isVisible(), false, 'the narrow bar is showing on a desktop')
+    assert.equal(await page.locator('#sidebar').isVisible(), true)
+    assert.equal(await page.locator('#studio-scrim').isVisible(), false)
+    await ctx.close()
+  })
+
   it('does not scroll sideways on any of its screens', async () => {
     const ctx = await newContext(s, { width: 390, height: 844 })
     const page = await ctx.newPage()
