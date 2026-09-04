@@ -112,6 +112,11 @@ A platform that resolves an unknown reference to an empty string is a real hazar
 reads `${{SOME_SERVICE.KEY}}` in a dashboard can arrive as nothing. `config.ts` treats a value
 still wearing `${{…}}` as unset, so this fails loudly at boot rather than silently at 2 a.m.
 
+`MEDIA_MAX_BYTES` and `MEDIA_VIDEO_MAX_BYTES` are the two the media plane reads. They are limits,
+not editorial standards: what makes a photograph or a clip good enough for this site is in
+`src/lib/media/standards.ts`, is the same rule in the browser and on the server, and refuses only
+what cannot work anywhere — everything else it accepts and says out loud.
+
 **Secrets never go in the image, in the repository, or in the browser.** `SESSION_SECRET`,
 `TURNSTILE_SECRET_KEY` and the AWS credentials are injected from Secrets Manager by the task
 definition. The only variable the browser ever sees is `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, which is a
@@ -176,6 +181,22 @@ rather than short-TTL rules for exactly that reason.
 - Turnstile: issue the site and secret key here, set both variables, and leave
   `TURNSTILE_REQUIRED=1` in production. With no secret the verifier says so and the form still
   works, which is right for development and wrong for the live site.
+
+### Upload size
+
+Set the zone's maximum upload size above `MEDIA_VIDEO_MAX_BYTES` plus three times `MEDIA_MAX_BYTES`
+— one video and its poster renditions, which is the largest legitimate request `/api/media` takes —
+and not far above it. **This is the only place an oversized body can actually be refused.**
+
+Measured, because the application originally claimed otherwise: a POST that announces 900 MB and
+sends seven bytes gets no answer from the app at all, and neither does one aimed at a route that
+does not exist. The platform receives the whole body before anything is dispatched, so a handler
+cannot turn one away at the door. What the handler's `content-length` check does do is refuse
+before `formData()` parses, which saves the multipart decode and the copy of every part it
+allocates — worth having, and not a fence.
+
+On the AWS side the same limit belongs on the load balancer or the API gateway in front of the
+service.
 
 ### Redirects
 

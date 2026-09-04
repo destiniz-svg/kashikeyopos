@@ -15,12 +15,20 @@ export type Tier = (typeof TIERS)[number]
 
 /** `[label, title, detail]` */
 export type Day = [string, string, string]
-/** `[name, meta, supplementUsd, img?, description?, features?, focalPos?]` */
-export type Villa = [string, string, number, string?, string?, string[]?, string?]
+/**
+ * `[name, meta, supplementUsd, img?, description?, features?, focalPos?, imgs?, imgsPos?]`
+ *
+ * `img` is the lead photograph — the one on the collapsed row and the one a card crops to. `imgs`
+ * is every further photograph of the same room, in the order somebody chose; `imgsPos` is their
+ * focal points, filled in by the resolver rather than stored. Appending rather than reshaping is
+ * deliberate: the seed, the CMS and the site all read these positionally, so a document written
+ * before this simply has nothing at index 7 and renders exactly as it did.
+ */
+export type Villa = [string, string, number, string?, string?, string[]?, string?, string[]?, string[]?]
 /** `[mode, duration, supplementUsd]` */
 export type Transfer = [string, string, number]
-/** `[venue, cuisine, setting, img?, description?, tags?, focalPos?]` */
-export type Venue = [string, string, string, string?, string?, string[]?, string?]
+/** `[venue, cuisine, setting, img?, description?, tags?, focalPos?, imgs?, imgsPos?]` — see `Villa`. */
+export type Venue = [string, string, string, string?, string?, string[]?, string?, string[]?, string[]?]
 /** `[name, meta, description, treatments]` */
 export type Spa = [string, string, string, string[]]
 /** `[name, meta, houseReef, marineLife]` */
@@ -113,6 +121,12 @@ export interface Destination {
   card: string
   video?: string
   videoCredit?: string
+  /**
+   * The destination page's own gallery. Left empty it falls back to the hero photograph of the
+   * first few properties in that destination, which is what the page has always drawn — so this
+   * adds an editorial choice without taking away the sensible default.
+   */
+  gallery?: GalleryShot[]
   facts: Fact[]
   highlights: string[]
   /** `[option, timing, detail]` */
@@ -181,6 +195,14 @@ export interface Enquiry {
 
 export interface MediaRecord {
   id: string
+  /**
+   * A record written before the library took video carries no kind at all. That is a real answer
+   * rather than a gap — every one of them is an image — so readers ask `kindOf()` instead of
+   * reading this field raw, and nothing had to be rewritten to introduce it.
+   */
+  kind?: 'image' | 'video'
+  /** Seconds. Video only, and 0 where nothing could measure it. */
+  duration?: number
   name: string
   alt: string
   credit: string
@@ -190,9 +212,15 @@ export interface MediaRecord {
   bytes: number
   createdAt: number
   by: string
-  /** Content type of the stored renditions. */
+  /** Content type of the stored renditions — of the video itself on a video record. */
   mime: string
+  /** What the standard said about it when it was uploaded, kept so the library can show it. */
+  standard?: { level: 'refuse' | 'warn'; code: string; says: string }[]
 }
+
+/** Every record without a kind is an image; see the field's own note. */
+export const kindOf = (m: Pick<MediaRecord, 'kind'> | null | undefined): 'image' | 'video' =>
+  m?.kind === 'video' ? 'video' : 'image'
 
 export type ContentCollection = 'properties' | 'offers' | 'destinations' | 'homepage' | 'settings'
 export const CONTENT_COLLECTIONS: ContentCollection[] = ['properties', 'offers', 'destinations', 'homepage', 'settings']

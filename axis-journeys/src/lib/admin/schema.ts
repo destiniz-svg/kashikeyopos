@@ -18,6 +18,8 @@ export type FieldType =
   | 'months'
   | 'tags'
   | 'image'
+  | 'images'
+  | 'video'
   | 'list'
 
 export interface Choice {
@@ -32,6 +34,15 @@ export interface ListColumn {
   type?: FieldType
   ph?: string
   span?: string
+  /**
+   * Which slot of a tuple row this column edits, when it is not the column's own position.
+   *
+   * A villa is `[name, meta, supplement, img, description, features, focalPos, imgs]` and slot 6
+   * is written by the media resolver rather than by a person — so the column that edits slot 7
+   * has to say so. The alternative is a dummy column standing in for a field nobody edits, which
+   * is a row in the editor that exists to make an index line up.
+   */
+  at?: number
 }
 
 export interface Field {
@@ -67,7 +78,9 @@ export interface SchemaContext {
 }
 
 const opt = (a: string[]): Choice[] => a.map((x) => ({ v: x, l: x }))
-const imgCol: ListColumn = { label: 'Image', type: 'image', span: '1/-1' }
+const imgCol: ListColumn = { label: 'Lead photo', type: 'image', span: '1/-1' }
+/** Slot 7 of a villa or venue row; slot 6 is the resolver's focal position. */
+const moreCol: ListColumn = { label: 'More photos', type: 'images', span: '1/-1', at: 7 }
 
 export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section[] {
   const L = ctx.lists
@@ -134,7 +147,7 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
       {
         key: 'rooms',
         title: 'Accommodation',
-        help: 'Each room type gets a photo, a short description and a feature list. Supplement is added on top of the offer rate; 0 = included.',
+        help: 'Each room type gets its photographs, a short description and a feature list. The lead photo is the one on the room list; the rest open as a gallery. Supplement is added on top of the offer rate; 0 = included.',
         fields: [
           { path: 'rooms', label: 'Summary', ph: '38 villas' },
           {
@@ -151,6 +164,7 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
               imgCol,
               { label: 'Description', type: 'textarea', span: '1/-1' },
               { label: 'Features', type: 'tags', span: '1/-1' },
+              moreCol,
             ],
           },
         ],
@@ -158,7 +172,7 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
       {
         key: 'dining',
         title: 'Dining',
-        help: 'Venues with cuisine, setting, photo and hours or inclusion tags.',
+        help: 'Venues with cuisine, setting, photographs and hours or inclusion tags. The lead photo is the one on the venue list; the rest open as a gallery.',
         fields: [
           { path: 'diningShort', label: 'Summary', ph: '4 venues · 1 bar' },
           { path: 'board', label: 'Board basis', ph: 'Half board included · Full board available' },
@@ -175,6 +189,7 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
               imgCol,
               { label: 'Description', type: 'textarea', span: '1/-1' },
               { label: 'Hours / tags', type: 'tags', span: '1/-1' },
+              moreCol,
             ],
           },
         ],
@@ -314,8 +329,17 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
           { path: 'intro', label: 'Intro', type: 'textarea', rows: 4, span: '1/-1' },
           { path: 'hero', label: 'Hero image (poster)', type: 'image' },
           { path: 'card', label: 'Card image (menus, tiles)', type: 'image' },
-          { path: 'video', label: 'Hero video URL', ph: '/assets/video/… or https://…mp4', span: '1/-1' },
+          { path: 'video', label: 'Hero video', type: 'video', span: '1/-1', hint: 'Uploaded, or an address — either way, check it' },
           { path: 'videoCredit', label: 'Video credit' },
+          {
+            path: 'gallery',
+            label: 'Gallery',
+            type: 'list',
+            span: '1/-1',
+            addLabel: 'Add photo',
+            hint: 'Leave empty and the page shows the first few properties here',
+            cols: [{ key: 'img', label: 'Photo', type: 'image' }, { key: 'cap', label: 'Caption' }],
+          },
         ],
       },
       {

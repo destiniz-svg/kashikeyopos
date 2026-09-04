@@ -7,37 +7,68 @@
  * exactly the sizes in `admin/API.md`. Doing it there rather than in a Lambda is what keeps this
  * build free of a native image dependency, and it has a security dividend SECURITY.md asks for:
  * re-encoding through a canvas drops EXIF and its GPS tags.
+ *
+ * A video is stored as it arrived — nothing here transcodes, and a build with two runtime
+ * dependencies is not going to start. What the device sends alongside it is a frame captured from
+ * the clip, encoded as the same three picture renditions, so a video record draws in the library
+ * grid and has a poster the moment it is used.
  */
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { signRequest } from '../aws/sigv4'
 import { config } from '../config'
 import { log } from '../http/log'
+import { setSingleton, singleton } from '../singleton'
 
 export const SIZES = { hero: 1600, card: 800, thumb: 320 } as const
 export type Size = keyof typeof SIZES
 export const isSize = (v: string): v is Size => v === 'hero' || v === 'card' || v === 'thumb'
 
+/**
+ * What is stored under one media id.
+ *
+ * The three picture sizes, and — for a video record — the file itself. A video still carries all
+ * three picture renditions: they are a frame captured from it on the device, which is what the
+ * library grid draws, what a `<video>` shows before it has decoded anything, and what a browser
+ * that refuses to autoplay is left with. A video with no poster is a black rectangle.
+ */
+export type Rendition = Size | 'video'
+export const RENDITIONS: Rendition[] = ['hero', 'card', 'thumb', 'video']
+export const isRendition = (v: string): v is Rendition => (RENDITIONS as string[]).includes(v)
+
 /** The only content types accepted. A rendition is always a JPEG; a logo may keep its alpha. */
 export const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
+/** Containers a browser plays inline without a plug-in, which is the whole of what the hero needs. */
+export const ALLOWED_VIDEO_MIME = new Set(['video/mp4', 'video/webm'])
 
 export interface MediaStore {
-  put(id: string, size: Size, bytes: Buffer, mime: string): Promise<void>
-  get(id: string, size: Size): Promise<{ bytes: Buffer; mime: string } | null>
+  put(id: string, size: Rendition, bytes: Buffer, mime: string): Promise<void>
+  get(id: string, size: Rendition): Promise<{ bytes: Buffer; mime: string } | null>
   remove(id: string): Promise<void>
-  /** Where the browser should fetch this rendition from. */
-  url(id: string, size: Size): string
+  /**
+   * Where the browser should fetch this rendition from. `mime` is only consulted by a deployment
+   * serving straight from a CDN, where the object's extension is part of its key — everywhere else
+   * the app serves the bytes and answers with the type it stored.
+   */
+  url(id: string, size: Rendition, mime?: string): string
   health(): Promise<{ ok: boolean; detail: string }>
 }
 
-const ext = (mime: string): string => (mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg')
+const EXT: Record<string, string> = { 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm' }
+const ext = (mime: string): string => EXT[mime] ?? 'jpg'
+/** The encodings a rendition may have been stored as, newest-guess first. */
+const CANDIDATES: Record<'video' | 'image', string[]> = {
+  image: ['image/jpeg', 'image/png', 'image/webp'],
+  video: ['video/mp4', 'video/webm'],
+}
+const candidatesFor = (size: Rendition): string[] => CANDIDATES[size === 'video' ? 'video' : 'image']
 
 class LocalMediaStore implements MediaStore {
   private readonly dir: string
   constructor(dir: string) {
     this.dir = resolve(dir, 'media')
   }
-  private path(id: string, size: Size, e: string): string {
+  private path(id: string, size: Rendition, e: string): string {
     // Ids are minted here, but they reach a path, so anything that is not a plain id is refused
     // rather than encoded — a traversal is not a filename with a slash in it, it is a bug.
     if (!/^[a-z0-9]+$/i.test(id)) throw new Error('bad media id')
@@ -45,12 +76,12 @@ class LocalMediaStore implements MediaStore {
     // It does not: the directory is configuration and the filename is an id this module minted.
     return join(/* turbopackIgnore: true */ this.dir, `${id}.${size}.${e}`)
   }
-  async put(id: string, size: Size, bytes: Buffer, mime: string): Promise<void> {
+  async put(id: string, size: Rendition, bytes: Buffer, mime: string): Promise<void> {
     await mkdir(this.dir, { recursive: true })
     await writeFile(this.path(id, size, ext(mime)), bytes)
   }
-  async get(id: string, size: Size): Promise<{ bytes: Buffer; mime: string } | null> {
-    for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
+  async get(id: string, size: Rendition): Promise<{ bytes: Buffer; mime: string } | null> {
+    for (const mime of candidatesFor(size)) {
       try {
         return { bytes: await readFile(this.path(id, size, ext(mime))), mime }
       } catch {
@@ -60,8 +91,8 @@ class LocalMediaStore implements MediaStore {
     return null
   }
   async remove(id: string): Promise<void> {
-    for (const size of Object.keys(SIZES) as Size[]) {
-      for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
+    for (const size of RENDITIONS) {
+      for (const mime of candidatesFor(size)) {
         try {
           await unlink(this.path(id, size, ext(mime)))
         } catch {
@@ -70,7 +101,7 @@ class LocalMediaStore implements MediaStore {
       }
     }
   }
-  url(id: string, size: Size): string {
+  url(id: string, size: Rendition): string {
     return `/api/media/${id}/${size}`
   }
   async health(): Promise<{ ok: boolean; detail: string }> {
@@ -94,7 +125,7 @@ class S3MediaStore implements MediaStore {
     this.fetchImpl = fetchImpl
   }
 
-  private key(id: string, size: Size, mime: string): string {
+  private key(id: string, size: Rendition, mime: string): string {
     return `${id}/${size}.${ext(mime)}`
   }
   private endpoint(key: string): string {
@@ -108,7 +139,7 @@ class S3MediaStore implements MediaStore {
     }
   }
 
-  async put(id: string, size: Size, bytes: Buffer, mime: string): Promise<void> {
+  async put(id: string, size: Rendition, bytes: Buffer, mime: string): Promise<void> {
     const key = this.key(id, size, mime)
     const signed = signRequest({
       method: 'PUT',
@@ -127,8 +158,8 @@ class S3MediaStore implements MediaStore {
     }
   }
 
-  async get(id: string, size: Size): Promise<{ bytes: Buffer; mime: string } | null> {
-    for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
+  async get(id: string, size: Rendition): Promise<{ bytes: Buffer; mime: string } | null> {
+    for (const mime of candidatesFor(size)) {
       const signed = signRequest({
         method: 'GET',
         url: this.endpoint(this.key(id, size, mime)),
@@ -143,8 +174,8 @@ class S3MediaStore implements MediaStore {
   }
 
   async remove(id: string): Promise<void> {
-    for (const size of Object.keys(SIZES) as Size[]) {
-      for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
+    for (const size of RENDITIONS) {
+      for (const mime of candidatesFor(size)) {
         const signed = signRequest({
           method: 'DELETE',
           url: this.endpoint(this.key(id, size, mime)),
@@ -157,10 +188,10 @@ class S3MediaStore implements MediaStore {
     }
   }
 
-  url(id: string, size: Size): string {
+  url(id: string, size: Rendition, mime = 'image/jpeg'): string {
     // A CDN in front of the bucket is the deployed shape; without one the app proxies, which works
     // and says so by being the slower path rather than by failing.
-    return config.mediaOrigin ? `${config.mediaOrigin}/${id}/${size}.jpg` : `/api/media/${id}/${size}`
+    return config.mediaOrigin ? `${config.mediaOrigin}/${id}/${size}.${ext(mime)}` : `/api/media/${id}/${size}`
   }
 
   async health(): Promise<{ ok: boolean; detail: string }> {
@@ -170,19 +201,15 @@ class S3MediaStore implements MediaStore {
   }
 }
 
-let store: MediaStore | null = null
-
+/** One per process rather than one per server bundle — see `src/lib/singleton.ts`. */
 export function getMediaStore(): MediaStore {
-  if (!store) {
-    store = config.media.driver === 's3'
-      ? new S3MediaStore(config.media.bucket, config.media.region)
-      : new LocalMediaStore(config.store.dir)
-  }
-  return store
+  return singleton<MediaStore>('media-store', () =>
+    config.media.driver === 's3' ? new S3MediaStore(config.media.bucket, config.media.region) : new LocalMediaStore(config.store.dir),
+  )
 }
 
 export function setMediaStore(s: MediaStore | null): void {
-  store = s
+  setSingleton('media-store', s ?? undefined)
 }
 
 // ---------------------------------------------------------------- reference resolution

@@ -22,7 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { DEFAULT_FILTERS, type Filters, type PropertyFacet, type PropertyFilters } from '@/lib/content/filters'
-import type { Destination, Offer, Property, SiteBundle } from '@/lib/content/types'
+import type { Destination, GalleryShot, Offer, Property, SiteBundle } from '@/lib/content/types'
 
 export type Currency = 'USD' | 'EUR'
 export type Lang = 'EN' | 'AR'
@@ -87,6 +87,14 @@ export interface SiteState {
   venueOpen: number | null
   faqOpen: number | null
   lightbox: number | null
+  /**
+   * Which set of photographs the lightbox is walking.
+   *
+   * `null` means the property's own gallery, which is what it has always shown. A room or a venue
+   * hands its own shots in — the alternative is a second lightbox, and two of them would drift the
+   * first time either gained a caption or an arrow key.
+   */
+  lightboxSet: GalleryShot[] | null
   party: string
   budget: string
   form: FormState
@@ -149,7 +157,7 @@ export interface SiteActions {
   setRoomOpen(i: number | null): void
   setVenueOpen(i: number | null): void
   setFaqOpen(i: number | null): void
-  setLightbox(i: number | null): void
+  setLightbox(i: number | null, shots?: GalleryShot[] | null): void
   setParty(p: string): void
   setBudget(b: string): void
   setFormField(key: keyof FormState, value: string): void
@@ -225,6 +233,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     venueOpen: null,
     faqOpen: null,
     lightbox: null,
+    lightboxSet: null,
     party: 'Couple',
     budget: 'Premium',
     form: { name: '', email: '', phone: '', month: '', message: '' },
@@ -437,7 +446,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     (name: string) => {
       const dest = destinations.find((d) => d.name === name)
       if (!dest) return
-      patch({ page: name, mega: false, menuOpen: false, propDest: name, destTheme: null, drawerVisible: false, lightbox: null })
+      patch({ page: name, mega: false, menuOpen: false, propDest: name, destTheme: null, drawerVisible: false, lightbox: null, lightboxSet: null })
       lock(false)
       window.location.assign(`/destinations/${dest.slug}`)
     },
@@ -511,6 +520,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
         transfer: 0,
         faqOpen: null,
         lightbox: null,
+        lightboxSet: null,
         roomOpen: 0,
         venueOpen: null,
         err: {},
@@ -594,7 +604,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (state.lightbox != null) {
-          patch({ lightbox: null })
+          patch({ lightbox: null, lightboxSet: null })
           return
         }
         if (state.drawerVisible) {
@@ -731,7 +741,9 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
       setRoomOpen: (i) => patch((s) => ({ roomOpen: s.roomOpen === i ? null : i })),
       setVenueOpen: (i) => patch((s) => ({ venueOpen: s.venueOpen === i ? null : i })),
       setFaqOpen: (i) => patch((s) => ({ faqOpen: s.faqOpen === i ? null : i })),
-      setLightbox: (i) => patch({ lightbox: i }),
+      // A caller that names no set is asking for the property gallery, which is what every caller
+      // did before rooms and venues had photographs of their own.
+      setLightbox: (i, shots) => patch({ lightbox: i, ...(i == null ? { lightboxSet: null } : shots !== undefined ? { lightboxSet: shots } : {}) }),
       setParty: (p) => patch({ party: p }),
       setBudget: (b) => patch({ budget: b }),
       setFormField: (key, v) => patch((s) => ({ form: { ...s.form, [key]: v }, err: { ...s.err, [key]: undefined } })),

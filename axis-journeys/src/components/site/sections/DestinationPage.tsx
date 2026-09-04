@@ -29,7 +29,12 @@ export function DestinationPage({ name }: { name: string }) {
   const themeTiles = useThemeTiles(all, s.bundle.homepage?.themeImages || [], s.destTheme ? [s.destTheme] : [])
   const otherDests = s.liveDestinations.filter((d) => d.name !== name)
 
-  const gallery = all.slice(0, 4).map((r) => ({ img: r.img, cap: r.photoHint || r.name }))
+  // The destination's own photographs where somebody has chosen them, and otherwise what this
+  // page has always drawn: the hero of its first few properties. Neither is a placeholder — a
+  // destination with no gallery of its own genuinely is best introduced by what is in it.
+  const gallery = (dest?.gallery || []).filter((g) => g.img).length
+    ? (dest?.gallery || []).filter((g) => g.img)
+    : all.slice(0, 4).map((r) => ({ img: r.img, cap: r.photoHint || r.name }))
   const settings = s.bundle.settings
   const wa = `https://wa.me/${settings?.whatsapp || '971554855656'}?text=${encodeURIComponent(`Hello Axis Journeys — I'd like to plan a ${name} journey.`)}`
 
@@ -122,7 +127,7 @@ export function DestinationPage({ name }: { name: string }) {
               <Hover
                 key={`${g.img}-${i}`}
                 className="dk"
-                style={{ ...css('position:relative;background-size:cover;background-position:center;border-radius:3px;overflow:hidden;border:1px solid var(--line-06);'), backgroundImage: `url(${g.img})` }}
+                style={{ ...css('position:relative;background-size:cover;border-radius:3px;overflow:hidden;border:1px solid var(--line-06);'), backgroundImage: `url(${g.img})`, backgroundPosition: (g as { pos?: string }).pos || 'center' }}
                 hover="border-color:var(--gold-50);"
               >
                 <div style={css('position:absolute;left:0;right:0;bottom:0;padding:12px 14px;background:linear-gradient(180deg,transparent,rgba(0,16,47,.85));font-size:11px;letter-spacing:.08em;color:var(--soft);')}>{g.cap}</div>

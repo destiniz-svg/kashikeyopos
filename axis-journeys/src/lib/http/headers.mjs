@@ -41,7 +41,11 @@ export function contentSecurityPolicy({ nonce, apiOrigin, mediaOrigin, reportOnl
   const connect = ["'self'", ORIGINS.turnstile]
   if (apiOrigin) connect.push(apiOrigin)
   const img = ["'self'", 'data:', 'blob:', ...ORIGINS.img]
-  const media = ["'self'", ...ORIGINS.media]
+  // `blob:` because the CMS reads a chosen video locally to capture its poster frame — a blob URL
+  // is minted by this page's own script from a file the person picked, is same-origin by
+  // construction, and never leaves the device. Without it the capture is blocked and a video
+  // uploads with no poster, which is a black rectangle wherever autoplay is refused.
+  const media = ["'self'", 'blob:', ...ORIGINS.media]
   if (mediaOrigin) { img.push(mediaOrigin); media.push(mediaOrigin) }
 
   const directives = [

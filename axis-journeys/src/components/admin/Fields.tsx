@@ -9,18 +9,34 @@
  */
 import { useState } from 'react'
 import { css } from '@/components/ui/css'
+import { probeVideoUrl } from '@/lib/admin/client'
 import { Button, FIELD_STYLE, Label } from './ui'
+import { StandardReport } from './StandardReport'
 import type { Field, ListColumn } from '@/lib/admin/schema'
+import type { Finding } from '@/lib/media/standards'
 import { MONTHS } from '@/lib/content/types'
+
+export interface PickOptions {
+  /** Which kind of record this field can actually use. */
+  only?: 'image' | 'video'
+  /** Whether the picker collects several before it closes. */
+  multiple?: boolean
+}
 
 export interface FieldProps {
   field: Field
   value: unknown
   onChange(value: unknown): void
-  /** Opens the media library and resolves to a `media:{id}` reference or a URL. */
-  onPickImage(current: string, apply: (ref: string) => void): void
+  /**
+   * Opens the media library. It answers with a list because some fields take several — a room's
+   * photographs, a venue's — and asking for those one modal at a time is the kind of round trip
+   * nobody makes twice.
+   */
+  onPickImage(current: string, apply: (refs: string[]) => void, opts?: PickOptions): void
   /** Resolves a stored reference to something an <img> can load. */
   resolveImage(ref: string): string
+  /** Resolves a stored reference to something a <video> can play. */
+  resolveVideo?(ref: string): string
 }
 
 const str = (v: unknown): string => (v == null ? '' : String(v))
@@ -133,6 +149,10 @@ export function FieldControl(props: FieldProps) {
 
   if (type === 'image') return <ImageField {...props} />
 
+  if (type === 'images') return <ImagesField {...props} />
+
+  if (type === 'video') return <VideoField {...props} />
+
   if (type === 'list') return <ListEditor {...props} />
 
   return <input type="text" value={str(value)} placeholder={field.ph} onChange={(e) => onChange(e.target.value)} style={css(FIELD_STYLE)} />
@@ -195,7 +215,7 @@ function ImageField({ value, onChange, onPickImage, resolveImage }: FieldProps) 
       <div style={css('display:flex;flex-direction:column;gap:8px;min-width:0;')}>
         <input value={ref} placeholder="https://… or media:id" onChange={(e) => onChange(e.target.value)} style={css(FIELD_STYLE)} />
         <div style={css('display:flex;gap:8px;flex-wrap:wrap;')}>
-          <Button onClick={() => onPickImage(ref, (next) => onChange(next))}>Choose from Media</Button>
+          <Button onClick={() => onPickImage(ref, (next) => onChange(next[0] ?? ''), { only: 'image' })}>Choose from Media</Button>
           {ref && <Button onClick={() => onChange('')}>Clear</Button>}
         </div>
       </div>
@@ -203,28 +223,161 @@ function ImageField({ value, onChange, onPickImage, resolveImage }: FieldProps) 
   )
 }
 
+/**
+ * Several photographs of one thing, in the order somebody chose.
+ *
+ * A room, a restaurant, a spa: one picture of any of them is a placeholder, and the site has always
+ * had the gallery language to show more — it simply had nowhere to put them. Order is the whole
+ * point of the arrows: the first photograph is the one the collapsed row and the card crop to.
+ */
+function ImagesField({ value, onChange, onPickImage, resolveImage }: FieldProps) {
+  const refs: string[] = Array.isArray(value) ? (value as unknown[]).map(str).filter(Boolean) : []
+  const write = (next: string[]) => onChange(next)
+  const move = (i: number, by: number) => {
+    const next = [...refs]
+    const [row] = next.splice(i, 1)
+    next.splice(i + by, 0, row)
+    write(next)
+  }
+  return (
+    <div style={css('display:flex;flex-direction:column;gap:10px;')}>
+      {refs.length > 0 && (
+        <div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px;')}>
+          {refs.map((ref, i) => {
+            const src = resolveImage(ref)
+            return (
+              <div
+                key={`${ref}-${i}`}
+                style={{
+                  ...css('position:relative;aspect-ratio:4/3;border:1px solid var(--line-12);border-radius:3px;background-size:cover;background-position:center;background-color:var(--field);'),
+                  backgroundImage: src ? `url(${src})` : undefined,
+                }}
+              >
+                <span style={css('position:absolute;left:5px;top:5px;font-size:10px;padding:2px 6px;border-radius:2px;background:rgba(0,16,47,.8);color:#E0B94F;')}>{i + 1}</span>
+                <div style={css('position:absolute;right:4px;bottom:4px;display:flex;gap:4px;')}>
+                  {i > 0 && (
+                    <button type="button" aria-label={`Move photo ${i + 1} earlier`} onClick={() => move(i, -1)} style={css('width:30px;height:30px;border-radius:3px;border:1px solid var(--line-16);background:rgba(0,16,47,.8);color:var(--ink);font-size:12px;padding:0;')}>
+                      ←
+                    </button>
+                  )}
+                  {i < refs.length - 1 && (
+                    <button type="button" aria-label={`Move photo ${i + 1} later`} onClick={() => move(i, 1)} style={css('width:30px;height:30px;border-radius:3px;border:1px solid var(--line-16);background:rgba(0,16,47,.8);color:var(--ink);font-size:12px;padding:0;')}>
+                      →
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`Remove photo ${i + 1}`}
+                    onClick={() => write(refs.filter((_, j) => j !== i))}
+                    style={css('width:30px;height:30px;border-radius:3px;border:1px solid rgba(224,122,107,.5);background:rgba(0,16,47,.8);color:#E07A6B;font-size:12px;padding:0;')}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div style={css('display:flex;gap:8px;flex-wrap:wrap;align-items:center;')}>
+        <Button onClick={() => onPickImage('', (next) => write([...refs, ...next.filter((r) => !refs.includes(r))]), { only: 'image', multiple: true })}>
+          {refs.length ? 'Add more photos' : 'Add photos'}
+        </Button>
+        <span style={css('font-size:11px;color:var(--muted);')}>
+          {refs.length ? `${refs.length} photo${refs.length === 1 ? '' : 's'} · the first one leads` : 'The lead photo above is shown on its own until you add more'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A video: a library record, or an address.
+ *
+ * Both are real answers — a clip uploaded here, and the two files this site has always served out
+ * of `/assets` — so neither is taken away. What is added is the check: a URL never went through
+ * the upload door, so without pressing this nothing has ever looked at the one video a guest
+ * actually watches.
+ */
+function VideoField({ value, onChange, onPickImage, resolveVideo }: FieldProps) {
+  const ref = str(value)
+  const [checking, setChecking] = useState(false)
+  const [findings, setFindings] = useState<Finding[] | null>(null)
+  const src = resolveVideo ? resolveVideo(ref) : ref
+
+  const check = async () => {
+    if (!src) return
+    setChecking(true)
+    setFindings(null)
+    try {
+      const v = await probeVideoUrl(src)
+      setFindings(v.findings.length ? v.findings : [{ level: 'warn', code: 'ok', says: 'This video meets the standard for a full-screen hero.' }])
+    } catch (e) {
+      setFindings([{ level: 'refuse', code: 'failed', says: (e as Error).message }])
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <div style={css('display:flex;flex-direction:column;gap:8px;')}>
+      <input
+        value={ref}
+        placeholder="/assets/video/… or https://…mp4 or media:id"
+        onChange={(e) => {
+          setFindings(null)
+          onChange(e.target.value)
+        }}
+        style={css(FIELD_STYLE)}
+      />
+      <div style={css('display:flex;gap:8px;flex-wrap:wrap;')}>
+        <Button onClick={() => onPickImage(ref, (next) => onChange(next[0] ?? ''), { only: 'video' })}>Choose from Media</Button>
+        <Button onClick={() => void check()} disabled={!src || checking}>
+          {checking ? 'Checking…' : 'Check this video'}
+        </Button>
+        {ref && <Button onClick={() => onChange('')}>Clear</Button>}
+      </div>
+      {findings && <StandardReport findings={findings} />}
+    </div>
+  )
+}
+
 /** A row is a tuple unless the schema's columns carry keys, in which case it is an object. */
 const isKeyed = (cols: ListColumn[]): boolean => cols.some((c) => !!c.key)
 
-function ListEditor({ field, value, onChange, onPickImage, resolveImage }: FieldProps) {
+function ListEditor({ field, value, onChange, onPickImage, resolveImage, resolveVideo }: FieldProps) {
   const cols = field.cols ?? []
   const keyed = isKeyed(cols)
   const rows: unknown[] = field.single ? (value ? [value] : []) : Array.isArray(value) ? [...(value as unknown[])] : []
 
   const write = (next: unknown[]) => onChange(field.single ? (next[0] ?? null) : next)
 
-  const blank = (): unknown => (keyed ? Object.fromEntries(cols.map((c) => [c.key!, c.type === 'tags' ? [] : ''])) : cols.map((c) => (c.type === 'tags' ? [] : c.type === 'number' ? 0 : '')))
+  const many = (t?: string) => t === 'tags' || t === 'images'
+  const blank = (): unknown => {
+    if (keyed) return Object.fromEntries(cols.map((c) => [c.key!, many(c.type) ? [] : '']))
+    // Sized by the furthest slot any column edits, so a row starts life the shape it will be saved
+    // in rather than growing holes the first time somebody fills in a later field.
+    const row: unknown[] = new Array(Math.max(cols.length, ...cols.map((c, i) => slot(c, i) + 1))).fill('')
+    cols.forEach((c, i) => {
+      row[slot(c, i)] = many(c.type) ? [] : c.type === 'number' ? 0 : ''
+    })
+    return row
+  }
+
+  // A column edits its own position in the row unless it says otherwise; see `ListColumn.at`.
+  const slot = (col: ListColumn, i: number): number => col.at ?? i
 
   const cellValue = (row: unknown, col: ListColumn, i: number): unknown =>
-    keyed ? (row as Record<string, unknown>)?.[col.key!] : (row as unknown[])?.[i]
+    keyed ? (row as Record<string, unknown>)?.[col.key!] : (row as unknown[])?.[slot(col, i)]
 
   const setCell = (rowIndex: number, col: ListColumn, i: number, v: unknown) => {
     const next = rows.map((r, j) => {
       if (j !== rowIndex) return r
       if (keyed) return { ...(r as Record<string, unknown>), [col.key!]: v }
       const arr = Array.isArray(r) ? [...(r as unknown[])] : []
-      while (arr.length <= i) arr.push('')
-      arr[i] = v
+      const at = slot(col, i)
+      while (arr.length <= at) arr.push('')
+      arr[at] = v
       return arr
     })
     write(next)
@@ -259,11 +412,12 @@ function ListEditor({ field, value, onChange, onPickImage, resolveImage }: Field
               <div key={`${col.label}-${i}`} style={col.span === '1/-1' ? css('grid-column:1/-1;') : undefined}>
                 <Label>{col.label}</Label>
                 <FieldControl
-                  field={{ path: `${field.path}.${rowIndex}.${i}`, label: col.label, type: col.type ?? 'text', ph: col.ph }}
+                  field={{ path: `${field.path}.${rowIndex}.${slot(col, i)}`, label: col.label, type: col.type ?? 'text', ph: col.ph }}
                   value={cellValue(row, col, i)}
                   onChange={(v) => setCell(rowIndex, col, i, v)}
                   onPickImage={onPickImage}
                   resolveImage={resolveImage}
+                  resolveVideo={resolveVideo}
                 />
               </div>
             ))}

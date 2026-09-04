@@ -11,7 +11,7 @@
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
 import { ImageSlot } from '@/components/ui/ImageSlot'
-import { MONTHS } from '@/lib/content/types'
+import { MONTHS, type GalleryShot } from '@/lib/content/types'
 import { formatMoney } from '@/lib/content/filters'
 import { ON, OFF } from './derive'
 import { useSite } from './state'
@@ -154,7 +154,58 @@ function ShortlistView() {
   )
 }
 
+/**
+ * Every photograph of one row — a room, a venue — with the lead one first.
+ *
+ * The lead lives at slot 3 and the rest at slot 7, with their focal points at 8, filled in by the
+ * media resolver. A row that has only ever had one photograph answers with one, which is what
+ * makes the strip below appear for the rooms somebody has photographed and for no others.
+ */
+function shotsOf(row: readonly unknown[], cap: string, fallback: string): GalleryShot[] {
+  const lead = (row[3] as string) || fallback
+  const more = Array.isArray(row[7]) ? (row[7] as string[]) : []
+  const pos = Array.isArray(row[8]) ? (row[8] as string[]) : []
+  return [
+    ...(lead ? [{ img: lead, cap, pos: (row[6] as string) || '50% 50%' }] : []),
+    ...more.filter(Boolean).map((img, i) => ({ img, cap, pos: pos[i] || '50% 50%' })),
+  ]
+}
+
 // ---------------------------------------------------------------- the property profile
+
+/**
+ * The photo strip under an opened room or venue.
+ *
+ * Deliberately the property gallery's own grid — three columns, 110px rows, the same 6px gutter,
+ * the same hover and the same lightbox. A second gallery language on one screen would read as a
+ * different product, and there was already one written for exactly this job.
+ */
+function ShotStrip({ shots }: { shots: GalleryShot[] }) {
+  const { actions } = useSite()
+  if (shots.length < 2) return null
+  return (
+    <div style={css('display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:110px;gap:6px;margin-top:6px;')}>
+      {shots.slice(1).map((g, i) => (
+        <button
+          key={`${g.img}-${i}`}
+          type="button"
+          // i + 1, because the strip omits the lead photograph shown full width above it — the
+          // lightbox still walks the whole set, so its arrows reach the one that is not here.
+          onClick={() => actions.setLightbox(i + 1, shots)}
+          aria-label={`${g.cap} — photo ${i + 2} of ${shots.length}`}
+          style={css('position:relative;overflow:hidden;border:none;padding:0;border-radius:2px;background:var(--panel);cursor:zoom-in;')}
+        >
+          <Hover
+            role="img"
+            aria-label={g.cap}
+            style={{ ...css('width:100%;height:100%;background-size:cover;transition:transform .6s cubic-bezier(.2,.7,.2,1);'), backgroundImage: `url(${g.img})`, backgroundPosition: g.pos || 'center' }}
+            hover="transform:scale(1.06);"
+          />
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean }) {
   const { state: s, actions } = useSite()
@@ -270,7 +321,7 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
             </div>
             <div id="gal-grid" style={css('display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:110px;gap:6px;')}>
               {gallery.map((g, i) => (
-                <button key={`${g.img}-${i}`} type="button" onClick={() => actions.setLightbox(i)} style={css('position:relative;overflow:hidden;border:none;padding:0;border-radius:2px;background:var(--panel);cursor:zoom-in;')}>
+                <button key={`${g.img}-${i}`} type="button" onClick={() => actions.setLightbox(i, null)} style={css('position:relative;overflow:hidden;border:none;padding:0;border-radius:2px;background:var(--panel);cursor:zoom-in;')}>
                   <Hover
                     role="img"
                     aria-label={g.cap}
@@ -326,6 +377,7 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
                 const open = s.venueOpen === i
                 const img = v[3] || r.img
                 const pos = v[6] || '50% 50%'
+                const shots = shotsOf(v, v[0], r.img)
                 return (
                   <div key={`${v[0]}-${i}`} style={{ ...css('background:var(--panel);border-radius:3px;overflow:hidden;transition:border-color .2s;'), border: `1px solid ${open ? 'var(--gold-ink)' : 'var(--line-08)'}` }}>
                     <button type="button" onClick={() => actions.setVenueOpen(i)} aria-expanded={open} style={css('width:100%;text-align:left;display:grid;grid-template-columns:72px 1fr auto;gap:14px;align-items:center;background:none;border:none;padding:10px 14px 10px 10px;color:var(--ink);')}>
@@ -340,7 +392,21 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
                     </button>
                     {open && (
                       <div style={css('padding:0 14px 14px;')}>
-                        <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:200px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                        {/* A plain image until there is more than one — the affordance appears with
+                            the thing it opens, so a venue with one photograph renders as it did. */}
+                        {shots.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => actions.setLightbox(0, shots)}
+                            aria-label={`${v[0]} — photo 1 of ${shots.length}`}
+                            style={css('display:block;width:100%;border:none;padding:0;border-radius:2px;cursor:zoom-in;')}
+                          >
+                            <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:200px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                          </button>
+                        ) : (
+                          <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:200px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                        )}
+                        <ShotStrip shots={shots} />
                         <p style={css('font-size:13px;line-height:1.65;color:var(--soft);margin:12px 0 10px;')}>{v[4]}</p>
                         <div style={css('display:flex;flex-wrap:wrap;gap:6px;')}>
                           {(v[5] || []).map((t) => (
@@ -367,6 +433,7 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
                 const open = s.roomOpen === i
                 const img = v[3] || r.img
                 const pos = v[6] || '50% 50%'
+                const shots = shotsOf(v, v[0], r.img)
                 const add = !hasRate ? '' : v[2] === 0 ? 'Included' : '+ ' + money(v[2], cur)
                 return (
                   <div key={`${v[0]}-${i}`} style={{ ...css('border-radius:3px;overflow:hidden;transition:all .2s;'), background: chosen ? 'rgba(224,185,79,.1)' : 'var(--panel)', border: `1px solid ${chosen ? 'var(--gold-ink)' : 'var(--line-08)'}` }}>
@@ -395,7 +462,19 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
                     </Hover>
                     {open && (
                       <div style={css('padding:0 14px 14px;')}>
-                        <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:220px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                        {shots.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => actions.setLightbox(0, shots)}
+                            aria-label={`${v[0]} — photo 1 of ${shots.length}`}
+                            style={css('display:block;width:100%;border:none;padding:0;border-radius:2px;cursor:zoom-in;')}
+                          >
+                            <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:220px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                          </button>
+                        ) : (
+                          <div role="img" aria-label={v[0]} style={{ ...css('width:100%;height:220px;background-size:cover;border-radius:2px;'), backgroundImage: `url(${img})`, backgroundPosition: pos }} />
+                        )}
+                        <ShotStrip shots={shots} />
                         <p style={css('font-size:13px;line-height:1.65;color:var(--soft);margin:12px 0 10px;')}>{v[4]}</p>
                         <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;')}>
                           {(v[5] || []).map((f) => (

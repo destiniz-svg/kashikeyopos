@@ -8,6 +8,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { getStore, PK, SK, type StoredItem } from '../store'
+import { slot } from '../singleton'
 import { config } from '../config'
 import { docStatus, isSiteReady, readiness as readinessOf } from './rules'
 import type {
@@ -128,7 +129,11 @@ export async function composeBundle(preview: boolean): Promise<SiteBundle> {
 }
 
 interface CachedBundle { at: number; bundle: SiteBundle }
-let memo: CachedBundle | null = null
+// On `globalThis`, not in this module: the pages and the route handlers are separate server
+// bundles, so a module-level variable is one memo per bundle rather than one per process — and a
+// publish would update the API's copy while every page went on serving its own. See
+// `src/lib/singleton.ts` for the measurement.
+const memoSlot = slot<CachedBundle | null>('bundle-memo', null)
 
 /**
  * The published bundle. Read from the denormalised item first — one round trip rather than five
@@ -136,10 +141,11 @@ let memo: CachedBundle | null = null
  * restore. Held in memory for `BUNDLE_TTL_MS` so a burst of guests costs one read.
  */
 export async function readBundle(): Promise<SiteBundle> {
+  const memo = memoSlot.current
   if (memo && now() - memo.at < config.bundleTtlMs) return memo.bundle
   const stored = await getStore().get<SiteBundle>(PK.live, 'BUNDLE')
   const bundle = stored ?? (await rebuildBundle())
-  memo = { at: now(), bundle }
+  memoSlot.current = { at: now(), bundle }
   return bundle
 }
 
@@ -147,20 +153,20 @@ export async function readBundle(): Promise<SiteBundle> {
 export async function rebuildBundle(): Promise<SiteBundle> {
   const bundle = await composeBundle(false)
   await getStore().put(PK.live, 'BUNDLE', bundle)
-  memo = { at: now(), bundle }
+  memoSlot.current = { at: now(), bundle }
   return bundle
 }
 
 /** Drop the in-process copy so the next read recomposes. */
 export async function invalidateBundle(): Promise<void> {
-  memo = null
+  memoSlot.current = null
   await rebuildBundle()
 }
 
 /** The items a publish writes, so the caller can commit them in one transaction. */
 export async function bundleItem(): Promise<StoredItem> {
   const bundle = await composeBundle(false)
-  memo = { at: now(), bundle }
+  memoSlot.current = { at: now(), bundle }
   return { pk: PK.live, sk: 'BUNDLE', body: bundle }
 }
 

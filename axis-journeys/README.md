@@ -65,7 +65,7 @@ src/lib/
   store/            the document store — file and DynamoDB behind one interface
   auth/             sessions, passwords, roles, users
   http/             headers, respond, request, rate limiting, logging, Turnstile
-  media/            uploads, renditions, media: reference resolution
+  media/            uploads, renditions, video, the standard, reference resolution
   aws/              SigV4, over node:crypto
   seo/              structured data
 src/data/seed.ts    the real catalogue
@@ -104,6 +104,9 @@ Two things it does not have, both stated rather than papered over:
   request" and no card prints money.
 - **One property on stand-in photography.** Conrad Rangali's images are labelled Unsplash
   placeholders in the source content, with the CMS media library as the remedy the label names.
+- **Both hero clips are 640 wide** — one of them says so in its own filename. They play, and the
+  media standard reports them as below what a full-screen hero should be rather than being tuned
+  down to let them pass. Replacing them is an upload, not a deploy.
 
 ---
 

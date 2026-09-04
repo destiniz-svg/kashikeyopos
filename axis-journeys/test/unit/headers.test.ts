@@ -135,3 +135,13 @@ describe('cache headers', () => {
     assert.match(h['X-Robots-Tag'], /noindex/)
   })
 })
+
+describe('what the media plane needs to be allowed', () => {
+  it('media-src carries blob:, or a video uploads with no poster frame', () => {
+    // The CMS reads the chosen file locally to capture a frame from it. That source is a blob URL
+    // by construction; blocked, the capture fails and the record is stored with a black poster.
+    const d = policy()
+    assert.ok(d['media-src'].includes('blob:'))
+    assert.ok(d['media-src'].includes("'self'"), 'an uploaded video is served from this origin')
+  })
+})

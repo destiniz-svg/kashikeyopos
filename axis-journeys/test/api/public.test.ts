@@ -215,3 +215,39 @@ async function countEnquiries(): Promise<number> {
   const list = await body<unknown[]>(await h.api('/api/enquiries', { cookie }))
   return list.length
 }
+
+describe('a publish reaches the pages, not only the API', () => {
+  it('the rendered page carries a change the API is already serving', async () => {
+    /**
+     * The warm-up is the test. This passed on a cold server and failed on a warm one, because the
+     * pages and the route handlers are separate server bundles: each got its own copy of the
+     * store, its own partition cache and its own bundle memo. Measured on the shipped build before
+     * the fix — the API served the change 25 times out of 25, and `/properties/{id}` served the
+     * previous page 12 times out of 12, with `no-store` on it, for the life of the process.
+     */
+    const cookie = await h.signIn()
+    for (let i = 0; i < 6; i++) await (await fetch(`${h.base}/properties/baros`)).text()
+
+    const doc = await body<{ draft: { name: string } }>(await h.api('/api/properties/baros', { cookie }))
+    const was = doc.draft.name
+    const now = `${was} · publish reach ${Date.now()}`
+    await h.api('/api/properties/baros', {
+      method: 'PUT', cookie, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ draft: { ...doc.draft, name: now } }),
+    })
+    assert.equal((await h.api('/api/properties/baros/publish', { method: 'POST', cookie })).status, 200)
+
+    const bundle = await body<SiteBundle>(await h.api('/api/public/site'))
+    assert.equal(bundle.properties.find((p) => p.id === 'baros')?.name, now, 'the API did not take the publish')
+
+    const page = await (await fetch(`${h.base}/properties/baros`)).text()
+    assert.ok(page.includes(now), 'the API has the change and the rendered page does not')
+
+    // Put the catalogue back the way it ships.
+    await h.api('/api/properties/baros', {
+      method: 'PUT', cookie, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ draft: { ...doc.draft, name: was } }),
+    })
+    await h.api('/api/properties/baros/publish', { method: 'POST', cookie })
+  })
+})

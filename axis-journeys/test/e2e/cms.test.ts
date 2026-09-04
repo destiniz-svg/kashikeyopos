@@ -6,10 +6,13 @@
  * published edit reaching the public site — each through the shipped screens rather than the API.
  */
 import { strict as assert } from 'node:assert'
+import { copyFile, mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { OWNER, body, startServer, type Harness } from '../support/server'
 import { freshPage, launch, newContext, openPage, overflowsX, type Session } from '../support/browser'
-import type { SiteBundle } from '@/lib/content/types'
+import type { Property, SiteBundle } from '@/lib/content/types'
 
 let h: Harness
 let s: Session
@@ -305,5 +308,128 @@ describe('the CMS on a phone', () => {
       assert.equal(await overflowsX(page), false, `${path} scrolls sideways at 390px`)
     }
     await ctx.close()
+  })
+})
+
+/**
+ * Several photographs on one room, through the shipped screens and out to a guest.
+ *
+ * This is the road nothing else covers: the API tests prove the store and the resolver, and the
+ * unit tests prove the standard, but neither can notice a field the editor does not draw or a
+ * picker that returns one reference where the field expects a list. The room a guest opens at the
+ * end of it is the same document this drive typed into.
+ */
+describe('a room with more than one photograph', () => {
+  /**
+   * Real files, and that is not fussiness.
+   *
+   * The first version of this handed the browser the synthetic JPEG the API tests use — a valid
+   * frame header and no image data. Chromium refused every one of them at `createImageBitmap`,
+   * which is exactly right and left the library empty, so the drive proved nothing. What runs in a
+   * browser has to be something a browser can decode.
+   */
+  let files: string[] = []
+  before(async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'axis-e2e-media-'))
+    files = [join(dir, 'deck.png'), join(dir, 'bathroom.png'), join(dir, 'small.png')]
+    await copyFile('public/assets/logo.png', files[0])
+    await copyFile('public/assets/logomark-white.png', files[1])
+    // 851 × 1007 — a real file, and under the hero width, so the screen has to say so.
+    await copyFile('public/assets/logomark.png', files[2])
+  })
+
+  it('uploads through the library and names what is below standard', async () => {
+    const { page, faults, dispose } = await signedIn()
+    await page.goto(h.base + '/admin/media', { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1200)
+
+    await page.setInputFiles('input[type="file"]', files)
+    await page.waitForTimeout(4000)
+
+    const text = await page.locator('body').innerText()
+    assert.match(text, /Below standard/i, 'the small file was accepted with nothing said about it')
+    assert.match(text, /851 × 1007/, 'the note does not name the size it is complaining about')
+    assert.match(text, /full-bleed hero is 1600px wide/i)
+
+    const cookie = await h.signIn()
+    const lib = await body<{ id: string; name: string; w: number; h: number }[]>(await h.api('/api/media', { cookie }))
+    assert.ok(lib.length >= 3, `only ${lib.length} landed`)
+    assert.ok(lib.some((m) => m.w === 851 && m.h === 1007), 'the below-standard file was refused rather than kept')
+    assert.deepEqual(faults, [])
+    await page.close()
+    await dispose()
+  })
+
+  it('the editor puts them on a room, and the guest can open them', async () => {
+    const { page, faults, dispose } = await signedIn()
+    await page.goto(h.base + '/admin/properties/baros', { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1500)
+
+    await page.click('button:text-is("Accommodation")')
+    await page.waitForTimeout(600)
+    assert.match(await page.locator('body').innerText(), /More photos/, 'the room editor has nowhere to put a second photograph')
+
+    // The first room's own control, not whichever one sorts first on the page.
+    await page.locator('button:has-text("Add photos")').first().click()
+    await page.waitForTimeout(800)
+    const picker = page.locator('[role="dialog"][aria-label="Choose an image"]')
+    await picker.locator('button[aria-pressed]').nth(0).click()
+    await picker.locator('button[aria-pressed]').nth(1).click()
+    await page.click('button:has-text("Add 2")')
+    await page.waitForTimeout(1600)
+
+    await page.click('button:text-is("Publish changes")')
+    await page.waitForTimeout(2500)
+
+    const bundle = await body<SiteBundle>(await h.api('/api/public/site'))
+    const villa = (bundle.properties.find((p) => p.id === 'baros') as Property).villas[0]
+    const more = villa[7] as string[] | undefined
+    assert.equal(more?.length, 2, `the room carries ${JSON.stringify(more)}`)
+    assert.ok(more!.every((u) => u.startsWith('/api/media/')), 'they did not resolve to servable URLs')
+    assert.equal((villa[8] as string[]).length, 2, 'their focal points did not come with them')
+
+    // And a guest opens the room and finds them.
+    const guest = await freshPage(s)
+    await guest.page.goto(`${h.base}/properties/baros`, { waitUntil: 'domcontentloaded' })
+    // The first room opens with the drawer — `setRoomOpen` toggles, so clicking it here would
+    // close the panel this test is looking into. Found by doing exactly that.
+    await guest.page.waitForSelector('#dr-stays', { timeout: 20_000 })
+    await guest.page.waitForTimeout(600)
+    const labels: string[] = await guest.page
+      .locator('#dr-stays [aria-label]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') || ''))
+    // Asserted on the labels rather than on a locator that either matches or times out with
+    // nothing to say. A test that cannot tell you what it did find is a test you debug twice.
+    assert.ok(labels.some((l) => /photo 2 of 3/.test(l)), `the room panel offers: ${JSON.stringify(labels.slice(0, 10))}`)
+
+    const strip = guest.page.locator('#dr-stays button[aria-label*="photo 2 of 3"]')
+    await strip.click()
+    await guest.page.waitForTimeout(700)
+    const lightbox = guest.page.locator('[role="dialog"][aria-modal="true"]')
+    assert.equal(await lightbox.isVisible(), true, 'the strip did not open the lightbox')
+    assert.match(await lightbox.innerText(), /2 \/ 3/, 'it opened on the wrong photograph')
+
+    // The arrows walk the whole set, including the lead photograph the strip does not repeat.
+    await guest.page.keyboard.press('ArrowLeft')
+    await guest.page.waitForTimeout(400)
+    assert.match(await lightbox.innerText(), /1 \/ 3/)
+    await guest.page.keyboard.press('Escape')
+    await guest.page.waitForTimeout(400)
+    assert.equal(await lightbox.isVisible(), false, 'Escape left the lightbox open')
+
+    assert.deepEqual(guest.faults, [])
+    await guest.page.close()
+    await guest.dispose()
+
+    // Put the room back as the catalogue ships it.
+    const cookie = await h.signIn()
+    const doc = await body<{ draft: Property }>(await h.api('/api/properties/baros', { cookie }))
+    doc.draft.villas[0] = doc.draft.villas[0].slice(0, 7) as Property['villas'][number]
+    await h.api('/api/properties/baros', { method: 'PUT', cookie, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ draft: doc.draft }) })
+    await h.api('/api/properties/baros/publish', { method: 'POST', cookie })
+
+    assert.deepEqual(faults, [])
+    await page.close()
+    await dispose()
   })
 })

@@ -85,7 +85,9 @@ export function LegalModal() {
 
 export function Lightbox() {
   const { state: s, actions } = useSite()
-  const gallery = s.drawer?.resort?.gallery || []
+  // A room or a venue hands in its own photographs; everything else means the property gallery,
+  // which is the only set this ever walked before those existed.
+  const gallery = s.lightboxSet ?? s.drawer?.resort?.gallery ?? []
   const open = s.lightbox != null && gallery.length > 0
   const shot = open ? gallery[s.lightbox as number] : null
 

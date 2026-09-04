@@ -1,15 +1,16 @@
 /**
  * `media:{id}` reference resolution, including the two positional rules the public site reads.
  *
- * A villa or venue tuple keeps its image at index 3 and its focal position at index 6; an object
- * carrying `img` gains a sibling `pos`. Those indices are the data model rather than an accident,
+ * A villa or venue tuple keeps its lead image at index 3 and its focal position at index 6, its
+ * further photographs at index 7 and their positions at index 8; an object carrying `img` gains a
+ * sibling `pos`. Those indices are the data model rather than an accident,
  * so they are pinned: a resolver that put the focal point somewhere else would silently re-crop
  * every photograph on the site.
  */
 import { strict as assert } from 'node:assert'
 import { afterEach, describe, it } from 'node:test'
 import { buildMediaIndex, resolveMediaRefs } from '@/lib/media/resolve'
-import { setMediaStore, type MediaStore, type Size } from '@/lib/media'
+import { setMediaStore, type MediaStore } from '@/lib/media'
 import type { MediaRecord } from '@/lib/content/types'
 
 const record = (id: string, focal?: { x: number; y: number }): MediaRecord =>
@@ -20,7 +21,7 @@ const stubStore: MediaStore = {
   put: async () => undefined,
   get: async () => null,
   remove: async () => undefined,
-  url: (id: string, size: Size) => `/media/${id}/${size}`,
+  url: (id: string, size: string) => `/media/${id}/${size}`,
   health: async () => ({ ok: true, detail: 'stub' }),
 }
 setMediaStore(stubStore)
@@ -119,5 +120,44 @@ describe('buildMediaIndex', () => {
     const i = buildMediaIndex([record('x'), record('y')])
     assert.equal(i.size, 2)
     assert.equal(i.get('x')?.id, 'x')
+  })
+})
+
+describe('a row with several photographs', () => {
+  it('resolves the list at slot 7 and puts their focal points at slot 8', () => {
+    const villa = ['Beach Pool Villa', '210 sqm', 0, 'media:a', 'A room.', ['Pool'], undefined, ['media:b', 'media:a']]
+    const out = resolveMediaRefs(villa, index) as unknown[]
+    assert.equal(out[3], '/media/a/card')
+    assert.equal(out[6], '30% 70%', 'the lead photograph still names its own focal point')
+    assert.deepEqual(out[7], ['/media/b/card', '/media/a/card'])
+    assert.deepEqual(out[8], ['50% 50%', '30% 70%'], 'a record with no focal point falls back to the centre')
+  })
+
+  it('a LIST of photographs is not a row, so slot 3 of it stays a photograph', () => {
+    // The trap: a photo list's fourth entry is a media reference too, so the row rule would have
+    // written a focal position over its seventh photograph. A row never holds a reference at 0.
+    const many = ['media:a', 'media:b', 'media:a', 'media:b', 'media:a', 'media:b', 'media:a', 'media:b']
+    const out = resolveMediaRefs(many, index) as unknown[]
+    assert.equal(out.length, 8)
+    assert.equal(out[6], '/media/a/card', 'slot 6 was overwritten with a focal position')
+    assert.ok(out.every((x) => typeof x === 'string' && (x as string).startsWith('/media/')))
+  })
+
+  it('a row with no extra photographs grows neither slot', () => {
+    const out = resolveMediaRefs(['Sunset Villa', '90 sqm', 0, 'media:b'], index) as unknown[]
+    // It still reaches slot 6: that is the lead photograph's focal position, and this resolver has
+    // written it since it was ported. What must not appear is a photo list or positions for one.
+    assert.equal(out.length, 7)
+    assert.equal(out[6], '50% 50%')
+    assert.equal(out[7], undefined)
+    assert.equal(out[8], undefined)
+  })
+
+  it('a field called video asks for the clip; everything else asks for a picture', () => {
+    const dest = { hero: 'media:hero1', card: 'media:a', video: 'media:b' }
+    const out = resolveMediaRefs(dest, index) as Record<string, string>
+    assert.equal(out.hero, '/media/hero1/hero')
+    assert.equal(out.card, '/media/a/card')
+    assert.equal(out.video, '/media/b/video')
   })
 })

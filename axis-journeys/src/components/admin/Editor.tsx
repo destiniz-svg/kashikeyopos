@@ -45,6 +45,7 @@ export function Editor({
   can,
   go,
   resolveImage,
+  resolveVideo,
 }: {
   col: ContentCollection
   id: string
@@ -54,13 +55,16 @@ export function Editor({
   can(p: Permission): boolean
   go(path: string): void
   resolveImage(ref: string): string
+  resolveVideo(ref: string): string
 }) {
   const doc = ws.cols[col].find((d) => d.id === id) ?? null
   const [draft, setDraft] = useState<Draft | null>(null)
   const [section, setSection] = useState(0)
   const [saveState, setSaveState] = useState('')
   const [busy, setBusy] = useState(false)
-  const [picker, setPicker] = useState<((ref: string) => void) | null>(null)
+  // The apply function and what it is allowed to pick, held together: a destination's hero clip
+  // cannot be a photograph, and a room's gallery takes several at once.
+  const [picker, setPicker] = useState<{ apply(refs: string[]): void; only?: 'image' | 'video'; multiple?: boolean } | null>(null)
   const [preview, setPreview] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -263,8 +267,9 @@ export function Editor({
                   field={f}
                   value={read(draft, f.path)}
                   onChange={(v) => set(f.path, v)}
-                  onPickImage={(_current, apply) => setPicker(() => apply)}
+                  onPickImage={(_current, apply, opts) => setPicker({ apply, ...opts })}
                   resolveImage={resolveImage}
+                  resolveVideo={resolveVideo}
                 />
               </div>
             ))}
@@ -287,8 +292,10 @@ export function Editor({
       {picker && (
         <MediaPicker
           media={ws.media}
-          onPick={(ref) => {
-            picker(ref)
+          only={picker.only}
+          multiple={picker.multiple}
+          onPick={(refs) => {
+            picker.apply(refs)
             setPicker(null)
           }}
           onClose={() => setPicker(null)}

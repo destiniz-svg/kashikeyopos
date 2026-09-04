@@ -55,6 +55,25 @@ export function destinationJsonLd(bundle: SiteBundle, dest: Destination): Record
   }
 }
 
+/**
+ * Every photograph of a property, best first and without repeats.
+ *
+ * The hero, then the gallery, then the rooms' and venues' own — all of them are photographs of
+ * this resort, which is what the property says, and a room's is often the picture a guest wanted
+ * to see. Capped, because a page carrying forty absolute URLs in its head is a page whose markup
+ * is mostly metadata.
+ */
+function imagesOf(p: Property): string[] | undefined {
+  const rows = [...(p.villas || []), ...(p.dining || [])]
+  const all = [
+    p.img,
+    ...(p.gallery || []).map((g) => g.img),
+    ...rows.flatMap((r) => [r[3] as string | undefined, ...((Array.isArray(r[7]) ? r[7] : []) as string[])]),
+  ].filter((x): x is string => !!x)
+  const seen = [...new Set(all)].slice(0, 12)
+  return seen.length ? seen : undefined
+}
+
 export function propertyJsonLd(bundle: SiteBundle, p: Property): Record<string, unknown> {
   const offers = bundle.offers.filter((o) => o.resort === p.id && o.from)
   return {
@@ -64,7 +83,7 @@ export function propertyJsonLd(bundle: SiteBundle, p: Property): Record<string, 
     name: p.name,
     description: p.verdict || p.about,
     url: abs(`/properties/${p.id}`),
-    image: p.img ? [p.img, ...(p.gallery || []).slice(0, 5).map((g) => g.img)] : undefined,
+    image: imagesOf(p),
     address: { '@type': 'PostalAddress', addressLocality: p.area, addressCountry: countryOf(p.dest) },
     amenityFeature: (p.amenities || []).map((a) => ({ '@type': 'LocationFeatureSpecification', name: a })),
     numberOfRooms: (p.villas || []).length || undefined,

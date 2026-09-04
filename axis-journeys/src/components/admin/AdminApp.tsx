@@ -116,6 +116,24 @@ export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id
     [ws.media],
   )
 
+  /**
+   * The playable address of a video reference.
+   *
+   * Separate from `resolveImage` on purpose: for a video record that one answers with the poster,
+   * which is what a thumbnail wants, and handing that to a `<video>` would be a preview that
+   * never plays. A plain URL passes through — the two clips this site has always served live under
+   * `/assets`, and they are as real an answer as an uploaded one.
+   */
+  const resolveVideo = useCallback(
+    (ref: string): string => {
+      if (!ref) return ''
+      if (!ref.startsWith('media:')) return ref
+      const rec = ws.media.find((m) => m.id === ref.slice(6))
+      return rec?.urls?.video || ''
+    },
+    [ws.media],
+  )
+
   const go = useCallback((path: string) => router.push(path), [router])
   const closeNav = useCallback(() => setNavOpen(false), [])
 
@@ -140,11 +158,11 @@ export function AdminApp({ user, view, id }: { user: SessionUser; view: View; id
     if (view === 'media') return <MediaLibrary ws={ws} reload={reload} say={say} can={can} />
     if (view === 'team') return <Team ws={ws} reload={reload} say={say} />
     const col = view as ContentCollection
-    if (id) return <Editor col={col} id={id} ws={ws} reload={reload} say={say} can={can} go={go} resolveImage={resolveImage} />
+    if (id) return <Editor col={col} id={id} ws={ws} reload={reload} say={say} can={can} go={go} resolveImage={resolveImage} resolveVideo={resolveVideo} />
     // The two singles open straight into their editor: there is only ever one document.
-    if (col === 'homepage' || col === 'settings') return <Editor col={col} id="main" ws={ws} reload={reload} say={say} can={can} go={go} resolveImage={resolveImage} />
+    if (col === 'homepage' || col === 'settings') return <Editor col={col} id="main" ws={ws} reload={reload} say={say} can={can} go={go} resolveImage={resolveImage} resolveVideo={resolveVideo} />
     return <CollectionList col={col} ws={ws} reload={reload} say={say} can={can} go={go} />
-  }, [view, id, ws, reload, say, can, go, resolveImage])
+  }, [view, id, ws, reload, say, can, go, resolveImage, resolveVideo])
 
   const newEnquiries = ws.enquiries.filter((e) => e.status === 'new').length
 

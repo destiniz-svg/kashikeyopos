@@ -8,6 +8,7 @@
 import { strict as assert } from 'node:assert'
 import { after, before, describe, it } from 'node:test'
 import { body, startServer, type Harness } from '../support/server'
+import { form, jpeg } from '../support/media'
 
 let h: Harness
 before(async () => { h = await startServer({ RATE_LIMIT_SCALE: '1' }) })
@@ -135,20 +136,6 @@ describe('path traversal and injection', () => {
 })
 
 describe('media uploads', () => {
-  const jpeg = () => {
-    // A minimal but genuine JPEG: SOI, APP0/JFIF, EOI. Enough for the sniffer and the store.
-    const head = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00])
-    return Buffer.concat([head, Buffer.alloc(64, 0x20), Buffer.from([0xff, 0xd9])])
-  }
-  const form = (parts: Record<string, Buffer | string>) => {
-    const f = new FormData()
-    for (const [k, v] of Object.entries(parts)) {
-      if (typeof v === 'string') f.set(k, v)
-      else f.set(k, new File([new Uint8Array(v)], `${k}.jpg`, { type: 'image/jpeg' }))
-    }
-    return f
-  }
-
   it('accepts three real renditions and hands back a reference the editor can use', async () => {
     const cookie = await h.signIn()
     const res = await h.api('/api/media', { method: 'POST', cookie, body: form({ hero: jpeg(), card: jpeg(), thumb: jpeg(), name: 'A photograph', alt: 'A reef at dusk' }) })

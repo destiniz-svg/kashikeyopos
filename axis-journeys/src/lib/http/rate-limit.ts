@@ -12,19 +12,23 @@
  * Limiting or a KV counter; nothing else changes.
  */
 import { createHash } from 'node:crypto'
+import { singleton, slot } from '../singleton'
 import { config } from '../config'
 
 interface Bucket { hits: number[] }
-const buckets = new Map<string, Bucket>()
-let lastSweep = 0
+// Shared across server bundles, or one caller gets a full allowance from the pages and another
+// full allowance from the route handlers — a ceiling that is quietly double what it says.
+// See `src/lib/singleton.ts`.
+const buckets = singleton('rate-buckets', () => new Map<string, Bucket>())
+const sweepAt = slot('rate-sweep', 0)
 
 /** Identities are hashed before they are held: a rate-limit table is not a customer list. */
 export const identityKey = (v: string): string =>
   createHash('sha256').update(String(v || '').toLowerCase()).digest('hex').slice(0, 32)
 
 function sweep(now: number): void {
-  if (now - lastSweep < 60_000) return
-  lastSweep = now
+  if (now - sweepAt.current < 60_000) return
+  sweepAt.current = now
   for (const [k, b] of buckets) {
     if (!b.hits.length || now - b.hits[b.hits.length - 1] > 24 * 3600_000) buckets.delete(k)
   }

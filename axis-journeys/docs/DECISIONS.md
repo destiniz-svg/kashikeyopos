@@ -350,3 +350,163 @@ passed: it asserts no screen scrolls sideways, and it reaches each screen **by U
 never clicks cannot notice that the navigation is gone. The replacement drives it the way a person
 does — open the menu, read what is in it, tap one — at 820, 390 and 320px, and asserts the desktop
 still has no menu button at all.
+
+## 16. Several photographs, and a standard that says what is wrong
+
+Two requests in one sentence: let a room, a facility — anywhere an image appears — carry more than
+one photograph, and check on upload whether a picture or a video is up to standard, saying so when
+it is not.
+
+### Where the extra photographs live
+
+A villa and a venue were already tuples, and this build's own rule is that they stay tuples because
+the seed, the CMS editors and the public site all index them positionally. So the photographs are
+**appended** rather than folded into an object: `img` stays at slot 3 as the lead, the rest go to
+slot 7, and their focal points to slot 8. A document written before this has nothing at 7 and
+renders exactly as it did — asserted, property by property, in `test/api/media.test.ts`.
+
+Slots 6 and 8 are written by the media resolver rather than by a person, which is why `ListColumn`
+gained an `at`: the CMS column that edits slot 7 says so, instead of a dummy column standing in for
+a field nobody edits.
+
+**One trap, found by writing it.** `resolveMediaRefs()` has always read slot 3 of an array as "this
+row's image" and written its focal position to slot 6. A plain list of photographs is an array
+whose slot 3 is also a reference — so a room with four extra photographs would have had its seventh
+replaced by a focal position. The guard is that no tuple in this model holds a media reference at
+slot 0 and a photo list always does.
+
+The destination page gained a gallery of its own on the same principle: set, it is used; empty, the
+page draws the hero of its first few properties exactly as it always has. Neither is a placeholder.
+
+On the site, the room and venue panels use the property gallery's own grid, hover and lightbox —
+three columns, 110px rows, the same 6px gutter. A second gallery language on one screen reads as a
+different product, and one was already written for this job. The lead photograph becomes clickable
+**only when there is more than one**, so a property that has never been given a second photograph
+renders exactly as before, and the lightbox now takes a named shot set instead of always being the
+property's gallery.
+
+### The standard: two levels, and why refusing is the smaller half
+
+`src/lib/media/standards.ts` is one definition with three callers — the browser before an upload,
+the server on the bytes it received, and the CMS's video field on an address somebody typed.
+
+- **Refuse** is for what cannot work anywhere: the wrong type, past the byte cap, a file whose
+  dimensions cannot be read, smaller than the smallest rendition this app stores, or a shape whose
+  subject is cropped away in every slot on the site.
+- **Warn** is everything else, and it is most of it. A resort that holds one photograph of its spa
+  at 1200px still has that photograph. Losing real content to a rule is worse than the rule not
+  existing, so it is accepted and the reason is said out loud — which is the whole of what was
+  asked for.
+
+Two numbers are worth naming. `wantLongEdge` is 1600 because that is the width of the `hero`
+rendition this app stores, so a source below it is enlarged on a full-bleed hero — the sentence
+says so rather than asserting a preference. And `minBytesPerPixel` reads prior compression off
+**our own re-encode at one quality**, which is what makes the number comparable at all; it applies
+to JPEG only, because a flat PNG logo is legitimately tiny and calling that poor quality would be a
+rule about the wrong thing.
+
+There is deliberately no separate megapixel warning. Every image it would have fired on is one
+`small` or `crop` has already spoken about, and two sentences for one fault is how a warning stops
+being read. It was written, the tests caught it duplicating, and it came out.
+
+**The video floor was in the wrong place, and the shipped assets said so.** The first draft refused
+below 640 × 360. Both hero clips this site serves are 640-wide and one of them is 640 × 338, so the
+floor refused what is on the live site. It is a quarter of 1080p now — a wall-sized thumbnail, and
+genuinely unusable — and the shipped pair warn instead. The standard is not tuned down to let the
+existing content pass: `test/unit/media-standards.test.ts` asserts that `uae.mp4` draws exactly one
+finding, and it is `small`.
+
+### Measured on the bytes, never on the form
+
+The upload used to take `w`, `h` and `bytes` from form fields the browser filled in. Those fields
+are gone. `src/lib/media/probe.ts` reads dimensions out of the JPEG, PNG and WebP headers and out
+of an MP4's own `tkhd` and `mvhd` boxes, and the record carries what was read.
+
+The `hero` rendition is what an image is judged on, and that is load-bearing rather than
+convenient: the browser only ever scales down (`Math.min(1, 1600 / longEdge)`), so a hero that
+arrives under 1600 wide is proof the original was. Nothing has to trust a number beside it.
+
+The MP4 walk was checked against an independent implementation of the same boxes before it was
+trusted, including the audio track's 0 × 0 `tkhd`, which the "widest wins" rule skips. WebM answers
+nothing — writing a second, worse EBML parser for a container nobody here has used would be a check
+that half ran — and the standard reports that as unmeasured rather than as a pass.
+
+### Video, because the one video a guest watches had no way in
+
+The destination hero is a full-screen clip, and it was a path somebody typed pointing at a file a
+developer had copied into the repository. The library takes MP4 and WebM now, stored as they
+arrive: nothing transcodes, and a build with four runtime dependencies is not going to start. A
+video record carries the three picture renditions too — a frame captured from the clip a moment in,
+because the first frame is often a fade from black and a black poster is indistinguishable from a
+video that failed to load.
+
+A URL is still a real answer, and the field's **Check this video** button probes one: a page cannot
+read the dimensions of a cross-origin file whose server sends no CORS header, and that is reported
+as unmeasured rather than as a pass.
+
+### The content-length check is not a fence, and the first version said it was
+
+The handler reads `content-length` before calling `formData()`, which saves the multipart decode
+and the copy of every part it allocates. The comment above it claimed the body was turned away
+before it was read. **Measured: it is not.** A POST that announces 900 MB and sends seven bytes gets
+no answer at all — and neither does one aimed at a route that does not exist, so it is the platform
+receiving the body before anything is dispatched, not this handler.
+
+The comment now says what is true, `test/api/media.test.ts` pins the silence so nobody writes the
+claim back, and DEPLOYMENT.md §4 names the edge setting that is the actual fence.
+
+Two smaller things fell out of the same test. The ceiling is derived — one video plus three poster
+renditions plus framing — rather than a round number that would quietly contradict a raised cap.
+And a refusal whose whole job is to name the limit was printing `That image is larger than 0 MB`,
+because sizes were always formatted in megabytes; they are printed in the unit they fit now.
+
+### What this does not do
+
+Nothing generates alternative formats or sizes beyond the three renditions, nothing transcodes
+video, and no captions are collected for a room's extra photographs — the room's own name is the
+caption, and a second caption field on every photograph is a form nobody fills in. The browser
+check before an upload is a courtesy that saves a wait; the server judges the bytes it received and
+is the one that decides.
+
+## 17. A publish reached the API and not the site
+
+Found by an end-to-end test that failed only when the tests before it had run — which is the shape
+of a defect nobody would have reproduced by hand, and it was live.
+
+An editor publishes a property. Measured on the shipped build, immediately afterwards:
+
+```
+GET /api/public/site     the change,        25 times out of 25
+GET /properties/{id}     the previous page, 12 times out of 12
+```
+
+and the page stayed on the previous content **for the life of the process** — past the bundle TTL,
+past a cache-busting query string, on the home page as well, with `Cache-Control: no-store` on every
+one of those responses. So a reader reloading saw nothing change and had no way to tell why.
+
+**The cause is that a module-level variable is not one variable.** The pages and the route handlers
+are compiled into separate server bundles, so each holds its own instance of every module they both
+import. Three singletons were written as `let instance` at module scope, and each quietly became
+two:
+
+- `getStore()` — and `FileStore` keeps a partition cache for the life of the process. The API's copy
+  wrote and updated its cache; the page's copy had read once, had never written, and never looked
+  again. That is the whole of the staleness, and it is why the bundle TTL did not rescue it.
+- the bundle memo in `repository.ts` — a publish updates it, and updated only the API's.
+- the rate-limit buckets — the milder one, and the one worth stating plainly: a caller had a full
+  allowance through the pages and another full allowance through the route handlers, so every
+  ceiling was quietly double what it says.
+
+`src/lib/singleton.ts` puts all three on `globalThis`. It is not a cache and not a work-around: it
+is where a process-wide singleton has to live when a module can be instantiated more than once, and
+it restores exactly what each of them already meant. Measured after: 0 stale out of 12.
+
+**Why nothing caught it.** Every API test drives the route handlers, where the writer and the reader
+are the same instance. The one e2e test that publishes through the CMS and then reads the site did
+so on a page that had never been rendered before — a cold bundle reads from the store and is
+therefore correct. It took a test that warmed the page first, which is what every real visitor does.
+`test/api/public.test.ts` now warms it deliberately, and says why in the test.
+
+The deployed install was serving this. It is a file-store deploy, which is the driver whose cache
+never expires, so the symptom there was the strongest form: publish anything, and the public pages
+do not change until the container restarts.

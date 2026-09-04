@@ -57,6 +57,13 @@ export const config = {
     bucket: raw('MEDIA_S3_BUCKET'),
     region: raw('MEDIA_S3_REGION') || raw('AWS_REGION') || 'me-central-1',
     maxBytes: num('MEDIA_MAX_BYTES', 10 * 1024 * 1024),
+    /**
+     * A video's own cap, and it is a different number for a different reason. An image cap is
+     * about what a page should weigh; this one is about what this process should hold, because a
+     * multipart body is buffered to parse it. It is checked against `content-length` at the door,
+     * before the body is read, so an oversized upload is refused rather than allocated.
+     */
+    videoMaxBytes: num('MEDIA_VIDEO_MAX_BYTES', 64 * 1024 * 1024),
   },
 
   aws: {
