@@ -25,6 +25,9 @@ RUN npm run build
 # ---------------------------------------------------------------- runtime
 FROM node:22-alpine AS runtime
 WORKDIR /app
+
+# `su-exec` is how the entrypoint drops to `node` without leaving a root process behind.
+RUN apk add --no-cache su-exec
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -44,7 +47,11 @@ COPY --from=build --chown=node:node /app/.next/static ./.next/static
 # it: `-v axis-data:/app/.data`, an ECS bind mount, or a platform volume at whatever STORE_DIR says.
 RUN mkdir -p /app/.data && chown node:node /app/.data
 
-USER node
+# The entrypoint runs as root for exactly one statement — handing the mount to `node` — and then
+# execs the server as `node`. There is no `USER node` here because that would drop privileges before
+# the mount exists, which is the whole problem it solves.
+COPY --chmod=755 docker-entrypoint.sh /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
 EXPOSE 3000
 
 # The readiness probe is a real one: it asks the store and composes the published bundle, so an
