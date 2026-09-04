@@ -10,7 +10,15 @@
 import type { MetadataRoute } from 'next'
 import { config } from '@/lib/config'
 
-export const dynamic = 'force-static'
+/**
+ * Evaluated per request, not at build.
+ *
+ * One image runs in development, staging and production — that is the whole shape of the deploy —
+ * and `next build` runs with `NODE_ENV=production`, so a statically generated robots.txt would bake
+ * production's "allow everything" and serve it on staging. The file whose entire job is keeping a
+ * staging copy out of the index would be the thing that put it there.
+ */
+export const dynamic = 'force-dynamic'
 
 export default function robots(): MetadataRoute.Robots {
   if (config.stage !== 'production') {

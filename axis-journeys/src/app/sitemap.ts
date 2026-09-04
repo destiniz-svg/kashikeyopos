@@ -10,7 +10,14 @@ import type { MetadataRoute } from 'next'
 import { siteBundle } from '@/lib/content/bundle-service'
 import { config } from '@/lib/config'
 
-export const revalidate = 3600
+/**
+ * Composed per request. At build time there is no store — the image is built once and points at a
+ * different table in each environment — so a statically generated sitemap would ship carrying the
+ * home page and nothing else, and serve it until the first revalidation.
+ *
+ * The cost is one read of the in-memory bundle, and crawlers ask for this rarely.
+ */
+export const dynamic = 'force-dynamic'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = config.siteUrl.replace(/\/$/, '')

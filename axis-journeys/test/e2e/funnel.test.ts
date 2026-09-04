@@ -296,9 +296,9 @@ describe('at every width the prototype declares', () => {
     await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle').catch(() => undefined)
     await page.waitForTimeout(700)
-    // At 390px the desktop intent bar is present but hidden, so the visible one is what a thumb
-    // actually meets.
-    const explore = await page.locator('#explore-btn:visible, #intent-mobile button:visible').first().boundingBox()
+    // At 390px the desktop intent bar is hidden and `#intent-mobile` — which is itself the button —
+    // takes its place. Whichever is visible is the one a thumb meets.
+    const explore = await page.locator('#intent-mobile:visible, #explore-btn:visible').first().boundingBox()
     assert.ok(explore && explore.height >= 44, `the explore control is ${explore?.height ?? 'not visible'}`)
 
     await page.goto(h.base + '/properties/baros', { waitUntil: 'domcontentloaded' })

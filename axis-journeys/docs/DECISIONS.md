@@ -197,3 +197,44 @@ Sign-in answers byte-identically whether the address is unknown or the password 
   untouched. That the URLs are correct is checked; that they resolve is not.
 - Screen-reader behaviour has not been driven. Contrast, keyboard reachability, focus rings and
   WCAG 2.5.8 target sizes are measured in a real browser; the rest of WCAG is not automated.
+
+---
+
+## 10. Two files that must not be built once
+
+`robots.txt` and `sitemap.xml` are rendered per request rather than at build time, and both would
+have been wrong the other way round.
+
+**`robots.txt`** decides by `APP_STAGE`, and `next build` runs with `NODE_ENV=production`. One image
+runs in every environment — that is the whole shape of the deploy — so a statically generated file
+would bake production's "allow everything" and serve it on staging. The file whose entire job is
+keeping a staging copy out of the index would be the thing that put it there.
+
+**`sitemap.xml`** is composed from the published bundle, and at build time there is no store: the
+image is built once and points at a different table in each environment. It would have shipped
+carrying the home page and nothing else.
+
+Both cost one read of the in-memory bundle, and crawlers ask rarely.
+
+---
+
+## 11. The visual QA, and what it compared against
+
+The finished implementation was captured beside the running prototype at identical viewports, with
+the reveal transitions settled, and compared per pixel by a decoder written for the purpose. Above
+the fold at 1440px: **0.204% of pixels differ**, concentrated in text antialiasing. At 390px the two
+are visually identical.
+
+Two differences were traced to their cause and fixed rather than accepted:
+
+- **Document order.** The store lists by sort key, which is alphabetical by id, so the Selection
+  carousel, the Properties grid and the Offers rail rendered in a different order from the
+  catalogue. `Doc<T>` carries an `order` now, assigned by position at seed time, and `listDocs`
+  sorts by it.
+- **The logo.** Rendered through `next/image` it was resampled, and accounted for most of the
+  remaining delta. It is a plain `<img>` at its true 851×1007 aspect, with the eslint exemption
+  carrying the reason.
+
+One change of mine was reverted as overreach: the trust strip's "38 properties" was briefly replaced
+with a computed count. That string is the agency's own claim about its partner contracts — business
+copy, not a derived figure — so it is verbatim again, with a comment saying why.

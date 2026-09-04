@@ -114,3 +114,19 @@ an error path that never returns an internal message.
 
 No secret is hard-coded, and the only environment value the browser ever sees is the Turnstile
 **site** key, which is public by design.
+
+---
+
+## What is not verified
+
+Stated here rather than left to be discovered:
+
+- **No live AWS, SES or Cloudflare call has been made.** The signer is pinned against AWS's own
+  implementation and the drivers are tested against their request composition, but the first real
+  call on a deployed install is the first proof that the table name, the bucket policy and the SES
+  identity are right. `/api/ready` names anything it finds.
+- **The catalogue's photography is on hosts this build environment refuses**, so the browser drives
+  substitute bytes at the network layer only. That the URLs are correct is checked; that they
+  resolve is not.
+- **No screen reader has been driven.** Contrast, keyboard reachability, focus rings and WCAG 2.5.8
+  target sizes are measured in a real browser; the rest is not automated.
