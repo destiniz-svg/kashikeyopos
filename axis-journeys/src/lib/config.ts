@@ -97,6 +97,15 @@ export const config = {
     scale: num('RATE_LIMIT_SCALE', 1),
   },
 
+  /**
+   * Seed the catalogue at boot when the workspace is empty.
+   *
+   * For a container whose store is a mounted disk: the runtime image carries no source, so there is
+   * no seed script inside it to run by hand. Off by default — an install that seeds from a checkout
+   * should not also do it at every boot.
+   */
+  seedOnBoot: bool('SEED_ON_BOOT', false),
+
   /** Public bundle cache. Serving `/api/public/site` from memory keeps the hot path off the store. */
   bundleTtlMs: num('BUNDLE_TTL_MS', 60_000),
   logLevel: (raw('LOG_LEVEL') || (isProd ? 'info' : 'debug')) as 'debug' | 'info' | 'warn' | 'error',

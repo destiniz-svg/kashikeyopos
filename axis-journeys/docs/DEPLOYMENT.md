@@ -219,35 +219,45 @@ independent.
 
 ## 6a. A container deploy with the store on a disk
 
-The AWS shape above puts the store in DynamoDB and the operator seeds it from a checkout. A
+The AWS shape above puts the store in DynamoDB and an operator seeds it once from a checkout. A
 single-node container deploy — a review environment, or a small install that does not want a table —
-puts the store on a mounted disk instead, and that changes one thing worth stating: **the runtime
-image carries no source, so `npm run seed` cannot run inside it.** That is deliberate (it is what
-keeps the image to the standalone server and nothing else) and it means a volume-backed container
-has no way to get its catalogue from the image alone.
+puts the store on a mounted disk instead, and that raises a problem the image creates for itself:
+**it carries the standalone server and no source**, so there is no `scripts/seed.ts` inside it to
+run. A fresh volume would mean a site with no catalogue and a CMS nobody can sign in to, and the
+only remedy would be a shell in a container built not to need one.
 
-So a deploy of that shape builds from the repository rather than from the Dockerfile, and seeds on
-boot. `railway.json` describes it, so the deployment is in the repository rather than in a
-dashboard:
+`SEED_ON_BOOT=1` closes that. Next's `instrumentation.ts` hook runs — and is **awaited** — before
+the server takes its first request, so an instance cannot answer `/api/ready` green while its store
+is still empty. Both halves are idempotent: `seedWorkspace()` leaves an existing document alone, and
+`ensureFirstOwner()` creates an account only when the workspace has no users at all, so a restart
+costs a few reads.
 
-```json
-{
-  "build": { "builder": "NIXPACKS" },
-  "deploy": {
-    "startCommand": "npm run seed && npm start",
-    "healthcheckPath": "/api/ready"
-  }
-}
+It is off by default, and deliberately so: an install that seeds from a checkout should not also
+have a catalogue written underneath it by a hook nobody asked for.
+
+```
+STORE_DRIVER=file          the media library lands on the same disk
+STORE_DIR=/data            the mount path
+SEED_ON_BOOT=1             bring an empty workspace up on first boot
+ADMIN_OWNER_EMAIL=…        the first CMS account, created only when there are no users
+ADMIN_OWNER_PASSWORD=…     from the platform's secret store, never from the image
 ```
 
-Seeding on every boot is safe and nearly free: `seedWorkspace()` leaves an existing document alone
-unless `--force` is given, and `ensureFirstOwner()` creates an account only when the workspace has
-no users at all. Set `STORE_DIR` to the mount path (`/data`), and the media library lands on the
-same disk.
+The rest is the platform's own service settings — a volume at `STORE_DIR`, the health check on
+`/api/ready`, and the image's own `CMD` as the start command. They are written here rather than in a
+config file in the repository: Railway's `railway.json` is deprecated in favour of a TypeScript file
+of its own, and this application deploys to AWS. A repository that carries one platform's
+infrastructure format has taken a position it did not mean to.
 
-**The gap this leaves**, stated rather than left to be found: if you want the Dockerfile image
-itself to seed a fresh volume, it needs a compiled seed entry point in the runtime stage. Nothing in
-this build has one, because the AWS deploy this image was written for does not need it.
+A failure here does not bring the process down. A store that is briefly unreachable at boot will be
+reachable in a moment, and `/api/ready` is what says whether this instance can serve a guest — a
+crash loop would take that answer away. What went wrong is on the log line, with the store's own
+words.
+
+The volume mount itself is the operator's decision and is not in the image: there is no `VOLUME`
+instruction, because one would force an anonymous volume on every run — including the DynamoDB
+deploy, which never touches that path — and leave an orphan behind each time a container is
+replaced.
 
 ---
 

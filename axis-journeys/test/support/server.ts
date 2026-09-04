@@ -84,7 +84,7 @@ function run(cmd: string, args: string[], env: Record<string, string>): Promise<
  * doorman is right to read as one caller — the limiter's own behaviour is tested against real
  * ceilings in `rate-limit.test.ts` and over HTTP in `security.test.ts`, which sets it back to 1.
  */
-export async function startServer(over: Record<string, string> = {}): Promise<Harness> {
+export async function startServer(over: Record<string, string> = {}, opts: { skipSeed?: boolean } = {}): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), 'axis-test-'))
   const port = await freePort()
   const env: Record<string, string> = {
@@ -108,7 +108,11 @@ export async function startServer(over: Record<string, string> = {}): Promise<Ha
     ...over,
   }
 
-  await run('node', ['--env-file-if-exists=.env.local', '--import', './scripts/register-loader.mjs', 'scripts/seed.ts'], env)
+  // `skipSeed` leaves the store empty, which is how the boot-time seed is exercised: a container
+  // with a fresh volume has no seed script inside it to run.
+  if (!opts.skipSeed) {
+    await run('node', ['--env-file-if-exists=.env.local', '--import', './scripts/register-loader.mjs', 'scripts/seed.ts'], env)
+  }
 
   // Spawned as its own process GROUP, and Next's binary directly rather than through `npx`.
   // Through a wrapper, a SIGTERM reaches the wrapper and the real server keeps the stdio pipes
