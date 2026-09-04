@@ -238,3 +238,83 @@ Two differences were traced to their cause and fixed rather than accepted:
 One change of mine was reverted as overreach: the trust strip's "38 properties" was briefly replaced
 with a computed count. That string is the agency's own claim about its partner contracts — business
 copy, not a derived figure — so it is verbatim again, with a comment saying why.
+
+---
+
+## 12. The performance budgets, and what they are measured on
+
+| | Measured | Budget |
+| --- | --- | --- |
+| JavaScript reaching the browser | **207 KB** compressed | 280 KB |
+| Server-rendered HTML, home page | **43 KB** compressed | 100 KB |
+| Stylesheet | **4.5 KB** compressed | 20 KB |
+| Fonts, two families subset | measured per run | 200 KB |
+| Cumulative layout shift, 390px | measured per run | < 0.1 |
+
+Two things about how those are taken.
+
+**They are compressed bytes**, read from the browser's own Resource Timing (`encodedBodySize`) —
+what a guest's connection actually pays. Reading response bodies instead measures the decompressed
+size, which on this build reads 735 KB against the 207 KB that is really sent, and would have set
+every budget against a number nobody experiences.
+
+**The stylesheet is 4.5 KB because almost all of the design is inline.** The prototype's
+measurements travel as style attributes in the markup, so the sheet carries only the tokens, the
+resets and the media queries. That is the same decision as §1 seen from the other side: it is why
+the HTML is comparatively large and the CSS is not.
+
+A budget is not a benchmark. One run on one machine says nothing about a phone in Malé, so what is
+asserted is the shape a slow connection cannot recover from — how much has to arrive before
+anything is interactive, whether a third party is on the critical path, whether the layout moves
+after it paints, and whether the largest paint is the hero rather than something below the fold.
+
+**Image weight is not measured**, because the catalogue's photography is on hosts this environment
+refuses. That is §9's limitation, not a budget that passed.
+
+---
+
+## 13. The dead code that was removed, and the one piece that was wired instead
+
+A sweep for exports with no reader found eight. Seven were deleted:
+
+- **`sizeForKey`** was the worse kind: a second, subtly different definition of the rule
+  `resolve.ts` already applies with its own `sizeFor`. Two definitions of one rule, one of them
+  dead, is how they come to disagree.
+- `setStore`, `setMailer`, `forgetBundle`, `isEmpty`, `cssWith` — seams and helpers nothing used. A
+  seam with no user is surface area, not flexibility; each is three lines if it is ever wanted.
+- `requireActor` is called only by `need()` in its own file, so it stopped being exported.
+
+**`breadcrumbJsonLd` was wired rather than deleted.** It was written, correct, and rendered nowhere
+— a property page sits two levels down and a search result that shows the trail is one a person
+trusts more. It is on the property and destination pages now, with the destination's own slug, so
+the middle rung points at a page the site actually serves.
+
+The same sweep confirmed that `src/lib/config.ts` is the only module reading `process.env` — it was
+not, quite: `src/proxy.ts` read `API_ORIGIN` and `MEDIA_ORIGIN` directly, because Next reserves the
+name `config` in that file for its own matcher. That was the one place skipping the rule that a
+dangling `${{…}}` reference is not a value, which would have put the literal into the
+Content-Security-Policy as an allowed origin. It imports the config under an alias now.
+
+There is deliberately **no lint script**. `next lint` was removed in Next 16 and the one in
+`package.json` did nothing — a control that reports success without running is the defect this
+build keeps finding, and leaving it would have been an instance of it. The static gate is
+`npm run typecheck`, which runs TypeScript in strict mode over the application and the tests. The
+`eslint-disable-next-line` comments that remain are notes on intent for whoever adds a linter, and
+each says why the rule is being set aside rather than only that it is.
+
+---
+
+## 14. The logger cannot take the request with it
+
+`redact()` is applied to every field rather than to the ones somebody remembered — the only version
+of this that survives a new field being added — and it redacts on the KEY (`password`, `token`,
+`authorization`, `cookie`, a hash) and on the VALUE (a bearer token or a stored `scrypt$…$…` pasted
+into a message, whatever the field is called).
+
+Writing the test for it found that the logger **threw on a cyclic value**. The depth cap did not
+help: past the cap the value was returned as it stood, so the cycle came straight back and
+`JSON.stringify` raised. A request object, an error with a `cause` chain, an ORM row — any of them
+can hold one, and the logger is called from catch blocks with values nobody chose. A logger that can
+throw takes the request with it, and the thing it was reporting is the thing that is lost. Cycles
+are marked `[circular]` now, depth is `[deep]`, and `emit()` has a last fence that still writes the
+level, the scope and the message when a field cannot be serialised at all.

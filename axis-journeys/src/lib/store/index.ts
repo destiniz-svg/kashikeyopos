@@ -24,9 +24,4 @@ export function getStore(): DocumentStore {
   return instance
 }
 
-/** Test support: swap the driver. The application never calls this. */
-export function setStore(store: DocumentStore | null): void {
-  instance = store
-}
-
 export * from './types'

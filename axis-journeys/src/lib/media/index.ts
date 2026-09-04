@@ -190,7 +190,3 @@ export function setMediaStore(s: MediaStore | null): void {
 export const MEDIA_PREFIX = 'media:'
 export const isMediaRef = (v: unknown): v is string => typeof v === 'string' && v.startsWith(MEDIA_PREFIX)
 export const mediaId = (ref: string): string => ref.slice(MEDIA_PREFIX.length)
-
-/** A hero-sized rendition where the key says hero, card everywhere else — the prototype's rule. */
-export const sizeForKey = (key: string | number | undefined): Size =>
-  /hero|poster|storyImg|img$/i.test(String(key ?? '')) && /hero|poster|storyImg/i.test(String(key ?? '')) ? 'hero' : 'card'

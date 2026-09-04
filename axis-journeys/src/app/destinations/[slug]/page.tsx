@@ -7,7 +7,7 @@ import { notFound } from 'next/navigation'
 import { siteBundle } from '@/lib/content/bundle-service'
 import { SiteApp } from '@/components/site/SiteApp'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { destinationJsonLd } from '@/lib/seo/jsonld'
+import { breadcrumbJsonLd, destinationJsonLd } from '@/lib/seo/jsonld'
 import { wantsPreview } from '@/lib/content/preview'
 
 export const dynamic = 'force-dynamic'
@@ -43,6 +43,12 @@ export default async function DestinationRoute({ params, searchParams }: Params)
   return (
     <>
       <JsonLd data={destinationJsonLd(bundle, dest)} />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'Axis Journeys', path: '/' },
+          { name: dest.name, path: `/destinations/${dest.slug}` },
+        ])}
+      />
       <SiteApp bundle={bundle} destination={dest.name} />
     </>
   )

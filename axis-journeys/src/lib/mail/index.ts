@@ -114,6 +114,3 @@ export function getMailer(): Mailer {
 }
 
 /** Test support. */
-export function setMailer(m: Mailer | null): void {
-  mailer = m
-}

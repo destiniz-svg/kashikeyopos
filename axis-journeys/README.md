@@ -39,7 +39,7 @@ rather than reporting a send it did not make.
 npm run dev          # development server
 npm run build        # production build (standalone output)
 npm start            # run the built server
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc --noEmit, in strict mode — the static gate
 npm run seed         # put the catalogue in the store; safe to run twice
 npm test             # unit
 npm run test:api     # HTTP, against a real built server and a real store

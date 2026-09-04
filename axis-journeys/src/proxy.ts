@@ -9,6 +9,11 @@
  */
 import { NextResponse, type NextRequest } from 'next/server'
 import { contentSecurityPolicy } from './lib/http/headers.mjs'
+// Aliased because Next reserves the name `config` in this file for its own matcher. Reading
+// process.env directly here would be the one place that skipped `src/lib/config.ts` — and with it
+// the rule that a dangling `${{…}}` reference is not a value, which would put the literal into the
+// Content-Security-Policy as an allowed origin.
+import { config as app } from './lib/config'
 
 export const config = {
   // Static assets and the image optimiser carry no HTML, so they skip this entirely.
@@ -19,8 +24,8 @@ export default function proxy(req: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const csp = contentSecurityPolicy({
     nonce,
-    apiOrigin: process.env.API_ORIGIN || undefined,
-    mediaOrigin: process.env.MEDIA_ORIGIN || undefined,
+    apiOrigin: app.apiOrigin || undefined,
+    mediaOrigin: app.mediaOrigin || undefined,
   })
 
   const headers = new Headers(req.headers)

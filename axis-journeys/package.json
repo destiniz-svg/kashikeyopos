@@ -11,7 +11,6 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
     "seed": "node --env-file-if-exists=.env.local --import ./scripts/register-loader.mjs scripts/seed.ts",
     "test": "node --env-file-if-exists=.env.local --import ./scripts/register-loader.mjs --test test/unit/*.test.ts",
     "test:api": "node --env-file-if-exists=.env.local --import ./scripts/register-loader.mjs --test --test-concurrency=2 --test-timeout=300000 test/api/*.test.ts",

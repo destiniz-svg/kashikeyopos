@@ -157,10 +157,6 @@ export async function invalidateBundle(): Promise<void> {
   await rebuildBundle()
 }
 
-export function forgetBundle(): void {
-  memo = null
-}
-
 /** The items a publish writes, so the caller can commit them in one transaction. */
 export async function bundleItem(): Promise<StoredItem> {
   const bundle = await composeBundle(false)
@@ -197,10 +193,4 @@ export async function listEnquiries(): Promise<Enquiry[]> {
 export async function listMedia(): Promise<MediaRecord[]> {
   const docs = await listDocs<MediaRecord>('media')
   return docs.map((d) => d.draft).sort((a, b) => b.createdAt - a.createdAt)
-}
-
-/** Has anything been seeded yet? Used by the boot check and by `npm run seed`. */
-export async function isEmpty(): Promise<boolean> {
-  const props = await getStore().list(PK.collection('properties'))
-  return props.length === 0
 }

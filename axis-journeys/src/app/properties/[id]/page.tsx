@@ -8,12 +8,17 @@ import { notFound } from 'next/navigation'
 import { siteBundle } from '@/lib/content/bundle-service'
 import { SiteApp } from '@/components/site/SiteApp'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { propertyJsonLd } from '@/lib/seo/jsonld'
+import { breadcrumbJsonLd, propertyJsonLd } from '@/lib/seo/jsonld'
 import { wantsPreview } from '@/lib/content/preview'
+import type { SiteBundle } from '@/lib/content/types'
 
 export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }
+
+/** The destination's slug, so the breadcrumb's middle rung points at a page the site serves. */
+const destSlug = (bundle: SiteBundle, name: string): string =>
+  bundle.destinations.find((d) => d.name === name)?.slug ?? ''
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params
@@ -43,6 +48,13 @@ export default async function PropertyRoute({ params, searchParams }: Params) {
   return (
     <>
       <JsonLd data={propertyJsonLd(bundle, p)} />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'Axis Journeys', path: '/' },
+          { name: p.dest, path: `/destinations/${destSlug(bundle, p.dest)}` },
+          { name: p.name, path: `/properties/${p.id}` },
+        ])}
+      />
       <SiteApp bundle={bundle} propertyId={p.id} />
     </>
   )

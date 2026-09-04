@@ -49,6 +49,3 @@ export function css(src: string): CSSProperties {
   cache.set(src, frozen)
   return frozen
 }
-
-/** Merge a parsed declaration string with overrides that vary per render. */
-export const cssWith = (src: string, extra: CSSProperties): CSSProperties => ({ ...css(src), ...extra })
