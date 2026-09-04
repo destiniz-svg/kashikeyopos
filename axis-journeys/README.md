@@ -13,6 +13,9 @@ deploys is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Running it
 
+**Node 22.6 or newer.** The seed script runs TypeScript through Node's own type stripping rather
+than a second toolchain, and `package.json` states the floor so a host picks the right runtime.
+
 ```bash
 npm install
 cp .env.example .env.local     # then fill in SESSION_SECRET and the ADMIN_OWNER_* pair

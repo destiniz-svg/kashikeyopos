@@ -2,9 +2,9 @@
   "name": "axis-journeys",
   "version": "1.0.0",
   "private": true,
-  "description": "Axis Journeys \u2014 production website and Axis CMS (Axis Link LLC-FZ, Dubai)",
+  "description": "Axis Journeys — production website and Axis CMS (Axis Link LLC-FZ, Dubai)",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.6"
   },
   "scripts": {
     "dev": "next dev -p 3000",
