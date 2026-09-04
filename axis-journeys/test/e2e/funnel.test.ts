@@ -309,3 +309,128 @@ describe('at every width the prototype declares', () => {
     await ctx.close()
   })
 })
+
+/**
+ * The Destinations menu, and the curated paths in it.
+ *
+ * Reported as "Curated Quick Paths does not work, no content", and it was three separate things:
+ * the menu could not be opened by clicking it, the paths did nothing at all from a destination
+ * page, and on a phone they did not exist. Each is driven here the way the person who reported it
+ * would have met it.
+ */
+describe('the Destinations menu', () => {
+  it('opens on a click with a mouse, and holds the curated paths', async () => {
+    // `onMouseEnter` opens it, so a toggle on click could only ever shut it again: measured,
+    // aria-expanded went false -> true on approach and back to false on the click itself.
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    const trigger = page.locator('#desknav button[aria-expanded]').first()
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'false')
+    await trigger.click()
+    await page.waitForTimeout(500)
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'true', 'clicking Destinations did not open the menu')
+    assert.equal(await page.locator('#mega-grid').count(), 1)
+    const paths = await page.locator('#mega-grid button').evaluateAll((els) => els.map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim()))
+    assert.ok(paths.some((t) => /Private islands/.test(t)), `the menu holds: ${JSON.stringify(paths)}`)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(350)
+    assert.equal(await page.locator('#mega-grid').count(), 0, 'Escape left it open')
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('offers no path that lands on nothing', async () => {
+    // The shipped list has one the catalogue cannot answer — no property is an Overwater Villa —
+    // and a curated entry that ends on "No exact match" reads as a broken site.
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#desknav button[aria-expanded]').first().click()
+    await page.waitForTimeout(450)
+    const labels = await page.locator('#mega-grid button').evaluateAll((els) => els.map((e) => (e.textContent || '').trim()))
+    assert.equal(labels.some((t) => /Overwater icons/.test(t)), false, 'a path with no matches is still offered')
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('a curated path taken from a destination page arrives filtered on the home page', async () => {
+    // Before: it wrote filters the destination page does not read and scrolled to an id that is
+    // not on it, then toasted "3 journeys match" over a screen where nothing had moved.
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/destinations/maldives', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#desknav button[aria-expanded]').first().click()
+    await page.waitForTimeout(450)
+    await page.locator('#mega-grid button').filter({ hasText: 'Private islands' }).first().click()
+    await page.waitForTimeout(3000)
+
+    assert.match(page.url(), /\/\?.*pkg=Private\+Island/, `it stayed on ${page.url()}`)
+    assert.ok(await page.evaluate(() => window.scrollY) > 400, 'it did not reach the Selection')
+    const intent = await page.locator('#intent-wrap').innerText()
+    assert.match(intent, /Private Island/, 'the filter did not survive the navigation')
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('and the same filter set is a link somebody can send', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/?pkg=Private+Island&themes=Diving', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.waitForTimeout(2000)
+    assert.ok(await page.evaluate(() => window.scrollY) > 400, 'an arriving filter did not scroll to the results')
+    const intent = await page.locator('#intent-wrap').innerText()
+    assert.match(intent, /Private Island/)
+    assert.match(intent, /Diving/)
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('a section label on a destination page changes the address it changes the page for', async () => {
+    // It rendered the home page with the URL still reading /destinations/maldives, so a reload
+    // came back to the destination and the link could not be shared.
+    const ctx = await newContext(s, { width: 1440, height: 900 })
+    const { page, faults } = await openPage(s, ctx)
+    await page.goto(h.base + '/destinations/maldives', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#desknav a').filter({ hasText: 'Our Story' }).first().click()
+    await page.waitForTimeout(1800)
+    assert.match(page.url(), /\/#story$/, `it left the address at ${page.url()}`)
+    assert.equal(await page.locator('#dp-props').count(), 0, 'the destination page is still rendered')
+
+    // The three that DO have a local section stay where they are, which is the other half.
+    await page.goto(h.base + '/destinations/maldives', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#desknav a').filter({ hasText: 'Properties' }).first().click()
+    await page.waitForTimeout(1200)
+    assert.equal(await page.locator('#dp-props').count(), 1, 'it left the destination page for its own section')
+    assert.deepEqual(faults, [])
+    await page.close()
+    await ctx.close()
+  })
+
+  it('the phone menu carries them, and one of them works', async () => {
+    const ctx = await newContext(s, { width: 390, height: 844 }, { hasTouch: true })
+    const { page, faults } = await openPage(s, ctx)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#burger').click()
+    await page.waitForTimeout(600)
+
+    const menu = await page.locator('body').innerText()
+    // Case-insensitive: the heading is uppercased in CSS, and `innerText` reports what is drawn.
+    assert.match(menu, /curated quick paths/i, 'the phone menu has no quick paths at all')
+    assert.match(menu, /Family villas/)
+
+    const path = page.locator('button').filter({ hasText: 'Family villas' }).first()
+    const box = await path.boundingBox()
+    assert.ok(box && box.height >= 44, `the tap target is ${box?.height}px tall`)
+    await path.click()
+    await page.waitForTimeout(2200)
+    assert.ok(await page.evaluate(() => window.scrollY) > 300, 'tapping a path went nowhere')
+    assert.equal(await overflowsX(page), false)
+    assert.deepEqual(faults, [])
+    await page.close()
+    await ctx.close()
+  })
+})

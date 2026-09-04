@@ -11,6 +11,7 @@ import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
 import { segColours } from '../derive'
 import { useSite } from '../state'
+import { availableQuickPaths } from '@/lib/content/filters'
 
 export function Header() {
   const { state, actions } = useSite()
@@ -30,18 +31,14 @@ export function Header() {
   const whatsapp = settings?.whatsapp || '971554855656'
   const waLink = `https://wa.me/${whatsapp}?text=${encodeURIComponent("Hello Axis Journeys — I'd like to speak with a specialist.")}`
 
+  // Only the paths this catalogue can answer — see `availableQuickPaths`.
+  const quickPaths = availableQuickPaths(s.bundle.properties, s.bundle.offers)
+
   const megaTiles = s.liveDestinations.map((d) => ({
     name: d.name,
     count: s.bundle.properties.filter((r) => r.dest === d.name).length,
     img: d.card,
   }))
-
-  const quickPaths = [
-    { label: 'Overwater icons · Maldives', apply: { dest: 'Maldives', pkg: 'Overwater Villa' } },
-    { label: 'Private islands', apply: { pkg: 'Private Island' } },
-    { label: 'Honeymoons under 7 nights', apply: { themes: ['Honeymoon'], nights: 7 } },
-    { label: 'Family villas', apply: { themes: ['Family'] } },
-  ]
 
   return (
     <div style={css('position:fixed;top:0;left:0;right:0;z-index:60;')}>
@@ -134,7 +131,20 @@ export function Header() {
             <button
               type="button"
               onMouseEnter={() => actions.setMega(true)}
-              onClick={actions.toggleMega}
+              /**
+               * Opens on a mouse, toggles on a touch — and never closes what the pointer arriving
+               * has just opened.
+               *
+               * `onMouseEnter` fires before `onClick`, so with a mouse the menu is ALREADY open by
+               * the time the click lands and a toggle can only ever shut it again. Measured: hover
+               * put `aria-expanded` at true, the click put it back to false, and clicking
+               * "Destinations" — the ordinary way anybody opens a menu — showed nothing at all.
+               * A device with no hover never opened it on approach, so there a toggle is right.
+               */
+              onClick={() => {
+                const hoverable = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(hover: hover)').matches
+                actions.setMega(hoverable ? true : !s.mega)
+              }}
               aria-expanded={s.mega}
               style={{ ...css('background:none;border:0;font-size:14px;font-weight:500;letter-spacing:.02em;padding:26px 0;display:flex;align-items:center;gap:6px;transition:color .2s;'), color: megaLinkColor }}
             >

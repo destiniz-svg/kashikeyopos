@@ -10,6 +10,10 @@ import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
 import {
   DEFAULT_FILTERS,
+  QUICK_PATHS,
+  availableQuickPaths,
+  filtersFromQuery,
+  filtersToQuery,
   EUR_RATE,
   countMatches,
   formatMoney,
@@ -23,6 +27,7 @@ import {
   type Filters,
 } from '@/lib/content/filters'
 import type { Offer, Property } from '@/lib/content/types'
+import { seed } from '@/lib/content/seed'
 
 const prop = (over: Partial<Property> = {}): Property =>
   ({
@@ -207,5 +212,71 @@ describe('formatMoney', () => {
   it('the alternate line shows the other currency', () => {
     assert.equal(formatMoneyAlt(1000, 'USD'), '€920')
     assert.equal(formatMoneyAlt(1000, 'EUR'), '$1,000')
+  })
+})
+
+describe('the curated quick paths', () => {
+  it('are four real journeys, each of which narrows something', () => {
+    assert.equal(QUICK_PATHS.length, 4)
+    for (const q of QUICK_PATHS) {
+      assert.ok(q.label.trim().length > 4, `${q.label} is not a label`)
+      assert.ok(Object.keys(q.apply).length > 0, `${q.label} filters nothing`)
+    }
+  })
+
+  it('only the ones this catalogue can answer are offered', () => {
+    // A curated entry that lands on "No exact match — try widening" reads as a broken site. The
+    // shipped list contains one that does: nothing in the catalogue is classified as an Overwater
+    // Villa. The menu declines to draw it rather than the list being quietly rewritten.
+    const live = seed.properties.filter((p) => !p.draft && !p.detailPending)
+    const offered = availableQuickPaths(live, seed.offers)
+    for (const q of offered) {
+      assert.ok(countMatches(live, seed.offers, { ...DEFAULT_FILTERS, ...q.apply }, 'insp') > 0, `"${q.label}" matches nothing`)
+    }
+    assert.ok(offered.length < QUICK_PATHS.length, 'the content gap this guards has been filled — good, and this test should be reconsidered')
+    assert.equal(offered.some((q) => q.apply.pkg === 'Overwater Villa'), false)
+  })
+
+  it('falls back to the whole list rather than drawing an empty column', () => {
+    assert.deepEqual(availableQuickPaths([], []), QUICK_PATHS)
+  })
+})
+
+describe('a filter set in the address', () => {
+  it('round-trips everything that is not a default', () => {
+    const f = { dest: 'Maldives', pkg: 'Overwater Villa', themes: ['Honeymoon', 'Diving'], nights: 7, month: 'August' }
+    const back = filtersFromQuery(new URLSearchParams(filtersToQuery(f)))
+    assert.deepEqual(back, f)
+  })
+
+  it('writes nothing for a default, so a plain link stays plain', () => {
+    assert.equal(filtersToQuery(DEFAULT_FILTERS), '')
+    assert.deepEqual(filtersFromQuery(new URLSearchParams('')), {})
+  })
+
+  it('carries a quick path across a navigation', () => {
+    for (const q of QUICK_PATHS) {
+      const back = filtersFromQuery(new URLSearchParams(filtersToQuery({ ...DEFAULT_FILTERS, ...q.apply })))
+      for (const [k, v] of Object.entries(q.apply)) assert.deepEqual(back[k as keyof typeof back], v, `${q.label} lost ${k}`)
+    }
+  })
+
+  it('bounds what it reads, because anybody can compose an address', () => {
+    const hostile = new URLSearchParams()
+    hostile.set('dest', '<script>alert(1)</script>' + 'x'.repeat(200))
+    hostile.set('themes', new Array(40).fill('Honeymoon').join(','))
+    hostile.set('nights', '9999')
+    const out = filtersFromQuery(hostile)
+    assert.equal(out.dest!.length <= 40, true, 'an unbounded string reached the intent bar')
+    assert.equal(/[<>]/.test(out.dest!), false, 'angle brackets were kept')
+    assert.equal(out.themes!.length, 8, 'the theme list is unbounded')
+    assert.equal(out.nights, undefined, 'a duration outside the slider was accepted')
+  })
+
+  it('drops a value that is only whitespace or control characters', () => {
+    const p = new URLSearchParams()
+    p.set('pkg', '   ')
+    p.set('month', '\u0000\u001F')
+    assert.deepEqual(filtersFromQuery(p), {})
   })
 })

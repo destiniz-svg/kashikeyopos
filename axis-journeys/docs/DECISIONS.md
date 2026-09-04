@@ -510,3 +510,68 @@ therefore correct. It took a test that warmed the page first, which is what ever
 The deployed install was serving this. It is a file-store deploy, which is the driver whose cache
 never expires, so the symptom there was the strongest form: publish anything, and the public pages
 do not change until the container restarts.
+
+## 18. Curated quick paths, and five other dead ends around them
+
+Reported as "destinations → Curated Quick Paths does not work, no content", which turned out to be
+three separate defects wearing one symptom, and a sweep of every control on the site turned up
+three more.
+
+### The menu could not be opened by clicking it
+
+The trigger carried `onMouseEnter={() => setMega(true)}` and `onClick={toggleMega}`. `mouseenter`
+fires first, so with a mouse the menu is already open by the time the click lands and the toggle
+can only ever shut it again. Measured: `aria-expanded` went false → true on approach and back to
+false on the click. Anybody who moved to "Destinations" and clicked it — the ordinary way a person
+opens a menu — saw it flash open and shut.
+
+The click opens rather than toggles where the pointer hovers, and still toggles where it does not,
+because a touch device never opened it on approach.
+
+### The paths did nothing at all from a destination page
+
+`apply()` wrote the filters into `state.f` and scrolled to `#selection`. The destination page reads
+`state.pf`, and `#selection` is on the home page only — so on `/destinations/maldives` the menu
+closed, nothing moved, and a toast said **"3 journeys match"** over a screen where nothing had.
+That is the worst form of a dead control: one that reports success.
+
+It looks for the Selection before pretending to have filtered it. Where the Selection is not on the
+page, the filter set goes into the address and the browser navigates — and a filter that survives a
+navigation is one somebody can also send, so `/?pkg=Private+Island` now arrives filtered and
+scrolled. `filtersFromQuery()` bounds every value, because that address is one anybody can compose.
+
+### On a phone they did not exist
+
+The four were written inline in `Header.tsx`. The mobile menu is a different component and nobody
+copied them across, so the phone had the heading nowhere and the list nowhere. They are one
+definition in `filters.ts` now, read by both — a second copy is also how two menus come to offer
+different journeys under the same name.
+
+### And one of the four could never have worked
+
+Found by a test rather than by clicking: **nothing in the catalogue is classified as an Overwater
+Villa**, so "Overwater icons · Maldives" always landed on "No exact match — try widening". The CMS
+offers that package type and no property uses it, which is a gap in the CONTENT rather than in the
+menu — so the list is not rewritten. `availableQuickPaths()` declines to draw a path that leads
+nowhere, and the path returns by itself the moment a specialist tags a property.
+
+### A section label on a destination page swapped the page underneath the address
+
+"Our Story" from `/destinations/maldives` set `page: null`, which renders the home page while the
+address still reads `/destinations/maldives#story`: a reload came back to the destination, and the
+link was unshareable. `goHome()` has always navigated for exactly this reason. The three labels
+that have a local section on that page (`dp-props`, `dp-offers`, `dp-exp`) still scroll to it — that
+half was right — and the ones that do not now navigate to `/#id`.
+
+### What the sweep covered, and what it could not
+
+Every visible `button` and `a` on the home page, a destination page, `/offers`, and six CMS screens
+was clicked with a fingerprint of the whole document taken either side: 471 controls, and after the
+false positives (the logo on the page it already points at, and a skip link measured mid-transition)
+the only one where nothing at all happened was the Destinations trigger. The CMS's 143 controls were
+all live. A second pass swept inside the overlays the first could not reach — the mega menu, the
+property drawer, the mobile nav — because a control that only exists once something is open is
+exactly the kind nobody notices is dead.
+
+What it does not cover: a control whose effect is real but wrong, which is what four of these six
+were. Those came from reading what each handler writes and asking who reads it.

@@ -21,7 +21,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { DEFAULT_FILTERS, type Filters, type PropertyFacet, type PropertyFilters } from '@/lib/content/filters'
+import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, type Filters, type PropertyFacet, type PropertyFilters } from '@/lib/content/filters'
 import type { Destination, GalleryShot, Offer, Property, SiteBundle } from '@/lib/content/types'
 
 export type Currency = 'USD' | 'EUR'
@@ -409,11 +409,26 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
           setTimeout(() => scrollToId(local[id]), 20)
           return
         }
-        const leaving = onDestPage
+        /**
+         * Leaving a destination page is a NAVIGATION, not a state change.
+         *
+         * It used to set `page: null`, which swaps the home page in underneath the destination's
+         * own address: measured, "Our Story" from `/destinations/maldives` rendered the home page
+         * with the URL still reading `/destinations/maldives#story`, so a reload came back to the
+         * destination and the link was unshareable. `goHome()` has always navigated for exactly
+         * this reason; the section labels now do the same, and the hash lands on the section
+         * because `globals.css` gives every section id its own scroll margin.
+         */
+        if (onDestPage && !extra) {
+          patch({ mega: false, menuOpen: false })
+          lock(false)
+          if (typeof window !== 'undefined') window.location.assign(`/#${id}`)
+          return
+        }
         if (typeof history !== 'undefined' && location.hash !== '#' + id) history.replaceState(null, '', '#' + id)
         patch({ page: null, mega: false, menuOpen: false, ...(extra as object) })
         lock(false)
-        setTimeout(() => scrollToId(id), leaving ? 80 : 20)
+        setTimeout(() => scrollToId(id), onDestPage ? 80 : 20)
       },
     [patch, lock, scrollToId, state.page],
   )
@@ -468,8 +483,29 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     [bundle.offers, properties],
   )
 
+  /**
+   * Apply a filter set and take the guest to the results.
+   *
+   * The Selection is on the home page and nowhere else, so this has to know where it is standing.
+   * On a destination page it wrote the filters into state that page does not read and scrolled to
+   * an id that is not on it — and then toasted "3 journeys match" over a screen where nothing had
+   * moved. Measured before this: scrollY 0 to 0, no cards, and that sentence on the screen.
+   *
+   * A filter that has to survive a navigation is a filter worth putting in the address, which is
+   * also what makes a curated path something a specialist can send to somebody.
+   */
   const apply = useCallback(
     (p: Partial<Filters>, tab?: Tab) => {
+      const here = typeof document !== 'undefined' && !!document.getElementById('selection')
+      if (!here) {
+        patch({ mega: false, menuOpen: false, sheetOpen: false })
+        lock(false)
+        if (typeof window !== 'undefined') {
+          const q = filtersToQuery({ ...DEFAULT_FILTERS, ...p })
+          window.location.assign(q ? `/?${q}` : '/')
+        }
+        return
+      }
       patch((s) => {
         const f = { ...s.f, ...p }
         const t = tab || s.tab
@@ -482,6 +518,9 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     },
     [patch, countMatches, toast, lock, scrollToId],
   )
+  // Read by the arrival effect, which must run once and must not re-run when this is rebuilt.
+  const applyRef = useRef(apply)
+  applyRef.current = apply
 
   // ---------------------------------------------------------------- shortlist
 
@@ -536,6 +575,27 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     },
     [patch, lock],
   )
+
+  /**
+   * A filter set carried in the address, applied once on arrival.
+   *
+   * The other half of `apply()` leaving a page that has no Selection. It is also what makes a
+   * curated path shareable — `/?pkg=Private+Island` is a link a specialist can send — so this runs
+   * for any visitor arriving with those parameters, not only for one who came from a menu.
+   *
+   * Only on the home page, and only once: the Selection is here, and re-applying on every render
+   * would fight a guest who has since changed a filter themselves.
+   */
+  const arrived = useRef(false)
+  useEffect(() => {
+    if (arrived.current || initialPage) return
+    arrived.current = true
+    const p = filtersFromQuery(new URLSearchParams(window.location.search))
+    if (!Object.keys(p).length) return
+    // After paint, so the Selection is on the page to be filtered and scrolled to.
+    const t = window.setTimeout(() => applyRef.current(p), 60)
+    return () => window.clearTimeout(t)
+  }, [initialPage])
 
   // The drawer owns the URL while it is open, and hands it back when it closes: a guest who opened
   // a property from the home page must be able to share what they are looking at.

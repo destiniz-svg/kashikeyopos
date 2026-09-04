@@ -4,6 +4,7 @@
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
 import { useSite } from '../state'
+import { availableQuickPaths } from '@/lib/content/filters'
 
 export function MobileMenu() {
   const { state: s, actions } = useSite()
@@ -23,6 +24,7 @@ export function MobileMenu() {
       },
     },
   ]
+  const quickPaths = availableQuickPaths(s.bundle.properties, s.bundle.offers)
   const megaTiles = s.liveDestinations.map((d) => ({
     name: d.name,
     count: s.bundle.properties.filter((r) => r.dest === d.name).length,
@@ -88,6 +90,24 @@ export function MobileMenu() {
               <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:400;font-size:17px;line-height:1.05;")}>{t.name}</div>
               <div style={css('font-size:11px;color:var(--muted);margin-top:3px;')}>{t.count} properties</div>
             </div>
+          </button>
+        ))}
+      </div>
+
+      {/* The same four the desktop menu offers. They were written inline in the header, so the
+          phone — which is a different component — had none at all: the label existed on one and
+          the list on neither. One definition now, in `filters.ts`, read by both. */}
+      <div style={css('font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin:28px 0 8px;')}>Curated quick paths</div>
+      <div style={css('display:flex;flex-direction:column;gap:2px;')}>
+        {quickPaths.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            onClick={() => actions.apply(q.apply)}
+            style={css('text-align:left;background:none;border:0;border-bottom:1px solid var(--line-07);padding:14px 0;color:var(--ink);font-size:15px;display:flex;justify-content:space-between;align-items:center;min-height:48px;width:100%;')}
+          >
+            {q.label}
+            <span style={css('color:var(--muted);font-size:12px;')}>→</span>
           </button>
         ))}
       </div>

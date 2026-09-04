@@ -104,6 +104,9 @@ Two things it does not have, both stated rather than papered over:
   request" and no card prints money.
 - **One property on stand-in photography.** Conrad Rangali's images are labelled Unsplash
   placeholders in the source content, with the CMS media library as the remedy the label names.
+- **No property is classified as an Overwater Villa.** The package type exists in the CMS and the
+  catalogue uses none of it, so the "Overwater icons · Maldives" quick path matches nothing and the
+  menu declines to draw it. Tagging one property in the CMS brings the path back by itself.
 - **Both hero clips are 640 wide** — one of them says so in its own filename. They play, and the
   media standard reports them as below what a full-screen hero should be rather than being tuned
   down to let them pass. Replacing them is an upload, not a deploy.
