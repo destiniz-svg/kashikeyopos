@@ -259,6 +259,15 @@ instruction, because one would force an anonymous volume on every run — includ
 deploy, which never touches that path — and leave an orphan behind each time a container is
 replaced.
 
+**A mounted volume arrives owned by root, and this image runs as `node`.** The image cannot fix that
+at build time, because the mount does not exist until the container starts — so the store is
+unwritable on the first boot of every volume-backed deploy, and the only symptom is a site with no
+catalogue. `docker-entrypoint.sh` does the one act that needs root, hands `STORE_DIR` to `node`, and
+then `exec`s the server as `node`: no root process is left behind and the application has exactly
+the privileges it had before. A chown that fails is not fatal — losing a business's website over a
+directory's ownership is worse than a store that reports `EACCES` by name, which it already does, on
+the boot line and through `/api/ready`.
+
 ---
 
 ## 7. Environments
