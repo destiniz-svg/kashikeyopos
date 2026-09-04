@@ -1,0 +1,70 @@
+/*
+ * Axis Studio — the CMS's own stylesheet.
+ *
+ * The token table and the breakpoint ladder are the prototype's (`Axis Admin.dc.html`). It shares
+ * the site's palette and shapes but is its own application: Outfit throughout, 14px base, and a
+ * `--field` token for inputs that the public site has no use for.
+ */
+
+.axis-studio {
+  --field: #0B1B3A;
+  font-family: var(--font-display), 'Outfit', system-ui, sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+}
+:root[data-theme='light'] .axis-studio { --field: #FFFFFF; }
+
+.axis-studio input,
+.axis-studio textarea,
+.axis-studio select { font-family: inherit; color: var(--ink); }
+.axis-studio input:focus,
+.axis-studio textarea:focus,
+.axis-studio select:focus { outline: none; border-color: #E0B94F !important; }
+.axis-studio select option { background: var(--panel); color: var(--ink); }
+.axis-studio textarea { resize: vertical; line-height: 1.55; }
+.axis-studio code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px) } to { opacity: 1; transform: translate(-50%, 0) } }
+
+.axis-studio .list-head,
+.axis-studio .list-row { display: grid; grid-template-columns: 64px 1.6fr 1fr 1fr 110px 130px; gap: 14px; align-items: center; }
+
+@media (max-width: 1240px) {
+  .axis-studio .list-head,
+  .axis-studio .list-row { grid-template-columns: 56px 1.6fr 1fr 110px; }
+  .axis-studio .list-head > :nth-child(4),
+  .axis-studio .list-row > :nth-child(4),
+  .axis-studio .list-head > :nth-child(6),
+  .axis-studio .list-row > :nth-child(6) { display: none; }
+  .axis-studio #enq-grid { grid-template-columns: 1fr !important; }
+  .axis-studio #enq-detail { position: static !important; }
+}
+@media (max-width: 1000px) {
+  .axis-studio #stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .axis-studio #dash-cols { grid-template-columns: 1fr !important; }
+  .axis-studio #media-grid { grid-template-columns: 1fr !important; }
+  .axis-studio #media-detail { position: static !important; }
+  .axis-studio #users-grid { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 820px) {
+  .axis-studio #app-grid { grid-template-columns: 1fr !important; }
+  .axis-studio #sidebar { display: none !important; }
+  .axis-studio #main { padding: 18px 16px 80px !important; }
+  .axis-studio #field-grid { grid-template-columns: 1fr !important; }
+  .axis-studio h1 { font-size: 28px !important; }
+  .axis-studio .list-head { display: none; }
+  .axis-studio .list-row { grid-template-columns: 48px 1fr auto; gap: 10px; }
+  .axis-studio .list-row > :nth-child(3),
+  .axis-studio .list-row > :nth-child(4) { display: none; }
+}
+@media (max-width: 520px) {
+  .axis-studio #stats-grid { grid-template-columns: 1fr 1fr !important; }
+  .axis-studio .enq-row { grid-template-columns: 8px 1fr !important; }
+  .axis-studio .enq-row > :nth-child(3) { grid-column: 2; text-align: left !important; }
+}
+@media (max-width: 420px) {
+  .axis-studio #main { padding: 14px 12px 80px !important; }
+  .axis-studio h1 { font-size: 24px !important; }
+}

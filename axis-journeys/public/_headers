@@ -1,0 +1,30 @@
+# Cloudflare Pages / edge header rules.
+#
+# The application already sends these on every response (src/lib/http/headers.mjs, applied through
+# next.config.mjs and src/proxy.ts). This file is the second belt for anything served by the edge
+# rather than by the origin — and it deliberately does NOT carry the Content-Security-Policy, which
+# is minted per response with a nonce and cannot be a static string.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+# Hashed filenames, so a year is safe and a deploy is never stale.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The CMS is per-editor. A shared cache holding one editor's screen is how it reaches another.
+/admin/*
+  Cache-Control: no-store, max-age=0
+  X-Robots-Tag: noindex, nofollow
+
+/api/*
+  Cache-Control: no-store, max-age=0
+  X-Robots-Tag: noindex, nofollow

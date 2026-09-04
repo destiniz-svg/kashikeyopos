@@ -1,0 +1,3 @@
+# Edge redirects. The application's own are in next.config.mjs, because they are facts about its
+# routes; these are facts about its hosting, and they hold even when the origin is unreachable.
+https://www.axisjourneys.com/*  https://axisjourneys.com/:splat  301
