@@ -1,7 +1,13 @@
 /**
- * A property's own page. Opened from the home page it is a drawer over the funnel; loaded directly
- * it is this route, which renders the same drawer over the same page — one implementation, two
- * entrances, and a URL a guest can share either way.
+ * A property's own page — the long form.
+ *
+ * One address per property, which is the handoff's own map (`prototype/_redirects` sends
+ * `/properties/:id` at the property page) and the URL every share link, sitemap entry and canonical
+ * already points at. `/property/:id`, which the spec writes, redirects here.
+ *
+ * The drawer is not a second address: it is an overlay opened from a card, and it borrows this URL
+ * while it is open so Back closes it. Reloading there gives the full page, which is the same
+ * property answered at greater length rather than a different document.
  */
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
@@ -26,7 +32,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const p = bundle.properties.find((x) => x.id === id)
   if (!p) return { title: 'Property not found' }
   return {
-    title: `${p.name} — ${p.dest}`,
+    title: `${p.name} — ${p.area}, ${p.dest}`,
     description: (p.verdict || p.about || '').slice(0, 300),
     alternates: { canonical: `/properties/${p.id}` },
     openGraph: {
@@ -55,7 +61,7 @@ export default async function PropertyRoute({ params, searchParams }: Params) {
           { name: p.name, path: `/properties/${p.id}` },
         ])}
       />
-      <SiteApp bundle={bundle} propertyId={p.id} />
+      <SiteApp bundle={bundle} propertyPage={p.id} />
     </>
   )
 }

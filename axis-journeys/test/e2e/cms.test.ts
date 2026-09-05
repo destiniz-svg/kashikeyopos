@@ -390,7 +390,11 @@ describe('a room with more than one photograph', () => {
 
     // And a guest opens the room and finds them.
     const guest = await freshPage(s)
-    await guest.page.goto(`${h.base}/properties/baros`, { waitUntil: 'domcontentloaded' })
+    // Through the grid rather than the address: `/properties/baros` is the property's own page now,
+    // and the room strip being driven here belongs to the drawer, which is what a card opens.
+    await guest.page.goto(`${h.base}/`, { waitUntil: 'domcontentloaded' })
+    await guest.page.waitForTimeout(1200)
+    await guest.page.locator('button[aria-label^="View Baros"]').first().click()
     // The first room opens with the drawer — `setRoomOpen` toggles, so clicking it here would
     // close the panel this test is looking into. Found by doing exactly that.
     await guest.page.waitForSelector('#dr-stays', { timeout: 20_000 })

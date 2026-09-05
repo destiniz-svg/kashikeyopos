@@ -17,7 +17,10 @@ import { useSite } from '../state'
 
 /** Card width by viewport, and the gap between cards. Both from the prototype's own functions. */
 export function cardWidth(vw: number): number {
-  if (vw <= 600) return Math.max(240, vw - 72)
+  // ≤640 the carousel is one column and the card is the viewport less its gutters, so a guest
+  // swipes a whole card rather than reading two thirds of one. The old rule broke at 600 and left
+  // a 40px sliver of the next card at 601–640, which reads as a layout fault rather than an offer.
+  if (vw <= 640) return Math.max(240, vw - 40 - (vw <= 420 ? 0 : 8))
   if (vw <= 820) return 300
   if (vw <= 1180) return 320
   return 340

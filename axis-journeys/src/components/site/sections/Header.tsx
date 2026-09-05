@@ -19,8 +19,9 @@ export function Header() {
   const settings = s.bundle.settings
 
   const showRibbon = !s.scrolled
-  const headerBg = s.scrolled || s.mega || s.page ? 'var(--hdr-solid)' : s.theme === 'light' ? 'rgba(247,245,240,.55)' : 'rgba(0,16,47,.25)'
-  const headerCls = s.theme === 'light' || s.scrolled || s.mega || s.page || s.menuOpen ? '' : 'dk'
+  const onPage = !!s.page || !!s.propPage
+  const headerBg = s.scrolled || s.mega || onPage ? 'var(--hdr-solid)' : s.theme === 'light' ? 'rgba(247,245,240,.55)' : 'rgba(0,16,47,.25)'
+  const headerCls = s.theme === 'light' || s.scrolled || s.mega || onPage || s.menuOpen ? '' : 'dk'
   const megaLinkColor = s.mega ? '#E0B94F' : 'var(--ink)'
   const en = segColours(s.lang === 'EN')
   const ar = segColours(s.lang === 'AR')

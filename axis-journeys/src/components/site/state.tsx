@@ -79,6 +79,16 @@ export interface SiteState {
   /** Which destination page is open, if any. */
   page: string | null
   destTheme: string | null
+  /**
+   * The id of the property whose own page is being rendered, if any.
+   *
+   * A property has two faces and they answer different questions: the drawer is "tell me about
+   * this one while I keep my place in the list", and the page is "I am considering this island".
+   * The route decides which, so this is read and never set from inside the app — what it changes
+   * here is only what the shared chrome does: the header is solid over a page, and the mobile dock
+   * stands down for the page's own conversion bar.
+   */
+  propPage: string | null
 
   drawer: DrawerState | null
   drawerVisible: boolean
@@ -196,13 +206,20 @@ export interface SiteProviderProps {
   bundle: SiteBundle
   /** A destination page rendered directly, rather than reached from the home page. */
   initialPage?: string | null
+  /** Set by `/property/<id>`, which renders the property page in place of the home funnel. */
+  initialPropertyPage?: string | null
   /** A property profile rendered directly: the drawer opens over the home page beneath it. */
   initialPropertyId?: string | null
   initialOfferId?: string | null
   children: ReactNode
 }
 
-export function SiteProvider({ bundle: initialBundle, initialPage = null, initialPropertyId = null, initialOfferId = null, children }: SiteProviderProps) {
+export function SiteProvider({
+  bundle: initialBundle,
+  initialPage = null,
+  initialPropertyPage = null,
+  children,
+}: SiteProviderProps) {
   const [bundle, setBundle] = useState<SiteBundle>(initialBundle)
   const [state, setState] = useState<Omit<SiteState, 'bundle' | 'destinations' | 'liveDestinations' | 'isMobile'>>(() => ({
     currency: 'USD',
@@ -225,6 +242,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
     pf: {},
     pfOpen: false,
     page: initialPage,
+    propPage: initialPropertyPage,
     destTheme: null,
     drawer: null,
     drawerVisible: false,
@@ -736,20 +754,6 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
   )
   const stepRef = useRef(step)
   stepRef.current = step
-
-  // ---------------------------------------------------------------- open the drawer on arrival
-
-  useEffect(() => {
-    if (!initialPropertyId) return
-    const r = properties.find((p) => p.id === initialPropertyId)
-    if (!r) return
-    const dep = initialOfferId ? bundle.offers.find((o) => o.id === initialOfferId) ?? null : null
-    patch({ drawer: { resort: r, dep, view: null }, drawerVisible: true, villa: 0, transfer: 0, roomOpen: 0 })
-    lock(true)
-    // Nothing else runs on arrival: this is the deep-link case, and re-running it on every bundle
-    // refresh would reopen a drawer the guest has since closed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPropertyId])
 
   // ---------------------------------------------------------------- the value
 

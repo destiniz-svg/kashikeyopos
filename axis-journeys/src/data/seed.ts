@@ -14,6 +14,40 @@ export const SEED = {
   {
    "id": "sun-siyam-olhuveli",
    "dest": "Maldives",
+   "brand": "Sun Siyam Resorts",
+   "instagram": "sunsiyamolhuveli",
+   "awards": [
+    [
+     "Travellers' Choice",
+     "Tripadvisor"
+    ],
+    [
+     "Maldives' Leading Family Resort — nominee",
+     "World Travel Awards"
+    ]
+   ],
+   "geo": [
+    3.93,
+    73.47
+   ],
+   "exclusives": [
+    "Complimentary sunset dolphin cruise for two",
+    "Guaranteed early check-in when you arrive on a morning flight"
+   ],
+   "nearby": [
+    [
+     "Velana International",
+     "45 minutes by speedboat — no seaplane cut-off, so late arrivals and infants are fine."
+    ],
+    [
+     "Dream Island sandbank",
+     "Picnic and castaway lunches on the resort's own sandbank."
+    ],
+    [
+     "South Malé dive sites",
+     "Guraidhoo Corner and Cocoa Thila within the atoll — 20–30 minute boat rides."
+    ]
+   ],
    "name": "Sun Siyam Olhuveli",
    "area": "South Malé Atoll · three islands",
    "nights": 5,
@@ -418,6 +452,44 @@ export const SEED = {
   {
    "id": "baros",
    "dest": "Maldives",
+   "brand": "Baros · Universal Resorts",
+   "instagram": "barosmaldives",
+   "awards": [
+    [
+     "Indian Ocean's Most Romantic Resort",
+     "World Travel Awards"
+    ],
+    [
+     "Readers' Choice — Top Resorts, Indian Ocean",
+     "Condé Nast Traveler"
+    ],
+    [
+     "Travellers' Choice Best of the Best",
+     "Tripadvisor"
+    ]
+   ],
+   "geo": [
+    4.28,
+    73.43
+   ],
+   "exclusives": [
+    "One private sandbank dinner for two, included",
+    "Complimentary 60-minute couples' spa treatment on stays of 5+ nights"
+   ],
+   "nearby": [
+    [
+     "Velana International",
+     "25 minutes by speedboat, 24 hours a day."
+    ],
+    [
+     "House reef",
+     "A few fin-kicks off the beach — turtles, reef sharks and a 20-metre drop-off."
+    ],
+    [
+     "Banana Reef",
+     "One of the Maldives' first-discovered dive sites, 15 minutes away."
+    ]
+   ],
    "name": "Baros Maldives",
    "area": "North Malé Atoll",
    "nights": 5,
@@ -804,6 +876,40 @@ export const SEED = {
   {
    "id": "furaveri",
    "dest": "Maldives",
+   "brand": "Furaveri",
+   "instagram": "furaverimaldives",
+   "awards": [
+    [
+     "Travellers' Choice",
+     "Tripadvisor"
+    ],
+    [
+     "Indian Ocean's Leading Wellness Resort — nominee",
+     "World Travel Awards"
+    ]
+   ],
+   "geo": [
+    5.45,
+    72.93
+   ],
+   "exclusives": [
+    "One Hanifaru Bay manta excursion for two in season (Jun–Nov)",
+    "Complimentary wellness consultation at the Wellness Village"
+   ],
+   "nearby": [
+    [
+     "Hanifaru Bay · UNESCO Biosphere",
+     "Seasonal manta and whale-shark aggregations, 40 minutes by boat."
+    ],
+    [
+     "Raa Atoll reefs",
+     "Quiet, lightly-dived channels with healthy hard coral."
+    ],
+    [
+     "Dharavandhoo airport",
+     "Alternative domestic-flight route that works after dark."
+    ]
+   ],
    "name": "Furaveri Maldives",
    "area": "Raa Atoll",
    "nights": 4,
@@ -1164,6 +1270,40 @@ export const SEED = {
   {
    "id": "vilamendhoo",
    "dest": "Maldives",
+   "brand": "Crown & Champa Resorts",
+   "instagram": "vilamendhoo",
+   "awards": [
+    [
+     "Travellers' Choice Best of the Best",
+     "Tripadvisor"
+    ],
+    [
+     "Best house reef — specialist consensus",
+     "Axis Journeys"
+    ]
+   ],
+   "geo": [
+    3.63,
+    72.93
+   ],
+   "exclusives": [
+    "Whale-shark snorkel safari for two, included",
+    "Complimentary house-reef guided snorkel on arrival day"
+   ],
+   "nearby": [
+    [
+     "Maamigili whale-shark zone",
+     "South Ari's year-round whale sharks, 30 minutes by dhoni."
+    ],
+    [
+     "House reef drop-off",
+     "Direct from the beach — one of the atoll's best."
+    ],
+    [
+     "Dhigurah island",
+     "Local-island visit and long sandbank walk."
+    ]
+   ],
    "name": "Vilamendhoo Island Resort & Spa",
    "area": "South Ari Atoll",
    "nights": 5,
@@ -1462,6 +1602,40 @@ export const SEED = {
   {
    "id": "ellaidhoo",
    "dest": "Maldives",
+   "brand": "Cinnamon Hotels & Resorts",
+   "instagram": "cinnamonhotels",
+   "awards": [
+    [
+     "Travellers' Choice",
+     "Tripadvisor"
+    ],
+    [
+     "Best dive resort — specialist consensus",
+     "Axis Journeys"
+    ]
+   ],
+   "geo": [
+    4.02,
+    72.77
+   ],
+   "exclusives": [
+    "Two complimentary house-reef dives for certified divers",
+    "Free snorkel gear for the length of your stay"
+   ],
+   "nearby": [
+    [
+     "Maaya Thila",
+     "Protected marine area famed for night dives — 20 minutes by boat."
+    ],
+    [
+     "Fish Head (Mushimasmingili)",
+     "Grey reef sharks and Napoleon wrasse, 30 minutes away."
+    ],
+    [
+     "Ukulhas island",
+     "Award-winning eco island for a cultural afternoon."
+    ]
+   ],
    "name": "Ellaidhoo Maldives by Cinnamon",
    "area": "North Ari Atoll",
    "nights": 5,
@@ -1736,6 +1910,36 @@ export const SEED = {
   {
    "id": "rannalhi",
    "dest": "Maldives",
+   "brand": "Adaaran Resorts",
+   "instagram": "adaaranresorts",
+   "awards": [
+    [
+     "Travellers' Choice",
+     "Tripadvisor"
+    ]
+   ],
+   "geo": [
+    3.9,
+    73.36
+   ],
+   "exclusives": [
+    "One sunset fishing trip for two, included",
+    "Complimentary room upgrade to ocean view, subject to availability"
+   ],
+   "nearby": [
+    [
+     "Velana International",
+     "45 minutes by speedboat, any arrival time."
+    ],
+    [
+     "Guraidhoo island",
+     "Local island and surf point a short boat ride away."
+    ],
+    [
+     "South Malé channels",
+     "Kandooma Thila and Cocoa Corner for drift dives."
+    ]
+   ],
    "name": "Adaaran Club Rannalhi",
    "area": "South Malé Atoll",
    "nights": 4,
@@ -1967,6 +2171,40 @@ export const SEED = {
   {
    "id": "hudhuranfushi",
    "dest": "Maldives",
+   "brand": "Adaaran Resorts",
+   "instagram": "adaaranresorts",
+   "awards": [
+    [
+     "Travellers' Choice",
+     "Tripadvisor"
+    ],
+    [
+     "Best surf resort — specialist consensus",
+     "Axis Journeys"
+    ]
+   ],
+   "geo": [
+    4.36,
+    73.54
+   ],
+   "exclusives": [
+    "One surf transfer to Lohis break per day in season (Apr–Oct)",
+    "Complimentary snorkel gear throughout"
+   ],
+   "nearby": [
+    [
+     "Lohis surf break",
+     "The resort's own left-hander, exclusive to guests."
+    ],
+    [
+     "Velana International",
+     "25 minutes by speedboat, 24 hours."
+    ],
+    [
+     "Himmafushi & Thulusdhoo",
+     "Local islands with the Cokes and Chickens breaks nearby."
+    ]
+   ],
    "name": "Adaaran Select Hudhuran Fushi",
    "area": "North Malé Atoll",
    "nights": 5,
@@ -2328,6 +2566,44 @@ export const SEED = {
   {
    "id": "conrad-rangali",
    "dest": "Maldives",
+   "brand": "Conrad · Hilton",
+   "instagram": "conrad_maldives",
+   "awards": [
+    [
+     "Travellers' Choice Best of the Best",
+     "Tripadvisor"
+    ],
+    [
+     "Ithaa — world's first undersea restaurant",
+     "Guinness World Records"
+    ],
+    [
+     "Readers' Choice — Top Resorts, Indian Ocean",
+     "Condé Nast Traveler"
+    ]
+   ],
+   "geo": [
+    3.62,
+    72.72
+   ],
+   "exclusives": [
+    "One lunch at Ithaa undersea restaurant for two, included",
+    "Whale-shark excursion for two on stays of 5+ nights"
+   ],
+   "nearby": [
+    [
+     "Maamigili whale-shark zone",
+     "Year-round whale sharks 20 minutes by boat."
+    ],
+    [
+     "Rangali house reef",
+     "Wraps both islands; snorkel from the villa steps."
+    ],
+    [
+     "Dhigurah sandbank",
+     "Long white sandbank for picnics and photography."
+    ]
+   ],
    "name": "Conrad Maldives Rangali Island",
    "area": "South Ari Atoll",
    "nights": 5,
@@ -2560,6 +2836,44 @@ export const SEED = {
   {
    "id": "soneva-fushi",
    "dest": "Maldives",
+   "brand": "Soneva",
+   "instagram": "discoversoneva",
+   "awards": [
+    [
+     "Readers' Choice — Top Resorts, Indian Ocean",
+     "Condé Nast Traveller"
+    ],
+    [
+     "World's Best Awards — Top Resort Hotels, Asia",
+     "Travel + Leisure"
+    ],
+    [
+     "Travellers' Choice Best of the Best",
+     "Tripadvisor"
+    ]
+   ],
+   "geo": [
+    5.11,
+    73.07
+   ],
+   "exclusives": [
+    "One Hanifaru Bay manta snorkel for two in season",
+    "Complimentary observatory stargazing session"
+   ],
+   "nearby": [
+    [
+     "Hanifaru Bay · UNESCO Biosphere",
+     "Manta and whale-shark aggregations May–Nov, 30 minutes by boat."
+    ],
+    [
+     "Kunfunadhoo house reef",
+     "Ringing the 1.4-km island; turtles and dolphins offshore."
+    ],
+    [
+     "Dharavandhoo airport",
+     "Domestic flight + 12-minute speedboat alternative to the seaplane."
+    ]
+   ],
    "name": "Soneva Fushi",
    "area": "Baa Atoll · Kunfunadhoo Island",
    "nights": 5,

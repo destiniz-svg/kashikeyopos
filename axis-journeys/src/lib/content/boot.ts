@@ -34,8 +34,11 @@ export async function bootstrapWorkspace(): Promise<void> {
   try {
     // Imported here rather than at the top so the catalogue is only pulled into memory on an
     // install that asked for this.
-    const [{ seedWorkspace }, { ensureFirstOwner }] = await Promise.all([import('./seed'), import('../auth/users')])
+    const [{ seedWorkspace, backfillPageFields }, { ensureFirstOwner }] = await Promise.all([import('./seed'), import('../auth/users')])
     const report = await seedWorkspace({ force: false })
+    // A store seeded before a field existed keeps serving documents without it. Absent fields only,
+    // so this cannot overwrite an edit — see `backfillPageFields`.
+    const filled = await backfillPageFields()
     const owner = await ensureFirstOwner()
     log.info('boot', 'workspace ready', {
       store: health.detail,
@@ -43,6 +46,7 @@ export async function bootstrapWorkspace(): Promise<void> {
       published: report.published,
       offers: report.offers,
       destinations: report.destinations,
+      backfilled: filled.documents,
       owner: owner.reason,
     })
   } catch (e) {

@@ -4,7 +4,7 @@
  *
  * Safe to run twice: an existing document is left alone unless `--force` is given.
  */
-import { seedWorkspace } from '../src/lib/content/seed'
+import { backfillPageFields, seedWorkspace } from '../src/lib/content/seed'
 import { ensureFirstOwner } from '../src/lib/auth/users'
 import { getStore } from '../src/lib/store'
 import { config } from '../src/lib/config'
@@ -24,6 +24,10 @@ async function main(): Promise<void> {
     `[seed] ${report.properties} properties (${report.published} site-ready and published), ` +
       `${report.offers} offers, ${report.destinations} destinations`,
   )
+
+  const filled = await backfillPageFields()
+  if (filled.documents)
+    console.log(`[seed] filled ${filled.fields} property-page fields on ${filled.documents} existing document(s)`)
 
   const owner = await ensureFirstOwner()
   console.log(`[seed] owner account: ${owner.reason}`)

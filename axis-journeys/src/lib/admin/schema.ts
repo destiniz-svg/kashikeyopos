@@ -291,6 +291,65 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
           },
         ],
       },
+      {
+        key: 'page',
+        title: 'Property page',
+        help:
+          'The property page derives a version of all of this from the rest of the profile. What you set here replaces the derived answer, so fill in what a specialist knows and leave the rest — an empty field is not a blank section.',
+        fields: [
+          {
+            path: 'exclusives',
+            label: 'Axis exclusives',
+            type: 'tags',
+            span: '1/-1',
+            hint: 'One perk per tag. Shown with an “Axis exclusive” label beside the inclusions the package already carries.',
+          },
+          {
+            path: 'nearby',
+            label: 'Proximity highlights',
+            type: 'list',
+            span: '1/-1',
+            addLabel: 'Add highlight',
+            cols: [
+              { label: 'Place', ph: 'Hanifaru Bay · UNESCO Biosphere' },
+              { label: 'Why it matters', type: 'textarea', ph: 'Manta season Jun–Nov, 30 min by boat' },
+            ],
+          },
+          {
+            path: 'geo',
+            label: 'Coordinates',
+            type: 'list',
+            hint: 'One row, decimal degrees. It positions the pin on the atoll map and measures the distance from Malé.',
+            addLabel: 'Set coordinates',
+            cols: [{ label: 'Latitude', ph: '4.28' }, { label: 'Longitude', ph: '73.43' }],
+          },
+          { path: 'video', label: 'Hero video', type: 'video', span: '1/-1', hint: 'A muted loop over the hero photograph. Without one the photograph stands alone.' },
+          { path: 'brand', label: 'Brand or group', ph: 'Sun Siyam Resorts', hint: 'Drives the Brand filter. Left blank it is read from the name.' },
+          { path: 'instagram', label: 'Instagram handle', ph: 'barosmaldives', hint: 'Without the @' },
+          {
+            path: 'awards',
+            label: 'Recognition',
+            type: 'list',
+            span: '1/-1',
+            addLabel: 'Add award',
+            hint: 'Verify each one before publishing — nothing here is derived, and an award nobody checked is on the page in the resort’s name.',
+            cols: [{ label: 'Award', ph: "Indian Ocean's Most Romantic Resort" }, { label: 'Source', ph: 'World Travel Awards' }],
+          },
+          {
+            path: 'pricing',
+            label: 'Pricing by travel date',
+            type: 'list',
+            span: '1/-1',
+            addLabel: 'Add window',
+            hint: 'Per couple for the package nights. Left empty the page shows the derived seasonal guide, which is labelled as a guide.',
+            cols: [
+              { label: 'Travel window', ph: '11 Jan – 9 Apr 2027' },
+              { label: 'Entry villa USD', ph: '7180' },
+              { label: 'Mid-tier villa USD', ph: '7707' },
+            ],
+          },
+        ],
+      },
     ]
 
   if (col === 'offers')

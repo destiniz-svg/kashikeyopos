@@ -42,6 +42,17 @@ export type Fact = [string, string]
 
 export interface GalleryShot { img: string; cap: string; pos?: string }
 
+/** `[lat, lng]`, decimal degrees. */
+export type Geo = [number, number]
+/** `[place, why it matters]` */
+export type Nearby = [string, string]
+/** `[title, source]` */
+export type Award = [string, string]
+/** `[window, entry USD, mid-tier USD]` — per couple, for the property's own `nights`. */
+export type PriceWindow = [string, number, number]
+/** `[low label, high label, position 0–100]` */
+export type Scale = [string, string, number]
+
 export interface Property {
   id: string
   dest: string
@@ -87,6 +98,39 @@ export interface Property {
   faq?: Faq[]
   facts?: Fact[]
   gallery?: GalleryShot[]
+
+  /*
+   * The property page (2026-09-05 handoff). Every one of these is optional and the page derives a
+   * fallback for each, so a document written before them renders the same page — only with the
+   * derived answer where a specialist has not given a better one. That is why none of them may
+   * become required: an empty `awards` list is "nobody has verified an award", which is a
+   * different fact from "this resort has none", and only the first may be silent.
+   */
+  /** `[lat, lng]` in decimal degrees. Positions the pin on the stylised atoll map. */
+  geo?: Geo
+  /** Axis-only package perks, labelled as such beside the derived inclusions. */
+  exclusives?: string[]
+  /** `[place, why it matters]` — proximity highlights. */
+  nearby?: Nearby[]
+  /** A muted hero loop. Falls back to the hero photograph. */
+  video?: string
+  /** "Conrad · Hilton" — the first segment drives the Brand filter; derived from the name when absent. */
+  brand?: string
+  /** The handle without the @. */
+  instagram?: string
+  /** `[title, source]`. Verified by a person before publishing — never derived. */
+  awards?: Award[]
+  /** `[window, entryUSD, midUSD]` per couple for `nights`; absent, the seasonal guide is derived. */
+  pricing?: PriceWindow[]
+  /** `[low label, high label, 0–100]` — the five comparison scales, where reading them is not enough. */
+  scales?: Scale[]
+  /** What is regularly seen here, where the profile's prose does not name it. */
+  marine?: string[]
+  /** Who the island suits, where the themes are too blunt to say it. */
+  idealFor?: string[]
+  /** Who should look elsewhere, and why. */
+  notFor?: string[]
+
   /** Legacy stub flags. A document carrying either is never published. */
   draft?: boolean
   detailPending?: boolean

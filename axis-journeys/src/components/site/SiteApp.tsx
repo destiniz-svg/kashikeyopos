@@ -23,17 +23,18 @@ import { AboutAxis, CtaBand, Story, Voices } from './sections/Story'
 import { Footer, MobileDock } from './sections/Footer'
 import { LegalModal, Lightbox, Toast } from './sections/Overlays'
 import { DestinationPage } from './sections/DestinationPage'
+import { PropertyPage } from './sections/PropertyPage'
 
 export interface SiteAppProps {
   bundle: SiteBundle
   destination?: string | null
-  propertyId?: string | null
-  offerId?: string | null
+  /** `/properties/<id>` — the property's own page, in place of the home funnel. */
+  propertyPage?: string | null
 }
 
-export function SiteApp({ bundle, destination = null, propertyId = null, offerId = null }: SiteAppProps) {
+export function SiteApp({ bundle, destination = null, propertyPage = null }: SiteAppProps) {
   return (
-    <SiteProvider bundle={bundle} initialPage={destination} initialPropertyId={propertyId} initialOfferId={offerId}>
+    <SiteProvider bundle={bundle} initialPage={destination} initialPropertyPage={propertyPage}>
       <Shell />
     </SiteProvider>
   )
@@ -41,20 +42,23 @@ export function SiteApp({ bundle, destination = null, propertyId = null, offerId
 
 function Shell() {
   const { state: s } = useSite()
+  const propertyOnPage = s.propPage ? s.bundle.properties.find((p) => p.id === s.propPage) || null : null
 
   return (
     <div style={css("min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--font-body),'Mona Sans',system-ui,sans-serif;overflow-x:hidden;")}>
       {/* The first tab stop on the page: a keyboard user should not have to walk the whole header
           and mega menu to reach the collection. */}
-      <a className="skip-link" href={s.page ? '#dp-props' : '#properties'}>
+      <a className="skip-link" href={propertyOnPage ? '#pp-villas' : s.page ? '#dp-props' : '#properties'}>
         Skip to the collection
       </a>
       <Header />
       <MobileMenu />
 
-      {/* A destination page carries its own <main>; the home funnel had none, so the skip link
-          landed a screen-reader user in a document with no main region to be in. */}
-      {s.page ? (
+      {/* A destination page and a property page carry their own <main>; the home funnel had none, so
+          the skip link landed a screen-reader user in a document with no main region to be in. */}
+      {propertyOnPage ? (
+        <PropertyPage p={propertyOnPage} />
+      ) : s.page ? (
         <DestinationPage name={s.page} />
       ) : (
         <main>
@@ -73,7 +77,9 @@ function Shell() {
       )}
 
       <Footer />
-      <MobileDock />
+      {/* The property page has a conversion bar on that same edge; two bars stacked on a phone is
+          one of them covering the other. */}
+      {!propertyOnPage && <MobileDock />}
       <Toast />
       <LegalModal />
       <Lightbox />

@@ -42,6 +42,63 @@ function doc<T extends { id: string }>(data: T, at: number, published: boolean, 
   }
 }
 
+/**
+ * The fields the 2026-09-05 handoff added, and the only ones this backfill will write.
+ *
+ * A closed list rather than "merge everything the seed has": the seed is a snapshot of the
+ * catalogue on the day it was generated, and merging it wholesale would quietly undo every edit a
+ * specialist has made since. These eight are new — no document written before this can hold an
+ * opinion about them — so filling them in cannot overwrite anybody's work.
+ */
+const PAGE_FIELDS = ['geo', 'exclusives', 'nearby', 'video', 'brand', 'instagram', 'awards', 'pricing'] as const
+
+/**
+ * Give existing property documents the fields the seed has since gained.
+ *
+ * Without this a store seeded before the handoff keeps serving properties with no coordinates, no
+ * exclusives and no recognition — the page renders, because every one of them has a derived
+ * fallback, and the real content the agency wrote sits in the repository being read by nobody.
+ *
+ * Two rules make it safe to run on every boot. It only fills a field that is ABSENT (`null` or
+ * `undefined`); an empty array is a decision somebody made and is left alone. And it writes to
+ * `live` as well as `draft`, because the alternative is a site that shows none of this until
+ * somebody republishes nine properties by hand — the content is the same content the seed would
+ * have published on a fresh install.
+ */
+export async function backfillPageFields(): Promise<{ documents: number; fields: number }> {
+  const store = getStore()
+  const rows = await store.list(PK.collection('properties'))
+  const bySeed = new Map(seed.properties.map((p) => [p.id, p as unknown as Record<string, unknown>]))
+  const items: StoredItem[] = []
+  let fields = 0
+
+  for (const row of rows) {
+    const d = row.body as Doc<Record<string, unknown>>
+    const from = bySeed.get(String(d.id))
+    if (!from) continue
+    let touched = false
+    for (const key of PAGE_FIELDS) {
+      const value = from[key]
+      if (value == null) continue
+      for (const side of ['draft', 'live'] as const) {
+        const target = d[side] as Record<string, unknown> | null
+        if (!target || target[key] != null) continue
+        target[key] = clone(value)
+        touched = true
+        fields++
+      }
+    }
+    if (touched) items.push({ pk: PK.collection('properties'), sk: row.sk, body: d })
+  }
+
+  if (items.length) {
+    await store.putMany(items)
+    await rebuildBundle()
+    await logActivity('System', `Property-page fields filled in on ${items.length} propert${items.length === 1 ? 'y' : 'ies'}`)
+  }
+  return { documents: items.length, fields }
+}
+
 export interface SeedReport {
   properties: number
   published: number

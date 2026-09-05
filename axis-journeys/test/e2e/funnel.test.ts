@@ -87,6 +87,22 @@ describe('the home page', () => {
   })
 })
 
+/**
+ * Open the enquiry drawer from a property's own page.
+ *
+ * `/properties/<id>` is the long-form page now, not the drawer: the handoff's own redirect map
+ * sends that address at the page, and a guest who lands there presses a quote control to open the
+ * form. This is that press, so the funnel is driven the way it is actually walked.
+ */
+const openEnquiry = async (page: import('playwright').Page) => {
+  await page
+    .locator('button')
+    .filter({ hasText: /request a custom quote|get a custom quote|quote this villa/i })
+    .first()
+    .click()
+  await page.waitForSelector('#f-name', { state: 'visible', timeout: 10_000 })
+}
+
 describe('the enquiry funnel', () => {
   it('filters, opens a property, sends an enquiry, and the record reaches the store', async () => {
     const { page, faults } = await openPage(s)
@@ -102,9 +118,7 @@ describe('the enquiry funnel', () => {
     assert.match(await page.locator('body').innerText(), new RegExp(target.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 
     // Open the enquiry form the way a guest does.
-    const enquire = page.locator('#drawer button, #drawer a').filter({ hasText: /enquire|quote|plan/i }).first()
-    if (await enquire.count()) await enquire.click().catch(() => undefined)
-    await page.waitForSelector('#f-name', { timeout: 10_000 })
+    await openEnquiry(page)
 
     const email = `e2e-${Date.now()}@example.test`
     await page.fill('#f-name', 'Aishath E2E')
@@ -139,7 +153,7 @@ describe('the enquiry funnel', () => {
     const bundle = await body<SiteBundle>(await h.api('/api/public/site'))
     await page.goto(`${h.base}/properties/${bundle.properties[0].id}`, { waitUntil: 'domcontentloaded' })
     await settle(page)
-    await page.waitForSelector('#f-name', { timeout: 10_000 })
+    await openEnquiry(page)
 
     let posted = 0
     page.on('request', (r) => { if (r.url().includes('/api/public/enquiries')) posted++ })
@@ -304,6 +318,7 @@ describe('at every width the prototype declares', () => {
     await page.goto(h.base + '/properties/baros', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle').catch(() => undefined)
     await page.waitForTimeout(700)
+    await openEnquiry(page)
     const submit = await page.locator('#drawer-form button[type="submit"]').first().boundingBox()
     assert.ok(submit && submit.height >= 44, `the enquiry submit is ${submit?.height}px tall`)
     await ctx.close()

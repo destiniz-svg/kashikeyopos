@@ -267,6 +267,17 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
           </div>
           <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:44px;line-height:1;margin-top:8px;")}>{r.name}</div>
         </div>
+        {/* The way out of the drawer and into the island's own page — the comparison scales, the
+            villa tabs, the pricing across the year. The drawer is for keeping your place in the
+            list; this is for a guest who has stopped browsing. */}
+        <Hover
+          as="a"
+          href={`/properties/${r.id}`}
+          style="position:absolute;right:28px;bottom:44px;display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#00102F;background:#E0B94F;padding:9px 14px;border-radius:2px;transition:background .2s;"
+          hover="background:#F0CB64;"
+        >
+          Full details →
+        </Hover>
       </div>
 
       <div id="drawer-pad" style={css('padding:24px 28px 0;')}>
