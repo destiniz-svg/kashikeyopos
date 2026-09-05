@@ -1872,6 +1872,66 @@ seven screens, so a caller that hands it nothing failed on a different screen
 with a message about a method that does not exist — which is how the harness
 found it, by calling the handler with no argument.
 
+### And that box was a design fault in three ways
+
+Reported next, in one line: *"search bar in menu master is flawed. it's design
+fault I believe."* Right, and it was three faults sitting on top of each other —
+all of them from adding the box to ONE screen and putting it in the nearest
+available row rather than giving it a place.
+
+**IT WAS ONE OF THE ACTIONS, so it ate the tabs.** The actions row is declared
+`flex:0 0 auto; min-width:max-content` — correct for a run of nowrap buttons,
+which must keep their labels — and a text field has no natural width at all. So
+the box's own `flex:0 1 auto; min-width:0` could do nothing: a child cannot
+shrink inside a parent that refuses to. It took its width off the tab RAIL,
+which is the one thing in that bar built to yield (`flex:1 1 auto; min-width:0`)
+and therefore the one thing that loses. Measured in Chromium against a real
+store with four sections:
+
+| | rail width | tabs off screen |
+| --- | --- | --- |
+| 1440 px | 462 px | 59 px |
+| **1024 px** | **93 px** | **428 px** |
+
+At a laptop width the section rail was a stub reading "All dishes 11" and
+nothing else — every section gone, under a search box nobody had asked to be
+that wide. The fix is not a smaller box: three things cannot share one line
+when only one of them can shrink, so **where a screen has tabs AND a find box
+the rail takes its own line at every width**, which is the rule the phone
+already kept for the actions. The box is a SIBLING of the actions row now, not
+a child, and it GROWS into what the buttons leave (`1 1 240px`) down to a
+150 px floor. Measured after: the rail 1340 px at 1440 and 924 px at 1024,
+**nothing cut at either**, and the search bar 640 px and 224 px wide.
+
+**AND THERE WERE TWO OF THEM.** The shell's own magnifier and the screen's box
+both bind `s.search`, and both were drawn. Typing "rice" into Menu Master's box
+put "rice" in the top bar's; opening the magnifier put two search fields on one
+page carrying the same word. Two controls for one value is a question about
+which one is real. The magnifier is the FALLBACK now — `renderVals()` hides it
+where the view declares its own — so there is one search per screen and it is
+always the one belonging to the thing being searched. Verified by walking the
+rail: Dashboard and Reservations keep the magnifier (32 px, they filter
+nothing); Orders, Guests, Menu Master and Inventory draw their own box and the
+magnifier measures 0.
+
+**AND FIVE SCREENS FILTER ON THE QUERY WHILE ONE HAD THE BOX.** `g_orders`,
+`g_customers`, `g_inventory` and `g_logs` all read `s.search` and offered
+nowhere to type it — the magnifier is `display:none` on a phone, so on the
+device a back office is actually held in, the filter existed and could not be
+reached. That is the defect the box was added to end, closed on one screen and
+left standing on four. Each declares one now, with a hint that names what it
+searches, and each says what an empty result IS: Inventory told a manager who
+had just typed three letters that they had never received a delivery, and
+Guests & Credit had no empty state at all.
+
+The pill is 44 px on a phone (was 38) and the clear ✕ a 40 px target (was a
+24 px glyph). `test/wiring.test.js` pins the sibling relationship, the stacking
+rule, the one-per-screen fallback, the four new declarations and both empty
+states — and its OLD pin was widened while fixing it: the window ran to
+`MENUSORTS()`, which is defined ABOVE `g_menu`, so the search found nothing,
+the fallback took 40,000 characters, and two later screens fell inside it. It
+passed only while no other screen declared a box.
+
 ### Measured, in a real browser this time
 
 The guest portal is anonymous, so the sandbox's block on the till's sign-in does

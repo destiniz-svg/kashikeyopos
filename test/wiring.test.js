@@ -7736,10 +7736,14 @@ test('most ordered is the outlet\'s own count, and is absent where there is none
 /* ═══ MENU MASTER CARRIES ITS OWN SEARCH ═══════════════════════════════════ */
 test('Menu Master has a find box on every one of its three modes', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  /* THE WINDOW IS THE FUNCTION, not a character count. It used to run to
+     `MENUSORTS()` — which is defined ABOVE g_menu, so the search found
+     nothing and the fallback took 40,000 characters, swallowing the two
+     screens after it. It passed only while no other screen declared a box. */
   const from = src.indexOf('  g_menu() {');
-  const to = src.indexOf('  MENUSORTS()', from) > from
-    ? src.indexOf('  MENUSORTS()', from) : from + 40000;
-  const m = src.slice(from, to);
+  const next = src.indexOf('\n  g_', from + 10);
+  assert.ok(from > 0 && next > from, 'found g_menu and the screen after it');
+  const m = src.slice(from, next);
   const boxes = m.match(/find: \{ value: s\.search/g) || [];
   assert.strictEqual(boxes.length, 3,
     'dishes, sections and add-ons each declare one');
@@ -7770,4 +7774,70 @@ test('Menu Master has a find box on every one of its three modes', () => {
      lock-screen roster's defect: a blank page under a box somebody typed in. */
   assert.match(src, /cardsEmpty: !!\(g\.cards && !g\.cards\.length && !cols\.length\)/,
     'a card grid that matched nothing says so');
+});
+
+/* ═══ ONE SEARCH PER SCREEN, AND IT DOES NOT EAT THE TABS ══════════════════
+   Reported as a design fault, and it was three of them.
+
+   The box was added INSIDE the actions row, which is declared
+   `flex:0 0 auto; min-width:max-content` because it holds nowrap buttons — so
+   the field could not shrink whatever its own flex said, and it took its width
+   off the tab rail, the one thing built to yield. Measured in Chromium at 1024
+   on a store with four sections: the rail 93px of the 521 it wanted, every
+   section tab off the screen.
+
+   It also duplicated the shell's magnifier: both bind `s.search`, so typing
+   "rice" into the screen's box put "rice" in the top bar's too, and opening
+   the magnifier showed two search fields on one page carrying one word.
+
+   And it was declared on ONE screen while five filter on the query — so
+   Orders, Guests, Inventory and the trail each had a filter with nowhere to
+   type it on a phone, which is the defect the box was added to end.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('the find box is a sibling of the tab rail, and there is one of it', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+
+  // ── it is not one of the actions ────────────────────────────────────────
+  assert.match(src, /<div style="\{\{ findRowStyle \}\}">/,
+    'the find box and the actions share a row of their own');
+  const rowAt = src.indexOf('<div style="{{ findRowStyle }}">');
+  const actAt = src.indexOf('<div style="{{ actionRowStyle }}">', rowAt);
+  const findAt = src.indexOf('<div style="{{ findStyle }}">', rowAt);
+  assert.ok(findAt > rowAt && actAt > findAt,
+    'the field is a SIBLING of the actions row, never a child of it');
+
+  /* THE RAIL TAKES ITS OWN LINE where both are present. Three things cannot
+     share one line when only one of them can shrink. */
+  assert.match(src, /subBarStyle: \(bp === "m" \|\| \(tabList\.length && g\.find && g\.find\.set\)\)/,
+    'a screen with tabs AND a find box stacks at every width');
+  // It grows into what the buttons leave, and stops at a floor.
+  assert.match(src, /"1 1 240px"/, 'the box grows');
+  assert.match(src, /min-width:" \+ \(bp === "m" \? "0" : "150px"\)/, 'and has a floor');
+  assert.ok(!/width:" \+ \(bp === "m" \? "auto" : "clamp\(96px,12vw,170px\)"/.test(src),
+    'the field no longer carries a width of its own');
+
+  // ── one search per screen ───────────────────────────────────────────────
+  assert.match(src, /if \(view\.hasFind\) shell\.searchStyle = "display:none";/,
+    "the shell's magnifier is the fallback, not a second box");
+
+  // ── every screen that filters carries one ───────────────────────────────
+  const filters = (src.match(/\bs\.search\.toLowerCase\(\)/g) || []).length;
+  const boxes = (src.match(/find: \{ value: s\.search/g) || []).length;
+  assert.ok(boxes >= 7, 'seven boxes: three on Menu Master, four on the screens '
+    + 'that filtered with nowhere to type — got ' + boxes);
+  assert.ok(filters >= 7, 'and that many readers of the query — got ' + filters);
+  ['Search orders', 'Search customers', 'Search stock items', 'Search the trail']
+    .forEach((h) => assert.match(src, new RegExp('hint: "' + h + '"'),
+      'a hint that names what this screen searches: ' + h));
+
+  /* A SEARCH THAT MATCHED NOTHING SAYS SO, and never says the store is empty.
+     Telling a manager who just typed three letters that they have never
+     received a delivery is the blank-page-under-a-typed-box defect the
+     lock-screen roster already paid for. */
+  assert.match(src, /"Nothing in stock matches \\u201c" \+ s\.search/, 'inventory');
+  assert.match(src, /"No customer matches \\u201c" \+ s\.search/, 'customers');
+
+  // The clear control is a tap target on a phone, not a 24px glyph.
+  assert.match(src, /min-height:" \+ \(bp === "m" \? 40 : 28\)/, 'the ✕ is tappable');
+  assert.match(src, /min-height:" \+ \(bp === "m" \? 44 : 34\)/, 'and the pill is 44 on a phone');
 });

@@ -962,19 +962,25 @@
                 <button onClick="{{ t.pick }}" style="{{ t.style }}"><span style="{{ t.dotStyle }}"></span>{{ t.label }}<span style="{{ t.cntStyle }}">{{ t.count }}</span></button>
               </sc-for>
             </div>
-            <div style="{{ actionRowStyle }}">
-              <!-- A SCREEN THAT LISTS THINGS CARRIES ITS OWN FIND BOX. The top
-                   bar's magnifier is display:none on a phone and is cleared on
-                   every view change, so on the device a back office is actually
-                   held in there was no way to search a 300-dish menu at all. -->
+            <!-- A SCREEN THAT LISTS THINGS CARRIES ITS OWN FIND BOX, and it is
+                 a SIBLING of the tab rail rather than one of the actions. It
+                 used to sit inside the actions row, which is declared
+                 `flex:0 0 auto; min-width:max-content` because it holds nowrap
+                 buttons — so the box could not shrink, whatever its own flex
+                 said, and it took its width off the one thing built to yield.
+                 Measured at 1024 on a store with four sections: the rail 93px
+                 of the 521 it wanted, every section tab off the screen. -->
+            <div style="{{ findRowStyle }}">
               <div style="{{ findStyle }}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0;opacity:.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
                 <input value="{{ findValue }}" onChange="{{ findSet }}" placeholder="{{ findHint }}" aria-label="{{ findHint }}" style="{{ findInputStyle }}"/>
                 <button onClick="{{ findClear }}" aria-label="Clear the search" style="{{ findClearStyle }}">✕</button>
               </div>
-              <sc-for list="{{ actions }}" as="a" hint-placeholder-count="0">
-                <button onClick="{{ a.go }}" style="{{ a.style }}" style-hover="{{ a.hover }}">{{ a.label }}</button>
-              </sc-for>
+              <div style="{{ actionRowStyle }}">
+                <sc-for list="{{ actions }}" as="a" hint-placeholder-count="0">
+                  <button onClick="{{ a.go }}" style="{{ a.style }}" style-hover="{{ a.hover }}">{{ a.label }}</button>
+                </sc-for>
+              </div>
             </div>
           </div>
         </sc-if>
@@ -4144,7 +4150,16 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state, K0 = K();
     if (!s.ready) return { nav: [], stats: [], outletOpts: [], roleOpts: [], pageMain: "KashikeyoPOS", pageSub: "Loading platform data…" };
-    return Object.assign({}, this.shellVals(), this.viewVals(), this.overlayVals());
+    const shell = this.shellVals(), view = this.viewVals();
+    /* ONE SEARCH PER SCREEN. The shell's magnifier is the FALLBACK — for a
+       screen that filters on the query and carries no box of its own — and
+       both were drawn at once on the screen that has one. Measured on Menu
+       Master: type "rice" into the screen's box and the top bar's holds
+       "rice" too, because they are one `s.search`; open the magnifier and
+       there are two search fields on one page showing the same word. Two
+       controls for one value is a question about which one is real. */
+    if (view.hasFind) shell.searchStyle = "display:none";
+    return Object.assign({}, shell, view, this.overlayVals());
   }
 
   shellVals() {
@@ -5119,9 +5134,17 @@ class Component extends DCLogic {
         cntStyle: t.count === undefined ? "display:none"
           : "font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;opacity:" + (t.on ? ".6" : ".45")
       })),
-      // Actions sit under the strip on a phone rather than fighting it for the
-      // same line; the strip owns the row it is on.
-      subBarStyle: bp === "m"
+      /* THE STRIP OWNS THE ROW IT IS ON, and that rule now reaches past the
+         phone. A screen with tabs AND a find box has three things competing
+         for one line — a scrolling rail, a text field with no natural width,
+         and a run of nowrap buttons — and the rail is the only one that can
+         yield, so it is the one that loses. On a store with four sections at
+         1024 it kept 93px of the 521 it wanted: every section tab off the
+         screen, under a search box nobody had asked to be that wide.
+
+         So where both are present the rail takes its own line at every width,
+         exactly as the actions already do on a phone. */
+      subBarStyle: (bp === "m" || (tabList.length && g.find && g.find.set))
         ? "display:flex;flex-direction:column;align-items:stretch;gap:9px;margin-bottom:13px"
         : "display:flex;align-items:center;gap:8px;margin-bottom:14px;min-width:0",
       /* THE TRACK IS WHAT YIELDS. `flex:1 1 auto; min-width:0` on the track and
@@ -5135,6 +5158,15 @@ class Component extends DCLogic {
           + "border-radius:12px;padding:3px 4px;flex:1 1 auto;min-width:0;"
           + "mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%);"
           + "-webkit-mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%)",
+      /* THE FIND BOX AND THE ACTIONS SHARE A LINE; the rail is above them.
+         `min-width:max-content` on the actions is what makes the nowrap
+         buttons keep their labels — which is right for buttons and was never
+         right for a text field, so the field is a sibling of this row now
+         rather than a child of it. */
+      findRowStyle: (bp === "m" || !(g.find && g.find.set))
+        ? "display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+          + (bp === "m" ? "" : ";flex:0 0 auto;min-width:max-content")
+        : "display:flex;align-items:center;gap:8px;min-width:0",
       actionRowStyle: bp === "m"
         ? "display:flex;gap:7px;flex-wrap:wrap"
         : "display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:max-content",
@@ -5155,12 +5187,15 @@ class Component extends DCLogic {
          it reads as a global thing that happens to filter rather than as this
          screen's own control. */
       hasFind: !!(g.find && g.find.set),
+      /* IT GROWS INTO WHAT THE BUTTONS LEAVE, and shrinks to a floor rather
+         than to nothing. `0 1 auto` in a `max-content` parent could do
+         neither: it never grew, and it never gave anything back. */
       findStyle: (g.find && g.find.set)
         ? "display:flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid "
           + (g.find.value ? "var(--warn-line)" : "var(--line)")
-          + ";border-radius:9px;padding:0 10px;min-height:" + (bp === "m" ? 38 : 30)
-          + "px;flex:" + (bp === "m" ? "1 1 100%" : "0 1 auto")
-          + ";min-width:0;color:var(--text-dim)"
+          + ";border-radius:9px;padding:0 10px;min-height:" + (bp === "m" ? 44 : 34)
+          + "px;flex:" + (bp === "m" ? "1 1 100%" : "1 1 240px")
+          + ";min-width:" + (bp === "m" ? "0" : "150px") + ";color:var(--text-dim)"
         : "display:none",
       findValue: (g.find && g.find.value) || "",
       findHint: (g.find && g.find.hint) || "Search",
@@ -5173,13 +5208,17 @@ class Component extends DCLogic {
         if (!g.find || !g.find.set) return;
         g.find.set((e && e.target && e.target.value != null) ? String(e.target.value) : "");
       },
+      // The field fills its pill. It used to carry a width of its own, which
+      // is what made the pill an odd fixed-size chip rather than a search bar.
       findInputStyle: "background:transparent;border:none;outline:none;color:var(--text);"
-        + "font-family:inherit;font-size:" + (bp === "m" ? 12.5 : 12)
-        + "px;min-width:0;flex:1 1 auto;width:" + (bp === "m" ? "auto" : "clamp(96px,12vw,170px)"),
+        + "font-family:inherit;font-size:" + (bp === "m" ? 13 : 12.5)
+        + "px;min-width:0;flex:1 1 auto;width:100%",
       // Only where there is something to clear — a dead ✕ beside an empty box
       // is a control that does nothing, which is the defect this build names.
       findClearStyle: (g.find && g.find.value)
-        ? "flex-shrink:0;color:var(--text-dim);font-size:12px;line-height:1;padding:4px;min-height:24px"
+        ? "flex-shrink:0;color:var(--text-dim);font-size:12px;line-height:1;display:grid;"
+          + "place-items:center;min-height:" + (bp === "m" ? 40 : 28)
+          + "px;min-width:" + (bp === "m" ? 40 : 28) + "px"
         : "display:none",
       findClear: () => { if (g.find && g.find.set) g.find.set(""); },
       hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)
@@ -12901,6 +12940,13 @@ class Component extends DCLogic {
         { label: "Activity", count: rows.length, on: tab === 0, pick: () => this.setState({ tab: Object.assign({}, s.tab, { logs: 0 }) }) },
         { label: "Flags", count: open.length, on: tab === 1, pick: () => this.setState({ tab: Object.assign({}, s.tab, { logs: 1 }) }) }
       ],
+      /* A SCREEN THAT FILTERS ON THE QUERY CARRIES THE BOX FOR IT. This one
+         read `s.search` and offered nowhere to type it: the only input was
+         the shell's magnifier, which is `display:none` on a phone — so on
+         the device a back office is actually held in, the filter existed
+         and could not be reached. */
+      find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+        hint: "Search the trail" },
       actions: tab === 1 ? [
         {
           label: open.length ? "Acknowledge all " + open.length : "Nothing outstanding", primary: !!open.length,
@@ -13541,6 +13587,13 @@ class Component extends DCLogic {
       tabs: [{ label: this.outlet().code + " · here", count: hereIds.length }, { label: "All locations" }]
         .concat(subTabs.map((o) => ({ label: o.code })))
         .map((t, i) => ({ label: t.label, count: t.count, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { inv: i }) }) })),
+      /* A SCREEN THAT FILTERS ON THE QUERY CARRIES THE BOX FOR IT. This one
+         read `s.search` and offered nowhere to type it: the only input was
+         the shell's magnifier, which is `display:none` on a phone — so on
+         the device a back office is actually held in, the filter existed
+         and could not be reached. */
+      find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+        hint: "Search stock items" },
       guideTitle: "Adding stock", guide: ["Create the item here — it defines its recipe unit, purchase unit and cost", "Receive quantity against a vendor invoice in Purchases & GRN", "Consumption deducts itself by recipe on every closed ticket", "Cycle counts and adjustments record variance, never a new balance"],
       actions: [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
         const lowPct = (this.prefs().lowStock || 50) / 100;
@@ -13588,9 +13641,16 @@ class Component extends DCLogic {
       cols: tab === 0
         ? [{ label: "Item", w: "2.2fr" }, { label: "Code", w: ".9fr", mono: 1 }, { label: "On hand now", w: "1.1fr", a: "right", mono: 1 }, { label: "Par", w: ".7fr", a: "right", mono: 1 }, { label: "Used today", w: "1fr", a: "right", mono: 1 }, { label: "Unit cost", w: ".9fr", a: "right", mono: 1 }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "State", w: "1.1fr", a: "right" }]
         : [{ label: "Item", w: "2.2fr" }, { label: "Code", w: ".9fr", mono: 1 }, { label: "Location", w: "1.4fr" }, { label: "On hand", w: ".9fr", a: "right", mono: 1 }, { label: "Par", w: ".7fr", a: "right", mono: 1 }, { label: "Unit cost", w: ".9fr", a: "right", mono: 1 }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "State", w: ".9fr", a: "right" }],
-      empty: tab === 0
-        ? "Nothing received or cooked at " + this.outlet().name + " yet. Receive a delivery, or raise an indent on the store."
-        : "",
+      /* A SEARCH THAT MATCHED NOTHING SAYS SO, and names what was typed. The
+         sentence below it is the one for a store nobody has stocked, and
+         telling a manager who just typed three letters that they have never
+         received a delivery is the blank-page-under-a-typed-box defect the
+         lock-screen roster already paid for. */
+      empty: q
+        ? "Nothing in stock matches \u201c" + s.search + "\u201d."
+        : (tab === 0
+          ? "Nothing received or cooked at " + this.outlet().name + " yet. Receive a delivery, or raise an indent on the store."
+          : ""),
       rows: tab === 0 ? hereIds.map((id) => {
         const it = this.item(id) || [];
         const su = it[8] || it[3] || "";
@@ -14917,6 +14977,13 @@ class Component extends DCLogic {
     }
     return {
       tabs: this.ordTabs(sub, openList, closed, waiting.length),
+      /* A SCREEN THAT FILTERS ON THE QUERY CARRIES THE BOX FOR IT. This one
+         read `s.search` and offered nowhere to type it: the only input was
+         the shell's magnifier, which is `display:none` on a phone — so on
+         the device a back office is actually held in, the filter existed
+         and could not be reached. */
+      find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+        hint: "Search orders" },
       guideTitle: openList.length ? "Open first" : "Today's orders",
       guide: openList.length
         ? [openList.length + " still open — live tickets and parked bills, newest first", "The status column is where the order is, on the same rung the pass and the guest read", "Open a ticket to move that status, or take payment — which opens the till's own pay screen on it"]
@@ -15371,6 +15438,13 @@ class Component extends DCLogic {
     const list = this.members().filter((c) => !q || c.name.toLowerCase().indexOf(q) >= 0);
     const tier = { Platinum: "purple", Gold: "warn", Silver: "info", Bronze: "mute" };
     return {
+      /* A SCREEN THAT FILTERS ON THE QUERY CARRIES THE BOX FOR IT. This one
+         read `s.search` and offered nowhere to type it: the only input was
+         the shell's magnifier, which is `display:none` on a phone — so on
+         the device a back office is actually held in, the filter existed
+         and could not be reached. */
+      find: { value: s.search, set: (v) => this.setState({ search: v == null ? "" : String(v) }),
+        hint: "Search customers" },
       actions: [
         // This used to say "Invite to portal", flip a local flag and toast
         // "N invites sent by SMS". It sent nothing — there is no SMS in this
@@ -15396,6 +15470,10 @@ class Component extends DCLogic {
       ],
       guideTitle: "Loyalty and credit", guide: ["Create the customer — loyalty and credit both key off this row", "A credit limit above zero opens a credit ledger for them", "Open a customer to invite them to their portal — the code is read out at the counter", "An over-limit charge is blocked at the pay screen and, if one replays from an offline till, recorded and flagged rather than silently allowed"],
       
+      // Same rule: the box can empty this list now, so it has to say which of
+      // the two emptinesses it is.
+      empty: q ? "No customer matches \u201c" + s.search + "\u201d."
+        : "Nobody is on the books yet. Take a name and a number at the counter and they appear here.",
       cols: [{ label: "Customer", w: "1.6fr" }, { label: "Phone", w: "1.2fr", mono: 1 }, { label: "Tier", w: ".8fr" }, { label: "Visits", w: ".7fr", a: "right", mono: 1 }, { label: "Lifetime", w: "1fr", a: "right", mono: 1 }, { label: "Points", w: ".8fr", a: "right", mono: 1 }, { label: "Credit used", w: "1.2fr", a: "right", mono: 1 }, { label: "Last visit", w: ".9fr", a: "right" }],
       rows: list.map((c) => ({
         go: () => this.setState({ modal: { kind: "customer", id: c.id } }),
