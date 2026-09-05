@@ -46,7 +46,7 @@
     <div style="{{ palWrapStyle }}">
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-muted)"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
-        <input aria-label="Go anywhere, or say what you want to do…" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit"/>
+        <input aria-label="Go anywhere, or say what you want to do…" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;border-radius:8px;padding:7px 9px;margin:-7px -9px"/>
         <span style="flex-shrink:0;font-size:10px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
       </div>
       <sc-if value="{{ planOpen }}">
@@ -161,7 +161,7 @@
         </button>
 
         <div style="{{ searchStyle }}" onClick="{{ openSearch }}" title="Filter this screen — press /">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="{{ searchIconStyle }}"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
           <input aria-label="Search…" value="{{ search }}" onChange="{{ onSearch }}" onBlur="{{ blurSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ searchRef }}" style="{{ searchInputStyle }}"/>
         </div>
 
@@ -972,7 +972,7 @@
                  of the 521 it wanted, every section tab off the screen. -->
             <div style="{{ findRowStyle }}">
               <div style="{{ findStyle }}">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0;opacity:.6"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="{{ findIconStyle }}"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
                 <input value="{{ findValue }}" onChange="{{ findSet }}" placeholder="{{ findHint }}" aria-label="{{ findHint }}" style="{{ findInputStyle }}"/>
                 <button onClick="{{ findClear }}" aria-label="Clear the search" style="{{ findClearStyle }}">✕</button>
               </div>
@@ -4470,11 +4470,15 @@ class Component extends DCLogic {
       openSearch: () => { if (!s.searchOpen) { this.setState({ searchOpen: true }); setTimeout(() => { const n = this._searchRef.current; if (n) n.focus(); }, 30); } },
       blurSearch: () => { if (!s.search) this.setState({ searchOpen: false }); },
       searchKey: (e) => { if (e.key === "Escape") { this.setState({ search: "", searchOpen: false }); e.target.blur(); } },
-      searchInputStyle: "background:transparent;border:none;outline:none;color:var(--text);font-size:12px;min-width:0;" + (s.searchOpen ? "flex:1;width:auto" : "width:0;flex:0 0 0;padding:0"),
+      // The same rule as the find box: the input IS the pill, so the ring the
+      // browser draws on it is the pill's own shape rather than a rectangle
+      // sitting inside one. The glyph rides over the padding it makes.
+      searchInputStyle: "background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:12px;min-width:0;border-radius:inherit;" + (s.searchOpen ? "flex:1;width:auto;padding:0 10px 0 30px" : "width:0;flex:0 0 0;padding:0"),
+      searchIconStyle: "position:absolute;top:50%;transform:translateY(-50%);pointer-events:none;left:" + (s.searchOpen ? "10px" : "8px"),
       netTitle: s.online ? "Online — tap to simulate a network drop" : "Offline — tap to restore the link",
       netDotBtnStyle: "display:flex;align-items:center;justify-content:center;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 8px 0 10px" : "7px 10px 7px 12px") + ";flex-shrink:0",
       linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
-      searchStyle: isM ? "display:none" : "display:flex;align-items:center;gap:" + (s.searchOpen ? "8px" : "0") + ";background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;padding:" + (s.searchOpen ? "7px 10px" : "0") + ";flex-shrink:0;color:var(--text-dim);" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;height:32px;justify-content:center;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
+      searchStyle: isM ? "display:none" : "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;flex-shrink:0;color:var(--text-dim);height:32px;" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
       _searchStyleOld: isM ? "display:none" : "display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);color:var(--text-muted)",
       shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:20px;font-size:10px;font-weight:700;background:var(--warn-dim);color:var(--warn-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
       clockStyle: isM ? "display:none" : "text-align:right;font-variant-numeric:tabular-nums;min-width:78px;flex-shrink:0",
@@ -5190,13 +5194,24 @@ class Component extends DCLogic {
       /* IT GROWS INTO WHAT THE BUTTONS LEAVE, and shrinks to a floor rather
          than to nothing. `0 1 auto` in a `max-content` parent could do
          neither: it never grew, and it never gave anything back. */
+      /* THE INPUT IS THE FIELD, so the icon and the ✕ ride OVER it rather than
+         beside it. Written the other way round — a padded pill with three flex
+         children — the input's own box was 480×17 inside a 522×34 pill, and the
+         keyboard focus ring draws on the INPUT: a square 2px rectangle (an
+         input carries no border-radius) floating 31px in from the left and 8px
+         down from the top of a rounded field. Reported as "some boxy blue line
+         shows on search bar when clicked", and measured exactly that.
+         The till's own menu search has always been built this way; these two
+         were the ones that were not. */
       findStyle: (g.find && g.find.set)
-        ? "display:flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid "
+        ? "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid "
           + (g.find.value ? "var(--warn-line)" : "var(--line)")
-          + ";border-radius:9px;padding:0 10px;min-height:" + (bp === "m" ? 44 : 34)
+          + ";border-radius:9px;min-height:" + (bp === "m" ? 44 : 34)
           + "px;flex:" + (bp === "m" ? "1 1 100%" : "1 1 240px")
           + ";min-width:" + (bp === "m" ? "0" : "150px") + ";color:var(--text-dim)"
         : "display:none",
+      findIconStyle: "position:absolute;left:10px;top:50%;transform:translateY(-50%);"
+        + "opacity:.6;pointer-events:none",
       findValue: (g.find && g.find.value) || "",
       findHint: (g.find && g.find.hint) || "Search",
       /* A STRING, ALWAYS. `search` is read with `.toLowerCase()` by seven
@@ -5208,17 +5223,23 @@ class Component extends DCLogic {
         if (!g.find || !g.find.set) return;
         g.find.set((e && e.target && e.target.value != null) ? String(e.target.value) : "");
       },
-      // The field fills its pill. It used to carry a width of its own, which
-      // is what made the pill an odd fixed-size chip rather than a search bar.
+      /* The field fills its pill — every pixel of it, so the focus ring traces
+         the field rather than a box inside one. It used to carry a width of its
+         own, which is what made the pill an odd fixed-size chip rather than a
+         search bar. The padding that was on the pill is here now, and it makes
+         room for the glyph on the left and the ✕ on the right. */
       findInputStyle: "background:transparent;border:none;outline:none;color:var(--text);"
         + "font-family:inherit;font-size:" + (bp === "m" ? 13 : 12.5)
-        + "px;min-width:0;flex:1 1 auto;width:100%",
+        + "px;min-width:0;flex:1 1 auto;width:100%;border-radius:inherit;padding:0 "
+        + ((g.find && g.find.value) ? (bp === "m" ? 44 : 32) : 11) + "px 0 30px",
       // Only where there is something to clear — a dead ✕ beside an empty box
       // is a control that does nothing, which is the defect this build names.
+      // It spans the pill's full height, so the target is the field's height
+      // rather than a number that has to be kept in step with it.
       findClearStyle: (g.find && g.find.value)
-        ? "flex-shrink:0;color:var(--text-dim);font-size:12px;line-height:1;display:grid;"
-          + "place-items:center;min-height:" + (bp === "m" ? 40 : 28)
-          + "px;min-width:" + (bp === "m" ? 40 : 28) + "px"
+        ? "position:absolute;right:0;top:0;bottom:0;color:var(--text-dim);font-size:12px;"
+          + "line-height:1;display:grid;place-items:center;min-width:"
+          + (bp === "m" ? 44 : 32) + "px"
         : "display:none",
       findClear: () => { if (g.find && g.find.set) g.find.set(""); },
       hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)

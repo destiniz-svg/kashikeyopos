@@ -7837,7 +7837,84 @@ test('the find box is a sibling of the tab rail, and there is one of it', () => 
   assert.match(src, /"Nothing in stock matches \\u201c" \+ s\.search/, 'inventory');
   assert.match(src, /"No customer matches \\u201c" \+ s\.search/, 'customers');
 
-  // The clear control is a tap target on a phone, not a 24px glyph.
-  assert.match(src, /min-height:" \+ \(bp === "m" \? 40 : 28\)/, 'the ✕ is tappable');
+  /* The clear control is a tap target on a phone, and it is the FIELD'S OWN
+     height rather than a figure somebody has to keep in step with the pill's:
+     it is pinned to the pill's top and bottom edges. */
+  assert.match(src, /findClearStyle[\s\S]{0,160}position:absolute;right:0;top:0;bottom:0/,
+    'the ✕ spans the pill it clears');
+  assert.match(src, /\(bp === "m" \? 44 : 32\)/, 'and is tappable');
   assert.match(src, /min-height:" \+ \(bp === "m" \? 44 : 34\)/, 'and the pill is 44 on a phone');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   A FOCUSED FIELD LIGHTS UP; IT DOES NOT GROW A BLUE RECTANGLE INSIDE ITSELF
+
+   Reported as "some boxy blue line shows on search bar when clicked", and
+   measured in Chromium on the shipped build rather than reasoned about:
+   clicking Menu Master's find box focused an input whose own box was 480×17
+   inside a 522×34 pill. The ring the browser draws is `2px solid var(--fwd)`,
+   which is blue in both themes — so what appeared was a SQUARE rectangle (an
+   input carries no border-radius of its own) floating 31px in from the left
+   and 8px down from the top of a rounded field. Half the height of the pill,
+   short at both ends: a boxy blue line, exactly as reported. The top bar's
+   magnifier and the ⌘K palette were the same shape of defect.
+
+   Two facts settle what the fix can be, and neither is negotiable.
+   `:focus-visible` MATCHES A MOUSE CLICK on a text field — that is the
+   browser's own rule and the reason the ring is seen constantly, so it
+   cannot be reserved for the keyboard. And `test/a11y.test.js` reads
+   getComputedStyle(document.activeElement), so the ring has to stay ON the
+   input; moving it to the pill would take the keyboard's only cue away.
+
+   What is left is the ring's SHAPE, and the shape follows from the input
+   BEING its field: the padding that was on the pill moves to the input, the
+   glyph and the ✕ ride over it absolutely, and the radius is inherited. The
+   till's own menu search has always been built that way — these three were
+   the ones that were not.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a search field fills its pill, so the focus ring is the field\'s shape', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const decl = (key) => {
+    const m = new RegExp('\\n      ' + key + ':[\\s\\S]*?\\n      (?=[A-Za-z_/])').exec(src);
+    assert.ok(m, key + ' is declared in the terminal');
+    return m[0];
+  };
+
+  // ── the screen's find box ───────────────────────────────────────────────
+  const findPill = decl('findStyle'), findInput = decl('findInputStyle');
+  assert.match(findPill, /position:relative/, 'the pill anchors the glyph and the ✕');
+  assert.match(findPill, /align-items:stretch/, 'so the input fills its height');
+  assert.doesNotMatch(findPill, /padding:/,
+    'the pill keeps NO padding of its own — padding on the pill is what leaves '
+    + 'the input, and therefore the ring, a smaller box floating inside it');
+  assert.match(findInput, /border-radius:inherit/,
+    'the input takes the pill\'s radius, or the ring is square inside a rounded field');
+  assert.match(findInput, /padding:0 /, 'and carries the padding the pill gave up');
+  assert.match(decl('findIconStyle'), /position:absolute[\s\S]*pointer-events:none/,
+    'the glyph rides over the field rather than shortening it');
+
+  // ── the shell's magnifier, the same rule ────────────────────────────────
+  const barPill = decl('searchStyle'), barInput = decl('searchInputStyle');
+  assert.doesNotMatch(barPill, /padding:/, 'the top bar pill keeps no padding either');
+  assert.match(barPill, /position:relative/, 'and anchors its glyph');
+  assert.match(barInput, /border-radius:inherit/, 'the top bar input inherits the radius');
+  assert.match(barInput, /padding:0 10px 0 30px/, 'and makes its own room for the glyph');
+  assert.match(decl('searchIconStyle'), /position:absolute/, 'which is drawn over it');
+
+  // ── and the palette, which focuses itself the moment it opens ───────────
+  const pal = /<input aria-label="Go anywhere[^>]*style="([^"]*)"/.exec(src);
+  assert.ok(pal, 'the palette input is there');
+  assert.match(pal[1], /border-radius:/,
+    'the palette focuses this field on open, so its ring is seen every single '
+    + 'time — it may not be a square drawn inside the palette header');
+
+  /* AND THE RING ITSELF IS UNCHANGED AND STILL WINS. Softening it would be
+     the opposite defect: every field in the terminal carries `outline:none`
+     inline, and `!important` at a NEGATIVE offset is what draws a ring inside
+     a bordered field at all. `test/a11y.test.js` fails if it stops. */
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
+  assert.match(css, /input:focus-visible[\s\S]{0,200}outline:2px solid var\(--fwd\) !important/,
+    'the ring is still 2px of the accent, and still beats 22 inline outline:none');
+  assert.match(css, /outline:2px solid var\(--fwd\) !important;outline-offset:-2px/,
+    'and still draws INSIDE the field, which is why the field has to be the input');
 });

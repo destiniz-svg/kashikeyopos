@@ -1932,6 +1932,71 @@ states — and its OLD pin was widened while fixing it: the window ran to
 the fallback took 40,000 characters, and two later screens fell inside it. It
 passed only while no other screen declared a box.
 
+### And a focused field lights up; it does not grow a rectangle inside itself
+
+Reported next, of the box that had just been fixed: *"some boxy blue line
+shows on search bar when clicked. design issue"*. Every word of it was
+literal, and none of it was reachable by reading the CSS — it is a fact about
+two boxes' geometry, so it was measured in Chromium on the shipped build
+before anything was written:
+
+```
+input   rect 111,366  480x17   border-radius 0px    outline 2px solid #2754ac
+pill    rect  80,358  522x34   border-radius 9px    outline none
+```
+
+**The ring is drawn on the INPUT, and the input was not the field.** A pill
+holding three flex children — glyph, input, ✕ — with `padding:0 10px` and
+`align-items:center` leaves the input's own box 480×17 inside a 522×34 field.
+So `outline:2px solid var(--fwd)` at `outline-offset:-2px` painted a rectangle
+half the pill's height, 31 px in from its left edge and 8 px down from its top:
+a **line**, exactly as reported, and a square one, because an input carries no
+`border-radius` and Chrome traces the element's own. `--fwd` is `#2754ac` light
+and `#7c92f5` dark — blue in both, so it was this build's own ring and not a
+browser default. The top bar's magnifier and the ⌘K palette were the same
+defect; the palette's is seen every single time, because it focuses itself the
+moment it opens.
+
+**And `:focus-visible` matches a MOUSE CLICK on a text field.** The comment
+over that rule read *"Keyboard focus only"* — true of a `<button>`, and never
+of an input, where every browser always draws the indicator because a text
+field has to show where the caret went. So the rule's stated intent had not
+been its behaviour since it was written, which is why the report says *when
+clicked*. That is the browser's rule and not something to work around: the
+comment was wrong, and it is the comment that changed.
+
+Two things therefore fix nothing. The ring cannot be reserved for the
+keyboard, and it cannot move to the pill: `test/a11y.test.js` reads
+`getComputedStyle(document.activeElement)`, so a ring on the parent would take
+the keyboard's only cue away — and softening it would be the opposite defect
+to the one being fixed.
+
+**What is left is the SHAPE, and the shape follows from the input being its
+field.** The padding that was on the pill moves to the input, the glyph and the
+✕ ride over it absolutely, and the radius is inherited. **The till's own menu
+search has always been built exactly this way** — its input carries the border,
+the radius and `padding:10px 30px 10px 34px`, with the glyph at `left:13px` and
+the clear button absolute — so this is not a new pattern, it is three controls
+brought onto the one already here. The ✕ gains something on the way: pinned to
+the pill's top and bottom edges, its target is the field's own height rather
+than a number somebody has to keep in step with it.
+
+Measured after, through the shipped screens:
+
+```
+find box   input 81,399 520x32 in a pill 80,358 522x34 · radius 9px
+top bar    input 648,16 177x30 in a pill 647,15 179x32 · radius 8px
+palette    input 394,87 476x31 · radius 8px, the header row still 50px tall
+at 1024    the section rail 924 of 924 — the previous fix intact
+at 390     pill 362x44, ✕ 44x42, the page does not scroll sideways, ✕ clears
+```
+
+`test/wiring.test.js` pins all three — the input inheriting the radius and
+carrying the padding, the pill carrying none, both glyphs drawn over the field,
+and the ring itself still `2px solid var(--fwd) !important` at a negative
+offset, because that is the half that must not be softened. It fails against
+the version that shipped.
+
 ### Measured, in a real browser this time
 
 The guest portal is anonymous, so the sandbox's block on the till's sign-in does

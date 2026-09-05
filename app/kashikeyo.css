@@ -190,7 +190,18 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--fwd);
    search landed a keyboard user on a control they could not see. `!important`
    is the only thing that reaches past 22 inline styles without editing 22
    inline styles. The ring draws INSIDE a field, because a field sits in a
-   bordered pill with no room outside it for one. */
+   bordered pill with no room outside it for one.
+
+   AND ON A TEXT FIELD `:focus-visible` MATCHES A MOUSE CLICK TOO. That is the
+   browser's own rule and not a bug — a text field always shows where the
+   caret went — so the comment above is true of a button and never of these.
+   Which means the ring is seen constantly, and its SHAPE is the whole of
+   whether it reads as a field lighting up or as a stray rectangle: an input
+   carries no border-radius of its own, so a bare input inside a rounded pill
+   drew a square 2px box floating in the middle of it. Reported. The answer is
+   never to soften the ring — it is that an input must BE its field, filling
+   the pill and inheriting its radius, which is how the till's menu search was
+   always built. See `findInputStyle` in app/index.html. */
 input:focus-visible,textarea:focus-visible,select:focus-visible,
 a:focus-visible,[tabindex]:focus-visible{
   outline:2px solid var(--fwd) !important;outline-offset:-2px}
