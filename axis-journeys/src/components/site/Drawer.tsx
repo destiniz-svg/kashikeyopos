@@ -261,23 +261,35 @@ function PropertyProfile({ waLink, hasRate }: { waLink: string; hasRate: boolean
           <ImageSlot src={r.img} alt={`${r.name}, ${r.dest}`} credit={r.credit} creditHref={r.creditHref} placeholder={r.photoHint} pos={(r as { pos?: string }).pos} loading="eager" sizes="600px" />
         </div>
         <div style={css('position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,16,47,.85) 100%);pointer-events:none;')} />
-        <div style={css('position:absolute;left:28px;bottom:40px;right:28px;pointer-events:none;')}>
-          <div style={css('font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-ink);')}>
-            {r.dest} · {r.area}
-          </div>
-          <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:44px;line-height:1;margin-top:8px;")}>{r.name}</div>
-        </div>
-        {/* The way out of the drawer and into the island's own page — the comparison scales, the
-            villa tabs, the pricing across the year. The drawer is for keeping your place in the
-            list; this is for a guest who has stopped browsing. */}
-        <Hover
-          as="a"
-          href={`/properties/${r.id}`}
-          style="position:absolute;right:28px;bottom:44px;display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#00102F;background:#E0B94F;padding:9px 14px;border-radius:2px;transition:background .2s;"
-          hover="background:#F0CB64;"
+        {/* The name and the way out of the drawer share this corner, so they share a ROW rather
+            than both being absolutely positioned into it. Measured on a 360px phone: the name wraps
+            to two lines and the button was drawn straight across the second one. Wrapping puts the
+            button under the name on a narrow drawer and leaves the design unchanged on a wide one. */}
+        <div
+          style={css(
+            'position:absolute;left:28px;bottom:40px;right:28px;pointer-events:none;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;',
+          )}
         >
-          Full details →
-        </Hover>
+          <div style={css('min-width:0;')}>
+            <div style={css('font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-ink);')}>
+              {r.dest} · {r.area}
+            </div>
+            <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:clamp(30px,8vw,44px);line-height:1.05;margin-top:8px;")}>
+              {r.name}
+            </div>
+          </div>
+          {/* Into the island's own page — the comparison scales, the villa tabs, the pricing across
+              the year. The drawer is for keeping your place in the list; this is for a guest who
+              has stopped browsing. */}
+          <Hover
+            as="a"
+            href={`/properties/${r.id}`}
+            style="flex:none;pointer-events:auto;display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#00102F;background:#E0B94F;padding:9px 14px;border-radius:2px;transition:background .2s;white-space:nowrap;"
+            hover="background:#F0CB64;"
+          >
+            Full details →
+          </Hover>
+        </div>
       </div>
 
       <div id="drawer-pad" style={css('padding:24px 28px 0;')}>

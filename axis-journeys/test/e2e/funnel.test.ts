@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert'
 import { after, before, describe, it } from 'node:test'
 import { body, startServer, type Harness } from '../support/server'
-import { failingTargets, launch, newContext, openPage, overflowsX, type Session } from '../support/browser'
+import { clippedRight, failingTargets, launch, newContext, openPage, overflowsX, type Session } from '../support/browser'
 import type { SiteBundle } from '@/lib/content/types'
 
 let h: Harness
@@ -281,6 +281,10 @@ describe('at every width the prototype declares', () => {
         await page.waitForLoadState('networkidle').catch(() => undefined)
         await page.waitForTimeout(500)
         assert.equal(await overflowsX(page), false, `${path} at ${size.width}px scrolls sideways`)
+        // And nothing is sliced off by the root's own `overflow-x:hidden`, which is what let three
+        // clipped elements through this test until a phone screenshot found them.
+        const clipped = await clippedRight(page)
+        assert.deepEqual(clipped, [], `${path} at ${size.width}px cuts off: ${clipped.join(' · ')}`)
       }
       assert.deepEqual(faults, [])
       await ctx.close()

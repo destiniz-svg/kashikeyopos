@@ -810,3 +810,59 @@ destination page and `/offers`: **no sideways scroll anywhere**.
   photographs shows them.
 - **The hero stat counts what is published**, above.
 - **The marine derivation matches the animal**, above.
+
+## 21. "No sideways scroll" was the wrong measurement
+
+Reported with five screenshots from a real phone: a gold button drawn straight across a property's
+name, a section kicker running off the side, a carousel card with its price control cut in half, a
+heading clipped mid-word. Every one of them on pages this suite had just called clean at eight
+widths.
+
+**The check was `document.scrollWidth > clientWidth`, and the app root sets `overflow-x:hidden`.**
+So an element wider than the viewport never widens the document: the page reports no sideways
+scroll, and the content is sliced off anyway. The one property the test asserted was the one
+property the root's own clip guaranteed. `clippedRight()` in `test/support/browser.ts` walks the
+elements instead — anything that starts on screen and ends past the right edge — and skips only
+what has a clipping ancestor OF ITS OWN (a carousel track, a scrolling table, a footer with a bled
+watermark), because those clip on purpose. The app root is the one clip it steps past.
+
+It runs at all eight widths on three pages, and it failed on the version that shipped.
+
+### What it found, and what each one actually was
+
+Five of the seven are the same defect: **a flex or grid item's default minimum size is its
+CONTENT**, so a nowrap line inside it sets a floor that `flex-basis` and `1fr` cannot go under.
+
+- **The Selection card** was 364px on a 360px phone — `flex-basis` 320, held open by the nowrap
+  trade row ("5 nights · Speedboat · 45 min"). `min-width:0`.
+- **The destination row** ran its 34px name straight over its own "9 properties →" count: three
+  columns, `1fr` in the middle, and the middle track could not shrink. `minmax(0,1fr)`, and at
+  ≤640 the count moves to its own line under the name.
+- **The Refine trigger** is `flex:1` with a nowrap summary inside; the summary itself already
+  ellipsised, but the button it sits in could not shrink. `min-width:0` — and the summary is the
+  group names actually drawn now, so adding a facet no longer means editing a sentence too.
+- **The newsletter input** demanded `min-width:260px` inside a wrapping row.
+- **The property page's conversion bar** carries two labelled controls whose own text is wider than
+  a 320px phone. Tighter padding and type rather than a shorter label: "Get a quote" would stop
+  naming what the button does.
+
+The other two:
+
+- **The drawer's "Full details" was drawn over the property name.** Both were absolutely positioned
+  into the same corner — fine on a desktop, and on a phone the name wraps to two lines and the
+  button lands on the second. They share a flex row now, so on a narrow drawer the button wraps
+  underneath and on a wide one nothing moves.
+- **Three headings were left out of the audit's own selector lists.** The 2026-09-05 sections use
+  the same 42px display face as every other section, and the ≤820/≤640 rules that step it down
+  name each section individually — Why Axis, By atoll and Compared were simply not in the list, so
+  "The numbers behind the recommendation" ran off a phone at full size.
+
+And two things the screenshots showed that no measurement would have:
+
+- **The comparison table read as broken rather than scrollable.** It scrolls by design, but a 160px
+  label column on a 296px screen left a third of one property visible. The label is 96px at ≤640,
+  the columns are 150px, so one property is whole and the next peeks — and the table says "Swipe
+  the table to compare all 3 →" underneath, because an affordance nobody can see is not one.
+- **The hero said "9 islands" three sections above a trust strip saying "38 properties".** Both are
+  true and they count different things — what is published against what is under contract — and two
+  bare figures on one page read as one of them being wrong. The hero says "9 islands online".

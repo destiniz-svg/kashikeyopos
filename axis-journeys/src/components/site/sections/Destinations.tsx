@@ -17,7 +17,10 @@ export function Destinations() {
           <div data-reveal="" style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>
             01 · Where is your next adventure?
           </div>
-          <div id="dest-list" style={css('margin-top:28px;border-top:1px solid var(--line-12);')}>
+          {/* `minmax(0,1fr)` above and `min-width:0` here: a grid track's default minimum is its
+              content, and the row's third column is a nowrap "9 properties →". Together they held
+              this list 20px wider than the phone it was drawn on. */}
+          <div id="dest-list" style={css('min-width:0;margin-top:28px;border-top:1px solid var(--line-12);')}>
             {rows.map((d) => (
               <button
                 key={d.name}
@@ -26,7 +29,7 @@ export function Destinations() {
                 onClick={() => actions.openDest(d.name)}
                 onMouseEnter={() => actions.setDestHover(d.name)}
                 onFocus={() => actions.setDestHover(d.name)}
-                style={css('width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-12);padding:26px 0;color:var(--ink);display:grid;grid-template-columns:56px 1fr auto;gap:20px;align-items:baseline;')}
+                style={css('width:100%;min-width:0;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-12);padding:26px 0;color:var(--ink);display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:20px;align-items:baseline;')}
               >
                 <span style={css('font-size:12px;letter-spacing:.2em;color:var(--gold-ink);')}>{d.num}</span>
                 <span>

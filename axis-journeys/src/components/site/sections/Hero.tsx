@@ -111,9 +111,12 @@ export function Hero() {
             <span style={css('width:1px;height:14px;background:var(--line-3);')} />
             {/* Counted from what the site actually publishes. The prototype carries a literal 38
                 properties; a figure a visitor can disprove by counting the grid is worse than a
-                smaller true one, and this one grows on its own as the catalogue is completed. */}
+                smaller true one, and this one grows on its own as the catalogue is completed.
+                "online" is doing real work: the trust strip below states the agency's 38 CONTRACTS,
+                which is a different true number, and two bare figures on one page read as one of
+                them being wrong. */}
             <span id="hero-stats" style={css('white-space:nowrap;')}>
-              <strong>{stats.islands}</strong> islands · <strong>{stats.atolls}</strong> atolls · quotes in <strong>24h</strong>
+              <strong>{stats.islands}</strong> islands online · <strong>{stats.atolls}</strong> atolls · quotes in <strong>24h</strong>
             </span>
             <span style={css('width:1px;height:14px;background:var(--line-3);')} />
             <Hover as="a" href={waLink} target="_blank" rel="noopener" style="color:var(--ink);border-bottom:1px solid var(--ink-4);transition:color .2s;" hover="color:var(--gold-ink);">

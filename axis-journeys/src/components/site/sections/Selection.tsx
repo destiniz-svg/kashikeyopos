@@ -153,7 +153,11 @@ export function Selection() {
                     key={c.id}
                     as="article"
                     onClick={() => !dragged.current && actions.openDrawer(c.resort, c.dep)}
-                    style={{ ...css('background:var(--card);color:#00102F;cursor:pointer;box-shadow:0 30px 60px var(--shadow-45);transition:transform .35s ease,box-shadow .35s ease;user-select:none;'), flex: `0 0 ${w}px` }}
+                    // `min-width:0`: a flex item's default minimum is its CONTENT, so the nowrap
+                    // trade row ("5 nights · Speedboat · 45 min") held the card at 364px however
+                    // small `flex-basis` was. Measured on a 360px viewport: basis 320, rendered
+                    // 364, 24px of it off the side of the screen.
+                    style={{ ...css('min-width:0;background:var(--card);color:#00102F;cursor:pointer;box-shadow:0 30px 60px var(--shadow-45);transition:transform .35s ease,box-shadow .35s ease;user-select:none;'), flex: `0 0 ${w}px` }}
                     hover="transform:translateY(-6px);box-shadow:0 40px 70px var(--shadow-55);"
                   >
                     <div style={css('position:relative;height:210px;overflow:hidden;background:var(--bg);')}>

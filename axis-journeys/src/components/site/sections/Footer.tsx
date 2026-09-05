@@ -84,7 +84,7 @@ export function Footer() {
             required
             autoComplete="email"
             placeholder="Your email"
-            style={css('background:var(--line-04);border:1px solid var(--line-16);color:var(--ink);padding:0 16px;height:48px;min-width:260px;font-size:14px;border-radius:2px;')}
+            style={css('flex:1 1 260px;min-width:0;background:var(--line-04);border:1px solid var(--line-16);color:var(--ink);padding:0 16px;height:48px;font-size:14px;border-radius:2px;')}
           />
           <Hover
             as="button"

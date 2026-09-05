@@ -20,7 +20,7 @@ export function RefinePanel({ groups, summary, hasPf }: { groups: FilterGroup[];
   return (
     <div data-reveal="" style={css('margin-top:24px;border:1px solid var(--line-1);border-radius:3px;background:var(--panel);overflow:hidden;')}>
       <div style={css('display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 6px 0 18px;min-height:56px;')}>
-        <button type="button" onClick={actions.togglePf} aria-expanded={s.pfOpen} style={css('flex:1;display:flex;align-items:center;gap:14px;background:none;border:0;color:var(--ink);text-align:left;min-height:56px;padding:0;')}>
+        <button type="button" onClick={actions.togglePf} aria-expanded={s.pfOpen} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:none;border:0;color:var(--ink);text-align:left;min-height:56px;padding:0;')}>
           <span style={css('display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;border:1px solid var(--gold-50);color:var(--gold-ink);flex:none;')}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <path d="M4 6h16" />

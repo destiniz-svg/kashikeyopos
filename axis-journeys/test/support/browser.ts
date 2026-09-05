@@ -142,6 +142,42 @@ export const overflowsX = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
 
 /**
+ * Elements a guest can SEE being cut off at the right edge.
+ *
+ * `overflowsX` is not enough on its own and this is the lesson that cost a round of screenshots
+ * from a real phone: the app root sets `overflow-x:hidden`, so an element wider than the viewport
+ * never widens the document — the page reports no sideways scroll and the content is sliced off
+ * anyway. Reported: a carousel card 24px too wide, a destination row whose name ran over its own
+ * count, and a heading clipped mid-word, all on a page this suite called clean.
+ *
+ * The exclusion is anything with a clipping ancestor OF ITS OWN — a carousel track, a scrolling
+ * comparison table, a footer with a bled watermark. Those clip on purpose and the guest sees a
+ * deliberate edge. The app root's own `overflow-x:hidden` does not count, which is the whole point:
+ * it is the one clip that hides real defects, so it is the one this walk steps past.
+ */
+export const clippedRight = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    const vw = document.documentElement.clientWidth
+    const out: { over: number; line: string }[] = []
+    for (const el of document.querySelectorAll('body *')) {
+      const cs = getComputedStyle(el)
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0 || r.left >= vw - 2) continue
+      const chain: Element[] = []
+      for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) chain.push(n)
+      // Everything but the outermost element under <body>, which is the app root.
+      if (chain.slice(0, -1).some((a) => getComputedStyle(a).overflowX !== 'visible')) continue
+      const over = Math.round(r.right - vw)
+      // 8px of slack: a decorative element bled past the edge on purpose is not a defect, and a
+      // sub-pixel rounding difference is not one either.
+      if (over > 8) out.push({ over, line: `${el.tagName}${el.id ? '#' + el.id : ''} +${over}px "${(el.textContent || '').trim().slice(0, 40)}"` })
+    }
+    const seen = new Set<string>()
+    return out.sort((a, b) => b.over - a.over).map((x) => x.line).filter((l) => !seen.has(l) && seen.add(l))
+  })
+
+/**
  * Targets that fail WCAG 2.5.8, including the standard's own two exceptions.
  *
  * A flat "everything must be 44px" would fail this design on every chip, and the prototype is the

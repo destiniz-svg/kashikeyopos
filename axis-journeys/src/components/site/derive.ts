@@ -363,7 +363,10 @@ export function useProperties(
       cats,
       answered,
       hasPf: active.length > 0,
-      summary: active.length ? active.join(' · ') : 'Collection, style, transfer, atoll, brand and room type',
+      // The group names actually drawn, rather than a sentence listing them: adding a facet used to
+      // mean editing this string too, and the version that shipped with Atoll and Brand in it was
+      // long enough to be ellipsised at the first comma on a phone.
+      summary: active.length ? active.join(' · ') : groups.map((g) => g.name).join(' · '),
     }
   }, [bundle, propDest, pf, saved, cat, qz])
 }

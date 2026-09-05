@@ -185,6 +185,14 @@ export function Compared() {
   // Two islands is the fewest that can be compared; one column is a fact sheet.
   if (columns.length < 2) return null
 
+  // A comparison of three islands cannot fit a phone, so it scrolls — but on a 296px screen a
+  // 160px label column left barely a third of one property visible, which reads as a broken table
+  // rather than a scrollable one. Narrower label, narrower columns, and the table is told to say
+  // it scrolls: one column whole and the next one peeking is the affordance.
+  const narrow = s.vw <= 640
+  const labelW = narrow ? 96 : 160
+  const colW = narrow ? 150 : 180
+
   return (
     <section
       data-screen-label="Compared"
@@ -197,7 +205,14 @@ export function Compared() {
           blurb="A taste of what every property page holds — villas, reef, transfer and package pricing, side by side."
         />
         <div id="cmp-wrap" data-reveal="" style={css('margin-top:40px;overflow-x:auto;border:1px solid var(--line-08);border-radius:3px;background:var(--bg);')}>
-          <div id="cmp-grid" style={{ ...css('display:grid;min-width:720px;'), gridTemplateColumns: `160px repeat(${columns.length},minmax(180px,1fr))` }}>
+          <div
+            id="cmp-grid"
+            style={{
+              ...css('display:grid;'),
+              minWidth: `${labelW + colW * columns.length}px`,
+              gridTemplateColumns: `${labelW}px repeat(${columns.length},minmax(${colW}px,1fr))`,
+            }}
+          >
             <div style={css('padding:22px 24px;border-bottom:1px solid var(--line-08);')} />
             {columns.map((c) => (
               <a
@@ -234,6 +249,7 @@ export function Compared() {
         </div>
         <div data-reveal="" style={css('display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;margin-top:24px;')}>
           <div style={css('font-size:13px;color:var(--muted);')}>
+            {narrow && <span style={css('display:block;color:var(--gold-ink);margin-bottom:6px;')}>Swipe the table to compare all {columns.length} →</span>}
             Package prices are per couple and only shown where an Offer is live; everything else is quoted against availability.
           </div>
           <button type="button" onClick={actions.nav('properties')} className="pill" style={css('height:44px;')}>
