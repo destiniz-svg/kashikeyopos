@@ -243,3 +243,56 @@ describe('the home flow is the handoff\'s own numbering', () => {
     assert.match(src, /if \(columns\.length < 2\) return null/)
   })
 })
+
+describe('every field the site reads is a field Studio can set', () => {
+  /**
+   * Studio's schema against the `Property` type, derived rather than listed.
+   *
+   * Four fields shipped that the property page reads and no editor could reach — `scales`,
+   * `marine`, `idealFor` and `notFor` — so the agency's own judgement about who an island suits
+   * lived in the repository and nowhere a specialist could change it. The page renders either way,
+   * because each one has a derived fallback, which is exactly why nothing said so.
+   *
+   * Deriving the list from the type is the point: a field added later fails here until somebody
+   * decides which of the two it is. An exemption has to carry its reason.
+   */
+  const NOT_EDITED: Record<string, string> = {
+    id: 'the document’s own name, set when it is created and never edited',
+    draft: 'legacy stub flag — a document carrying it is never published',
+    detailPending: 'legacy stub flag',
+    included: 'the property page composes every inclusion from the profile; nothing reads this',
+    map: 'nothing reads it — the page derives its own map from `geo`',
+  }
+
+  it('has a control for it, or a reason it has none', () => {
+    const types = read('src/lib/content/types.ts')
+    const schema = read('src/lib/admin/schema.ts')
+    const body = types.match(/export interface Property \{([\s\S]*?)\n\}/)
+    assert.ok(body, 'the Property interface moved')
+    const fields = [...body[1].matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1])
+    assert.ok(fields.length > 40, 'the field sweep read almost nothing, so it proves almost nothing')
+
+    const paths = new Set([...schema.matchAll(/path: '([\w.]+)'/g)].map((m) => m[1].split('.')[0]))
+    const orphans = fields.filter((f) => !paths.has(f) && !(f in NOT_EDITED))
+    assert.deepEqual(orphans, [], `no Studio control, and no stated reason: ${orphans.join(', ')}`)
+  })
+
+  it('does not carry a control for a field no type has', () => {
+    const types = read('src/lib/content/types.ts')
+    const schema = read('src/lib/admin/schema.ts')
+    const known = new Set([...types.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]))
+    const dead = [...new Set([...schema.matchAll(/path: '([\w.]+)'/g)].map((m) => m[1].split('.')[0]))].filter(
+      (p) => !known.has(p),
+    )
+    assert.deepEqual(dead, [], `Studio edits fields nothing stores: ${dead.join(', ')}`)
+  })
+
+  it('geo is one pair of coordinates, not a list of them', () => {
+    // `Geo` is `[lat, lng]`. Without `single` the list editor read the pair as two rows and drew
+    // both empty, so a property with coordinates looked like one without.
+    const schema = read('src/lib/admin/schema.ts')
+    const geo = schema.match(/path: 'geo',[\s\S]*?(?=path: ')/)
+    assert.ok(geo, 'the geo field moved')
+    assert.match(geo[0], /single: true/, 'geo is drawn as a repeatable list')
+  })
+})

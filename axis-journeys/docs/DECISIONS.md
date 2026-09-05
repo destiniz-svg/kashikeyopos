@@ -901,3 +901,50 @@ Three things this deliberately keeps:
 `#cmp-wrap` came out of the ≤640 font-size rule in `globals.css` with the table it was sizing.
 Measured after: `#cmp-cards` right edge 328 of 360 and 358 of 390, `#cmp-wrap` 1388 of 1440 —
 nothing clipped at either phone width, and the desktop unchanged.
+
+## 23. Studio against the front end it feeds
+
+Asked whether the CMS complies with the front-end changes, and answering it honestly meant
+diffing the `Property` type against Studio's schema and then opening the editor rather than
+reading it. The schema was right about eight of the twelve fields the 2026-09-05 handoff added.
+Two things were not, and both were invisible from the site, because every one of these fields has
+a derived fallback — the page renders whatever happens here, which is exactly why nothing said so.
+
+**Four fields the property page reads had no control at all.** `scales`, `marine`, `idealFor` and
+`notFor` are the overrides the page consults before it derives its own answer — who an island
+suits, who should look elsewhere, what is regularly seen on the reef, and where the five
+comparison scales sit. They are the agency's own judgement, and the derivation exists precisely
+because judgement is better than a rule: `idealFor` falls back to the themes, which are blunter
+than a specialist, and `marine` falls back to a regex over the prose, which names nothing where
+the prose does not. So the four fields whose whole purpose is to beat the derivation were the four
+nobody could set. They are in the Property page section now, each saying what the page does with
+an empty one — and `scales` says all five or none, because one row replaces every derived scale.
+
+**And `geo` was drawn as a repeatable list.** `Geo` is one `[lat, lng]` pair; the field was
+declared `type: 'list'` without `single: true`, which already exists for exactly this shape and is
+what the spa and dive-centre fields use. So the editor read the pair as two ROWS, asked each row
+for a latitude and a longitude, found neither, and drew two empty boxes. An editor opening Baros
+— a property that has carried coordinates since the backfill — saw no coordinates, and typing
+them in would have written `[[lat, lng]]` beside the seed's flat `[lat, lng]`. `readGeo()` accepts
+both shapes, which is how this survived: the site was papering over its own CMS. Measured in
+Chromium before and after — two empty rows, then one row reading `4.28 / 73.43`.
+
+Two more the sweep found, both older than this change and both rendering on the site:
+
+- **`tags`** — the badges on a property card, real content on every property, and no control;
+- **`creditHref`** — the photo credit is a link, and only its text was editable.
+
+`map` and `included` are on the type and read by nothing; they are named as exempt rather than
+given controls, because a control for a field nothing renders is a way to spend an editor's time.
+
+**The check is derived, not listed.** `test/unit/wiring.test.ts` reads the `Property` interface and
+asserts every field is either a Studio path or carries a stated reason it is not — so a field added
+later fails until somebody decides which of the two it is — plus the reverse (Studio editing a
+field nothing stores) and `single` on `geo`. All three fail against the version that shipped:
+verified by removing `single` and renaming `marine`.
+
+Nothing else needed changing. The mobile work in §21 and §22 is layout and has no CMS surface; the
+category filters and the matchmaker read only fields Studio already sets; the villa and venue
+tuples are covered, `moreCol` naming slot 7 explicitly; and the save path takes the draft whole, so
+a new field persists without an allowlist to update. Proven by typing into one of the four new
+fields in the shipped editor and reloading — 285 unit, 110 API, 55 e2e green.

@@ -101,6 +101,13 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
           { path: 'nights', label: 'Suggested nights', type: 'number' },
           { path: 'themes', label: 'Themes', type: 'chips', choices: L.THEMES, span: '1/-1', hint: 'Powers the Experiences filters' },
           { path: 'bestFor', label: 'Best for', ph: 'Couples · Families · Divers' },
+          {
+            path: 'tags',
+            label: 'Card tags',
+            type: 'tags',
+            span: '1/-1',
+            hint: 'The badges on the property card. The first three are shown.',
+          },
           { path: 'specialist', label: 'Specialist', type: 'select', options: opt(L.SPECIALISTS) },
           { path: 'months', label: 'Best months', type: 'months', span: '1/-1' },
           { path: 'usd', label: 'Reference rate USD per couple', type: 'number', hint: 'Only shown inside offers' },
@@ -202,6 +209,7 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
           { path: 'img', label: 'Hero photo', type: 'image', req: true, span: '1/-1' },
           { path: 'photoHint', label: 'Caption', ph: 'Amara Atoll Reserve · overwater villa at dusk' },
           { path: 'credit', label: 'Photo credit' },
+          { path: 'creditHref', label: 'Credit link', ph: 'https://…', hint: 'Where the credit points. Left blank the credit is plain text.' },
           {
             path: 'gallery',
             label: 'Gallery',
@@ -319,7 +327,11 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
             path: 'geo',
             label: 'Coordinates',
             type: 'list',
-            hint: 'One row, decimal degrees. It positions the pin on the atoll map and measures the distance from Malé.',
+            // `single`, because `geo` is one `[lat, lng]` pair rather than a list of them. Without it
+            // the editor read the pair as two rows and drew both of them empty — the property's real
+            // coordinates invisible to the person who came to check them.
+            single: true,
+            hint: 'Decimal degrees. It positions the pin on the atoll map and measures the distance from Malé.',
             addLabel: 'Set coordinates',
             cols: [{ label: 'Latitude', ph: '4.28' }, { label: 'Longitude', ph: '73.43' }],
           },
@@ -334,6 +346,42 @@ export function sectionsFor(col: ContentCollection, ctx: SchemaContext): Section
             addLabel: 'Add award',
             hint: 'Verify each one before publishing — nothing here is derived, and an award nobody checked is on the page in the resort’s name.',
             cols: [{ label: 'Award', ph: "Indian Ocean's Most Romantic Resort" }, { label: 'Source', ph: 'World Travel Awards' }],
+          },
+          {
+            path: 'idealFor',
+            label: 'Who it suits',
+            type: 'tags',
+            span: '1/-1',
+            hint: 'Left empty the page derives four from the themes, which are blunter than a specialist. The first four are used.',
+          },
+          {
+            path: 'notFor',
+            label: 'Who should look elsewhere',
+            type: 'tags',
+            span: '1/-1',
+            hint: 'Say why, not just who — “Families with young children — this is an adults-focused island”. Left empty the page derives its own.',
+          },
+          {
+            path: 'marine',
+            label: 'What is regularly seen',
+            type: 'tags',
+            span: '1/-1',
+            hint: 'Only what a guest can expect to see. Left empty it is read from the reef and story prose, which names nothing where the prose does not.',
+          },
+          {
+            path: 'scales',
+            label: 'Comparison scales',
+            type: 'list',
+            span: '1/-1',
+            addLabel: 'Add scale',
+            hint:
+              'All five or none — one row here replaces every derived scale, so a partial set leaves the rest off the page. ' +
+              'Position is 0–100 from the left-hand label to the right.',
+            cols: [
+              { label: 'Left', ph: 'Lively' },
+              { label: 'Right', ph: 'Secluded' },
+              { label: 'Position 0–100', type: 'number' },
+            ],
           },
           {
             path: 'pricing',
