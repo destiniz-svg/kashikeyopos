@@ -1,9 +1,11 @@
 'use client'
 
 /** Our Story, the collection tiers, the About bento, the guest voices and the pre-footer CTA. */
+import { useRef } from 'react'
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
 import { ImageSlot } from '@/components/ui/ImageSlot'
+import { useAmbientPlayback } from '@/components/ui/motion'
 import { useTiers } from '../derive'
 import { useSite } from '../state'
 import { assetUrl } from '@/lib/content/asset-url'
@@ -69,6 +71,8 @@ export function AboutAxis() {
   const email = settings?.email || 'hello@axisjourneys.com'
   const maldivesVideo = assetUrl(s.destinations.find((d) => d.name === 'Maldives')?.video)
   const teamImg = settings?.teamImg || ''
+  const aboutVideo = useRef<HTMLVideoElement>(null)
+  useAmbientPlayback(aboutVideo, maldivesVideo)
 
   return (
     <section id="about" data-screen-label="About Axis" style={css('padding:96px 0;')}>
@@ -103,7 +107,7 @@ export function AboutAxis() {
 
           <button type="button" onClick={actions.nav('properties')} className="bento" data-reveal="">
             {maldivesVideo && (
-              <video id="about-video" autoPlay muted loop playsInline preload="none" src={maldivesVideo} aria-hidden="true" style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.7;')} />
+              <video id="about-video" ref={aboutVideo} muted loop playsInline preload="none" src={maldivesVideo} aria-hidden="true" style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.7;')} />
             )}
             <div style={css('position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,16,47,.9));')} />
             <div style={css('position:relative;')}>

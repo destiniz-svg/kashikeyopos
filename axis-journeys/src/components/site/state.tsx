@@ -21,6 +21,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { scrollBehaviour } from '@/components/ui/motion'
 import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, type Filters, type PropertyFacet, type PropertyFilters } from '@/lib/content/filters'
 import type { Destination, GalleryShot, Offer, Property, SiteBundle } from '@/lib/content/types'
 
@@ -387,7 +388,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
   const scrollToId = useCallback((id: string) => {
     const el = document.getElementById(id)
     if (!el) return
-    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 100, behavior: 'smooth' })
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 100, behavior: scrollBehaviour() })
   }, [])
 
   const closeDrawer = useCallback(() => {
@@ -425,7 +426,8 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
           if (typeof window !== 'undefined') window.location.assign(`/#${id}`)
           return
         }
-        if (typeof history !== 'undefined' && location.hash !== '#' + id) history.replaceState(null, '', '#' + id)
+        // `history.state` is carried, not cleared: the drawer's own marker lives there.
+        if (typeof history !== 'undefined' && location.hash !== '#' + id) history.replaceState(history.state, '', '#' + id)
         patch({ page: null, mega: false, menuOpen: false, ...(extra as object) })
         lock(false)
         setTimeout(() => scrollToId(id), onDestPage ? 80 : 20)
@@ -452,7 +454,7 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
         return
       }
       e?.preventDefault?.()
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      window.scrollTo({ top: 0, behavior: scrollBehaviour() })
     },
     [state.page, goHome],
   )
@@ -571,7 +573,17 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
         sheetOpen: false,
       })
       lock(true)
-      if (resort && typeof history !== 'undefined') history.replaceState(null, '', `/properties/${resort.id}`)
+      // A drawer is somewhere a guest can be, so it takes a history entry: on a phone the drawer
+      // is the whole screen and Back is how anyone leaves a screen. Before this it replaced the
+      // entry, so the address read `/properties/<id>` and Back left the site altogether — measured
+      // at both viewports, landing on about:blank. Switching from one property to another
+      // replaces, or Back would walk the guest through everything they had glanced at.
+      if (typeof history !== 'undefined') {
+        const url = resort ? `/properties/${resort.id}` : location.pathname + location.search + location.hash
+        const already = (history.state as { axisDrawer?: boolean } | null)?.axisDrawer
+        if (already) history.replaceState({ axisDrawer: true }, '', url)
+        else history.pushState({ axisDrawer: true }, '', url)
+      }
     },
     [patch, lock],
   )
@@ -600,16 +612,36 @@ export function SiteProvider({ bundle: initialBundle, initialPage = null, initia
   // The drawer owns the URL while it is open, and hands it back when it closes: a guest who opened
   // a property from the home page must be able to share what they are looking at.
   const closeDrawerAndUrl = useCallback(() => {
+    // Where opening pushed an entry, closing goes back through it, so the address and the history
+    // agree however the guest closed it — Escape, the backdrop, the close button or Back itself.
+    // A deep link straight to /properties/<id> pushed nothing, and there the address is handed
+    // back by hand: a guest who opened the site on a property must be able to share where they
+    // now are, and going back from there means leaving, which is correct.
+    if (typeof history !== 'undefined' && (history.state as { axisDrawer?: boolean } | null)?.axisDrawer) {
+      history.back()
+      return
+    }
     closeDrawer()
     if (typeof history !== 'undefined' && location.pathname.startsWith('/properties/')) {
       history.replaceState(null, '', '/#properties')
     }
   }, [closeDrawer])
 
+  // Back out of the drawer. The entry `openDrawer` pushed is gone by the time this runs, so the
+  // only thing left to do is close; touching history here would fight the navigation that caused it.
+  useEffect(() => {
+    const onPop = () => {
+      const still = (history.state as { axisDrawer?: boolean } | null)?.axisDrawer
+      if (!still) closeDrawer()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [closeDrawer])
+
   const jump = useCallback((id: string) => {
     const el = document.getElementById(id)
     const drawer = document.getElementById('drawer')
-    if (el && drawer) drawer.scrollTo({ top: el.offsetTop - 70, behavior: 'smooth' })
+    if (el && drawer) drawer.scrollTo({ top: el.offsetTop - 70, behavior: scrollBehaviour() })
   }, [])
 
   const validate = useCallback((form: FormState): Record<string, string> => {

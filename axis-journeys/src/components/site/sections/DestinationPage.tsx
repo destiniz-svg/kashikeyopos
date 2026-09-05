@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
+import { scrollBehaviour, useAmbientPlayback } from '@/components/ui/motion'
 import { chipColours, useDestinationProperties, useOffers, useThemeTiles } from '../derive'
 import { useSite } from '../state'
 import { EmptyProperties, PropertyCardTile, RefinePanel } from './RefinePanel'
@@ -38,13 +39,7 @@ export function DestinationPage({ name }: { name: string }) {
   const settings = s.bundle.settings
   const wa = `https://wa.me/${settings?.whatsapp || '971554855656'}?text=${encodeURIComponent(`Hello Axis Journeys — I'd like to plan a ${name} journey.`)}`
 
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    v.muted = true
-    const p = v.play()
-    if (p && typeof p.catch === 'function') p.catch(() => undefined)
-  }, [video])
+  useAmbientPlayback(videoRef, video)
 
   if (!dest) return null
 
@@ -57,7 +52,6 @@ export function DestinationPage({ name }: { name: string }) {
             id="dp-video"
             ref={videoRef}
             className={videoOn ? 'on' : undefined}
-            autoPlay
             muted
             loop
             playsInline
@@ -157,7 +151,7 @@ export function DestinationPage({ name }: { name: string }) {
                   aria-pressed={s.destTheme === t.label}
                   onClick={() => {
                     actions.setDestTheme(s.destTheme === t.label ? null : t.label)
-                    setTimeout(() => document.getElementById('dp-props')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 20)
+                    setTimeout(() => document.getElementById('dp-props')?.scrollIntoView({ behavior: scrollBehaviour(), block: 'start' }), 20)
                   }}
                   style={{
                     ...css('text-align:left;background-size:cover;background-position:center;border-radius:3px;padding:0;height:200px;color:var(--ink);position:relative;overflow:hidden;transition:transform .35s cubic-bezier(.22,1,.36,1),border-color .3s,box-shadow .35s;'),

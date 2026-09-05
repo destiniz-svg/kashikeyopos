@@ -28,6 +28,7 @@ export function Selection() {
   const { state: s, actions, setTotal } = useSite()
   const { cards, total, hasActiveFilters, resultLine } = useSelection(s.bundle, s.applied, s.tab, s.saved)
   const press = useRef<number | null>(null)
+  const dragged = useRef(false)
 
   // The carousel's length has to reach the arrow-key handler, which lives in the provider.
   useEffect(() => {
@@ -121,12 +122,21 @@ export function Selection() {
 
           <div
             id="sel-track"
-            onPointerDown={(e) => (press.current = e.clientX)}
+            onPointerDown={(e) => {
+              press.current = e.clientX
+              dragged.current = false
+            }}
             onPointerUp={(e) => {
               if (press.current == null) return
               const dx = e.clientX - press.current
               press.current = null
-              if (Math.abs(dx) > 50) actions.step(dx < 0 ? 1 : -1)
+              // A swipe ends in a click on whichever card it started on, so the carousel used to
+              // open a property the guest was only sliding past. The flag is read by the card's
+              // own control and cleared on the next press.
+              if (Math.abs(dx) > 50) {
+                dragged.current = true
+                actions.step(dx < 0 ? 1 : -1)
+              }
             }}
             style={css('overflow:hidden;padding:60px 0 48px;touch-action:pan-y;')}
           >
@@ -139,7 +149,7 @@ export function Selection() {
                   <Hover
                     key={c.id}
                     as="article"
-                    onClick={() => actions.openDrawer(c.resort, c.dep)}
+                    onClick={() => !dragged.current && actions.openDrawer(c.resort, c.dep)}
                     style={{ ...css('background:var(--card);color:#00102F;cursor:pointer;box-shadow:0 30px 60px var(--shadow-45);transition:transform .35s ease,box-shadow .35s ease;user-select:none;'), flex: `0 0 ${w}px` }}
                     hover="transform:translateY(-6px);box-shadow:0 40px 70px var(--shadow-55);"
                   >
@@ -183,7 +193,18 @@ export function Selection() {
                           <div style={css('font-size:12px;color:#3A4A66;')}>{c.priceLabel}</div>
                           <div style={css('font-size:30px;font-weight:600;color:#184068;letter-spacing:-.01em;line-height:1.1;')}>{c.price}</div>
                         </div>
-                        <span style={css('font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#00102F;border-bottom:1px solid #00102F;padding-bottom:2px;')}>View</span>
+                        {/* The card as a whole opens the property, and this is the same act with
+                            a name and a tab stop: the click bubbles to the <article> above, so
+                            there is still exactly one handler. Making the card itself the control
+                            would have nested the shortlist heart and the photo credit inside a
+                            button; the affordance the design already draws is the honest one. */}
+                        <button
+                          type="button"
+                          aria-label={`View ${c.name}, ${c.dest}`}
+                          style={css('font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#00102F;background:none;border:0;border-bottom:1px solid #00102F;border-radius:0;padding:0 0 2px;font-family:inherit;cursor:pointer;')}
+                        >
+                          View
+                        </button>
                       </div>
                     </div>
                   </Hover>

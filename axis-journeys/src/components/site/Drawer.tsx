@@ -8,7 +8,9 @@
  * at the bottom is the same form in all three cases; splitting it would give the site three places
  * to keep the honeypot, the Turnstile token and the validation in step.
  */
+import { useRef } from 'react'
 import { css } from '@/components/ui/css'
+import { useDialogFocus } from '@/components/ui/dialog'
 import { Hover } from '@/components/ui/Hover'
 import { ImageSlot } from '@/components/ui/ImageSlot'
 import { MONTHS, type GalleryShot } from '@/lib/content/types'
@@ -20,6 +22,8 @@ const money = (usd: number, currency: 'USD' | 'EUR') => formatMoney(usd, currenc
 
 export function Drawer() {
   const { state: s, actions } = useSite()
+  const panel = useRef<HTMLElement>(null)
+  useDialogFocus(s.drawerVisible, panel)
   const d = s.drawer
   const r = d?.resort ?? null
   const isSavedView = d?.view === 'saved'
@@ -43,6 +47,10 @@ export function Drawer() {
       />
       <aside
         id="drawer"
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         aria-hidden={!s.drawerVisible}
         aria-label={r ? r.name : isSavedView ? 'Your shortlist' : 'Plan my journey'}
         style={{

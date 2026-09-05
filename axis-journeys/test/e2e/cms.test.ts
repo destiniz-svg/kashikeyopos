@@ -405,7 +405,9 @@ describe('a room with more than one photograph', () => {
     const strip = guest.page.locator('#dr-stays button[aria-label*="photo 2 of 3"]')
     await strip.click()
     await guest.page.waitForTimeout(700)
-    const lightbox = guest.page.locator('[role="dialog"][aria-modal="true"]')
+    // Named by its screen label rather than by the role: the drawer it opens from is a dialog too,
+    // and a locator that matches both is a locator that stops meaning the lightbox.
+    const lightbox = guest.page.locator('[data-screen-label="Gallery lightbox"]')
     assert.equal(await lightbox.isVisible(), true, 'the strip did not open the lightbox')
     assert.match(await lightbox.innerText(), /2 \/ 3/, 'it opened on the wrong photograph')
 

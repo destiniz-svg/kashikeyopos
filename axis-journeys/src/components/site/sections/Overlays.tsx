@@ -1,8 +1,9 @@
 'use client'
 
 /** The toast, the legal modal and the gallery lightbox — the three things that sit above everything. */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { css } from '@/components/ui/css'
+import { useDialogFocus } from '@/components/ui/dialog'
 import { Hover } from '@/components/ui/Hover'
 import { useSite } from '../state'
 import { LEGAL_KEYS } from './Footer'
@@ -28,7 +29,9 @@ export function Toast() {
 
 export function LegalModal() {
   const { state: s, actions } = useSite()
+  const box = useRef<HTMLDivElement>(null)
   const legal = s.bundle.settings?.legal
+  useDialogFocus(!!s.legal && !!legal, box)
   if (!s.legal || !legal) return null
   const doc = legal[s.legal]
   if (!doc) return null
@@ -41,7 +44,7 @@ export function LegalModal() {
       aria-label={doc.title}
       style={css('position:fixed;inset:0;z-index:100;background:rgba(5,7,14,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:fadein .3s ease;')}
     >
-      <div id="legal-box" onClick={(e) => e.stopPropagation()} style={css('background:var(--bg);border:1px solid var(--line-12);max-width:680px;width:100%;max-height:80vh;overflow-y:auto;padding:36px 40px;animation:rise .4s ease;box-shadow:0 40px 100px var(--shadow-60);')}>
+      <div id="legal-box" ref={box} tabIndex={-1} onClick={(e) => e.stopPropagation()} style={css('background:var(--bg);border:1px solid var(--line-12);max-width:680px;width:100%;max-height:80vh;overflow-y:auto;padding:36px 40px;animation:rise .4s ease;box-shadow:0 40px 100px var(--shadow-60);')}>
         <div style={css('display:flex;justify-content:space-between;align-items:flex-start;gap:20px;')}>
           <div>
             <div style={css('font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold-ink);')}>Legal</div>
@@ -85,6 +88,7 @@ export function LegalModal() {
 
 export function Lightbox() {
   const { state: s, actions } = useSite()
+  const box = useRef<HTMLDivElement>(null)
   // A room or a venue hands in its own photographs; everything else means the property gallery,
   // which is the only set this ever walked before those existed.
   const gallery = s.lightboxSet ?? s.drawer?.resort?.gallery ?? []
@@ -102,11 +106,15 @@ export function Lightbox() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open, s.lightbox, gallery.length, actions])
 
+  useDialogFocus(open, box)
+
   if (!open || !shot) return null
 
   return (
     <div
       className="dk"
+      ref={box}
+      tabIndex={-1}
       data-screen-label="Gallery lightbox"
       role="dialog"
       aria-modal="true"

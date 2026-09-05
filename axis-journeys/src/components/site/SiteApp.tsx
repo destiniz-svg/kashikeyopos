@@ -52,10 +52,12 @@ function Shell() {
       <Header />
       <MobileMenu />
 
+      {/* A destination page carries its own <main>; the home funnel had none, so the skip link
+          landed a screen-reader user in a document with no main region to be in. */}
       {s.page ? (
         <DestinationPage name={s.page} />
       ) : (
-        <>
+        <main>
           <Hero />
           <Destinations />
           <TrustStrip />
@@ -67,7 +69,7 @@ function Shell() {
           <AboutAxis />
           <Voices />
           <CtaBand />
-        </>
+        </main>
       )}
 
       <Footer />

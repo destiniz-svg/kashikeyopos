@@ -575,3 +575,132 @@ exactly the kind nobody notices is dead.
 
 What it does not cover: a control whose effect is real but wrong, which is what four of these six
 were. Those came from reading what each handler writes and asking who reads it.
+
+## 19. The audit: what a browser said about the motion, the keyboard and the Back button
+
+Asked for a complete audit of the site, its flow, its effects and its motion. What follows is what
+was measured in Chromium against `next start` on a production build, at 1440×900 and at 390×844,
+and what was changed because of it. Nothing here is a taste call; the taste calls are named at the
+end and were left alone, because the prototype is the visual contract.
+
+### The primary action of the site could not be reached with a keyboard
+
+Seventy tab stops walk the home page, and not one of them opened a property. The Selection card is
+an `<article>` with a click handler — no role, no tabindex, `focusable: false` — so a keyboard user
+could shortlist a resort (the heart inside it is a real button) and could not open it. The Offers
+tile and `PropertyCardTile` are both real buttons, so this was one card out of step rather than a
+decision.
+
+The card is still the click target a pointer expects. What changed is that the **View** affordance
+the design already draws in the corner is now a `<button>` carrying the property's name, and its
+click bubbles to the `<article>` above — so there is exactly one handler, and the whole card keeps
+working as it did. Making the card itself the control would have nested the shortlist heart and the
+photo credit link inside a button.
+
+Measured after: focusing that control and pressing Enter opens `/properties/sun-siyam-olhuveli`
+with the drawer at `translateX(0)`.
+
+Found on the way: a swipe on the carousel ends in a click on whichever card it started on, so
+sliding past a resort opened it. The drag flag the arrows already set is now read by the card.
+
+### A panel that says it is a dialog, and then is not one
+
+`aria-modal="true"` is a promise: a screen reader stops announcing the page behind because the
+application has said focus is inside the panel. The drawer did not declare it at all, and moved no
+focus — focus stayed on the button that opened it, **Tab left the panel on the first press in 25 of
+25 attempts**, and closing left focus wherever it had wandered. The gallery lightbox and the legal
+modal did declare it, and managed no focus either, which is the worse half of the same defect: the
+reader falls silent about the page while the keyboard is still standing on it.
+
+`useDialogFocus` in `src/components/ui/dialog.ts` is the one definition of the three halves — move
+in, keep in, hand back — and `test/unit/wiring.test.ts` fails on any file that declares the role
+without calling it.
+
+Measured after: focus lands on **Close**, **Tab left the panel 0 of 40 times**, and Escape returns
+focus to the View control that opened it.
+
+### Back left the site from a screen that looked like a page
+
+Opening a property `replaceState`d the address to `/properties/<id>`. On a phone the drawer is the
+whole screen and Back is how anyone leaves a screen — and Back left the site: measured landing on
+`about:blank` at both viewports, with `history.length` unchanged at 2.
+
+Opening now pushes an entry, a `popstate` listener closes the drawer when that entry goes, and
+closing by any other route (Escape, the backdrop, the close button) goes back through it, so the
+address and the history always agree. Switching from one property to another replaces rather than
+pushes, or Back would walk a guest through everything they had glanced at. A deep link straight to
+`/properties/<id>` pushes nothing and hands the address back by hand — Back there means leaving,
+which is correct.
+
+The scroll spy writes the hash with `history.replaceState(history.state, …)` rather than `null`,
+or it would wipe the marker the drawer put there.
+
+### Motion the visitor asked not to have
+
+The CSS half was already right: 12 keyframes and 7 animations running normally, **0 under
+`prefers-reduced-motion: reduce`**. What CSS cannot reach is motion this application asks for.
+
+- **Programmatic scroll.** Four call sites hard-coded `behavior: 'smooth'`, measured animating over
+  28 distinct positions under `reduce`. `scrollBehaviour()` in `src/components/ui/motion.ts` reads
+  the media query; the destination is unchanged, only the travelling. Measured after: 2 positions
+  under reduce, 28 without.
+- **The background clips.** Three sections carry a muted looping video and two of them asked for it
+  with an `autoplay` attribute, which starts the clip before any script can read the preference —
+  and no `matchMedia('(prefers-reduced-motion: reduce)')` existed anywhere in the JavaScript. No
+  element carries the attribute now; `useAmbientPlayback` is the single decision, and under reduce
+  the poster the design already layers underneath is what a visitor sees.
+
+**Not proven in a browser**: this Chromium build cannot decode the shipped H.264 clips
+(`readyState` stayed 0 after 6.5 s), so the *absence* of playback under reduce is established from
+the source and from the attribute, not from a moving picture.
+
+### 3.1 MB of video nobody was looking at
+
+Writing that hook exposed the cost. `play()` overrides `preload="none"`, so a clip that starts on
+mount is fetched whether or not anybody scrolls to it — and the About bento sits eight screens
+down. Measured on a phone profile (4× CPU, Fast 3G): **6,243 KB of media before, 3,122 KB after**,
+with playback now gated on an `IntersectionObserver`.
+
+The remaining 3.1 MB is the hero clip, which is on screen and therefore genuinely asked for. Making
+it desktop-only would remove it from a phone entirely — that is a brand decision about the first
+thing a guest sees, not an engineering one, so it is reported rather than taken. The `preload`
+comment in `Hero.tsx` claimed a saving it was not making, and now says what preload actually buys.
+
+**A correction to an earlier note in this session**: a first pass recorded 0 KB of media on a phone.
+That was wrong — measured against the same commit afterwards it was 6,243 KB. The number above is
+the one taken with the profile stated beside it.
+
+### The home page had no `<main>`
+
+The skip link's whole job is to put a keyboard user in the content. `DestinationPage` has a `<main>`;
+the home funnel had none, so the link landed in a document with no main region to be in.
+
+### Core Web Vitals, on this build
+
+| | desktop 1440 | phone 390, 4× CPU, Fast 3G |
+| --- | --- | --- |
+| TTFB | 193 ms | 51 ms |
+| FCP / LCP | 492 ms | 1,280 ms |
+| LCP element | `H1#hero-h1` | `H1#hero-h1` |
+| CLS | 0.0000 | 0.0000 |
+| long tasks | 1, worst 140 ms | 6, worst 424 ms |
+| transferred | font 70 KB · image 95 KB · media 3,122 KB | the same |
+| scroll | 3 frames of 39 over 33 ms | 1 of 65 |
+
+The LCP element being the headline rather than the hero photograph is the poster doing its job.
+The long tasks on the throttled phone are hydration; they land before the first interaction is
+possible, and the slowest interaction recorded in either profile was under the 200 ms INP good
+threshold.
+
+### What was found and deliberately not changed
+
+- **The hero clip on a phone** — 3.1 MB, above.
+- **The card surface is still a pointer target that is not itself focusable.** The equivalent
+  keyboard route is the named control inside it, which is the ordinary pattern; making the whole
+  card a button would nest two other controls inside it.
+- **Four transitions animate layout properties** (`.skip-link`'s `top`, a `height`, `.drow`'s
+  `padding-left`, a `width`). Each is on a single element reacting to a deliberate act, none showed
+  up in the scroll frame budget, and rewriting them as transforms would change the movement the
+  prototype specifies.
+- **Three SVG path errors per load on the two phone portals**, from the template's `d="{{ a.icon }}"`
+  being parsed as DOM before the runtime compiles it. Parse-time noise only; the icons render.

@@ -66,3 +66,102 @@ describe('a control that leaves the page it is on', () => {
     assert.match(src, /if \(arrived\.current \|\| initialPage\) return/, 'it would re-apply, or run on a destination page')
   })
 })
+
+const SELECTION = 'src/components/site/sections/Selection.tsx'
+const DRAWER = 'src/components/site/Drawer.tsx'
+const APP = 'src/components/site/SiteApp.tsx'
+const SITE = [
+  'src/components/site/Drawer.tsx',
+  'src/components/site/SiteApp.tsx',
+  'src/components/site/state.tsx',
+  'src/components/site/sections/DestinationPage.tsx',
+  'src/components/site/sections/Destinations.tsx',
+  'src/components/site/sections/Experiences.tsx',
+  'src/components/site/sections/Footer.tsx',
+  'src/components/site/sections/Header.tsx',
+  'src/components/site/sections/Hero.tsx',
+  'src/components/site/sections/MobileMenu.tsx',
+  'src/components/site/sections/Offers.tsx',
+  'src/components/site/sections/Overlays.tsx',
+  'src/components/site/sections/Properties.tsx',
+  'src/components/site/sections/RefinePanel.tsx',
+  'src/components/site/sections/Selection.tsx',
+  'src/components/site/sections/Story.tsx',
+]
+
+describe('every way to open a property is a control', () => {
+  it('the Selection card carries a named button, not only a handler on the <article>', () => {
+    // Measured before this: the card was a clickable <article> with no role and no tabindex, so
+    // 70 tab stops walked the home page and not one of them could open a property — the site's
+    // own primary action. The shortlist heart inside it was reachable; the card was not.
+    const src = read(SELECTION)
+    assert.match(src, /aria-label=\{`View \$\{c\.name\}, \$\{c\.dest\}`\}/, 'the card offers no named control')
+    assert.match(src, /<button\s+type="button"\s+aria-label=\{`View /, 'the View affordance is not a button')
+  })
+
+  it('a swipe does not open the card it started on', () => {
+    const src = read(SELECTION)
+    assert.match(src, /dragged\.current = true/, 'a drag is not recorded')
+    assert.match(src, /!dragged\.current && actions\.openDrawer/, 'the card opens even when the pointer was dragging')
+  })
+})
+
+describe('a panel that calls itself a dialog behaves like one', () => {
+  it('the drawer declares the role and takes the focus that goes with it', () => {
+    // `aria-modal` tells a screen reader to stop announcing the page behind. Declaring it without
+    // moving focus is worse than declaring nothing: measured at 25 of 25 Tab presses leaving the
+    // panel while the reader had already fallen silent about the page underneath.
+    const src = read(DRAWER)
+    assert.match(src, /role="dialog"/, 'the drawer is not a dialog')
+    assert.match(src, /aria-modal="true"/)
+    assert.match(src, /useDialogFocus\(s\.drawerVisible, panel\)/, 'nothing moves or traps focus')
+  })
+
+  it('there is one definition of that behaviour, and every dialog uses it', () => {
+    const hook = read('src/components/ui/dialog.ts')
+    assert.match(hook, /export function useDialogFocus/)
+    for (const f of SITE) {
+      const src = read(f)
+      if (!/role="dialog"/.test(src)) continue
+      assert.match(src, /useDialogFocus\(/, `${f} claims to be a dialog and manages no focus`)
+    }
+  })
+})
+
+describe('motion the visitor asked not to have', () => {
+  it('no scroll is smooth by assertion — every one asks', () => {
+    // globals.css switches off all 12 keyframes under `prefers-reduced-motion: reduce`, measured.
+    // What CSS cannot reach is a scroll this application asks for: measured animating over 11
+    // distinct positions under reduce, from four call sites.
+    for (const f of SITE) {
+      const src = read(f)
+      assert.equal(/behavior: ?'smooth'/.test(src), false, `${f} hard-codes a smooth scroll`)
+    }
+    assert.match(read('src/components/ui/motion.ts'), /prefers-reduced-motion: reduce/)
+  })
+
+  it('no ambient video starts itself', () => {
+    // An `autoplay` attribute plays the clip before any script can read the preference, and CSS
+    // cannot pause a <video> at all. Playing is the hook's decision in all three sections.
+    for (const f of SITE) {
+      const src = read(f)
+      assert.equal(/\bautoPlay\b/.test(src), false, `${f} still carries an autoplay attribute`)
+      if (/<video/.test(src)) assert.match(src, /useAmbientPlayback\(/, `${f} has a video nothing decides about`)
+    }
+  })
+})
+
+describe('where a guest is, and how they leave it', () => {
+  it('opening the drawer takes a history entry, so Back closes it', () => {
+    // It replaced the entry, so the address read /properties/<id> and Back left the site: measured
+    // landing on about:blank at 390px and at 1440px. On a phone the drawer is the whole screen.
+    const src = read(STATE)
+    assert.match(src, /history\.pushState\(\{ axisDrawer: true \}/, 'opening still replaces the entry')
+    assert.match(src, /addEventListener\('popstate'/, 'nothing closes the drawer when the entry goes')
+    assert.match(src, /history\.replaceState\(history\.state, ''/, 'the scroll spy would wipe the marker')
+  })
+
+  it('the home page has a main landmark for the skip link to land in', () => {
+    assert.match(read(APP), /<main>/, 'the home funnel has no main region')
+  })
+})

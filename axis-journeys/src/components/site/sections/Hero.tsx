@@ -4,13 +4,22 @@
  * The hero and the intent bar.
  *
  * The video is muted, looping and plays inline; it is layered over a poster so a browser that
- * blocks autoplay still shows the photograph rather than a black rectangle. `preload` is metadata
- * on a small viewport, where the video is a 3 MB cost on a phone plan for something the poster
- * already says.
+ * blocks autoplay still shows the photograph rather than a black rectangle.
+ *
+ * It carries no `autoplay` attribute, and that is deliberate rather than an omission: playing is
+ * `useAmbientPlayback`'s decision, so a visitor who has asked for reduced motion gets the poster
+ * and nothing that moves. An attribute would have started the clip before any script could read
+ * the preference, and the CSS half of reduced motion cannot reach a `<video>` at all.
+ *
+ * `preload="none"` on a small viewport is not the saving it reads as, and the comment here used to
+ * claim it was: asking a video to play overrides preload, so the clip is fetched whichever value
+ * this carries. Measured at 3.1 MB on a phone. What preload still buys is the case where nothing
+ * ever asks — reduced motion, or a hero scrolled past before the observer fires.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
+import { useAmbientPlayback } from '@/components/ui/motion'
 import { optionColours } from '../derive'
 import { useIntentOptions } from '../derive'
 import { useSite } from '../state'
@@ -33,21 +42,7 @@ export function Hero() {
   const { destOptions, pkgOptions, themeOptions, monthOptions, themesLabel } = useIntentOptions(s.bundle.properties, s.liveDestinations, s.f)
   const fieldBg = (k: string) => (s.openField === k ? 'rgba(224,185,79,.08)' : 'transparent')
 
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v || !videoUrl) return
-    v.muted = true
-    v.defaultMuted = true
-    const play = () => {
-      const p = v.play()
-      if (p && typeof p.catch === 'function') p.catch(() => undefined)
-    }
-    play()
-    // A browser that will not autoplay until it has seen a gesture gets one chance per gesture.
-    const events: (keyof WindowEventMap)[] = ['touchstart', 'pointerdown', 'keydown', 'scroll']
-    events.forEach((t) => window.addEventListener(t, play, { passive: true }))
-    return () => events.forEach((t) => window.removeEventListener(t, play))
-  }, [videoUrl])
+  useAmbientPlayback(videoRef, videoUrl)
 
   return (
     <>
@@ -63,7 +58,6 @@ export function Hero() {
               id="hero-video"
               ref={videoRef}
               className={videoOn ? 'on' : undefined}
-              autoPlay
               muted
               loop
               playsInline
