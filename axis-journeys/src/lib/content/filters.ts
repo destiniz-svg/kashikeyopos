@@ -154,7 +154,34 @@ export function roomKinds(p: Property): string[] {
 /** The Transfer filter reads the first word of the transfer summary ("Speedboat · 45 min"). */
 export const transferKind = (p: Property): string => (p.transferShort || '').split(/[\s·]+/)[0] || ''
 
-export type PropertyFacet = 'tier' | 'theme' | 'transfer' | 'room'
+/**
+ * Which atoll a property is in, read from its own area line ("Baa Atoll · Kunfunadhoo Island").
+ *
+ * Derived rather than stored, for the reason the Rooms filter is: the agency already writes the
+ * atoll into every property, and a second field would be a second thing to keep in step. A line
+ * with no atoll in it answers "Maldives", which is where the property is.
+ */
+export const atollOf = (p: Property): string =>
+  (p.area || '').split('·')[0].replace(/\s*Atoll.*$/i, '').trim() || 'Maldives'
+
+/**
+ * The hotel group behind a property. `brand` where a specialist set one; otherwise read from the
+ * name, which is how the agency writes it — "Conrad Maldives Rangali Island" is a Conrad.
+ *
+ * The list is the groups this agency actually represents. A name it does not recognise falls back
+ * to the first word, which groups a small independent with itself rather than with everybody else.
+ */
+const BRANDS =
+  /^(Sun Siyam|Adaaran|Cinnamon|Conrad|Waldorf Astoria|Soneva|Anantara|Four Seasons|Six Senses|One&Only|Ritz-Carlton|St\. Regis|JW Marriott|W Maldives|Sheraton|Le Méridien|Westin|Hilton|InterContinental|Kandima|Atmosphere|OBLU|Cheval Blanc|Patina|COMO|Raffles|Park Hyatt|Fairmont|Emerald|Pullman|Mercure|Hard Rock|Centara|Cora Cora|JOALI|Velaa|Milaidhoo|Amilla|Vakkaru|Kudadoo|Hurawalhi|Kuredu|Komandoo|Constance|Diamonds|Lily|Niyama|Ozen|Taj|Radisson|Kurumba|Velassaru|Dusit|Heritance|Movenpick|Alila|Baglioni|Banyan Tree|Gili|Huvafen|Cocoon|You & Me)/i
+
+export function brandOf(p: Property): string {
+  if (p.brand) return p.brand.split('·')[0].trim()
+  const m = (p.name || '').match(BRANDS)
+  if (m) return m[1]
+  return (p.name || '').split(/\s+(?:Maldives|Island|Resort)/i)[0].split(' ')[0]
+}
+
+export type PropertyFacet = 'tier' | 'theme' | 'transfer' | 'room' | 'atoll' | 'brand'
 export type PropertyFilters = Partial<Record<PropertyFacet, string>>
 
 /** The Refine panel: one value per group, every group ANDed. */
@@ -163,7 +190,99 @@ export function matchRefine(p: Property, pf: PropertyFilters): boolean {
   if (pf.theme && !(p.themes || []).includes(pf.theme)) return false
   if (pf.transfer && transferKind(p) !== pf.transfer) return false
   if (pf.room && !roomKinds(p).includes(pf.room)) return false
+  if (pf.atoll && atollOf(p) !== pf.atoll) return false
+  if (pf.brand && brandOf(p) !== pf.brand) return false
   return true
+}
+
+/**
+ * The category quick-filters above the Refine panel.
+ *
+ * They are shortcuts through the same catalogue, not a second taxonomy: each is a predicate over
+ * fields the agency already fills in, so a category can never contain a property whose profile
+ * does not justify it. A category nothing matches is not drawn — an empty tab is a promise the
+ * catalogue cannot keep.
+ */
+export const CATEGORIES: [string, ((p: Property, offers: Offer[]) => boolean) | null][] = [
+  ['All', null],
+  ['Best reefs', (p) => /exceptional|excellent|vibrant|world-class/i.test(p.reef || '')],
+  ['Honeymoon', (p) => (p.themes || []).includes('Honeymoon') || (p.themes || []).includes('Adults Only')],
+  ['Family', (p) => (p.themes || []).includes('Family') || roomKinds(p).includes('Family')],
+  ['All-inclusive', (p) => /all.inclusive/i.test(p.board || '') || (p.themes || []).includes('All-Inclusive')],
+  ['Quick transfer', (p) => /speedboat/i.test(p.transferShort || '')],
+  ['Remote', (p) => /seaplane|flight/i.test(p.transferShort || '')],
+  ['Live offers', (p, offers) => offers.some((o) => o.resort === p.id && !!o.from)],
+]
+
+/**
+ * The four questions, and what an answer is worth.
+ *
+ * This RE-RANKS; it never filters. A quiz that hid islands would answer "no match" to a guest who
+ * gave four honest answers, and the catalogue is nine islands — the useful thing is an order, not
+ * a shorter list. Every clause reads a field a specialist wrote, so a high score is a claim the
+ * profile itself supports.
+ */
+export const QUIZ: [string, [string, string][]][] = [
+  [
+    'What matters most?',
+    [
+      ['reef', 'Wild reef & marine life'],
+      ['quiet', 'Total seclusion'],
+      ['polish', 'Polished luxury'],
+      ['value', 'Barefoot value'],
+    ],
+  ],
+  [
+    'Who is travelling?',
+    [
+      ['couple', 'Just us two'],
+      ['family', 'Family'],
+      ['group', 'Friends or group'],
+    ],
+  ],
+  [
+    'How important is the reef?',
+    [
+      ['must', 'Must be amazing'],
+      ['big', 'Big marine life'],
+      ['no', 'Not a priority'],
+    ],
+  ],
+  [
+    'Getting there?',
+    [
+      ['quick', 'Quick & easy'],
+      ['scenic', 'Scenic seaplane'],
+      ['any', 'Either'],
+    ],
+  ],
+]
+
+export type QuizAnswers = Record<number, string | null | undefined>
+
+export function quizScore(p: Property, answers: QuizAnswers): number {
+  let n = 0
+  const themes = p.themes || []
+  const reefGood = /exceptional|excellent|vibrant|world-class/i.test(p.reef || '')
+  const bySea = /seaplane|flight/i.test(p.transferShort || '')
+  const lux = /luxury|ultra/i.test(p.tier || '')
+  const prose = [p.love, p.about, (p.nearby || []).map((x) => x.join(' ')).join(' ')].join(' ')
+
+  if (answers[0] === 'reef' && reefGood) n += 3
+  if (answers[0] === 'quiet' && (bySea || themes.includes('Adults Only'))) n += 3
+  if (answers[0] === 'polish' && lux) n += 3
+  if (answers[0] === 'value' && /premium|five/i.test(p.tier || '')) n += 3
+
+  if (answers[1] === 'couple' && (themes.includes('Honeymoon') || themes.includes('Adults Only'))) n += 2
+  if (answers[1] === 'family' && (themes.includes('Family') || roomKinds(p).includes('Family'))) n += 3
+  if (answers[1] === 'group' && roomKinds(p).includes('Family')) n += 1
+
+  if (answers[2] === 'must' && reefGood) n += 3
+  if (answers[2] === 'big' && /whale|manta/i.test(prose)) n += 3
+
+  if (answers[3] === 'quick' && !bySea) n += 2
+  if (answers[3] === 'scenic' && bySea) n += 2
+  return n
 }
 
 /** Sort for the Properties grid: photographed first, then by collection order. */

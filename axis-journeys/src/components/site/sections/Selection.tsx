@@ -45,7 +45,7 @@ export function Selection() {
   return (
     <section id="selection" data-screen-label="Our Selection" style={css('padding:96px 0 40px;position:relative;overflow:hidden;')}>
       <div id="sel-head" data-reveal="" style={css('text-align:center;padding:0 24px;')}>
-        <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>Handpicked by our specialists</div>
+        <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>03 · Handpicked by our specialists</div>
         <h2 id="sel-h2" style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:52px;letter-spacing:-.02em;line-height:1;margin:14px 0 26px;")}>
           Our Selection
         </h2>

@@ -15,7 +15,7 @@ export function Experiences() {
       <div id="exp-wrap" style={css('max-width:1400px;margin:0 auto;padding:0 32px;')}>
         <div data-reveal="" style={css('display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;')}>
           <div>
-            <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>Experiences</div>
+            <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>04 · Experiences</div>
             <h2 id="exp-h2" style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:42px;line-height:1.05;margin:14px 0 0;letter-spacing:-.02em;")}>
               Travel by the way you want to feel
             </h2>

@@ -9,6 +9,10 @@
  */
 import { useMemo } from 'react'
 import {
+  atollOf,
+  brandOf,
+  CATEGORIES,
+  quizScore,
   formatMoney,
   match,
   matchRefine,
@@ -17,6 +21,7 @@ import {
   transferKind,
   type Filters,
   type PropertyFilters,
+  type QuizAnswers,
 } from '@/lib/content/filters'
 import { MONTHS, PKGS, THEMES, TIERS, type Destination, type Offer, type Property, type SiteBundle } from '@/lib/content/types'
 
@@ -275,7 +280,14 @@ const toCard = (r: Property, saved: string[]): PropertyCard => ({
   saved: saved.includes(r.id),
 })
 
-export function useProperties(bundle: SiteBundle, propDest: string, pf: PropertyFilters, saved: string[]) {
+export function useProperties(
+  bundle: SiteBundle,
+  propDest: string,
+  pf: PropertyFilters,
+  saved: string[],
+  cat: string = 'All',
+  qz: QuizAnswers = {},
+) {
   return useMemo(() => {
     const pool = sortForGrid(
       bundle.properties.filter((r) => propDest === 'All' || r.dest === propDest),
@@ -311,18 +323,49 @@ export function useProperties(bundle: SiteBundle, propDest: string, pf: Property
           .filter((t) => pool.some((r) => roomKinds(r).includes(t)))
           .map((t) => ({ label: t, value: t, count: pool.filter((r) => roomKinds(r).includes(t)).length })),
       },
+      {
+        name: 'Atoll',
+        facet: 'atoll',
+        // Whichever atolls the catalogue actually holds, in the order it holds them — the
+        // alternative is a list of every atoll in the country with nothing behind most of them.
+        chips: [...new Set(pool.map(atollOf))].filter(Boolean).map((t) => ({
+          label: `${t} Atoll`,
+          value: t,
+          count: pool.filter((r) => atollOf(r) === t).length,
+        })),
+      },
+      {
+        name: 'Brand',
+        facet: 'brand',
+        // A group with one island is not a brand filter, it is that island's name twice.
+        chips: [...new Set(pool.map(brandOf))]
+          .filter((b) => b && pool.filter((r) => brandOf(r) === b).length > 1)
+          .map((b) => ({ label: b, value: b, count: pool.filter((r) => brandOf(r) === b).length })),
+      },
     ] as FilterGroup[]).filter((g) => g.chips.length > 1)
 
-    const cards = pool.filter((r) => matchRefine(r, pf)).map((r) => toCard(r, saved))
+    // Category, then Refine, then the quiz's ORDER. The quiz never removes an island — see
+    // `quizScore` — so the count under the grid is the same whether or not a guest has answered.
+    const category = CATEGORIES.find(([n]) => n === cat) || CATEGORIES[0]
+    const test = category[1]
+    const kept = pool.filter((r) => matchRefine(r, pf)).filter((r) => !test || test(r, bundle.offers))
+    const answered = Object.values(qz).filter(Boolean).length
+    const ranked = answered ? [...kept].sort((a, b) => quizScore(b, qz) - quizScore(a, qz)) : kept
+    const cards = ranked.map((r) => toCard(r, saved))
+
+    const cats = CATEGORIES.filter(([, f]) => !f || pool.some((r) => f(r, bundle.offers))).map(([label]) => label)
+
     const active = Object.values(pf).filter(Boolean) as string[]
     return {
       pool,
       groups,
       cards,
+      cats,
+      answered,
       hasPf: active.length > 0,
-      summary: active.length ? active.join(' · ') : 'Collection, style, transfer and room type',
+      summary: active.length ? active.join(' · ') : 'Collection, style, transfer, atoll, brand and room type',
     }
-  }, [bundle, propDest, pf, saved])
+  }, [bundle, propDest, pf, saved, cat, qz])
 }
 
 /** The destination page's own grid: the same refine panel over one destination's properties. */

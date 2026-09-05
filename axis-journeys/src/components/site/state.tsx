@@ -22,7 +22,15 @@ import {
   type ReactNode,
 } from 'react'
 import { scrollBehaviour } from '@/components/ui/motion'
-import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, type Filters, type PropertyFacet, type PropertyFilters } from '@/lib/content/filters'
+import {
+  DEFAULT_FILTERS,
+  filtersFromQuery,
+  filtersToQuery,
+  type Filters,
+  type PropertyFacet,
+  type PropertyFilters,
+  type QuizAnswers,
+} from '@/lib/content/filters'
 import type { Destination, GalleryShot, Offer, Property, SiteBundle } from '@/lib/content/types'
 
 export type Currency = 'USD' | 'EUR'
@@ -75,6 +83,11 @@ export interface SiteState {
   offerDest: string
   pf: PropertyFilters
   pfOpen: boolean
+  /** The category quick-filter above the Refine panel. `'All'` is the whole catalogue. */
+  cat: string
+  /** The matchmaker: whether its questions are open, and the answers so far. */
+  quizOpen: boolean
+  qz: QuizAnswers
 
   /** Which destination page is open, if any. */
   page: string | null
@@ -148,8 +161,14 @@ export interface SiteActions {
   setSlide(n: number): void
 
   setPropDest(dest: string): void
+  setCat(cat: string): void
+  toggleQuiz(): void
+  answerQuiz(question: number, value: string): void
+  clearQuiz(): void
   setOfferDest(dest: string): void
   setPf(key: PropertyFacet, value: string): void
+  /** Set one Refine facet from elsewhere on the page, open the panel and go to the grid. */
+  openFacet(key: PropertyFacet, value: string, label: string): void
   clearPf(): void
   togglePf(): void
   openTier(tier: string): void
@@ -206,11 +225,14 @@ export interface SiteProviderProps {
   bundle: SiteBundle
   /** A destination page rendered directly, rather than reached from the home page. */
   initialPage?: string | null
-  /** Set by `/property/<id>`, which renders the property page in place of the home funnel. */
+  /**
+   * Set by `/properties/<id>`, which renders the property's own page in place of the home funnel.
+   *
+   * This used to be `initialPropertyId`, which opened the DRAWER on arrival. It is a page now: the
+   * handoff's own redirect map sends that address at the property page, and a guest who typed or
+   * was sent a property's URL was being given the overlay rather than the document.
+   */
   initialPropertyPage?: string | null
-  /** A property profile rendered directly: the drawer opens over the home page beneath it. */
-  initialPropertyId?: string | null
-  initialOfferId?: string | null
   children: ReactNode
 }
 
@@ -241,6 +263,9 @@ export function SiteProvider({
     offerDest: 'All',
     pf: {},
     pfOpen: false,
+    cat: 'All',
+    quizOpen: false,
+    qz: {},
     page: initialPage,
     propPage: initialPropertyPage,
     destTheme: null,
@@ -815,6 +840,13 @@ export function SiteProvider({
       step,
       setSlide: (n) => patch({ slide: n }),
       setPropDest: (dest) => patch({ propDest: dest }),
+      setCat: (cat) => patch({ cat }),
+      toggleQuiz: () => patch((st) => ({ quizOpen: !st.quizOpen })),
+      // Tapping the answer you already gave takes it back — four questions and no way to unsay one
+      // is a quiz that traps a guest in a ranking they no longer want.
+      answerQuiz: (question, value) =>
+        patch((st) => ({ qz: { ...st.qz, [question]: st.qz[question] === value ? null : value } })),
+      clearQuiz: () => patch({ qz: {} }),
       setOfferDest: (dest) => patch({ offerDest: dest }),
       setPf: (key, value) => patch((s) => ({ pf: { ...s.pf, [key]: s.pf[key] === value ? undefined : value } })),
       clearPf: () => patch({ pf: {} }),
@@ -822,6 +854,14 @@ export function SiteProvider({
       openTier(tier) {
         patch({ pf: { tier }, propDest: 'All', pfOpen: true })
         toast(`Showing the ${tier}`)
+        setTimeout(() => nav('properties')(), 20)
+      },
+      // An atoll card or a brand chip is the Refine panel's filter set from somewhere else on the
+      // page, so it opens the panel it just used — otherwise the grid changes under a guest with
+      // nothing on screen saying why, and no obvious way back.
+      openFacet(key, value, label) {
+        patch((st) => ({ pf: { ...st.pf, [key]: st.pf[key] === value ? undefined : value }, propDest: 'All', pfOpen: true, cat: 'All' }))
+        toast(label)
         setTimeout(() => nav('properties')(), 20)
       },
       nav,

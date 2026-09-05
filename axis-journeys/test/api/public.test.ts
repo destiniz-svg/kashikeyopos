@@ -250,4 +250,46 @@ describe('a publish reaches the pages, not only the API', () => {
     })
     await h.api('/api/properties/baros/publish', { method: 'POST', cookie })
   })
+
+  it('the property-page fields survive the round trip and reach the rendered page', async () => {
+    // The eight fields the 2026-09-05 handoff added are optional and every one has a derived
+    // fallback, so a page renders whether or not they are set — which is exactly how they could be
+    // dropped somewhere between the editor and the guest without anything looking broken.
+    const cookie = await h.signIn()
+    const doc = await body<{ draft: Record<string, unknown> }>(await h.api('/api/properties/baros', { cookie }))
+    const stamp = String(Date.now())
+    const page = {
+      geo: [[4.28, 73.43]],
+      exclusives: [`Sandbank dinner ${stamp}`],
+      nearby: [['Malé', 'Twenty-five minutes by speedboat']],
+      brand: 'Baros · Universal Resorts',
+      instagram: 'barosmaldives',
+      awards: [[`Most Romantic ${stamp}`, 'World Travel Awards']],
+      pricing: [['11 Jan – 9 Apr 2027', 7180, 7707]],
+    }
+    await h.api('/api/properties/baros', {
+      method: 'PUT', cookie, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ draft: { ...doc.draft, ...page } }),
+    })
+    assert.equal((await h.api('/api/properties/baros/publish', { method: 'POST', cookie })).status, 200)
+
+    const bundle = await body<SiteBundle>(await h.api('/api/public/site'))
+    const p = bundle.properties.find((x) => x.id === 'baros') as unknown as Record<string, unknown>
+    for (const key of Object.keys(page)) assert.ok(p[key], `${key} did not reach the public bundle`)
+
+    const html = await (await fetch(`${h.base}/properties/baros`)).text()
+    assert.ok(html.includes(`Sandbank dinner ${stamp}`), 'the exclusive is not on the page')
+    assert.ok(html.includes(`Most Romantic ${stamp}`), 'the recognition is not on the page')
+    // The override replaces the derived seasonal guide rather than sitting beside it.
+    assert.ok(html.includes('11 Jan – 9 Apr 2027'), 'the pricing override is not on the page')
+    assert.ok(!html.includes('17 Sep – 10 Oct 2026'), 'the derived guide is still there beside the override')
+    // The coordinate came in as the CMS's one-row list and still measured a distance.
+    assert.match(html.replace(/&#x27;/g, "'"), /\d+ km from Mal/, 'the coordinate did not place the island')
+
+    await h.api('/api/properties/baros', {
+      method: 'PUT', cookie, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ draft: doc.draft }),
+    })
+    await h.api('/api/properties/baros/publish', { method: 'POST', cookie })
+  })
 })

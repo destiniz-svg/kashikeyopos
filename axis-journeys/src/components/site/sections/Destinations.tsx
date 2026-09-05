@@ -15,7 +15,7 @@ export function Destinations() {
       <div id="dest-grid" style={css('max-width:1400px;margin:0 auto;padding:96px 32px;display:grid;grid-template-columns:1.1fr .9fr;gap:64px;align-items:center;')}>
         <div>
           <div data-reveal="" style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>
-            Where is your next adventure?
+            01 · Where is your next adventure?
           </div>
           <div id="dest-list" style={css('margin-top:28px;border-top:1px solid var(--line-12);')}>
             {rows.map((d) => (

@@ -19,7 +19,7 @@ export function Story() {
     <section id="story" data-screen-label="Our Story" style={css('background:var(--panel);border-top:1px solid var(--line-06);border-bottom:1px solid var(--line-06);')}>
       <div id="story-grid" style={css('max-width:1400px;margin:0 auto;padding:96px 32px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;')}>
         <div data-reveal="">
-          <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>Our Story</div>
+          <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>09 · Our Story</div>
           <h2 id="story-h2" style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:44px;line-height:1.08;margin:14px 0 22px;letter-spacing:-.02em;text-wrap:balance;")}>
             Browse like a marketplace. Close like a concierge.
           </h2>
@@ -179,7 +179,7 @@ export function Voices() {
   return (
     <section id="voices" data-screen-label="Testimonials" style={css('padding:96px 0 24px;overflow:hidden;')}>
       <div data-reveal="" style={css('text-align:center;padding:0 24px;')}>
-        <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>Real travellers</div>
+        <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>10 · Real travellers</div>
         <h2 style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:42px;line-height:1.05;margin:14px 0 0;letter-spacing:-.02em;")}>What they remember</h2>
       </div>
       <div id="voices-grid" data-reveal="" style={css('max-width:1400px;margin:44px auto 0;padding:0 32px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;')}>
@@ -227,7 +227,7 @@ export function CtaBand() {
       <div style={css('position:absolute;inset:0;background-image:linear-gradient(180deg,#00102F 0%,rgba(0,16,47,.7) 40%,rgba(0,16,47,.85) 100%),url(https://images.unsplash.com/photo-1573843981267-be1999ff37cd?auto=format&fit=crop&w=1920&q=60);background-size:cover;background-position:center;animation:drift 30s ease-in-out infinite alternate;')} />
       <div style={css('position:relative;')}>
         <div data-reveal="">
-          <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>Begin</div>
+          <div style={css('font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--gold-ink);')}>13 · Begin</div>
           <h2 id="cta-h2" style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-weight:300;font-size:52px;line-height:1;margin:14px 0 18px;")}>
             Tell us the feeling. We&apos;ll find the island.
           </h2>

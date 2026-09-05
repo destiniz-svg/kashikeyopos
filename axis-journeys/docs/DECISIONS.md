@@ -704,3 +704,109 @@ threshold.
   prototype specifies.
 - **Three SVG path errors per load on the two phone portals**, from the template's `d="{{ a.icon }}"`
   being parsed as DOM before the runtime compiles it. Parse-time noise only; the icons render.
+
+## 20. The 2026-09-05 handoff: a property gets a page, and the home page gets an argument
+
+A second handoff package arrived — same prototype, 633 lines longer. What it adds is a dedicated
+property page, five new home sections, two new ways into the Properties grid, eight optional fields
+behind them, and a section-level responsive audit. What follows is what was ported, and the four
+places this build deliberately does not do what the prototype does.
+
+### `/properties/<id>` is the page now, and nothing moved to make room
+
+The URL used to open the drawer over the funnel. The handoff's own `_redirects` sends that address
+at the property page, and it is the right call for a reason the redirect map only implies: a guest
+who typed a property's URL, or was sent one, was being handed a 600px overlay over a page they had
+not asked for, with the catalogue behind it. It is the URL the sitemap, the canonical, the JSON-LD
+and every share link already carry, so nothing was renamed; `/property/<id>`, which the SPEC writes,
+still redirects to it.
+
+The drawer keeps its own job — opened from a card, borrowing that URL while it is open so Back
+closes it — and its hero gained **Full details**, which is how a guest reaches the page from the
+grid. The deep-link plumbing that used to open the drawer on arrival (`initialPropertyId`,
+`initialOfferId`) is gone rather than left unreferenced, and the wiring test fails if either name
+comes back.
+
+### Everything on the page is derived or set, and the difference is visible
+
+`propertyPage()` is a pure function of the property, the bundle and the currency. Five of its
+answers are judgements — the comparison scales, the marine life, who it suits, who it does not,
+what a week costs across the year — and every one of them has BOTH a reading of the profile AND a
+field a specialist can set. That pairing is the design: a property created this morning has a
+complete page, and the page gets better the day somebody knows more, without a half-empty section
+in between.
+
+Where neither can answer, the page says so in words. An unset coordinate reads **"Distance from
+Malé on request"** rather than pinning the middle of the archipelago; a derived price table says it
+is a guide from the tier and the season rather than a quoted rate.
+
+**And the derivation the prototype ships over-claimed, measured.** Marine life was matched on
+`species.split(' ')[0]` — for "Reef sharks" that is "Reef", a word in every reef description this
+catalogue holds. All nine published islands claimed reef sharks, including one whose house reef is
+described in the single word "Thriving". "Regularly seen here or nearby" is a claim somebody will
+go looking for, so it matches the animal now: `/turtle/`, `/manta/`, `/whale shark/`. Measured
+after: Furaveri names manta rays (Hanifaru Bay), Vilamendhoo and Conrad whale sharks, three
+islands name nothing at all — which is what the `marine` override is for.
+
+### Eight optional fields, and a store that predates them
+
+`geo`, `exclusives`, `nearby`, `video`, `brand`, `instagram`, `awards`, `pricing`. All optional,
+all with a fallback, and the CMS gains a **Property page** tab for them. The seed carries the
+agency's real content for all nine published islands.
+
+A store seeded before those fields existed would have gone on serving documents without them, and
+nothing would have looked broken — the page renders either way. `backfillPageFields()` runs at boot
+and from `npm run seed`: a **closed list** of the eight, only where the document is silent
+(`!= null`, so an empty array a specialist cleared is left alone), on `draft` and `live` alike —
+because the alternative is a site that shows none of the agency's own content until somebody
+republishes nine properties by hand.
+
+### The home page is a sequence, and the kickers say so
+
+Thirteen numbered sections: Destinations · **Why Axis** · Selection · Experiences · Properties ·
+**Explore by atoll** · **Every detail compared** · Offers · Story · Testimonials · **Guides** ·
+**FAQ** · Begin. The five in bold are new.
+
+Each of them draws nothing rather than drawing a hole: an atoll rail needs at least two atolls, a
+comparison needs at least two islands, a brand chip needs more than one property under that brand.
+The hero's stat line is **counted from what the site publishes** — the prototype carries a literal
+"38 properties", and a figure a visitor can disprove by counting the grid is worse than a smaller
+true one.
+
+The atoll cards and brand chips set a Refine facet and **open the panel they just used**, so the
+grid does not change under a guest with nothing on screen saying why.
+
+### The matchmaker re-ranks; it never filters
+
+Four questions, scored against fields a specialist wrote. On a catalogue of nine islands a quiz
+that filtered would answer "nothing matches" to somebody who had just told it four true things
+about their holiday, so the useful output is an order. The count under the grid is the same before
+and after, the panel says "Nothing is hidden" beside Clear, and both the unit test and the browser
+drive assert the length does not move.
+
+The category quick-filters above it DO filter — that is what a category is — and each is a
+predicate over a field the agency already fills in, so a category can never hold a property whose
+profile does not justify it. One nothing matches is not drawn.
+
+### The responsive audit, ported verbatim
+
+Four new breakpoint blocks and four section-level ones, taken from the helmet as they are, with one
+substitution: the prototype's `<image-slot>` custom element is a `<div>` here. `cardW()` collapses
+the carousel to one full-width card at 640 rather than 600 — the old rule left a 40px sliver of the
+next card between 601 and 640, which reads as a layout fault rather than an offer — and the
+`#sel-track article` flex-basis override that fought it is gone.
+
+Measured at 320, 390, 430, 640, 768, 820, 1000 and 1440 across the home page, a property page, a
+destination page and `/offers`: **no sideways scroll anywhere**.
+
+### What this build does not do, and why
+
+- **The villa tabs are 44px, not the prototype's 37.** It is the page's primary control on a phone
+  and the one place the design's own padding lands under the tap target the rest of this site is
+  held to. The only pixel deviation in the port.
+- **The villa gallery reads the room's OWN photographs first.** The prototype's `propPage()` uses
+  the lead shot and then the island gallery; index 7 — "every further photograph of the same room"
+  — has existed since the previous handoff and it did not read it. A room that has its own
+  photographs shows them.
+- **The hero stat counts what is published**, above.
+- **The marine derivation matches the animal**, above.

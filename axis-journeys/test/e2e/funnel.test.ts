@@ -449,3 +449,125 @@ describe('the Destinations menu', () => {
     await ctx.close()
   })
 })
+
+/**
+ * The property page and the two controls the 2026-09-05 home flow added.
+ *
+ * Driven through the shipped screens rather than the derivation, because what is being tested is
+ * not "does propertyPage() compute" — that is covered without a browser — but that a guest can get
+ * to the page from the grid, read what it says, and come back with a quote request.
+ */
+describe('a property page', () => {
+  it('is what /properties/<id> serves, and it carries the whole profile', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/properties/baros', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+
+    // `textContent`, not `innerText`: the sections below the fold start at opacity 0 until the
+    // reveal observer reaches them, and a heading the CSS uppercases is mixed case in the source.
+    const text = (await page.locator('main').textContent()) || ''
+    for (const heading of ['Our positioning', 'Choose your villa', "What's included", 'Who this island is for', 'The same island, a better deal']) {
+      assert.ok(text.includes(heading), `the page has no "${heading}" — it reads: ${text.slice(0, 200)}`)
+    }
+    // The five scales, each with a mark somewhere on its track.
+    assert.equal(await page.locator('#pp-scales [role="img"]').count(), 5)
+    // The villa tabs change the room, rather than being three labels over one panel.
+    await page.locator('#pp-villas').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(400)
+    const room = () => page.locator('#pp-villa > div:last-child > div:first-child').textContent()
+    const first = await room()
+    await page.locator('#pp-tabs button').last().click()
+    await page.waitForTimeout(500)
+    assert.notEqual(await room(), first, 'the tabs draw one room')
+
+    // And the conversion bar opens the enquiry form on the same page.
+    await page.evaluate(() => window.scrollTo(0, window.innerHeight * 1.2))
+    await page.waitForTimeout(700)
+    await openEnquiry(page)
+    assert.equal(await page.locator('#f-name').isVisible(), true)
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('the drawer offers the way through to it, and Similar islands links on', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('button[aria-label^="View Baros"]').first().click()
+    await page.waitForTimeout(900)
+    const full = page.locator('#drawer a').filter({ hasText: /full details/i }).first()
+    assert.equal(await full.count(), 1, 'the drawer has no route to the page')
+    await full.click()
+    await page.waitForURL(/\/properties\/baros$/, { timeout: 10_000 })
+    await settle(page)
+    assert.ok(((await page.locator('main').textContent()) || '').includes('Our positioning'))
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+})
+
+describe('the home flow the handoff added', () => {
+  it('the atoll cards filter the grid, and say so', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    const before = await page.locator('#props-grid button[aria-label^="View "]').count()
+    assert.ok(before > 1, 'nothing in the grid to filter')
+
+    await page.locator('#atoll-grid button').first().scrollIntoViewIfNeeded()
+    await page.waitForTimeout(400)
+    const label = (await page.locator('#atoll-grid button').first().getAttribute('aria-label')) || ''
+    await page.locator('#atoll-grid button').first().click()
+    await page.waitForTimeout(1500)
+    const after = await page.locator('#props-grid button[aria-label^="View "]').count()
+    assert.ok(after < before && after > 0, `"${label}" left ${after} of ${before} cards`)
+    // It opens the panel it just used, so a guest can see what changed and undo it.
+    assert.equal(await page.locator('#props-wrap button[aria-expanded="true"]').count(), 1)
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('the matchmaker re-orders the grid without shortening it', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    const names = () => page.locator('#props-grid button[aria-label^="View "]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') || ''))
+    await page.locator('#quiz').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(400)
+    const before = await names()
+
+    await page.locator('#quiz > button').click()
+    await page.waitForTimeout(500)
+    await page.locator('#quiz-grid button', { hasText: 'Wild reef & marine life' }).click()
+    await page.waitForTimeout(800)
+    const after = await names()
+    assert.equal(after.length, before.length, 'the quiz hid an island')
+    assert.notDeepEqual(after, before, 'the quiz changed nothing')
+
+    await page.locator('#quiz-grid button', { hasText: 'Clear' }).click()
+    await page.waitForTimeout(700)
+    assert.deepEqual(await names(), before, 'Clear did not put the order back')
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+
+  it('a guide opens what it promises, and a question answers', async () => {
+    const { page, faults } = await openPage(s)
+    await page.goto(h.base + '/', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.locator('#guide-grid button').first().scrollIntoViewIfNeeded()
+    await page.waitForTimeout(400)
+    const title = ((await page.locator('#guide-grid button').first().textContent()) || '').replace('01', '').split('Seasons')[0].trim()
+    await page.locator('#guide-grid button').first().click()
+    await page.waitForTimeout(600)
+    const body = await page.locator('#guide-body').innerText()
+    assert.ok(body.includes(title), `the guide opened on "${body.slice(0, 60)}" rather than "${title}"`)
+
+    await page.locator('#faq-grid button').first().click()
+    await page.waitForTimeout(500)
+    assert.equal(await page.locator('#faq-grid button[aria-expanded="true"]').count(), 1)
+    assert.ok(((await page.locator('#faq-grid').textContent()) || '').length > 400, 'the question opened on nothing')
+    assert.deepEqual(faults, [])
+    await page.close()
+  })
+})

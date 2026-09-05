@@ -20,6 +20,7 @@ import { useRef, useState } from 'react'
 import { css } from '@/components/ui/css'
 import { Hover } from '@/components/ui/Hover'
 import { useAmbientPlayback } from '@/components/ui/motion'
+import { homeStats } from '@/lib/content/home'
 import { optionColours } from '../derive'
 import { useIntentOptions } from '../derive'
 import { useSite } from '../state'
@@ -38,6 +39,7 @@ export function Hero() {
   const whatsapp = settings?.whatsapp || '971554855656'
   const waLink = `https://wa.me/${whatsapp}?text=${encodeURIComponent("Hello Axis Journeys — I'd like to speak with a specialist.")}`
   const heroShift = Math.min(s.scrollY * 0.08, 8)
+  const stats = homeStats(s.bundle.properties)
 
   const { destOptions, pkgOptions, themeOptions, monthOptions, themesLabel } = useIntentOptions(s.bundle.properties, s.liveDestinations, s.f)
   const fieldBg = (k: string) => (s.openField === k ? 'rgba(224,185,79,.08)' : 'transparent')
@@ -105,6 +107,13 @@ export function Hero() {
             <span style={css('color:var(--gold-ink);letter-spacing:.1em;')}>★★★★★</span>
             <span>
               <strong>4.9</strong> · 312 Google reviews
+            </span>
+            <span style={css('width:1px;height:14px;background:var(--line-3);')} />
+            {/* Counted from what the site actually publishes. The prototype carries a literal 38
+                properties; a figure a visitor can disprove by counting the grid is worse than a
+                smaller true one, and this one grows on its own as the catalogue is completed. */}
+            <span id="hero-stats" style={css('white-space:nowrap;')}>
+              <strong>{stats.islands}</strong> islands · <strong>{stats.atolls}</strong> atolls · quotes in <strong>24h</strong>
             </span>
             <span style={css('width:1px;height:14px;background:var(--line-3);')} />
             <Hover as="a" href={waLink} target="_blank" rel="noopener" style="color:var(--ink);border-bottom:1px solid var(--ink-4);transition:color .2s;" hover="color:var(--gold-ink);">

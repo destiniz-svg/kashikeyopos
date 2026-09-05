@@ -94,7 +94,26 @@ const SEASONS: [string, string][] = [
   ['1 Jul – 19 Dec', 'Low · best value'],
 ]
 
-const SPECIES = ['Reef sharks', 'Sea turtles', 'Rays', 'Tropical fish', 'Dolphins', 'Manta rays', 'Whale sharks', 'Octopus']
+/**
+ * What counts as a mention of each species, and why each pattern is the animal rather than its
+ * first word.
+ *
+ * The prototype matched on `species.split(' ')[0]`, which for "Reef sharks" is "Reef" — a word in
+ * every reef description this catalogue holds. Measured on the nine published islands: all nine
+ * claimed reef sharks, including one whose house reef is described in two words that do not
+ * mention a shark. "Regularly seen here" is a claim about wildlife somebody will go looking for,
+ * so it has to come from a word a specialist actually wrote about the animal.
+ */
+const SPECIES: [string, RegExp][] = [
+  ['Reef sharks', /reef shark|blacktip|whitetip|nurse shark/i],
+  ['Sea turtles', /turtle/i],
+  ['Rays', /stingray|eagle ray/i],
+  ['Tropical fish', /tropical fish|reef fish|shoal/i],
+  ['Dolphins', /dolphin/i],
+  ['Manta rays', /manta/i],
+  ['Whale sharks', /whale shark/i],
+  ['Octopus', /octopus/i],
+]
 
 /** What a theme means for the person it suits. Read only where nobody has written `idealFor`. */
 const THEME_IDEAL: Record<string, string> = {
@@ -331,7 +350,7 @@ export function propertyPage(p: Property, bundle: SiteBundle, currency: 'USD' | 
 
   // --- the reef and what swims on it -----------------------------------------------------------
   const prose = [p.reef, p.love, p.about, (p.nearby || []).map((x) => x.join(' ')).join(' ')].join(' ')
-  const marine = p.marine && p.marine.length ? p.marine : SPECIES.filter((sp) => new RegExp(sp.split(' ')[0], 'i').test(prose))
+  const marine = p.marine && p.marine.length ? p.marine : SPECIES.filter(([, re]) => re.test(prose)).map(([label]) => label)
 
   // --- getting there ---------------------------------------------------------------------------
   const transfers = (p.transfers || []).map((t, i) => ({

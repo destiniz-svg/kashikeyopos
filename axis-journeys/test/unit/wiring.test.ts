@@ -83,7 +83,9 @@ const SITE = [
   'src/components/site/sections/MobileMenu.tsx',
   'src/components/site/sections/Offers.tsx',
   'src/components/site/sections/Overlays.tsx',
+  'src/components/site/sections/HomeSections.tsx',
   'src/components/site/sections/Properties.tsx',
+  'src/components/site/sections/PropertyPage.tsx',
   'src/components/site/sections/RefinePanel.tsx',
   'src/components/site/sections/Selection.tsx',
   'src/components/site/sections/Story.tsx',
@@ -163,5 +165,81 @@ describe('where a guest is, and how they leave it', () => {
 
   it('the home page has a main landmark for the skip link to land in', () => {
     assert.match(read(APP), /<main>/, 'the home funnel has no main region')
+  })
+})
+
+
+describe('a property has one address and two faces', () => {
+  it('/properties/<id> renders the page, not the drawer', () => {
+    // It used to open the drawer over the funnel. The handoff's own redirect map sends this
+    // address at the property page, and a guest who was sent a property's URL was being handed the
+    // overlay rather than the document.
+    const route = read('src/app/properties/[id]/page.tsx')
+    assert.match(route, /propertyPage=\{p\.id\}/, 'the route still opens the drawer')
+    assert.equal(/propertyId=/.test(route), false, 'the deep-link prop is still wired')
+    // And nothing keeps the removed plumbing alive. Backtick-quoted mentions are the comment that
+    // explains what went, which is the one place the old name should still appear.
+    assert.equal(/initialPropertyId(?!`)|initialOfferId(?!`)/.test(read(STATE)), false, 'the drawer deep-link is dead code')
+  })
+
+  it('the drawer offers the way through to it', () => {
+    assert.match(read('src/components/site/Drawer.tsx'), /href=\{`\/properties\/\$\{r\.id\}`\}/, 'the drawer has no route to the page')
+  })
+
+  it('every soft judgement on the page has an override as well as a derivation', () => {
+    const src = read('src/lib/content/property-page.ts')
+    for (const field of ['scales', 'marine', 'idealFor', 'notFor', 'pricing']) {
+      assert.match(src, new RegExp(`p\\.${field}`), `${field} is derived with no way for a specialist to correct it`)
+    }
+    // An unreadable coordinate is said, not pinned somewhere plausible.
+    assert.match(src, /Distance from Malé on request/)
+  })
+})
+
+describe('the matchmaker re-ranks and never filters', () => {
+  it('the quiz sorts the list the category and the Refine panel already produced', () => {
+    // Nine islands: a quiz that filtered would answer "nothing matches" to somebody who had just
+    // told it four true things. The count under the grid must not move when a question is answered.
+    const src = read('src/components/site/derive.ts')
+    assert.match(src, /answered \? \[\.\.\.kept\]\.sort\(\(a, b\) => quizScore\(b, qz\) - quizScore\(a, qz\)\) : kept/)
+    assert.equal(/filter\(\(r\) => quizScore/.test(src), false, 'the quiz filters')
+  })
+
+  it('and the panel says which of the two it is doing', () => {
+    assert.match(read('src/components/site/sections/Properties.tsx'), /Nothing is hidden/)
+  })
+})
+
+describe('a field the seed gained reaches a store that predates it', () => {
+  it('the backfill writes a CLOSED list, and only where the document is silent', () => {
+    const src = read('src/lib/content/seed.ts')
+    assert.match(src, /const PAGE_FIELDS = \['geo', 'exclusives', 'nearby', 'video', 'brand', 'instagram', 'awards', 'pricing'\] as const/)
+    // `!= null` rather than a falsy test: an empty array is a decision somebody made.
+    assert.match(src, /if \(!target \|\| target\[key\] != null\) continue/)
+    assert.match(src, /if \(value == null\) continue/)
+    assert.match(read('src/lib/content/boot.ts'), /backfillPageFields\(\)/, 'nothing runs it')
+  })
+})
+
+describe('the home flow is the handoff\'s own numbering', () => {
+  it('every section from 01 to 13 is on the page, once', () => {
+    const app = read('src/components/site/SiteApp.tsx')
+    for (const c of ['Hero', 'Destinations', 'TrustStrip', 'WhyAxis', 'Selection', 'Experiences', 'Properties', 'ByAtoll', 'Compared', 'Offers', 'Story', 'AboutAxis', 'Voices', 'Guides', 'HomeFaq', 'CtaBand']) {
+      assert.equal((app.match(new RegExp(`<${c} />`, 'g')) || []).length, 1, `${c} appears more than once, or not at all`)
+    }
+    const order = [...app.matchAll(/<(WhyAxis|Selection|Properties|ByAtoll|Compared|Offers|Guides|HomeFaq|CtaBand) \/>/g)].map((m) => m[1])
+    assert.deepEqual(order, ['WhyAxis', 'Selection', 'Properties', 'ByAtoll', 'Compared', 'Offers', 'Guides', 'HomeFaq', 'CtaBand'])
+  })
+
+  it('the hero stat is counted rather than asserted', () => {
+    const hero = read('src/components/site/sections/Hero.tsx')
+    assert.match(hero, /homeStats\(s\.bundle\.properties\)/)
+    assert.equal(/<strong>38<\/strong>/.test(hero), false, "the prototype's literal survived")
+  })
+
+  it('a section with nothing to say draws nothing', () => {
+    const src = read('src/components/site/sections/HomeSections.tsx')
+    assert.match(src, /if \(!atolls\.length\) return null/)
+    assert.match(src, /if \(columns\.length < 2\) return null/)
   })
 })

@@ -110,6 +110,13 @@ Two things it does not have, both stated rather than papered over:
 - **Both hero clips are 640 wide** — one of them says so in its own filename. They play, and the
   media standard reports them as below what a full-screen hero should be rather than being tuned
   down to let them pass. Replacing them is an upload, not a deploy.
+- **Three islands name no marine life.** The property page reads "regularly seen here or nearby"
+  out of what a specialist wrote about the reef, and matches the animal — so a profile that never
+  mentions one names none, and the chips are simply absent. The CMS's `marine` field on the
+  Property page tab is where a specialist says what is there.
+- **No property carries a `pricing` table or a hero `video` yet.** Both are optional: the pricing
+  section falls back to a seasonal guide derived from the tier and says it is a guide, and the hero
+  falls back to the photograph. Neither is a blank section.
 
 ---
 

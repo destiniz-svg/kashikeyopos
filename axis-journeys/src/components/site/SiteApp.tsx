@@ -24,6 +24,7 @@ import { Footer, MobileDock } from './sections/Footer'
 import { LegalModal, Lightbox, Toast } from './sections/Overlays'
 import { DestinationPage } from './sections/DestinationPage'
 import { PropertyPage } from './sections/PropertyPage'
+import { ByAtoll, Compared, Guides, HomeFaq, WhyAxis } from './sections/HomeSections'
 
 export interface SiteAppProps {
   bundle: SiteBundle
@@ -55,7 +56,10 @@ function Shell() {
       <MobileMenu />
 
       {/* A destination page and a property page carry their own <main>; the home funnel had none, so
-          the skip link landed a screen-reader user in a document with no main region to be in. */}
+          the skip link landed a screen-reader user in a document with no main region to be in.
+
+          The home order is the handoff's own numbering, 01 to 13: the sequence is an argument
+          rather than a stack of sections, and each section's kicker says where a reader is in it. */}
       {propertyOnPage ? (
         <PropertyPage p={propertyOnPage} />
       ) : s.page ? (
@@ -65,13 +69,18 @@ function Shell() {
           <Hero />
           <Destinations />
           <TrustStrip />
+          <WhyAxis />
           <Selection />
           <Experiences />
           <Properties />
+          <ByAtoll />
+          <Compared />
           <Offers />
           <Story />
           <AboutAxis />
           <Voices />
+          <Guides />
+          <HomeFaq />
           <CtaBand />
         </main>
       )}
