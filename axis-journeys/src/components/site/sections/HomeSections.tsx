@@ -185,13 +185,39 @@ export function Compared() {
   // Two islands is the fewest that can be compared; one column is a fact sheet.
   if (columns.length < 2) return null
 
-  // A comparison of three islands cannot fit a phone, so it scrolls — but on a 296px screen a
-  // 160px label column left barely a third of one property visible, which reads as a broken table
-  // rather than a scrollable one. Narrower label, narrower columns, and the table is told to say
-  // it scrolls: one column whole and the next one peeking is the affordance.
+  /*
+   * On a phone this stops being a table.
+   *
+   * Three islands and five rows cannot fit 296px, and every way of making them try is worse than
+   * the last: a 160px label column left a third of one property visible; narrowing it to 96px and
+   * adding a swipe hint still put a clipped second column on screen, with a property name wrapping
+   * one letter per line. Reported twice, from a real phone, and both times the complaint was the
+   * same — it reads as broken rather than as scrollable.
+   *
+   * So the comparison becomes what a comparison is when you cannot lay it side by side: one card
+   * per island, each carrying the same five rows. Nothing is clipped, nothing has to be swiped,
+   * and every figure is readable. The typography, the hairlines, the gold kicker and the row
+   * labels are the table's own — it is the same object in a shape that fits.
+   */
   const narrow = s.vw <= 640
-  const labelW = narrow ? 96 : 160
-  const colW = narrow ? 150 : 180
+
+  const heading = (
+    <Head
+      kicker="07 · Every detail, compared"
+      title="The numbers behind the recommendation"
+      blurb="A taste of what every property page holds — villas, reef, transfer and package pricing, side by side."
+    />
+  )
+  const foot = (
+    <div data-reveal="" style={css('display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;margin-top:24px;')}>
+      <div style={css('font-size:13px;color:var(--muted);')}>
+        Package prices are per couple and only shown where an Offer is live; everything else is quoted against availability.
+      </div>
+      <button type="button" onClick={actions.nav('properties')} className="pill" style={css('height:44px;')}>
+        Compare every property<i>→</i>
+      </button>
+    </div>
+  )
 
   return (
     <section
@@ -199,63 +225,82 @@ export function Compared() {
       style={css('padding:96px 0;background:var(--panel);border-top:1px solid var(--line-06);border-bottom:1px solid var(--line-06);')}
     >
       <div style={css(WRAP)}>
-        <Head
-          kicker="07 · Every detail, compared"
-          title="The numbers behind the recommendation"
-          blurb="A taste of what every property page holds — villas, reef, transfer and package pricing, side by side."
-        />
-        <div id="cmp-wrap" data-reveal="" style={css('margin-top:40px;overflow-x:auto;border:1px solid var(--line-08);border-radius:3px;background:var(--bg);')}>
-          <div
-            id="cmp-grid"
-            style={{
-              ...css('display:grid;'),
-              minWidth: `${labelW + colW * columns.length}px`,
-              gridTemplateColumns: `${labelW}px repeat(${columns.length},minmax(${colW}px,1fr))`,
-            }}
-          >
-            <div style={css('padding:22px 24px;border-bottom:1px solid var(--line-08);')} />
-            {columns.map((c) => (
-              <a
-                key={c.id}
-                href={`/properties/${c.id}`}
-                style={css('padding:22px 24px;border-bottom:1px solid var(--line-08);border-left:1px solid var(--line-07);color:var(--ink);display:block;')}
-              >
-                <div style={css('font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-ink);')}>{c.area}</div>
-                <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-size:22px;font-weight:300;margin-top:6px;line-height:1.1;")}>
-                  {c.name}
-                </div>
-              </a>
-            ))}
-            {rows.map((row) => (
-              <div key={row.label} style={css('display:contents;')}>
-                <div
-                  style={css(
-                    'padding:16px 24px;border-bottom:1px solid var(--line-07);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;',
-                  )}
+        {heading}
+
+        {narrow ? (
+          <div id="cmp-cards" style={css('display:flex;flex-direction:column;gap:14px;margin-top:32px;')}>
+            {columns.map((c, i) => (
+              <div key={c.id} data-reveal="" style={css('border:1px solid var(--line-08);border-radius:3px;background:var(--bg);overflow:hidden;')}>
+                <a
+                  href={`/properties/${c.id}`}
+                  style={css('display:block;padding:20px 20px 18px;border-bottom:1px solid var(--line-08);color:var(--ink);')}
                 >
-                  {row.label}
-                </div>
-                {row.cells.map((cell, i) => (
+                  <div style={css('font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-ink);')}>{c.area}</div>
+                  <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-size:24px;font-weight:300;margin-top:6px;line-height:1.15;")}>
+                    {c.name}
+                  </div>
+                </a>
+                {rows.map((row) => (
                   <div
-                    key={columns[i].id}
-                    style={css('padding:16px 24px;border-bottom:1px solid var(--line-07);border-left:1px solid var(--line-07);font-size:15px;color:var(--ink);line-height:1.5;')}
+                    key={row.label}
+                    style={css(
+                      'display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;align-items:baseline;padding:13px 20px;border-bottom:1px solid var(--line-07);',
+                    )}
                   >
-                    {cell}
+                    <span style={css('font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);')}>{row.label}</span>
+                    <span style={css('font-size:15px;color:var(--ink);line-height:1.45;')}>{row.cells[i]}</span>
                   </div>
                 ))}
               </div>
             ))}
           </div>
-        </div>
-        <div data-reveal="" style={css('display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;margin-top:24px;')}>
-          <div style={css('font-size:13px;color:var(--muted);')}>
-            {narrow && <span style={css('display:block;color:var(--gold-ink);margin-bottom:6px;')}>Swipe the table to compare all {columns.length} →</span>}
-            Package prices are per couple and only shown where an Offer is live; everything else is quoted against availability.
+        ) : (
+          <div id="cmp-wrap" data-reveal="" style={css('margin-top:40px;overflow-x:auto;border:1px solid var(--line-08);border-radius:3px;background:var(--bg);')}>
+            <div
+              id="cmp-grid"
+              style={{
+                ...css('display:grid;'),
+                minWidth: `${160 + 180 * columns.length}px`,
+                gridTemplateColumns: `160px repeat(${columns.length},minmax(180px,1fr))`,
+              }}
+            >
+              <div style={css('padding:22px 24px;border-bottom:1px solid var(--line-08);')} />
+              {columns.map((c) => (
+                <a
+                  key={c.id}
+                  href={`/properties/${c.id}`}
+                  style={css('padding:22px 24px;border-bottom:1px solid var(--line-08);border-left:1px solid var(--line-07);color:var(--ink);display:block;')}
+                >
+                  <div style={css('font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold-ink);')}>{c.area}</div>
+                  <div style={css("font-family:var(--font-display),'Outfit',system-ui,sans-serif;font-size:22px;font-weight:300;margin-top:6px;line-height:1.1;")}>
+                    {c.name}
+                  </div>
+                </a>
+              ))}
+              {rows.map((row) => (
+                <div key={row.label} style={css('display:contents;')}>
+                  <div
+                    style={css(
+                      'padding:16px 24px;border-bottom:1px solid var(--line-07);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;',
+                    )}
+                  >
+                    {row.label}
+                  </div>
+                  {row.cells.map((cell, i) => (
+                    <div
+                      key={columns[i].id}
+                      style={css('padding:16px 24px;border-bottom:1px solid var(--line-07);border-left:1px solid var(--line-07);font-size:15px;color:var(--ink);line-height:1.5;')}
+                    >
+                      {cell}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
-          <button type="button" onClick={actions.nav('properties')} className="pill" style={css('height:44px;')}>
-            Compare every property<i>→</i>
-          </button>
-        </div>
+        )}
+
+        {foot}
       </div>
     </section>
   )

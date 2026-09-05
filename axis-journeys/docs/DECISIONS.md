@@ -866,3 +866,38 @@ And two things the screenshots showed that no measurement would have:
 - **The hero said "9 islands" three sections above a trust strip saying "38 properties".** Both are
   true and they count different things — what is published against what is under contract — and two
   bare figures on one page read as one of them being wrong. The hero says "9 islands online".
+
+## 22. On a phone, the comparison stops being a table
+
+Reported a second time, from a real phone, over the section the previous entry had just narrowed:
+the same complaint in the same words. Section 21 made the columns 150px so that one property is
+whole and the next peeks, and added the swipe hint underneath — the standard answer for a wide
+table on a narrow screen, and it was still wrong here.
+
+What the screenshot showed is why. Three islands and five rows do not fit 296px in any arrangement
+that is still a table: at a 96px label and 150px columns the second property's NAME wraps one word
+per line ("Conrad / Maldives / Rangali / Island") in the one cell that has to be read first, and
+the third is off screen entirely. The hint says the table is scrollable and the layout says it is
+broken, and a visitor believes the layout.
+
+So below 640px it is not a table. `#cmp-cards` draws one bordered card per island — a linked header
+carrying the gold atoll kicker and the 24px display name, then the five rows as
+`96px minmax(0,1fr)` label/value pairs with hairline separators — which is the same information in
+the same order, read down instead of across. Nothing is truncated, nothing is off screen, and the
+name has the full width it needs.
+
+Three things this deliberately keeps:
+
+- **the table above 640px is untouched** — 160px label, `minmax(180px,1fr)` columns, the same
+  `min-width` and the same horizontal scroll. On a screen that fits it, a table IS the better
+  reading: five rows compared across three columns is the whole point of the section, and the
+  desktop capture is pixel-identical to the one before this change;
+- **the heading, the kicker and the foot are composed once** and rendered by both branches, so the
+  two layouts cannot drift into saying different things about the same catalogue;
+- **the swipe hint is gone on a phone**, because there is nothing to swipe. An affordance that
+  names a gesture the layout no longer has is worse than none — the defect this file refuses by
+  name, one section along.
+
+`#cmp-wrap` came out of the ≤640 font-size rule in `globals.css` with the table it was sizing.
+Measured after: `#cmp-cards` right edge 328 of 360 and 358 of 390, `#cmp-wrap` 1388 of 1440 —
+nothing clipped at either phone width, and the desktop unchanged.
