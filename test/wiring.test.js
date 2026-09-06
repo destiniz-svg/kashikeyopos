@@ -4748,6 +4748,209 @@ test('one CSV carries a section, an add-on and a dish, queued in the order the o
   assert.match(out, /\ndish,/, 'and the dishes');
 });
 
+/* ═══ WHAT HAPPENS TO A ROW ALREADY HERE IS THE OPERATOR'S DECISION ════════
+   "while importing new menu add an option for the user to merge or replace
+   the menu with new … if it's a merge, look for any existing and add only
+   new. check if any category changes and modify accordingly."
+
+   The import had exactly one behaviour and its own foot called it out:
+   "adds and updates; it never removes". True — and it meant a store that had
+   loaded the shipped 301-dish catalogue had NO ROAD AT ALL from that to its
+   own list. Three named outcomes now, and each says what it will do before
+   it is pressed. */
+test('a merge adds what is new and leaves a dish already here alone — except its section', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const K = F.__win.KPOS;
+  K.MENU_CATEGORIES = [{ id: 'mains', name: 'Mains', icon: 'main', station: 'hot', pos: 1 },
+    { id: 'drinks', name: 'Drinks', icon: 'drink', station: 'bar', pos: 2 }];
+  K.MENU = [
+    { id: 'd1', name: 'Reef Fish Curry', cat: 'mains', price: 145, desc: 'ours', station: 'hot', tags: ['chef'], spice: 2, recipe: [] },
+    { id: 'd2', name: 'Garlic Rice', cat: 'mains', price: 45, desc: '', station: 'hot', tags: [], spice: 0, recipe: [] }
+  ];
+  K.MODIFIERS = [{ id: 'mA', name: 'Extra sambol', price: 15, cats: ['mains'] }];
+  F.state.local = {}; F.state.catMeta = {}; F.state.modifiers = null;
+
+  const csv = [
+    'type,id,name,section,price,description,station,tags,spice,addons,visible,qr',
+    'section,,Hedhikaa,,,,Counter,,,,yes,yes',
+    'addon,,Extra sambol,Mains,99,,,,,,yes,yes',
+    'dish,,Reef Fish Curry,Hedhikaa,999,THEIRS,Counter,,Hot,,yes,yes',
+    'dish,,Garlic Rice,Mains,999,THEIRS,,,Hot,,yes,yes',
+    'dish,,Bajiya,Hedhikaa,10,,Counter,,Mild,,yes,yes'
+  ].join('\n');
+
+  const add = F.menuImportPlan(csv, 'add');
+  assert.strictEqual(add.err.length, 0, JSON.stringify(add.err));
+  assert.strictEqual(add.add.length, 1, 'only the dish this outlet does not hold is created');
+  assert.strictEqual(add.add[0].name, 'Bajiya');
+  assert.strictEqual(add.upd.length, 0, 'nothing already here is overwritten');
+  assert.strictEqual(add.modUpd.length, 0, 'not the add-ons either — 99 is not applied');
+  assert.strictEqual(add.move.length, 1, 'but a dish the file files elsewhere MOVES');
+  assert.strictEqual(add.move[0][0].name, 'Reef Fish Curry');
+  assert.strictEqual(add.move[0][1].cat, 'hedhikaa');
+  assert.strictEqual(JSON.stringify(Object.keys(add.move[0][1])), '["cat"]',
+    'and the move carries the section and nothing else — not the file price, not its wording');
+  assert.strictEqual(add.keep, 1, 'the dish that did not move is left exactly as it is');
+  assert.strictEqual(add.secAdd.length, 1, 'a new section is still created');
+  assert.strictEqual(add.offDish.length + add.offSec.length + add.offMod.length, 0,
+    'and nothing comes off sale');
+
+  // The shipped behaviour is unchanged and is still the default, so a bulk
+  // reprice through the spreadsheet keeps working.
+  const upd = F.menuImportPlan(csv, 'update');
+  assert.strictEqual(upd.upd.length, 2, 'add & update takes the file’s word');
+  assert.strictEqual(upd.move.length, 0);
+  assert.strictEqual(upd.modUpd.length, 1, 'the add-on is repriced');
+  assert.strictEqual(F.menuImportPlan(csv).upd.length, 2,
+    'and a caller that names no mode gets exactly what it always got');
+});
+
+/* ═══ REPLACE IS SCOPED TO THE KINDS THE FILE CARRIES, AND DELETES NOTHING ══
+   A CSV exported before the type column is all dishes, and a file that says
+   nothing about add-ons is not a file that says "no add-ons" — silence
+   preserves here as it does on a dish's own fields. Without that, one legacy
+   dishes-only file would take every section in the shop off the rail. */
+test('replace takes off sale only what the file could have carried, and nothing is deleted', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const K = F.__win.KPOS;
+  K.MENU_CATEGORIES = [{ id: 'mains', name: 'Mains', icon: 'main', station: 'hot', pos: 1 },
+    { id: 'drinks', name: 'Drinks', icon: 'drink', station: 'bar', pos: 2 }];
+  K.MENU = [
+    { id: 'd1', name: 'Reef Fish Curry', cat: 'mains', price: 145, station: 'hot', tags: [], spice: 0, recipe: [['ing_fish', 200]] },
+    { id: 'd2', name: 'Garlic Rice', cat: 'mains', price: 45, station: 'hot', tags: [], spice: 0, recipe: [] },
+    { id: 'd3', name: 'Kalhu Sai', cat: 'drinks', price: 8, station: 'bar', tags: [], spice: 0, recipe: [] }
+  ];
+  K.MODIFIERS = [{ id: 'mA', name: 'Extra sambol', price: 15, cats: ['mains'] },
+    { id: 'mB', name: 'No ice', price: 0, cats: ['drinks'] }];
+  F.state.local = {}; F.state.catMeta = {}; F.state.modifiers = null;
+
+  // A dishes-only file: the sections and the add-ons are not this file's
+  // subject, so they are left alone.
+  const only = F.menuImportPlan('name,section,price\nReef Fish Curry,Mains,145', 'replace');
+  assert.strictEqual(only.offDish.length, 2, 'the two dishes it does not carry come off');
+  assert.strictEqual(only.offSec.length, 0, 'no section row, so no section is touched');
+  assert.strictEqual(only.offMod.length, 0, 'and no add-on');
+
+  const csv = [
+    'type,id,name,section,price,description,station,tags,spice,addons,visible,qr',
+    'section,,Hedhikaa,,,,Counter,,,,yes,yes',
+    'addon,,Extra cheese,Hedhikaa,12,,,,,,yes,yes',
+    'dish,,Bajiya,Hedhikaa,10,,Counter,,Mild,Extra cheese,yes,yes'
+  ].join('\n');
+  const plan = F.menuImportPlan(csv, 'replace');
+  assert.strictEqual(plan.offDish.length, 3, 'every dish the file does not carry');
+  assert.strictEqual(plan.offSec.length, 2, 'every section it does not carry');
+  assert.strictEqual(plan.offMod.length, 2, 'and every add-on');
+
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+  F.applyMenuImport(plan);
+  const kinds = queued.map((q) => q.kind);
+  assert.ok(!kinds.some((k) => /delete|remove/.test(k) && k !== 'modifier_remove'),
+    'no dish or section is deleted: ' + kinds.join(', '));
+
+  const iSec = kinds.indexOf('menu_category_insert');
+  const iGrp = kinds.indexOf('modifier_update');
+  const iDish = kinds.indexOf('menu_import');
+  assert.ok(iSec >= 0 && iGrp > iSec && iDish > iGrp,
+    'the file’s own rows keep their order: ' + kinds.join(', '));
+  assert.ok(kinds.lastIndexOf('menu_category_insert') > iDish,
+    'and a section is never hidden in front of the dishes filed under it');
+  assert.ok(kinds.lastIndexOf('modifier_remove') > iDish,
+    'nor an add-on removed before them');
+
+  const imp = queued[iDish].payload.dishes;
+  const off = imp.filter((d) => d.offMenu);
+  assert.strictEqual(off.length, 3,
+    'the retired dishes ride the same op, wearing the same off_menu flag every other hide sends');
+  const fish = off.find((d) => d.name === 'Reef Fish Curry');
+  assert.strictEqual(fish.active, true, 'still active — this is a menu decision, not a deletion');
+  assert.strictEqual(JSON.stringify(fish.recipe), '[["ing_fish",200]]',
+    'and its recipe is untouched, so the cost sheet survives being taken off sale');
+
+  const hid = queued.filter((q) => q.kind === 'menu_category_insert' && q.payload.hidden === true);
+  assert.strictEqual(hid.length, 2, 'the sections are hidden, not dropped');
+  assert.ok(hid.every((q) => q.payload.name),
+    'each carrying its own name — catWrite writes the row, so a nameless one is refused');
+  const gone = queued.filter((q) => q.kind === 'modifier_remove').map((q) => q.payload.id).sort();
+  assert.strictEqual(JSON.stringify(gone), '["mA","mB"]',
+    'an add-on group has no hidden flag, so removal is the honest answer');
+});
+
+/* An add-on a dish names and the file never defines was silently DROPPED —
+   `.filter(Boolean)` — so a dish arrived thinner than the sheet said and
+   nothing on the plan mentioned it. `dish_upsert` drops an unknown group on
+   purpose, but this is a dry run a person reads before anything is written. */
+test('a dish naming an add-on this file never defines is refused by name', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const K = F.__win.KPOS;
+  K.MENU_CATEGORIES = [{ id: 'mains', name: 'Mains', icon: 'main', station: 'hot', pos: 1 }];
+  K.MENU = []; K.MODIFIERS = [];
+  F.state.local = {}; F.state.catMeta = {}; F.state.modifiers = null;
+  const plan = F.menuImportPlan(
+    'type,name,section,price,addons\ndish,Bajiya,Mains,10,Extra chutney', 'update');
+  assert.strictEqual(plan.add.length, 0, 'the dish is not planned');
+  assert.ok(plan.err.some((e) => /Unknown add-on “Extra chutney”/.test(e[1])),
+    'it is named, with the remedy: ' + JSON.stringify(plan.err));
+  // And one the same file defines resolves, so the remedy actually works.
+  const ok = F.menuImportPlan(
+    'type,name,section,price,addons\naddon,Extra chutney,Mains,5,\ndish,Bajiya,Mains,10,Extra chutney',
+    'update');
+  assert.strictEqual(ok.err.length, 0, JSON.stringify(ok.err));
+  assert.strictEqual(ok.add[0].addons.length, 1);
+});
+
+/* ═══ THE MODE CONTROL, AND THE TWO TAPS ═══════════════════════════════════
+   Taking a shop's whole rail off sale on one mis-tap is the destructive
+   neighbour of a routine control, which is the case the fired-line void
+   already answers with two taps and a four-second arm. An import that takes
+   nothing off sale still goes on the first press. */
+test('replacing asks twice, and an ordinary import does not', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const K = F.__win.KPOS;
+  K.MENU_CATEGORIES = [{ id: 'mains', name: 'Mains', icon: 'main', station: 'hot', pos: 1 }];
+  K.MENU = [{ id: 'd1', name: 'Old Dish', cat: 'mains', price: 10, station: 'hot', tags: [], spice: 0, recipe: [] }];
+  K.MODIFIERS = [];
+  F.state.local = {}; F.state.catMeta = {}; F.state.modifiers = null;
+  F.__win.KPOS_SYNC = { enqueue: (op) => op.opId };
+
+  const text = 'name,section,price\nNew Dish,Mains,20';
+  const open = (mode) => {
+    F.state.modal = { kind: 'menuio', tab: 'import', text: text, mode: mode };
+    return F.modalVals(F.state.modal);
+  };
+
+  const plain = open('update');
+  assert.strictEqual(plain.ioModes.length, 3, 'three named outcomes');
+  assert.strictEqual(plain.ioModes.map((x) => x.label).join('|'), 'Add new|Add & update|Replace');
+  assert.ok(/Nothing comes off sale/.test(plain.ioModeNote),
+    'and the sentence under them says what THIS one does: ' + plain.ioModeNote);
+  F.__toasts.length = 0;
+  plain.ioApply();
+  assert.ok(F.__toasts.some((t) => /Menu imported/.test(t.t)),
+    'an import that takes nothing off sale goes on the first press');
+
+  const rep = open('replace');
+  assert.ok(/taken off sale/.test(rep.ioModeNote) && /never deleted/.test(rep.ioModeNote),
+    'replace says what it does, and that nothing is deleted: ' + rep.ioModeNote);
+  assert.ok(/It carries no sections and add-ons/.test(rep.ioModeNote),
+    'and names what this file does not carry, so those are left alone');
+  F.__toasts.length = 0;
+  rep.ioApply();
+  assert.ok(F.__toasts.some((t) => /Press it again/.test(t.t) && t.tone === 'warn'),
+    'the first press arms and says the figure: ' + JSON.stringify(F.__toasts));
+  assert.ok(!F.__toasts.some((t) => /Menu imported/.test(t.t)), 'and imports nothing');
+  F.__toasts.length = 0;
+  F.modalVals(F.state.modal).ioApply();
+  assert.ok(F.__toasts.some((t) => /Menu imported/.test(t.t)), 'the second press does it');
+
+  // The screen no longer claims something that is no longer true.
+  assert.ok(SRC.indexOf('The import adds and updates; it never removes.') < 0,
+    'the foot stops promising what Replace now does not keep');
+  assert.match(SRC, /<sc-for list="\{\{ ioModes \}\}" as="x"/, 'the pills are in the template');
+  assert.match(SRC, /\{\{ ioModeNote \}\}/, 'and so is the sentence under them');
+});
+
 /* ═══ BOUGHT IN READY TO SELL (048) ════════════════════════════════════════
    Two honest kinds of menu item, from one nullable link — and the till's op
    carries it, or the whole model lives in one browser. */

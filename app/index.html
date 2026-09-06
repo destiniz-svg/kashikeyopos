@@ -1671,7 +1671,16 @@
                   <button onClick="{{ ioPick }}" style="padding:10px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Choose a CSV file…</button>
                   <span style="font-size:11.5px;color:var(--text-dim);line-height:1.6">{{ ioFileNote }}</span>
                 </div>
-                <textarea value="{{ ioText }}" onChange="{{ onIoText }}" placeholder="name,section,price,description,station,tags,spice,addons,visible" style="width:100%;height:150px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--text);outline:none;white-space:pre"></textarea>
+                <textarea value="{{ ioText }}" onChange="{{ onIoText }}" placeholder="type,id,name,section,price,description,station,tags,spice,addons,visible,qr" style="width:100%;height:150px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--text);outline:none;white-space:pre"></textarea>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)">What happens to a dish already on this menu</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <sc-for list="{{ ioModes }}" as="x" hint-placeholder-count="3">
+                      <button onClick="{{ x.go }}" style="{{ x.style }}">{{ x.label }}</button>
+                    </sc-for>
+                  </div>
+                  <div style="{{ ioModeStyle }}">{{ ioModeNote }}</div>
+                </div>
                 <div style="{{ ioPlanStyle }}">
                   <sc-for list="{{ ioPlanRows }}" as="r" hint-placeholder-count="3">
                     <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px">
@@ -8879,7 +8888,9 @@ class Component extends DCLogic {
       const isImp = m.tab === "import";
       const put = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
       const csv = this.menuCsv();
-      const plan = isImp ? this.menuImportPlan(m.text) : null;
+      const md = m.mode === "add" || m.mode === "replace" ? m.mode : "update";
+      const plan = isImp ? this.menuImportPlan(m.text, md) : null;
+      const nOff = plan ? plan.offDish.length + plan.offSec.length + plan.offMod.length : 0;
       const pill = (on) => "padding:7px 14px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid "
         + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)");
       return {
@@ -8920,6 +8931,29 @@ class Component extends DCLogic {
         ioFileNote: m.file
           ? m.file + " loaded — check the plan below, then press import"
           : "…or paste the rows below — the template's columns, header row included",
+        /* THE DECISION THE FILE CANNOT MAKE. Three pills, and the sentence
+           under them says what THIS one will do to rows already here — read
+           off the plan, so it names the kinds the file actually carries
+           rather than describing an import in general. */
+        ioModes: this.MENUMODES().map((x) => ({
+          label: x[1], style: pill(md === x[0]), go: () => put({ mode: x[0] })
+        })),
+        ioModeNote: (() => {
+          if (md === "add") return "Adds what this outlet does not already hold. A dish already here keeps its price, its wording, its heat and its add-ons — only one the file files under a different section moves. Nothing comes off sale.";
+          if (md === "update") return "Adds what is new, and a row already here takes the file's own values. Nothing comes off sale.";
+          const k = (plan && plan.kinds) || {};
+          const names = { dish: "dishes", section: "sections", addon: "add-ons" };
+          const inF = ["dish", "section", "addon"].filter((x) => k[x]);
+          const out = ["dish", "section", "addon"].filter((x) => !k[x]);
+          if (!inF.length) return "This file becomes the menu. Nothing has been read from it yet.";
+          return "This file becomes the menu. Any " + inF.map((x) => names[x]).join(", ")
+            + " it does not carry " + (inF.length === 1 ? "is" : "are")
+            + " taken off sale — hidden, never deleted, so every receipt already issued still says what was sold."
+            + (out.length ? " It carries no " + out.map((x) => names[x]).join(" and ")
+              + ", so this outlet's are left alone." : "");
+        })(),
+        ioModeStyle: "font-size:11.5px;line-height:1.55;color:var(--text-dim)"
+          + (md === "replace" ? ";color:var(--warn-bright);font-weight:600" : ""),
         ioPlanStyle: (m.text || "").trim() ? "display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
         ioPlanRows: plan ? (() => {
           const mono = (c) => "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + c;
@@ -8931,26 +8965,52 @@ class Component extends DCLogic {
             { k: "Sections · new / updated", v: plan.secAdd.length + " / " + plan.secUpd.length, vs: mono(nSec ? "var(--green)" : "var(--text-dim)") },
             { k: "Add-ons · new / updated", v: plan.modAdd.length + " / " + plan.modUpd.length, vs: mono(nMod ? "var(--green)" : "var(--text-dim)") }
           ] : []).concat([
-            { k: "New dishes", v: String(plan.add.length), vs: mono(plan.add.length ? "var(--green)" : "var(--text-dim)") },
-            { k: "Updated in place", v: String(plan.upd.length), vs: mono(plan.upd.length ? "var(--warn-bright)" : "var(--text-dim)") },
+            { k: "New dishes", v: String(plan.add.length), vs: mono(plan.add.length ? "var(--green)" : "var(--text-dim)") }
+          // Each mode's own consequence gets a line of its own, so the number
+          // an operator is about to press on is the number for THIS mode.
+          ]).concat(md === "add" ? [
+            { k: "Moved to another section", v: String(plan.move.length), vs: mono(plan.move.length ? "var(--warn-bright)" : "var(--text-dim)") },
+            { k: "Left exactly as they are", v: String(plan.keep), vs: mono("var(--text-dim)") }
+          ] : [
+            { k: "Updated in place", v: String(plan.upd.length), vs: mono(plan.upd.length ? "var(--warn-bright)" : "var(--text-dim)") }
+          ]).concat(md === "replace" ? [
+            { k: "Taken off sale", v: String(nOff), vs: mono(nOff ? "var(--red-bright)" : "var(--text-dim)") }
+          ] : []).concat([
             { k: "Rows rejected", v: String(plan.err.length), vs: mono(plan.err.length ? "var(--red-bright)" : "var(--text-dim)") }
           ]);
         })() : [],
         ioErrs: plan ? plan.err.slice(0, 6).map((e) => ({ k: e[0], v: e[1] })) : [],
         ioErrStyle: plan && plan.err.length ? "display:flex;flex-direction:column;gap:4px;margin-top:4px;padding-top:8px;border-top:1px solid var(--line)" : "display:none",
-        ioApplyLabel: plan && plan.ok ? (() => {
-          const bits = [];
-          if (plan.add.length || plan.upd.length) bits.push(plan.add.length + " new, " + plan.upd.length + " updated");
-          const nSec = plan.secAdd.length + plan.secUpd.length;
-          if (nSec) bits.push(nSec + " section" + (nSec === 1 ? "" : "s"));
-          const nMod = plan.modAdd.length + plan.modUpd.length;
-          if (nMod) bits.push(nMod + " add-on" + (nMod === 1 ? "" : "s"));
-          return "Import \u00b7 " + bits.join(" \u00b7 ");
-        })() : "Nothing to import yet",
+        ioApplyLabel: plan && plan.ok
+          ? (md === "replace" ? "Replace \u00b7 " : "Import \u00b7 ")
+            + this.menuPlanBits(plan).join(" \u00b7 ")
+          : "Nothing to import yet",
         ioApplyStyle: "flex:1;padding:11px;border-radius:999px;font-size:12.5px;font-weight:700;text-align:center;"
-          + (plan && plan.ok ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
-        ioApply: () => (plan && plan.ok ? this.applyMenuImport(plan) : this.toast("Paste rows that match the template first", "warn")),
-        ioFoot: "Every row is matched on name: a name already there is updated in place, anything else is created. A row whose type column says section or addon carries that section or add-on, so one file holds the whole menu \u2014 a dish may sit in a section defined anywhere in the same file. The import adds and updates; it never removes. Nothing is written until you press import."
+          + (plan && plan.ok
+            ? (nOff ? "background:var(--red-bright);color:#fff" : "background:var(--amber);color:var(--on-amber)")
+            : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
+        /* TAKING THINGS OFF SALE ASKS TWICE, the same two taps a void after
+           firing asks for and for the same reason: the plan above states the
+           figure, and a mis-tap here would clear a shop's whole rail. The arm
+           expires in four seconds, so it cannot be left loaded for whoever
+           picks the terminal up next. An import that takes nothing off sale
+           goes on the first press \u2014 asking about a keystroke teaches the
+           operator to tap through the question that matters. */
+        ioApply: () => {
+          if (!(plan && plan.ok)) return this.toast("Paste rows that match the template first", "warn");
+          if (nOff && this._ioArm !== md) {
+            this._ioArm = md;
+            clearTimeout(this._ioArmT);
+            this._ioArmT = setTimeout(() => { this._ioArm = null; }, 4000);
+            return this.toast("Press it again to take " + nOff + " off sale \u2014 "
+              + plan.offDish.length + " dish" + (plan.offDish.length === 1 ? "" : "es")
+              + " \u00b7 " + plan.offSec.length + " section" + (plan.offSec.length === 1 ? "" : "s")
+              + " \u00b7 " + plan.offMod.length + " add-on" + (plan.offMod.length === 1 ? "" : "s"), "warn");
+          }
+          this._ioArm = null; clearTimeout(this._ioArmT);
+          this.applyMenuImport(plan);
+        },
+        ioFoot: "Every row is matched on name \u2014 or on the id where the file carries one, so a rename is a rename rather than a second dish. A row whose type column says section or addon carries that section or add-on, so one file holds the whole menu: a dish may sit in a section defined anywhere in the same file, and a dish's add-ons must be named by a row in it. What happens to a row this outlet already holds is the choice above. Nothing is written until you press import."
       };
     }
     if (m.kind === "recipeb") {
@@ -17090,9 +17150,31 @@ class Component extends DCLogic {
     if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
     return rows.filter((r) => r.some((c) => String(c).trim() !== ""));
   }
-  menuImportPlan(text) {
+  /* WHAT HAPPENS TO A ROW THIS OUTLET ALREADY HOLDS IS THE OPERATOR'S
+     DECISION, NOT THE FILE'S. A merchant handed a new menu means one of three
+     things and the file cannot say which: leave what I sell alone and add the
+     rest; take the file's word on everything; or this file IS the menu now.
+     The import had only the middle one, and called it "adds and updates; it
+     never removes" — true, and no way at all to get from the shipped
+     301-dish catalogue to a store's own list.
+
+       add      only what this outlet does not hold is created. A dish already
+                here keeps its price, its wording and its heat — those are
+                the store's answer, and a file that merely mentions the dish is
+                not a decision to overwrite them. THE ONE EXCEPTION IS THE
+                SECTION: a dish the file files somewhere else has moved, and a
+                menu whose sections disagree with the file it was merged from
+                is a menu nobody can read.
+       update   the shipped behaviour, unchanged and still the default, so a
+                bulk reprice through the spreadsheet keeps working.
+       replace  the file becomes the menu — see the sweep at the foot. */
+  MENUMODES() { return [["add", "Add new"], ["update", "Add & update"], ["replace", "Replace"]]; }
+  menuImportPlan(text, mode) {
     const K0 = K(), rows = this.parseCsv(text);
-    const plan = { add: [], upd: [], secAdd: [], secUpd: [], modAdd: [], modUpd: [], err: [], ok: false };
+    const md = mode === "add" || mode === "replace" ? mode : "update";
+    const plan = { mode: md, add: [], upd: [], move: [], keep: 0,
+      secAdd: [], secUpd: [], modAdd: [], modUpd: [],
+      offDish: [], offSec: [], offMod: [], kinds: {}, err: [], ok: false };
     if (!rows.length) return plan;
     const head = rows[0].map((h) => String(h).trim().toLowerCase());
     const need = this.MENUCSV();
@@ -17127,6 +17209,14 @@ class Component extends DCLogic {
     };
     const slugOf = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
     const body = rows.slice(1);
+    /* WHICH KINDS THE FILE ACTUALLY CARRIES, because Replace is scoped to
+       them and to nothing else. A CSV exported before the type column is all
+       dishes, and a file that says nothing about add-ons is not a file that
+       says "no add-ons" — silence preserves here exactly as it does on a
+       dish's own fields. Without this, one legacy dishes-only file would take
+       every section in the shop off the rail. */
+    body.forEach((r) => { plan.kinds[kindOf(r)] = true; });
+    const touchDish = {}, touchSec = {}, touchMod = {};
     /* THREE SWEEPS, NOT ONE: sections, then add-ons, then dishes \u2014 so a dish
        may sit in a section defined anywhere in the same file and an add-on may
        publish to one, whatever order the spreadsheet saved its rows in. A new
@@ -17148,6 +17238,7 @@ class Component extends DCLogic {
         const meta = this.catMeta(id);
         const station = stRaw ? (stations[stRaw] || meta.station) : meta.station;
         secs[name.toLowerCase()] = id;
+        touchSec[id] = true;
         if (name !== meta.name || station !== meta.station || hidden !== !!meta.hidden || qrOff !== !!meta.qrOff)
           plan.secUpd.push({ id: id, name: name, station: station, hidden: hidden, qrOff: qrOff });
       } else {
@@ -17155,7 +17246,7 @@ class Component extends DCLogic {
         if (plan.secAdd.some((s) => s.id === sid)) return;
         plan.secAdd.push({ id: sid, name: name,
           station: stations[stRaw] || this.defaultStation(sid), hidden: hidden, qrOff: qrOff });
-        secs[name.toLowerCase()] = sid; secs[sid] = sid;
+        secs[name.toLowerCase()] = sid; secs[sid] = sid; touchSec[sid] = true;
       }
     });
     body.forEach((r, i) => {
@@ -17168,18 +17259,21 @@ class Component extends DCLogic {
       const cats = [];
       const missing = catNames.find((cn) => { const cid = secs[cn.toLowerCase()]; if (cid) cats.push(cid); return !cid; });
       if (missing) return plan.err.push(["Row " + n + " \u00b7 " + name, "Unknown section \u201c" + missing + "\u201d"]);
+      cats.forEach((cid) => { touchSec[cid] = true; });
       const hit = this.modList().find((a) => a.name.toLowerCase() === name.toLowerCase());
       if (hit) {
+        touchMod[hit.id] = true;
         // An empty section cell keeps where it is published \u2014 silence preserves.
         const rec = { id: hit.id, group: hit.group || hit.id, name: hit.name,
           price: price, cats: catNames.length ? cats : (hit.cats || []).slice() };
-        if (rec.price !== (+hit.price || 0) || String(rec.cats) !== String(hit.cats || []))
+        if (md !== "add"
+          && (rec.price !== (+hit.price || 0) || String(rec.cats) !== String(hit.cats || [])))
           plan.modUpd.push(rec);
       } else {
         if (plan.modAdd.some((a) => a.name.toLowerCase() === name.toLowerCase())) return;
         const rec = { id: this.newId("mod"), name: name, price: price, cats: cats };
         plan.modAdd.push(rec);
-        addBy[name.toLowerCase()] = rec.id;
+        addBy[name.toLowerCase()] = rec.id; touchMod[rec.id] = true;
       }
     });
     body.forEach((r, i) => {
@@ -17208,8 +17302,23 @@ class Component extends DCLogic {
         hidden: /^(no|false|hidden|0)$/i.test(cell(r, "visible") || "yes"),
         qrOff: /^(no|false|0)$/i.test(cell(r, "qr") || "yes")
       };
+      touchSec[secs[sec]] = true;
+      /* THE ADD-ONS A DISH OFFERS, and a name that resolves to nothing is
+         REFUSED BY NAME rather than dropped. `dish_upsert` drops an unknown
+         group on purpose \u2014 a dish that will not save over a stale add-on
+         list is a dish nobody can edit \u2014 but this is a dry run a person
+         reads before anything is written, and a silently thinner dish is
+         exactly what "add all the fields, add-ons included" is asking not to
+         happen. The remedy is in the file: give it an addon row. */
       const addRaw = cell(r, "addons").split(";").map((x) => x.trim()).filter(Boolean);
-      if (addRaw.length) rec.addons = addRaw.map((x) => addBy[x.toLowerCase()]).filter(Boolean);
+      if (addRaw.length) {
+        const badAdd = addRaw.find((x) => !addBy[x.toLowerCase()]);
+        if (badAdd) {
+          return plan.err.push(["Row " + n + " \u00b7 " + name,
+            "Unknown add-on \u201c" + badAdd + "\u201d \u2014 add an addon row for it in this file"]);
+        }
+        rec.addons = addRaw.map((x) => addBy[x.toLowerCase()]);
+      }
       /* Bought in ready to sell: the stock item is what the storekeeper
          receives, pack is how many guests one of those serves. Both must
          resolve or the count on the menu would be a fiction. */
@@ -17239,11 +17348,67 @@ class Component extends DCLogic {
       const rid = cell(r, "id");
       const idHit = rid && byId[rid];
       const hit = idHit || (K0.MENU || []).find((m) => m.name.toLowerCase() === dupKey);
-      if (hit) plan.upd.push([hit, rec, !!idHit]); else plan.add.push(rec);
+      if (!hit) return plan.add.push(rec);
+      touchDish[hit.id] = true;
+      if (md === "add") {
+        // The one thing an add-only merge still changes \u2014 see MENUMODES.
+        if (String(hit.cat) !== String(rec.cat)) plan.move.push([hit, { cat: rec.cat }]);
+        else plan.keep++;
+        return;
+      }
+      plan.upd.push([hit, rec, !!idHit]);
     });
-    plan.ok = !!(plan.add.length || plan.upd.length || plan.secAdd.length
-      || plan.secUpd.length || plan.modAdd.length || plan.modUpd.length);
+    /* WHAT THE FILE DOES NOT CARRY \u2014 in Replace, and only there.
+       NOTHING IS DELETED. A dish is taken OFF THE MENU: the standing "hidden
+       from every channel" decision, which the till, the QR menu and the
+       printed list all already read, which Menu Master still draws wearing its
+       Hidden chip, and which a person can undo one dish at a time. Deleting
+       would be the wrong act twice over \u2014 `sale_line` names its item by
+       id with no foreign key to stop it, so a receipt reopened next month
+       would have nothing to say what was sold, and `recipe_line.sub_item_id`
+       would refuse the delete outright for any batch that draws on it.
+       A section holding a retired dish cannot be deleted either
+       (`item.category_id` is a foreign key), so it is hidden the same way.
+       An add-on group has no such flag, so it is removed \u2014 which is
+       exactly what the add-ons screen's own delete already does. */
+    if (md === "replace") {
+      if (plan.kinds.dish) {
+        (K0.MENU || []).forEach((m) => {
+          if (touchDish[m.id] || m.hidden || m.offMenu) return;
+          plan.offDish.push(m);
+        });
+      }
+      if (plan.kinds.section) {
+        this.sortedCats(true).forEach((c) => {
+          const meta = this.catMeta(c.id);
+          if (touchSec[c.id] || meta.hidden) return;
+          plan.offSec.push({ id: c.id, name: meta.name });
+        });
+      }
+      if (plan.kinds.addon) {
+        this.modList().forEach((a) => { if (!touchMod[a.id]) plan.offMod.push(a); });
+      }
+    }
+    plan.ok = !!(plan.add.length || plan.upd.length || plan.move.length
+      || plan.secAdd.length || plan.secUpd.length || plan.modAdd.length
+      || plan.modUpd.length || plan.offDish.length || plan.offSec.length
+      || plan.offMod.length);
     return plan;
+  }
+  /* ONE COMPOSER FOR WHAT THE PLAN SAYS, so the button, the toast and the
+     audit label cannot describe three different imports. */
+  menuPlanBits(plan) {
+    const bits = [];
+    if (plan.add.length) bits.push(plan.add.length + " new");
+    if (plan.upd.length) bits.push(plan.upd.length + " updated");
+    if (plan.move.length) bits.push(plan.move.length + " moved");
+    const nSec = plan.secAdd.length + plan.secUpd.length;
+    if (nSec) bits.push(nSec + " section" + (nSec === 1 ? "" : "s"));
+    const nMod = plan.modAdd.length + plan.modUpd.length;
+    if (nMod) bits.push(nMod + " add-on" + (nMod === 1 ? "" : "s"));
+    const nOff = plan.offDish.length + plan.offSec.length + plan.offMod.length;
+    if (nOff) bits.push(nOff + " off sale");
+    return bits;
   }
   applyMenuImport(plan) {
     const K0 = K();
@@ -17259,22 +17424,25 @@ class Component extends DCLogic {
       const list = K0.MENU_CATEGORIES;
       if (list && !list.some((c) => c.id === s.id)) list.push(meta);
     });
-    if (plan.secUpd.length) {
+    if (plan.secUpd.length || plan.offSec.length) {
       st.catMeta = Object.assign({}, this.state.catMeta || {});
       plan.secUpd.forEach((s) => {
         st.catMeta[s.id] = Object.assign({}, st.catMeta[s.id] || {},
           { name: s.name, station: s.station, hidden: !!s.hidden });
       });
+      plan.offSec.forEach((s) => {
+        st.catMeta[s.id] = Object.assign({}, st.catMeta[s.id] || {}, { hidden: true });
+      });
     }
     // The add-ons land in the local list reconcileMods() empties once the
     // outlet publishes them back — a pen, not a fork, like everything else.
     const modRows = plan.modAdd.concat(plan.modUpd);
-    if (modRows.length) {
+    if (modRows.length || plan.offMod.length) {
       const mods = this.modList().slice();
       plan.modAdd.forEach((a) => mods.push({ id: a.id, name: a.name, price: a.price, cats: a.cats.slice() }));
       plan.modUpd.forEach((a) => { const i = mods.findIndex((x) => x.id === a.id);
         if (i >= 0) mods[i] = Object.assign({}, mods[i], { name: a.name, price: a.price, cats: a.cats.slice() }); });
-      st.modifiers = mods;
+      st.modifiers = mods.filter((x) => !plan.offMod.some((o) => o.id === x.id));
     }
     plan.upd.forEach((p) => {
       const set = Object.assign({}, p[1]);
@@ -17284,18 +17452,25 @@ class Component extends DCLogic {
       Object.assign(p[0], set);
       patches.push({ coll: "menu", keys: [p[0].id], set: set });
     });
+    /* A MOVE IS AN UPDATE OF EXACTLY ONE FIELD, so it takes exactly the same
+       road as one: the row, the patch, and the row in the import's own
+       payload. */
+    plan.move.forEach((p) => {
+      Object.assign(p[0], p[1]);
+      patches.push({ coll: "menu", keys: [p[0].id], set: p[1] });
+    });
+    /* Off the menu, not out of the database. Both names are set because a row
+       can come from either side of a sync that has not finished, which is the
+       rule menuVisible() already reads by. */
+    plan.offDish.forEach((m) => {
+      m.hidden = true; m.offMenu = true;
+      patches.push({ coll: "menu", keys: [m.id], set: { hidden: true, offMenu: true } });
+    });
     const made = plan.add.map((rec) => Object.assign({ id: this.newId("m"), veg: rec.tags.indexOf("veg") >= 0, img: "", recipe: [] }, rec));
     made.forEach((row) => { (K0.MENU || []).unshift(row); });
     local.menu = (local.menu || []).concat(made);
     this.setState(st);
-    const bits = [];
-    if (plan.add.length || plan.upd.length)
-      bits.push(plan.add.length + " dish" + (plan.add.length === 1 ? "" : "es") + " added \u00b7 " + plan.upd.length + " updated");
-    const nSec = plan.secAdd.length + plan.secUpd.length;
-    if (nSec) bits.push(nSec + " section" + (nSec === 1 ? "" : "s"));
-    const nMod = plan.modAdd.length + plan.modUpd.length;
-    if (nMod) bits.push(nMod + " add-on" + (nMod === 1 ? "" : "s"));
-    const label = bits.join(" \u00b7 ") || "nothing new";
+    const label = this.menuPlanBits(plan).join(" \u00b7 ") || "nothing new";
     /* THE QUEUE ORDER IS THE APPLY ORDER \u2014 a push applies in lamport
        order, which is the order things are queued in here. So the SECTIONS go
        first (a dish naming one that has not landed is refused by the foreign
@@ -17323,7 +17498,8 @@ class Component extends DCLogic {
 
        Composed through the one mapping every dish write goes through, so an
        imported dish and a typed one arrive in the same shape. */
-    const rows = made.concat(plan.upd.map((u) => u[0]));
+    const rows = made.concat(plan.upd.map((u) => u[0]), plan.move.map((u) => u[0]),
+      plan.offDish);
     const dishes = rows.map((r) => this.opFor("menu", r)).filter(Boolean)
       .map((o) => o.payload);
     this.queue("menu_import", "Menu imported \u00b7 " + label, "menu_items",
@@ -17332,6 +17508,17 @@ class Component extends DCLogic {
       const items = (K0.MENU || []).filter((m) => a.cats.indexOf(m.cat) >= 0).map((m) => m.id);
       if (items.length) this.modWrite(a, "Add-on published \u00b7 " + a.name, items);
     });
+    /* AND WHAT THE FILE DID NOT CARRY, last \u2014 after every row it did,
+       so a section is never hidden in front of the dishes that were about to
+       be filed under it. The dishes went out in the `menu_import` above,
+       carrying the same off_menu flag every other hide sends. */
+    plan.offSec.forEach((s) => this.catWrite(s.id,
+      Object.assign({}, (K().MENU_CATEGORIES || []).find((c) => c.id === s.id) || {},
+        { id: s.id, name: s.name, hidden: true }),
+      "Menu section off the rail \u00b7 " + s.name + " \u00b7 replaced by an import"));
+    plan.offMod.forEach((a) => this.queue("modifier_remove",
+      "Add-on removed \u00b7 " + a.name + " \u00b7 replaced by an import", "menu",
+      { id: a.id, group: a.group || a.id }));
     this.toast("Menu imported \u00b7 " + label);
   }
   downloadText(name, text, mime) {

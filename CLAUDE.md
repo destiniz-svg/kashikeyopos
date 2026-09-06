@@ -2736,6 +2736,104 @@ goes with its last option). `state.modifiers` follows the pen rule —
 queue order; the Chromium drive reads the section, the group, the option,
 the dish and the link back out of the outlet's own tables.
 
+### What happens to a row already here is the operator's choice, not the file's
+
+Reported: *"now in menu master while with default menu wants to replace new
+menu, while importing new menu add an option for the user to merge or replace
+the menu with new. while adding new menu, add all fields such as addons if any.
+if it's a merge, look for any existing and add only new. check if any category
+changes and modify accordingly."*
+
+The import had exactly ONE behaviour, and its own foot said so: *"The import
+adds and updates; it never removes."* True, and it meant a store that had taken
+the shipped 301-dish catalogue — the recommended choice on the onboarding menu
+step, so most of them — had **no road at all** from that to its own list. Every
+dish it did not want stayed on the till grid and on the guest's phone for ever,
+and the only remedy was to open 301 dishes one at a time.
+
+A merchant handing over a new menu means one of three things and the FILE
+CANNOT SAY WHICH, so it is asked, once, above the plan:
+
+| | |
+| --- | --- |
+| **Add new** | only what this outlet does not already hold is created. A dish already here keeps its price, its wording, its heat and its add-ons — those are the store's own answer, and a file that merely mentions the dish is not a decision to overwrite them |
+| **Add & update** | the shipped behaviour, unchanged, and still the DEFAULT — a bulk reprice through the spreadsheet keeps working exactly as it did |
+| **Replace** | this file becomes the menu |
+
+**THE ONE THING AN ADD-ONLY MERGE STILL CHANGES IS THE SECTION**, which is the
+second half of the report and not a hedge: a dish the file files somewhere else
+has MOVED, and a menu whose sections disagree with the file it was merged from
+is a menu nobody can read. The move carries the section and nothing else — not
+the file's price, not its wording — and the plan counts it on its own line
+beside *Left exactly as they are*, so the number an operator presses on is the
+number for the mode they picked.
+
+**REPLACE DELETES NOTHING.** A dish it does not carry is taken OFF THE MENU —
+the standing "hidden from every channel" decision the till, the QR menu and the
+printed list all already read, which Menu Master still draws wearing its Hidden
+chip and a person can undo one dish at a time. Deleting would be wrong twice
+over: `sale_line` names its item by id with NO foreign key to stop the delete,
+so a receipt reopened next month would have nothing to say what was sold, and
+`recipe_line.sub_item_id` would refuse it outright for any batch drawing on it.
+A section holding a retired dish cannot be deleted either — `item.category_id`
+IS a foreign key — so it is hidden the same way. An add-on group has no such
+flag, so it is removed, which is exactly what the add-ons screen's own delete
+already does.
+
+**AND REPLACE IS SCOPED TO THE KINDS THE FILE ACTUALLY CARRIES.** A CSV
+exported before the `type` column is all dishes, and a file that says nothing
+about add-ons is not a file that says "no add-ons" — silence preserves here as
+it does on a dish's own fields. Without that, one legacy dishes-only file would
+take every section in the shop off the rail. The sentence under the pills reads
+off the plan and names both halves: *"Any dishes it does not carry are taken off
+sale … It carries no sections and add-ons, so this outlet's are left alone."*
+
+**Taking a shop's whole rail off sale asks twice** — the same two taps and
+four-second arm the fired-line void already uses, with the figure in the toast
+(*"Press it again to take 422 off sale — 301 dishes · 9 sections · 112
+add-ons"*). An import that takes nothing off sale still goes on the first press:
+asking about a keystroke teaches an operator to tap through the question that
+matters.
+
+**And an add-on a dish names but the file never defines was SILENTLY DROPPED**
+— `.filter(Boolean)` — so a dish arrived thinner than the sheet said and nothing
+on the plan mentioned it. `dish_upsert` drops an unknown group on purpose (a
+dish that will not save over a stale add-on list is a dish nobody can edit), but
+this is a dry run a person reads before anything is written, and a silently
+thinner dish is exactly what *"add all fields such as addons if any"* asks not to
+happen. It is refused by name now, with the remedy — *"add an addon row for it
+in this file"* — the same shape the unknown-section refusal already keeps.
+
+The queue order is unchanged and is still not negotiable: sections, add-on
+groups, dishes (the retired ones riding the same `menu_import`, wearing the same
+`off_menu` flag every other hide sends), then the section links — and the
+retirements LAST, so a section is never hidden in front of the dishes about to
+be filed under it.
+
+Measured by driving the shipped screen in Chromium against a real store carrying
+the whole pre-set catalogue:
+
+```
+Replace   plan  2 sections new · 1 add-on new · 2 new dishes · 422 taken off sale
+          first press arms and names the figure; the second imports
+          outlet_1   2 dishes on the menu · 301 hidden · 0 deleted
+                     2 sections on the rail · 9 hidden · 0 dropped
+                     113 add-on groups -> 1, and the links with them
+          a second replace, on a dish that HAS a recipe:
+                     Drive Reef Curry  off_menu=t  active=t  recipe_lines=1
+                     — the cost sheet survives being taken off sale
+          the file carried no addon rows, so "0 add-ons" came off
+Add new   plan  1 new · 1 moved · 1 section, and nothing off sale
+          the file said 999, REWRITTEN, Signature, Hot for a dish already here
+          outlet_1   Drive Iced Coffee  moved to Drive Cold Bar
+                     price 45.00 · description empty · tags {} · spice 0
+                     — the move, and not one other field
+```
+
+`test/wiring.test.js` pins all four on the shipped logic class — the three modes
+against one file, the kind-scoping and that nothing is deleted, the refused
+add-on, and the two taps — and every one fails against the version that shipped.
+
 Measured by driving the real editor — tick Chef's pick and Signature, set the
 heat to Hot, Create dish:
 
