@@ -2516,6 +2516,126 @@ same token every five seconds either side of it, which is the one story that
 does not fit. The path is instrumented rather than guessed at: the next
 occurrence names itself.
 
+## An idle terminal comes back locked, and still holding its own menu
+
+Reported: *"while the app is idle, such as in mobile app shortcut, when I open
+after a while, the app opens with empty floor, menu. also no pin gate. this
+offline behaviour is flawed."* Both halves, and they are ONE CAUSE.
+
+**THERE ARE TWO IDENTITIES ON A TILL AND ONLY ONE OF THEM EXPIRES.** The
+SERVER's credential lives in `kashikeyo.token` and carries an expiry;
+`_restoreToken()` refuses one past it, so eleven hours after a sign-in this
+device holds nothing the outlet would accept. The TERMINAL's own record of who
+is on it is a blob in its session — written precisely so a reload mid-shift
+does not cost the floor a PIN — and it has **no expiry at all**.
+
+`requireSignIn()` asked only the second. The bridge's `boot()` asked only the
+first. So on the morning after:
+
+- the component restored the blob, found a session, and **returned without
+  drawing the keypad** — the top bar wore the last operator's name and every
+  rank gate on the screen answered from a rank nothing could still prove;
+- the bridge took its `!api.signedIn()` path, which fired `kpos-signin` into a
+  room with **no listener** (the third time this build has paid for that shape,
+  after `kpos-tick` and `kpos-session-expired`) and hydrated nothing — so
+  `window.KPOS` stayed the shipped skeleton. Empty floor, empty menu.
+
+Measured on a real store before anything was written, by ageing the token's own
+`exp` and reopening — nothing else touched:
+
+```
+signed in, working    KPOS.MENU 304 · outlet state yes · no keypad · "Drive Owner"
+reopened after idle   KPOS.MENU   0 · outlet state no  · no keypad · "Drive Owner"
+```
+
+**A credential with no actor cannot attribute a sale; an actor with no
+credential cannot write one. Neither alone is a sign-in.** `hasCredential()`
+asks the bridge, and `requireSignIn()` now needs both. It **fails OPEN where
+there is no bridge** — the harness, and the instant before the bridge script
+runs — because a terminal that locked itself over its own transport not having
+loaded yet would be a worse defect than the one this closes.
+
+**And a credential ageing out is NOT `locked: true`.** That flag is the
+persisted decision a PERSON made, and it is what stops `adoptSession()` ever
+undoing a lock somebody chose. Marking it on an ordinary overnight would leave
+every till in the estate permanently un-adoptable. `credentialGone()` drops the
+stale actor and opens the keypad, and nothing more. Undelivered work is
+untouched: the outbox is durable and delivers the moment somebody signs back
+in, the same promise signing out by hand already makes.
+
+### The cache was keyed on the credential that had just been thrown away
+
+`local()` keyed on `this.outletId`, which `_restoreToken()` sets **only from a
+token it accepted**. So the moment the credential aged out the whole cache —
+the cached bootstrap included — became unreachable, and the till came up on the
+shipped skeleton. The records were never gone; the only key that could find
+them was derived from the thing that had just expired.
+
+Which store a device belongs to is not a credential and does not expire with
+one, and `outletHint()` has always answered it: the outlet this terminal last
+signed in at, or the one its owner's account stamped here. The cache is keyed on
+that now, so **the keypad comes up over the store's own floor and its own
+menu** rather than an empty shell that teaches an operator the app lost
+everything overnight.
+
+**THE SESSION IS SHORN OFF THAT CACHE, and it is the load-bearing half.**
+`hydrate()` publishes `boot.session` as `KPOS_REAL.session`, which is exactly
+what `adoptSession()` reads to decide somebody may be signed in WITHOUT a PIN.
+Masters are the store's and survive; an identity is a credential and must never
+come back from a cache. The bridge hydrates `Object.assign({}, cached,
+{ session: null })`, never the cache whole.
+
+One thing that falls out of it: an offline, signed-out till used to have no
+roster at all — `loadRoster(null)` returns early and the event went nowhere —
+so it could not show a single face. It comes up on the cached bootstrap's own
+roster now. It still **cannot sign anybody in while the link is down**
+(`/api/auth/pin` is a POST and there is no offline PIN check, by design — the
+hash never leaves the database); what changed is that the screen is the store
+rather than a blank.
+
+### And the idle clock restarted on every launch
+
+`lastTouch` was seeded at `Date.now()` in the initial state and never
+persisted, and `checkIdle()` ran only from a fifteen-second `setInterval` — an
+interval that does not run while the app is closed. So a till closed at six and
+opened at ten came up **zero minutes idle** and stayed unlocked, well inside
+the eleven hours where the credential is still good. Closing the app was the
+one kind of idleness the terminal could not see, and on a phone shortcut it is
+the only kind there is.
+
+The stamp is persisted and restored, and it is read on the FIRST PAINT rather
+than up to fifteen seconds later. The fifteen-second sweep re-asks the
+credential too, so a token that ages out under a terminal nobody is touching
+reaches the same keypad without waiting for a request to fail. And
+`visibilitychange` does both on the way back in — going away is a write,
+coming back is a check — because a phone freezes this app's timers while it is
+backgrounded and an open floor on screen for fifteen seconds with somebody
+standing at it is the whole point of the lock.
+
+Measured by driving the shipped terminal in Chromium against a real store,
+four states:
+
+```
+1  reloaded seconds into a shift   menu 304 · credential live    · actor kept · keypad no
+2  closed at six, opened at ten    menu 304 · credential live    · actor gone · KEYPAD UP
+3  reopened past the credential    menu 304 · credential expired · actor gone · KEYPAD UP
+4  the keypad itself               "Drive Cafe · POS-1 · DRV" · the roster · PIN ----
+```
+
+Row 1 is the control and it is the property the session blob exists for: a
+reload mid-shift must still cost nobody a PIN.
+
+`test/wiring.test.js` drives the shipped logic class for the three credential
+states (expired, live, and no bridge at all), the idle stamp at four hours and
+at four seconds, and pins the sweep, the resume, the persisted stamp, the cache
+key and the shorn session. All four fail against the version that shipped.
+
+**NOT PROVEN THROUGH A BROWSER**: state 4 of the drive — an app backgrounded
+and picked up again WITHOUT a reload. `state.lastTouch` is in memory and cannot
+be aged from outside the page, so what is proved there is the `_vis` handler
+statically and `checkIdle()` on the logic class, not pixels. A reload covers
+the same decision on every path a phone shortcut actually takes.
+
 ## A fault says whose fault it is
 
 Found on a live till's own Diagnostics screen: two caught faults, both

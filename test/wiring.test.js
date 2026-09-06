@@ -4748,6 +4748,146 @@ test('one CSV carries a section, an add-on and a dish, queued in the order the o
   assert.match(out, /\ndish,/, 'and the dishes');
 });
 
+/* ═══ AN IDLE TERMINAL COMES BACK LOCKED ═══════════════════════════════════
+   "while the app is idle, such as in mobile app shortcut, when I open after a
+   while, the app opens with empty floor, menu. also no pin gate."
+
+   Both halves, one cause. THE SERVER'S CREDENTIAL EXPIRES AND THE TERMINAL'S
+   OWN RECORD OF WHO IS SIGNED IN DOES NOT. `kashikeyo.token` carries an expiry
+   and `_restoreToken()` refuses one past it; `state.session` is a blob in the
+   terminal's own storage, written to survive a reload mid-shift, with no
+   expiry at all. `requireSignIn()` asked only the second — so the blob came
+   back, a session was found, and the keypad never drew — while the bridge,
+   asking only the first, took its signed-out path and hydrated nothing. */
+function tillWith(bridge, saved) {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  if (bridge === null) delete F.__win.KPOS_SYNC;
+  else F.__win.KPOS_SYNC = bridge;
+  Object.assign(F.state, saved || {});
+  return F;
+}
+const ACTOR = { id: 'u1', user: 'owner', name: 'A Founder', role: 'SuperAdmin', rank: 5 };
+
+test('being signed in needs a credential AND an actor, not either one alone', () => {
+  // The reported state: the blob survived, the credential did not.
+  const gone = tillWith({ signedIn: () => false },
+    { session: Object.assign({}, ACTOR), modal: null, locked: false });
+  gone.requireSignIn();
+  assert.strictEqual(gone.state.session, null,
+    'the stale actor is dropped — an actor with no credential cannot write a sale');
+  assert.ok(gone.state.modal && gone.state.modal.kind === 'lock',
+    'and the keypad is up: ' + JSON.stringify(gone.state.modal));
+  assert.notStrictEqual(gone.state.locked, true,
+    'but the till is NOT marked locked-by-a-person — that flag is somebody’s '
+    + 'decision, and it is what stops adoptSession() ever adopting again');
+
+  // A reload mid-shift still costs nobody a PIN. This is the property the
+  // whole session blob exists for and the fix must not spend it.
+  const live = tillWith({ signedIn: () => true },
+    { session: Object.assign({}, ACTOR), modal: null, locked: false });
+  live.requireSignIn();
+  assert.ok(live.state.session && live.state.session.name === 'A Founder',
+    'a live credential keeps the actor');
+  assert.strictEqual(live.state.modal, null, 'and draws no keypad');
+
+  /* NO BRIDGE AT ALL FAILS OPEN — the harness, and the instant before the
+     bridge script runs. A terminal that locked itself because its own
+     transport had not loaded yet would be a worse defect than the one this
+     closes. */
+  const bare = tillWith(null, { session: Object.assign({}, ACTOR), modal: null });
+  assert.strictEqual(bare.hasCredential(), true, 'no bridge is not a refusal');
+  bare.requireSignIn();
+  assert.ok(bare.state.session, 'so the actor stands');
+
+  // A bridge that throws is the same answer, for the same reason.
+  const cross = tillWith({ signedIn: () => { throw new Error('not ready'); } },
+    { session: Object.assign({}, ACTOR), modal: null });
+  assert.strictEqual(cross.hasCredential(), true);
+});
+
+/* And the same fact arriving while the till is OPEN reaches the same keypad —
+   the fifteen-second sweep asks it too, so a credential that ages out under a
+   terminal nobody has touched does not wait for a request to fail. */
+test('the sweep and the resume both re-ask the credential', () => {
+  assert.match(SRC, /if \(!this\.hasCredential\(\)\) this\.credentialGone\(\);\s*\n\s*this\.checkIdle\(\);/,
+    'the interval asks both questions');
+  assert.match(SRC, /this\._vis = \(\) => \{[\s\S]{0,400}?this\.requireSignIn\(\);\s*\n\s*this\.checkIdle\(\);/,
+    'and so does coming back to the app');
+  assert.match(SRC, /window\.addEventListener\("visibilitychange", this\._vis\)/,
+    'wired to visibilitychange — an event fired into an empty room is this '
+    + 'build’s most repeated defect');
+  assert.match(SRC, /document\.visibilityState === "hidden"\) return this\._flush\(\)/,
+    'going away is still a write');
+});
+
+/* ═══ THE IDLE CLOCK CANNOT RESTART EVERY TIME THE APP OPENS ════════════════
+   checkIdle() ran only from a fifteen-second interval, and an interval does
+   not run while the app is closed. Worse, `lastTouch` was seeded at
+   Date.now() in the initial state — so a till closed at six and opened at ten
+   came up ZERO MINUTES IDLE and stayed unlocked. Closing the app was the one
+   kind of idleness the terminal could not see, and it is the only kind that
+   matters on a phone shortcut. */
+test('the idle clock spans the app being closed', () => {
+  assert.match(SRC, /lastTouch: this\._saved\.lastTouch \|\| Date\.now\(\)/,
+    'the stamp is restored, not reset');
+  assert.match(SRC, /\/\/ The idle clock, so it survives the app being closed[\s\S]{0,120}?lastTouch: s\.lastTouch/,
+    'and persisted, or there is nothing to restore');
+  assert.match(SRC, /this\.requireSignIn\(\);\s*\n[\s\S]{0,600}?this\.checkIdle\(\);\s*\n\s*window\.addEventListener\("resize"/,
+    'and read on the first paint rather than up to fifteen seconds later');
+
+  // Driven on the shipped logic class: a stamp from four hours ago locks.
+  const queued = [];
+  const F = tillWith({ signedIn: () => true, enqueue: (op) => { queued.push(op); return op.opId; } },
+    { session: Object.assign({}, ACTOR), modal: null,
+      lastTouch: Date.now() - 4 * 3600e3 });
+  F.checkIdle();
+  assert.ok(queued.some((o) => o.kind === 'auto_lock'),
+    'and the lock is on the trail, named: ' + queued.map((o) => o.kind).join(', '));
+  assert.strictEqual(F.state.session, null, 'the actor goes');
+  assert.strictEqual(F.state.locked, true,
+    'and an idle lock IS a decision the policy made, so it persists');
+  assert.ok(F.state.modal && F.state.modal.kind === 'lock');
+
+  // A till somebody touched a moment ago is left alone.
+  const busy = tillWith({ signedIn: () => true, enqueue: (op) => op.opId },
+    { session: Object.assign({}, ACTOR), modal: null, lastTouch: Date.now() - 4000 });
+  busy.checkIdle();
+  assert.ok(busy.state.session, 'a working till is not locked out from under its operator');
+});
+
+/* ═══ THE STORE'S OWN RECORDS COME UP BEHIND THE KEYPAD ════════════════════
+   The cached bootstrap was keyed on `this.outletId`, which _restoreToken()
+   sets only from a token it accepted — so the moment the credential aged out
+   the cache became unreachable and the till came up on the shipped skeleton:
+   no menu, no floor, no roster. The records were never gone; the only key that
+   could find them was derived from the credential that had just been dropped.
+
+   Which store a device belongs to is not a credential and does not expire with
+   one, and `outletHint()` has always answered it. */
+test('the cached bootstrap outlives the credential, and its session does not', () => {
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  assert.match(api, /key\(name\) \{\s*\n\s*var o = this\.outletHint\(\);/,
+    'the cache key is the terminal’s outlet, not the token’s');
+  assert.match(api, /local\(name, value\) \{\s*\n\s*if \(!has \|\| !this\.outletHint\(\)\)/,
+    'and so is the guard that decides whether there is a cache at all');
+  assert.ok(!/local\(name, value\)[\s\S]{0,200}?!this\.outletId/.test(api),
+    'nothing in local() still reads the token’s outlet');
+
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  const out = bridge.slice(bridge.indexOf('if (!api.signedIn()) {'));
+  assert.match(out.slice(0, 1400), /var cached = api\.local\("bootstrap"\);\s*\n\s*if \(cached\) hydrate\(Object\.assign\(\{\}, cached, \{ session: null \}\)\);/,
+    'the signed-out path serves this outlet’s own records');
+  /* THE SESSION IS SHORN OFF, and that is the load-bearing half: hydrate()
+     publishes boot.session as KPOS_REAL.session, which is exactly what
+     adoptSession() reads to decide somebody may be signed in WITHOUT a PIN.
+     Masters are the store's and survive; an identity is a credential and must
+     never come back from a cache. */
+  assert.ok(!/if \(cached\) hydrate\(cached\)/.test(bridge),
+    'never the cache whole — that would hand back an identity');
+  assert.match(bridge, /signedIn: function \(\) \{ return api\.signedIn\(\); \}/,
+    'and the terminal can ask the credential question at all');
+});
+
 /* ═══ WHAT HAPPENS TO A ROW ALREADY HERE IS THE OPERATOR'S DECISION ════════
    "while importing new menu add an option for the user to merge or replace
    the menu with new … if it's a merge, look for any existing and add only

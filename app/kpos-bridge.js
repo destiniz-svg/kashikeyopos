@@ -32,7 +32,13 @@
     // The outlet's clock, not this browser's outbox. See kashikeyo-api.js:
     // monotonic, persisted, and raised by every poll past whatever the outlet
     // has already accepted from anybody.
-    tick: function (atLeast) { return api.tick(atLeast); }
+    tick: function (atLeast) { return api.tick(atLeast); },
+    /* WHETHER THIS TERMINAL HOLDS A LIVE CREDENTIAL. The terminal keeps its
+       own record of who is signed in — a blob in its session, with no expiry —
+       and that is NOT the same question as whether the server would accept a
+       write from it. Asking only the first is how a till came up wearing an
+       operator's name over an outlet it could no longer read. */
+    signedIn: function () { return api.signedIn(); }
   };
   root.KPOS_SYNC = SYNC;
 
@@ -109,6 +115,17 @@
       start();
       return;
     }
+    /* Offline AND signed out — the link is down and the credential has aged
+       out. There is no roster to fetch and no install to read, so the keypad
+       has to come up on whatever this outlet last published. The masters make
+       it a store; the session is shorn for the reason above. */
+    if (!install) {
+      var cold = api.local("bootstrap");
+      if (cold) hydrate(Object.assign({}, cold, { session: null }));
+      try { root.dispatchEvent(new CustomEvent("kpos-signin", { detail: null })); } catch (e) {}
+      repaint({ outletId: api.outletHint() });
+      return;
+    }
 
     root.KPOS_INSTALL = install;
 
@@ -141,6 +158,21 @@
     }
 
     if (!api.signedIn()) {
+      /* THE STORE'S OWN RECORDS COME UP BEHIND THE KEYPAD. A credential that
+         has aged out is not a terminal that has forgotten its shop, and the
+         difference is what the person keying four digits is looking at: their
+         own menu and their own floor, or an empty shell that teaches them the
+         app lost everything overnight. The cache is this outlet's last
+         bootstrap and it is READ ONLY here — nothing is written, nothing is
+         pushed, and the keypad is still the only way in.
+
+         THE SESSION IS DELIBERATELY SHORN OFF. `hydrate()` publishes
+         `boot.session` as KPOS_REAL.session, which is exactly what
+         adoptSession() reads to decide it may sign somebody in without a PIN.
+         Masters are the store's and survive; an identity is a credential and
+         must not come back from a cache. */
+      var cached = api.local("bootstrap");
+      if (cached) hydrate(Object.assign({}, cached, { session: null }));
       // The lock screen shows faces, so the roster has to be readable before
       // anyone is signed in. It carries a name, a role label and an initial —
       // no id that grants anything, and never a PIN.

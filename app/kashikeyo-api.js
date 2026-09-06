@@ -123,12 +123,25 @@
     }
 
     /* ── local, outlet-namespaced storage ───────────────────────────────── */
+    /* KEYED ON THE TERMINAL'S OUTLET, NOT ON THE LIVE TOKEN'S. `this.outletId`
+       is set by _restoreToken(), which refuses a token past its expiry — so
+       the moment the credential aged out this whole cache became UNREADABLE,
+       including the cached bootstrap. That is why an app reopened the next
+       morning came up with no menu and no floor: not because the records were
+       gone, but because the only key that could find them was derived from a
+       credential that had just been thrown away.
+
+       `outletHint()` answers the same question and outlives the token: it is
+       the outlet this terminal last signed in at, or the one its owner's
+       account stamped here. Which store this device belongs to is not a
+       credential and does not expire with one. */
     key(name) {
-      if (!this.outletId) throw new Error("no outlet selected");
-      return "kashikeyo.o" + this.outletId + "." + name;
+      var o = this.outletHint();
+      if (!o) throw new Error("no outlet selected");
+      return "kashikeyo.o" + o + "." + name;
     }
     local(name, value) {
-      if (!has || !this.outletId) return value === undefined ? null : value;
+      if (!has || !this.outletHint()) return value === undefined ? null : value;
       if (value === undefined) {
         try { return JSON.parse(localStorage.getItem(this.key(name)) || "null"); }
         catch (e) { return null; }

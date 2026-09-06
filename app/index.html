@@ -2270,7 +2270,12 @@ class Component extends DCLogic {
        owner set. The defaults live in PREF_DEFAULTS and sit UNDERNEATH the
        outlet's answer, where a default belongs. */
     prefs: Object.assign({}, this._saved.prefs || {}),
-    lastTouch: Date.now(),
+    /* RESTORED, because an idle lock measured from a clock that restarts on
+       every launch can never fire on the one case it exists for. `lastTouch`
+       was seeded at Date.now() here, so a till closed at six and opened at ten
+       came up zero minutes idle and stayed unlocked — closing the app was the
+       one kind of idleness the terminal could not see. */
+    lastTouch: this._saved.lastTouch || Date.now(),
     session: this._saved.session || null,
     locked: !!this._saved.locked,
     register: this._saved.register || null,
@@ -2360,7 +2365,10 @@ class Component extends DCLogic {
       local: s.local, catMeta: s.catMeta, catOrder: s.catOrder, priceOv: s.priceOv, modifiers: s.modifiers, grnState: s.grnState, periods: s.periods, bank: s.bank, bankOpen: s.bankOpen, patches: s.patches, res: s.res, resActs: s.resActs, seated: s.seated, statsMode: s.statsMode, parOv: s.parOv, setupHide: s.setupHide, tipHidden: s.tipHidden, brandPen: s.brandPen,
       fulfil: s.fulfil,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, chainOverride: s.chainOverride, layout: s.layout, refunds: s.refunds, settled: s.settled, loyalty: s.loyalty, acks: s.acks, revoked: s.revoked, session: s.session, locked: !!s.locked, register: s.register,
-      theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
+      theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view,
+      // The idle clock, so it survives the app being closed — see the note on
+      // `lastTouch` in the initial state.
+      lastTouch: s.lastTouch
     };
     // Fulfilment stages ride their own key: a phone tracking one order must not
     // have to parse — or be trusted with — the whole till session.
@@ -2655,10 +2663,51 @@ class Component extends DCLogic {
      thirty seconds every time a tab reloads. If it is NOT holding one, the
      keypad is the only way in — there is no "remember me" that outlives the
      session the server issued. */
+  /* TWO IDENTITIES, AND BEING SIGNED IN NEEDS BOTH.
+
+     The SERVER's credential lives in `kashikeyo.token` and carries an expiry;
+     `_restoreToken()` refuses one past it, so eleven hours after a sign-in
+     this terminal holds nothing the outlet would accept. The TERMINAL's own
+     record of who is on it is a blob in its session, and it has no expiry at
+     all — it is written to survive a reload mid-shift.
+
+     `requireSignIn()` asked only the second. So an app shortcut reopened the
+     next morning restored the blob, found a session, and returned — the
+     keypad never drew, the top bar wore the last operator's name, and every
+     rank gate on the screen answered from a rank nothing could still prove.
+     Behind it the bridge had taken its own signed-out path, so no bootstrap
+     had run and the floor and the menu were empty. One cause, both halves of
+     what was reported.
+
+     A credential with no actor cannot attribute a sale; an actor with no
+     credential cannot write one. Neither alone is a sign-in. */
+  hasCredential() {
+    /* Fails OPEN where there is no bridge — the harness, and a page opened in
+       the instant before the bridge script runs. A terminal that locked itself
+       because its own transport had not loaded yet would be a worse defect
+       than the one this closes. */
+    const b = window.KPOS_SYNC;
+    if (!b || typeof b.signedIn !== "function") return true;
+    try { return !!b.signedIn(); } catch (e) { return true; }
+  }
   requireSignIn() {
+    if (!this.hasCredential()) return this.credentialGone();
     if (this.state.session || this.state.modal) return;
     if (this.adoptSession()) return;
     this.setState({ modal: { kind: "lock" } });
+  }
+  /* The keypad, and the stale actor dropped with it. Deliberately NOT
+     `locked: true`: that flag is the persisted decision a PERSON made — it is
+     what stops adoptSession() undoing a lock somebody chose — and a
+     credential ageing out is not somebody's decision. Marking it would leave
+     every till in the estate permanently un-adoptable over an ordinary
+     overnight. Undelivered work is untouched: the outbox is durable and
+     delivers the moment somebody signs back in, which is the same promise
+     signing out by hand already makes. */
+  credentialGone() {
+    if (this.state.modal && this.state.modal.kind === "lock" && !this.state.session) return;
+    this.setState({ session: null, roleKey: this.LOCKED_ROLE,
+      modal: { kind: "lock" } });
   }
   adoptSession() {
     /* A LOCKED TERMINAL STAYS LOCKED. Adoption exists so a tab that crashed
@@ -2695,6 +2744,12 @@ class Component extends DCLogic {
     this._lastAccentProp = this.props.accent;
     this.applyTheme();
     this.requireSignIn();
+    /* AND THE IDLE CLOCK IS READ AT ONCE. checkIdle() ran only from a
+       fifteen-second interval, and an interval does not run while the app is
+       closed or a tab is frozen — so the one state it exists for, a terminal
+       left alone and picked up later, was the one state it could not catch.
+       Now the stale stamp is answered on the first paint. */
+    this.checkIdle();
     window.addEventListener("resize", this._onResize);
     this._mountRest();
     // Measured, not asserted — see cacheSize().
@@ -2981,7 +3036,13 @@ class Component extends DCLogic {
     });
     // Ages and the top-bar clock are minute-resolution; a 15s tick keeps them
     // honest without re-rendering the whole floor every second.
-    this._t = setInterval(() => { this.setState({ now: new Date() }); this.checkIdle(); }, 15000);
+    this._t = setInterval(() => {
+      this.setState({ now: new Date() });
+      // A credential that expires WHILE the till is open is the same fact
+      // arriving a different way, and it must reach the same keypad.
+      if (!this.hasCredential()) this.credentialGone();
+      this.checkIdle();
+    }, 15000);
     this._sig = setInterval(() => this.pullSignals(), 3000);
     this._onSig = (e) => { if (!e.key || e.key === "kashikeyo.bridge.v1") this.pullSignals(); };
     window.addEventListener("storage", this._onSig);
@@ -2993,7 +3054,19 @@ class Component extends DCLogic {
     this._key = (e) => this.keyRoute(e);
     window.addEventListener("keydown", this._key);
     this._flush = () => { clearTimeout(this._ps); this.writeSession(); };
-    window.addEventListener("visibilitychange", this._flush);
+    /* GOING AWAY IS A WRITE; COMING BACK IS A CHECK. A phone that backgrounds
+       this app freezes its timers, so the fifteen-second sweep is not running
+       while the till is unattended and does not necessarily run the instant it
+       is picked up again. Resuming asks both questions immediately — has the
+       credential aged out, and has this terminal been idle past its own
+       policy — rather than leaving an open floor on screen for up to fifteen
+       seconds with somebody standing at it. */
+    this._vis = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return this._flush();
+      this.requireSignIn();
+      this.checkIdle();
+    };
+    window.addEventListener("visibilitychange", this._vis);
     window.addEventListener("pagehide", this._flush);
     this._busy = this.props.busyness === undefined ? 42 : this.props.busyness;
     if (!Object.keys(this.state.tickets).length) this.seed();
@@ -3006,7 +3079,8 @@ class Component extends DCLogic {
     if (this._touch) ["pointerdown", "keydown"].forEach((e) => window.removeEventListener(e, this._touch));
     if (this._key) window.removeEventListener("keydown", this._key);
     window.removeEventListener("resize", this._onResize);
-    if (this._flush) { window.removeEventListener("visibilitychange", this._flush); window.removeEventListener("pagehide", this._flush); }
+    if (this._vis) window.removeEventListener("visibilitychange", this._vis);
+    if (this._flush) window.removeEventListener("pagehide", this._flush);
   }
 
   // CustomColors from the Users table: re-points the --amber-* brand triad ONLY.
