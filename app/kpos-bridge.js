@@ -38,9 +38,16 @@
        and that is NOT the same question as whether the server would accept a
        write from it. Asking only the first is how a till came up wearing an
        operator's name over an outlet it could no longer read. */
-    signedIn: function () { return api.signedIn(); }
+    signedIn: function () { return api.signedIn(); },
+    /* THIS page's build, captured from the first bootstrap it was handed —
+       never the live one, which is whatever the server is serving now. */
+    build: function () { return api.build || null; }
   };
   root.KPOS_SYNC = SYNC;
+
+  /* Said once per page: a notice repeated every five seconds is one nobody
+     reads, and the fact does not change until somebody reloads. */
+  var buildSaid = false;
 
   /* ── 2 · masters and state, from this outlet's own database ───────────── */
   function hydrate(boot) {
@@ -48,10 +55,38 @@
     var K = root.KPOS || {};
     var live = boot.kpos || {};
 
-    /* The client tells the outlet what build it is running, on every push.
-       Held on the API object so the header is set from the one place the
-       version is known rather than threaded through every call site. */
-    if (live.APPVER) api.appVersion = live.APPVER;
+    /* WHAT THIS PAGE IS RUNNING, AND HOW IT KNOWS.
+
+       This read `api.appVersion = live.APPVER` — the version the server had
+       just sent, reported straight back as this device's own. Two literals
+       agreeing with each other: every terminal on every install reported the
+       same string whatever code it was actually holding, so
+       `chain.device.app_version` (036) could never differ and the Sync
+       screen's "behind" verdict could never fire.
+
+       A page cannot read its own bytes, but it can capture the stamp it was
+       FIRST handed and hold it for the life of the page. That is exactly this
+       page's build, because a bootstrap arriving later comes from a server
+       that may since have been redeployed — and a home-screen shortcut
+       resumes a frozen page rather than navigating, so a terminal can sit on
+       last month's code with today's server answering it.
+
+       So: the first BUILD seen is ours, for ever; every later one is a
+       comparison. What is reported on a push is OUR stamp, never the live
+       one, or the measurement is a tautology again. */
+    if (live.BUILD && !api.build) api.build = live.BUILD;
+    api.appVersion = api.build || live.APPVER || api.appVersion || null;
+    if (live.BUILD && api.build && live.BUILD !== api.build && !buildSaid) {
+      /* Once per page. A terminal mid-service is told, not interrupted: the
+         event carries both stamps and the till draws a standing card with a
+         Reload control. Nothing reloads on its own — a page that reloaded
+         itself would throw away an open bill somebody is standing at. */
+      buildSaid = true;
+      try {
+        root.dispatchEvent(new CustomEvent("kpos-build-changed",
+          { detail: { mine: api.build, outlet: live.BUILD } }));
+      } catch (e) {}
+    }
 
     /* THE STATUTORY TABLE IS SHIPPED, AND THE OUTLET LAYERS OVER IT — so the
        shipped copy has to survive the bootstrap that replaces it. Same stash

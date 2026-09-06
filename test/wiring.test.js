@@ -3283,8 +3283,14 @@ test('no screen claims an action this build only records', () => {
   assert.ok(SRC.indexOf('42 MB') < 0, 'the cache size was never measured');
   assert.ok(!/"4\.2\.1"/.test(SRC.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')),
     'and the version was a literal');
-  assert.match(SRC, /appVer\(\) \{ return \(\(K\(\) \|\| \{\}\)\.APPVER\)/,
-    'the version comes from the bootstrap');
+  /* THIS PIN USED TO ASSERT THE DEFECT'S SUCCESSOR. Replacing the 4.2.1
+     literal with `K().APPVER` made the version real for the SERVER and left
+     the terminal reporting the outlet's answer as its own — two literals
+     agreeing with each other, one layer up, since package.json has read 3.0.0
+     since the rebuild. What a page is running is now its own captured build
+     stamp; see src/build.js. */
+  assert.match(SRC, /appVer\(\) \{[\s\S]{0,200}?window\.KPOS_SYNC\.build/,
+    'the version is what THIS page is running');
   assert.match(SRC, /navigator\.storage\.estimate\(\)/, 'and the cache is asked of the browser');
   assert.match(SRC, /return "not measured"/, 'with an honest answer where it will not say');
   const bs = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
@@ -8490,4 +8496,104 @@ test('the order card says NOT ANSWERED, and only where there is something to say
   // The subtitle stops promising the order is open once it is not.
   assert.match(g, /V\.trackSub = oo\.closed\s*\n?\s*\? "Table " \+ tno \+ " · settled"/,
     'and the subtitle says settled rather than "open until the bill is settled"');
+});
+
+/* ═══ A TERMINAL SAYS WHICH BUILD IT IS RUNNING ═════════════════════════════
+   Reported as "still when I open it didn't ask for pin", after the idle-lock
+   fix had shipped and been measured green on every path — the credential, the
+   idle stamp, a reload, and a resume with no reload at all.
+
+   The reason it could not be answered from either end is that NOTHING KNEW
+   WHAT THE PAGE WAS RUNNING. `APPVER` is `package.json`'s version, which has
+   read 3.0.0 since the rebuild, and `kpos-bridge.js` took it off the bootstrap
+   the server had just sent and reported it BACK as this device's own app
+   version. So `chain.device.app_version` (migration 036) held one value for
+   every terminal on every install, for ever; the Sync screen's "This terminal"
+   row printed the outlet's answer as its own; and the drift comparison one
+   screen down compared that answer against itself. Two literals agreeing with
+   each other — the `4.2.1` defect one router along, half fixed.
+
+   It matters because of how a till is held: a home-screen shortcut RESUMES a
+   frozen page. No navigation, no reload, so a deploy arrives only when the
+   operating system evicts the page or somebody asks for it. A terminal can run
+   a build from weeks ago beside one running today's, and no screen said so. */
+test('the build a page is running is its own, and it is measured', () => {
+  const { stamp } = require('../src/build');
+  const a = stamp();
+  assert.match(String(a), /^[0-9a-f]{12}$/, 'a stamp is twelve hex characters: ' + a);
+  assert.strictEqual(stamp(), a, 'and it is stable between reads');
+  assert.notStrictEqual(a, require('../package.json').version,
+    'and it is NOT package.json — that literal is what could never differ');
+
+  const boot = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  assert.match(boot, /BUILD: stamp\(\)/, 'the bootstrap publishes it');
+
+  const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  /* THE FIRST STAMP SEEN IS OURS, FOR EVER. A page cannot read its own bytes,
+     but the bootstrap that delivered it can only have come from the server as
+     it was then — so capturing it once is exactly this page's build, and every
+     later one is a comparison. */
+  assert.match(bridge, /if \(live\.BUILD && !api\.build\) api\.build = live\.BUILD;/,
+    'captured once, from the first bootstrap');
+  assert.match(bridge, /api\.appVersion = api\.build \|\| live\.APPVER/,
+    'and OUR stamp is what is reported on a push, never the live one');
+  assert.ok(!/api\.appVersion = live\.APPVER;/.test(bridge),
+    'the echo is gone, or the measurement is a tautology again');
+  assert.match(bridge, /live\.BUILD !== api\.build && !buildSaid/,
+    'a difference is announced, and once per page');
+  assert.match(bridge, /new CustomEvent\("kpos-build-changed"/,
+    'through an event the till listens for');
+  /* THE THIRD TIME THIS BUILD HAS PAID FOR AN EVENT FIRED INTO AN EMPTY ROOM
+     — after kpos-tick and kpos-session-expired — so the listener is pinned
+     beside the dispatch. */
+  assert.match(SRC, /window\.addEventListener\("kpos-build-changed"/,
+    'and the terminal is listening');
+});
+
+test('a terminal running an earlier build says so, and nothing reloads on its own', () => {
+  // The Sync screen's own row reports THIS page, not the outlet's answer.
+  assert.match(SRC, /appVer\(\) \{[\s\S]{0,200}?window\.KPOS_SYNC && window\.KPOS_SYNC\.build/,
+    'appVer() asks the bridge for this page’s stamp first');
+  assert.ok(!/appVer\(\) \{ return \(\(K\(\) \|\| \{\}\)\.APPVER\)/.test(SRC),
+    'and no longer reads the outlet’s version as its own');
+
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.__win.KPOS_SYNC = { signedIn: () => true, build: () => 'aaaaaaaaaaaa' };
+  assert.strictEqual(F.appVer(), 'aaaaaaaaaaaa', 'the page’s own build wins');
+  delete F.__win.KPOS_SYNC;
+  assert.ok(F.appVer(), 'and a terminal with no bridge still answers something');
+
+  // Nothing is said until there is something to say.
+  const quiet = tillWith({ signedIn: () => true }, { session: Object.assign({}, ACTOR) });
+  assert.strictEqual(quiet.buildStale(), null);
+  assert.ok(!quiet.todayBrief().items.some((i) => /earlier build/.test(i.title)),
+    'an up-to-date terminal is told nothing');
+
+  const old = tillWith({ signedIn: () => true }, {
+    session: Object.assign({}, ACTOR),
+    buildStale: { mine: 'aaaaaaaaaaaa', outlet: 'bbbbbbbbbbbb', at: Date.now() }
+  });
+  const card = old.todayBrief().items.find((i) => /earlier build/.test(i.title));
+  assert.ok(card, 'a stale terminal gets a standing card');
+  assert.strictEqual(card.band, 'now');
+  assert.match(card.cost, /bbbbbbbbbbbb/, 'naming what the outlet is serving');
+  assert.match(card.cost, /aaaaaaaaaaaa/, 'and what this page was loaded on');
+  assert.match(card.cost, /held in the outbox/,
+    'and saying that undelivered work survives the reload');
+  assert.strictEqual(card.act, 'Reload now');
+  assert.strictEqual(typeof card.go, 'function', 'the reload is a control a person presses');
+
+  /* NEVER AUTOMATIC. Undelivered work is durable and survives, but the screen
+     somebody is standing at does not — a page that reloaded itself
+     mid-settlement would be a worse defect than the one this card reports. */
+  const reloads = SRC.match(/location\.reload\(\)/g) || [];
+  assert.ok(reloads.length >= 1, 'the control exists');
+  assert.ok(!/kpos-build-changed[\s\S]{0,400}location\.reload\(\)/.test(SRC),
+    'and the listener never reloads by itself');
+
+  /* The stamp is a fact about the page in memory. Persisting it would leave a
+     terminal that HAS just reloaded still reporting itself stale. */
+  assert.ok(!/buildStale: this\._saved\.buildStale/.test(SRC),
+    'it is not restored from the session');
+  assert.ok(!/buildStale: s\.buildStale/.test(SRC), 'and not written to it');
 });

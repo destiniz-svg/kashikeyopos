@@ -16,6 +16,9 @@
 const { withOutletRead } = require('./db');
 // What this install is running. Read once, from the one place it is stated.
 const APP_VERSION = require('../package.json').version;
+// What the BROWSER is running, as opposed to what this process is. See
+// src/build.js: APP_VERSION has been one literal since the rebuild.
+const { stamp } = require('./build');
 const { presetCounts } = require('./preset');
 const ai = require('./ai');
 // The outlet's own local date — see apply.js. One day-key, not two.
@@ -444,6 +447,16 @@ async function buildBootstrap(ctx) {
          and a published loyalty programme already layer. */
       PREFS: oset,
       APPVER: APP_VERSION,
+      /* THE BUILD THE SERVER IS SERVING. A terminal captures the first one it
+         is ever handed as its OWN, and every bootstrap after that is a
+         comparison: a stamp that has moved means this page was loaded before a
+         deploy and is running code the outlet has replaced. That is the one
+         question a home-screen shortcut cannot answer for itself — it resumes
+         a frozen page rather than navigating — and it is what makes
+         `chain.device.app_version` a measurement rather than the server's own
+         version echoed back. null where the app directory could not be read:
+         "this install cannot tell you" is rendered as not said. */
+      BUILD: stamp(),
       /* What the shipped catalogue holds — counted from the file, never typed,
          so the screens that offer to load it cannot quote a figure the data
          has since moved past. It is the same `presetCounts()` the onboarding

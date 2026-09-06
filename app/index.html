@@ -2276,6 +2276,11 @@ class Component extends DCLogic {
        came up zero minutes idle and stayed unlocked — closing the app was the
        one kind of idleness the terminal could not see. */
     lastTouch: this._saved.lastTouch || Date.now(),
+    /* Deliberately NOT persisted. It is a fact about the page currently in
+       memory, and a reload is exactly the remedy — a stamp restored from the
+       session would have a freshly reloaded terminal still reporting itself
+       stale. */
+    buildStale: null,
     session: this._saved.session || null,
     locked: !!this._saved.locked,
     register: this._saved.register || null,
@@ -3008,6 +3013,16 @@ class Component extends DCLogic {
     });
     // Live rows the server has applied since this terminal last looked. The
     // floor is shared: a table opened on the handheld is a table on this till.
+    /* THE OUTLET IS SERVING A BUILD THIS PAGE IS NOT RUNNING. Fired once per
+       page by the bridge, which captured this page's own stamp from the first
+       bootstrap it was handed. Not a toast: a toast that appears while
+       somebody is ringing a bill is gone before they look up, and this fact
+       does not go away until they reload. It becomes a standing card on the
+       Today list, with the reload as a control a person presses. */
+    window.addEventListener("kpos-build-changed", (e) => {
+      const d = e.detail || {};
+      this.setState({ buildStale: { mine: d.mine || null, outlet: d.outlet || null, at: Date.now() } });
+    });
     window.addEventListener("kpos-live", (e) => {
       this.applyLive((e.detail || {}).state);
       this.syncCurrency();
@@ -4002,7 +4017,29 @@ class Component extends DCLogic {
   /* Live sign-ins at this outlet, as the outlet counts them. A bootstrap from
      an older build carries none, and "none" is then the honest answer rather
      than a number this terminal made up. */
-  appVer() { return ((K() || {}).APPVER) || "unknown"; }
+  /* WHAT THIS PAGE IS RUNNING, not what the outlet is. This read K().APPVER
+     — the version the server had just published — so the Sync screen's "This
+     terminal" row reported the OUTLET's answer as its own, and the drift
+     comparison one screen down compared that answer against itself. A page
+     frozen on a home-screen shortcut for a month read as up to date.
+
+     The bridge captures the first build stamp it is ever handed and holds it
+     for the life of the page; that is this page's own. `appVersion` is the
+     stamp where there is one and the shipped version where the install could
+     not read its app directory — "unknown" stays a real answer, and is what a
+     terminal with no bridge at all (the harness) correctly says. */
+  appVer() {
+    var b = window.KPOS_SYNC && window.KPOS_SYNC.build && window.KPOS_SYNC.build();
+    return b || ((K() || {}).APPVER) || "unknown";
+  }
+  /* A DEPLOY DOES NOT REACH A PAGE THAT NEVER NAVIGATES. A terminal is held as
+     an app shortcut, and a shortcut RESUMES a frozen page — so an update lands
+     only when the operating system evicts it or somebody reloads. Nothing said
+     so, on any screen, which is how "I applied the fix and nothing changed"
+     became unanswerable from both ends at once. Never automatic: a reload
+     throws away nothing durable, but it does throw away the screen somebody is
+     standing at mid-service, so it is a control a person presses. */
+  buildStale() { return this.state.buildStale || null; }
   /* What the offline cache actually occupies, asked of the browser once at
      mount. A browser that will not answer (private mode, an older engine) gets
      "not measured" rather than a number. */
@@ -23380,6 +23417,32 @@ class Component extends DCLogic {
         "A business in the tourism sector registers for GST whatever its turnover. "
         + "This outlet is currently charging nothing. " + gw.authority, "settings",
       { act: "Set the tax class", go: () => this.openForm("taxProfile") });
+    }
+    /* THIS TERMINAL IS RUNNING CODE THE OUTLET HAS REPLACED, and until this
+       card existed nothing anywhere said so. A till is held as a home-screen
+       shortcut, and a shortcut RESUMES a frozen page — no navigation, no
+       reload — so a deploy reaches it only when the operating system evicts
+       it or somebody force-quits. A terminal can therefore run a build from
+       weeks ago beside one running today's, which is what makes "the fix was
+       applied and nothing changed" unanswerable from either end.
+
+       Every rank sees it, because whoever is holding the device is who can
+       press it — a cashier reloading a till costs nothing, and waiting for an
+       owner to walk in is how a terminal stays a month behind. Nothing
+       reloads on its own: undelivered work is durable in the outbox and
+       survives, but the screen somebody is standing at does not, and a page
+       that reloaded itself mid-settlement would be the defect this card
+       exists to report. */
+    const bstale = this.buildStale();
+    if (bstale) {
+      add("now", "This terminal is running an earlier build", "reload to update",
+        "The outlet is serving " + (bstale.outlet || "a newer build")
+        + " and this page was loaded on " + (bstale.mine || "an earlier one")
+        + ". An app shortcut resumes rather than reloads, so an update only "
+        + "arrives when you ask for one. Nothing is lost: anything not yet "
+        + "delivered is held in the outbox and goes out after the reload.",
+        "sync",
+        { act: "Reload now", go: () => { try { location.reload(); } catch (e) {} } });
     }
     /* THE TRIAL. Two reminders before the deadline and a standing notice
        after it — and the wording carries the promise the code keeps, which is

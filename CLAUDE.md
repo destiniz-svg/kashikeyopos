@@ -69,6 +69,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        055 a decline names its lines
                        control/004 the archive shelf
 src/ai.js              the one model seam — Gemini, honest when it has none
+src/build.js           what the browser is running, so a stale page can say so
 src/backup.js          taking a copy, and putting it back
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
@@ -2630,11 +2631,121 @@ states (expired, live, and no bridge at all), the idle stamp at four hours and
 at four seconds, and pins the sweep, the resume, the persisted stamp, the cache
 key and the shorn session. All four fail against the version that shipped.
 
-**NOT PROVEN THROUGH A BROWSER**: state 4 of the drive — an app backgrounded
-and picked up again WITHOUT a reload. `state.lastTouch` is in memory and cannot
-be aged from outside the page, so what is proved there is the `_vis` handler
-statically and `checkIdle()` on the logic class, not pixels. A reload covers
-the same decision on every path a phone shortcut actually takes.
+**AND THE ONE STATE THAT WAS NOT PROVEN THROUGH A BROWSER NOW IS.** An app
+backgrounded and picked up again WITHOUT a reload — the only kind of absence a
+phone shortcut has — was left stated rather than measured, because
+`state.lastTouch` is in memory and cannot be aged from outside the page. It can
+be aged from INSIDE it: move the clock the comparison is made against, then
+raise the real event. Measured against a live store, nothing else touched, the
+page never navigating:
+
+```
+signed in, working          menu 304 · credential live · no keypad
+resumed at +4h              menu 304 · credential live · KEYPAD UP, in 1.2 s
+held 18 s across the poll   still up
+the credential aged out, a real relaunch, held 20 s
+                            menu 304 · credential gone · KEYPAD UP, and it stays
+```
+
+The hold matters as much as the lock: `kpos-live` fires every five seconds and
+calls `adoptSession()` for a terminal with no actor, so a keypad that appeared
+and was signed straight back through would have looked exactly like no keypad
+at all. `state.locked` is what refuses it, and the second case proves the shorn
+cache is what refuses it there — `KPOS_REAL.session` is empty, so there is
+nothing to adopt.
+
+**Use a bubbling event to drive it.** `new Event('visibilitychange')` does not
+bubble, so a synthetic one never reaches a listener on `window` — the first
+version of this drive proved the fifteen-second sweep and quietly proved
+nothing about `_vis`. The real event is fired at `document` with `bubbles: true`
+by specification, which is what makes the listener's placement correct.
+
+## A terminal says which build it is running
+
+Reported after all of that had shipped and been measured green: *"still when I
+open it didn't ask for pin"*. Every path above locks, in a real browser, on the
+build in this repository. So the question stopped being "does it lock" and
+became **"is that build the one the device is running"** — and nothing anywhere
+could answer it.
+
+**`APPVER` IS `package.json`'s VERSION, WHICH HAS READ 3.0.0 SINCE THE
+REBUILD** — and `app/kpos-bridge.js` took it off the bootstrap the server had
+just sent and reported it BACK as this device's own app version
+(`api.appVersion = live.APPVER`). So `chain.device.app_version` (migration 036)
+held one value for every terminal on every install, for ever; the Sync screen's
+"This terminal" row printed the outlet's answer as its own; and the drift
+comparison one screen down compared that answer against itself. This file's own
+sentence — *"Version drift is measured"* — was false. It is the `4.2.1` literal
+one router along: publishing `APPVER` made the version real for the SERVER and
+left the client echoing it, which is two literals agreeing with each other.
+
+It matters because of how a till is actually held. **A home-screen shortcut
+RESUMES a frozen page** — no navigation, no reload — so a deploy reaches it only
+when the operating system evicts the page or somebody asks for one. A terminal
+can run a build from weeks ago beside one running today's, and no screen said
+so, at either end. That is why this report could not be diagnosed from it: the
+symptom is identical whether the fix is absent or merely not yet loaded.
+
+**The stamp is a hash of the files the browser actually runs** — every `.html`
+and `.js` under `app/`, computed once at boot (`src/build.js`), twelve hex
+characters because a support call reads it aloud. Scoped to the client files on
+purpose: a reload fixes a stale PAGE and does nothing about a server-side
+change, so a stamp that moved on every deploy would ask operators to reload for
+no reason, which is how a notice gets ignored. There is no build step here, so
+there is nothing else to read — what ships is the file that was read, and this
+is that file's own fingerprint. `null` where the app directory cannot be read:
+"this install cannot tell you" is rendered as not said.
+
+**A page cannot read its own bytes, but it can keep the first stamp it was
+handed.** The bootstrap that delivered it can only have come from the server as
+it was then, so capturing it once IS this page's build, and every later one is a
+comparison. What rides on a push is OUR stamp, never the live one, or the
+measurement is a tautology again — which is what makes `chain.device.app_version`
+a measurement for the first time, and the estate able to see a terminal that has
+been sitting on old code.
+
+**Told, never interrupted, and never automatic.** A standing card on the Today
+list naming both stamps, with **Reload now** as a control a person presses.
+Undelivered work is durable in the outbox and survives a reload — the card says
+so, because that is the fear that would otherwise stop somebody pressing it —
+but the screen somebody is standing at does not, and a page that reloaded itself
+mid-settlement would be a worse defect than the one it reports. Every rank sees
+it: whoever is holding the device is who can press it, and waiting for an owner
+to walk in is how a terminal stays a month behind. It is deliberately NOT
+persisted — it is a fact about the page in memory, and a stamp restored from the
+session would leave a terminal that has just reloaded still reporting itself
+stale.
+
+The event is `kpos-build-changed`, fired once per page. **The fourth time this
+build has had to pin a listener beside a dispatch** — after `kpos-tick`,
+`kpos-session-expired` and `kpos-signin` — so the test asserts both ends.
+
+Measured by editing a file under a live page, which is what a deploy is:
+
+```
+signed in                mine 7d06e52bbd2b · outlet 7d06e52bbd2b · no card
+app/kashikeyo-data.js changed on disk, the page untouched:
+the next bootstrap       mine 7d06e52bbd2b · outlet f34b9fe32db0
+on the Today list        "This terminal is running an earlier build · Before
+                          service · RELOAD TO UPDATE — The outlet is serving
+                          f34b9fe32db0 and this page was loaded on
+                          7d06e52bbd2b … anything not yet delivered is held in
+                          the outbox and goes out after the reload."  [Reload now]
+pressing it              mine f34b9fe32db0 · outlet f34b9fe32db0 · card gone
+```
+
+`test/wiring.test.js` pins the stamp's shape and that it is not `package.json`,
+the capture, the honest `x-app-version`, the dispatch AND the listener, the card
+and its wording, that nothing reloads on its own, and that the stamp is neither
+restored nor persisted. All three fail against the version that shipped — and
+one of the three is an OLD pin that had been asserting the defect's successor
+(`appVer() { return ((K() || {}).APPVER) ... }`), which is exactly how a half
+fix survives a green suite.
+
+**What this does not do** is make an already-running page lock. The first reopen
+after any deploy runs the code from before it — a fix cannot fix the launch that
+delivers it — and the honest remedy is that the terminal now says so and offers
+the reload, rather than a fresh report every time.
 
 ## A fault says whose fault it is
 
@@ -6544,6 +6655,10 @@ checked.
 - **Version drift is measured.** Migration 036 adds `chain.device.app_version`,
   reported on every push (`x-app-version`), where the device already identifies
   itself. NULL is a real answer: a device that has not said is **not** behind.
+  It was NOT measured until much later, and the sentence was false in the
+  meantime: the client reported the version it had just been sent, so every
+  device on every install held the same string. What it reports now is the build
+  stamp of the page itself — see "A terminal says which build it is running".
 
 Verified end to end against a live outlet: enrol → wrong code refused → claimed
 → code spent; sign a device out → its sessions die and other browsers are
