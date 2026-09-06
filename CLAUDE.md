@@ -1813,6 +1813,100 @@ one. `test/wiring.test.js` pins the composition, the projection's filters and
 bounds, the guard that moved, and that `V.rounds = s.sent` is gone. Both fail
 against the version that shipped.
 
+### And settlement closes it, which is the second half of that sentence
+
+Reported with a photograph of a live store's own portal. The ladder read
+**Paid · Settled · MVR 39.50 · SCRW-R-000007**, and directly under it the order
+card still carried **WITH THE COUNTER · Americano ×2 · MVR 80**, both NOT
+COMING refusals, and a running total of **MVR 80.00** — twice the settled bill,
+on a table that had been paid for and cleared. *"with the counter is left on
+the portal although all settled from floor. this never has been added to order.
+this was added later on the same round when an item was not available."*
+
+**The screen's own subtitle promises "open until the bill is settled" and
+nothing enforced the second half of it.** `openOrder()` read `PENDING` and
+`DECLINED` with no reference to the settlement at all — though `settledNow` was
+already computed one screen down, for the Add-more button — so a closed sitting
+went on drawing as live. `sittingFrom()` is that floor now: the moment the last
+bill on this table was settled, and anything the outlet is still holding from
+before it belongs to a sitting that is over.
+
+**Deliberately UNGUARDED, and that is the whole difference from
+`settledHere()`.** That one suppresses a settlement older than this phone's
+last round, because the LADDER must not read Paid over an order somebody has
+just placed. A settlement is still a boundary whatever has happened since, so
+the two cannot share a body: one asks *what belongs to a sitting that is over*,
+the other *is this table settled right now*.
+
+**BUT HIDING THE CARD IS NOT THE FIX, and this is the half that matters.** The
+bill was settled with two coffees still waiting on a decision: the money was
+taken and nobody had said yes or no. Dropping them silently is the
+"absence is not an answer" defect this build has already paid for on the
+declined round and on the settled receipt. So the sitting closes and what was
+left unanswered is **NAMED**, under its own heading, **with no money beside
+it** — nothing will be charged for it, and a figure there reads as something
+still owed on a bill already paid. Two ways a round lands there and the guest's
+outcome is identical either way, so it is one block with a sentence per round:
+the counter never answered it, or this phone never got it out. A held round
+from a closed sitting also stops being flushed — sending it now would open a
+SECOND ticket on a table somebody has left.
+
+**And a round sent AFTER the bill reopens the order, on any phone.**
+`pendingHere()` is scoped to the sitting, so a round that survives it is newer
+than the settlement by construction — which is why `stage()` checks it BEFORE
+the Paid rung now. `settledHere()`'s own guard reads `state.sent` and can only
+see what THIS phone sent, so a guest who paid and whose companion then ordered
+another coffee read "Paid" on the second phone while the counter was holding
+the round. The outlet's own list answers it for every device.
+
+**The counter is the root cause, and it was told nothing.** The round had been
+on the Waiting tab and on the floor card the whole time; what was missing is
+the one moment it costs something to have missed it — the screen where the
+money is taken. The pay screen names it: *"T02 has a round nobody has answered
+— Bottled water ×2. Settling now takes the money without it."* It **never
+blocks** — a cashier with a guest in front of them settles the bill, and a
+modal that refused would be worse than the silence it replaces — and it offers
+**no button**, because `state.modal` is one slot and a control that opened the
+round would destroy the pay screen mid-settlement, which is the defect the
+settled receipt and the invitation sheet have each paid for once.
+
+**"service and NONE are added on the bill"** was on the same photograph.
+`"NONE"` is a TRUTHY STRING — the tax code an unregistered business carries —
+and two sentences here reached for `o.tax || "tax"` rather than
+`taxRegistered()`, which has been the guard everywhere else on this page since
+it was written. Every store below the GST threshold read it. The service charge
+was asserted the same way, on both portals: a store that levies none was
+promised one. `addedOn()` asks both conditions and a store that adds nothing on
+top gets no sentence rather than a promise of nothing — the same function on
+the member card as on the guest portal, for the reason `metrics()` is the same
+on both.
+
+Measured by building the reported state on a real database — two refusals, then
+a round nobody answered, then the bill — and driving the shipped portal at
+390 px:
+
+```
+before   Table 2 · open until the bill is settled
+         Paid · Settled · MVR 39.50 · PROBE-R-000007
+         WITH THE COUNTER · Bottled water ×2 · MVR 50
+         NOT COMING · Kavaabu ×20 · Roshi (1pcs) ×3
+         Items so far — service and GGST are added on the bill · MVR 50.00
+after    Table 2 · settled
+         Paid · Settled · MVR 39.50 · PROBE-R-000007
+         NOT ANSWERED · Bottled water ×2
+                        "The counter had not answered this when the bill was settled"
+settled, nothing outstanding   the ladder survives, the card is gone
+a new round after the bill     WITH THE COUNTER · Garlic Rice · MVR 45 · the
+                               ladder back to Received, and the unanswered
+                               round still named
+```
+
+`test/wiring.test.js` runs the shipped guest logic class in a vm against the
+three projections and pins all of it — the closed sitting, the named round, the
+ladder surviving `any`, the reopening, the four tax-and-service combinations,
+and the counter's warning neither blocking nor opening anything. All five fail
+against the version that shipped.
+
 ### The card reads its own words, and the rail leads with what sells
 
 **The description was in the sheet and nowhere else**, so choosing between two

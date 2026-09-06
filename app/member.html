@@ -1100,6 +1100,24 @@ class Component extends DCLogic {
     const o = this.outlet();
     return !!o.tax && o.tax !== "NONE" && Number(o.rate || 0) > 0;
   }
+  /* WHAT THE TILL ADDS ON TOP, named only where it is actually charged — the
+     same function the guest portal carries, for the reason `metrics()` is the
+     same on both: these two pages are one product in two shells, and a
+     sentence about the bill that differed between them would be a store
+     telling one guest something it does not tell another.
+
+     This foot asserted a SERVICE CHARGE unconditionally whenever the business
+     was registered for GST, so a store that adds none promised one. Its
+     sibling on the guest portal had the tax half wrong the other way — see
+     `addedOn()` there. */
+  addedOn() {
+    const o = this.outlet() || {};
+    const parts = [];
+    if (Number(o.sc || 0) > 0) parts.push("service");
+    if (this.taxRegistered()) parts.push(o.tax);
+    if (!parts.length) return "";
+    return parts.join(" and ") + (parts.length > 1 ? " are" : " is");
+  }
   members() { return this.K() ? (this.K().CUSTOMERS || []) : []; }
   member() { return this.members().filter((c) => c.id === this.state.memberId)[0] || null; }
   /* THE PROGRAMME THE MERCHANT PUBLISHED, never one this phone made up. A
@@ -2221,9 +2239,7 @@ class Component extends DCLogic {
     V.cartWrapStyle = nCart ? "margin-top:13px;display:flex;flex-direction:column;gap:15px" : "display:none";
     V.cartSubLabel = this.money(this.cartSub());
     V.cartPtsLabel = "+" + Math.floor(this.cartSub() / this.pointsPer()) + " pts";
-    V.orderFoot = (this.taxRegistered()
-      ? "Service charge and " + o.tax + " are added on the bill. "
-      : ((o.sc || 0) ? "A service charge is added on the bill. " : ""))
+    V.orderFoot = (this.addedOn() ? this.addedOn() + " added on the bill. " : "")
       + "Points post when the till settles the ticket.";
 
     // sent this visit, with the till's own status once it has the lines

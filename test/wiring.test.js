@@ -7918,3 +7918,233 @@ test('a search field fills its pill, so the focus ring is the field\'s shape', (
   assert.match(css, /outline:2px solid var\(--fwd\) !important;outline-offset:-2px/,
     'and still draws INSIDE the field, which is why the field has to be the input');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SETTLEMENT CLOSES THE ORDER
+
+   Reported with a photograph of a live store's own portal: the ladder read
+   "Paid · Settled · MVR 39.50 · SCRW-R-000007" and directly underneath it the
+   order card still carried WITH THE COUNTER · Americano ×2 · MVR 80, both NOT
+   COMING refusals, and a running total of MVR 80.00 — twice the settled bill,
+   on a table that had been paid for and cleared. The round had been added
+   later in the sitting, after a dish was refused, and the counter never
+   accepted or declined it: the bill was settled with it still waiting.
+
+   `openOrder()` read PENDING and DECLINED with no reference to the settlement
+   at all, though `settledNow` was already computed one screen down for the
+   Add-more button. This screen's own subtitle promises "open until the bill is
+   settled" and nothing enforced the second half of that sentence.
+
+   The fix is not to hide the card. A round nobody answered when the bill
+   closed is a fact the guest is owed — they ordered it, the money was taken,
+   it never came — and dropping it silently is the "absence is not an answer"
+   defect this build has already paid for on the declined round and on the
+   settled receipt. So the sitting closes and what was left unanswered is
+   NAMED, with no money beside it.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The shipped guest logic class, in a vm, against stub globals — because what
+   is being asserted here is arithmetic over three projections and a static
+   grep cannot tell a filter that works from one that is spelled. */
+function guestClass() {
+  const vm = require('node:vm');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  const body = [...src.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((m) => m[1]).sort((a, b) => b.length - a.length)[0];
+  const win = {
+    KPOS: {}, KPOS_RAW: {}, KPOS_GUEST: {}, console: console,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    navigator: { maxTouchPoints: 0 },
+    document: { documentElement: { style: {} }, body: { style: {} } },
+    location: { hostname: 'x.test', search: '', pathname: '/', href: 'https://x.test/' },
+    addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
+    setTimeout: setTimeout, clearTimeout: clearTimeout, fetch: () => Promise.resolve({})
+  };
+  win.window = win;
+  const ctx = vm.createContext(win);
+  class DCLogic {
+    constructor(p) { this.props = p || {}; this.state = {}; }
+    setState(u) { Object.assign(this.state, typeof u === 'function' ? u(this.state) : u); }
+    forceUpdate() {} componentDidMount() {} componentDidUpdate() {}
+    renderVals() { return {}; }
+  }
+  const React = { createRef: () => ({ current: null }), createElement: () => ({}) };
+  const fn = vm.runInContext(
+    '(function (DCLogic, React) {' + body + '\n;return Component;})', ctx);
+  return { Component: fn(DCLogic, React), win: win };
+}
+
+/* One sitting on table 2, told exactly as the report tells it: two refusals,
+   then a round the counter never answered, then the bill. */
+function sitting(extra) {
+  const T = Date.parse('2026-09-06T08:00:00Z');
+  const iso = (mins) => new Date(T + mins * 60000).toISOString();
+  return Object.assign({
+    T: T, iso: iso,
+    OUTLETS: [{ id: 1, pos: true, name: 'Probe', tax: 'GGST', rate: 8, sc: 10 }],
+    MENU: [{ id: 'm3', name: 'Bottled water', price: 25 },
+      { id: 'm2', name: 'Garlic Rice', price: 45 }],
+    TICKETS: [],
+    DECLINED: [
+      { id: 'd1', table: 'T02', why: 'Sorry — no Kavaabu tonight',
+        at: iso(0), decided: iso(1), partial: true,
+        lines: [{ i: 0, id: 'x', name: 'Kavaabu', qty: 20 }] },
+      { id: 'd2', table: 'T02', why: 'Sorry — no Roshi (1pcs) tonight',
+        at: iso(5), decided: iso(6), partial: true,
+        lines: [{ i: 0, id: 'y', name: 'Roshi (1pcs)', qty: 3 }] }
+    ],
+    PENDING: [{ id: 'p1', table: 'T02', at: iso(15),
+      lines: [{ i: 0, id: 'm3', name: 'Bottled water', qty: 2, price: 25, addons: 0 }] }],
+    SETTLED: [{ table: 'T02', no: 'PROBE-R-000007', total: 39.5, at: iso(25),
+      lines: [{ name: 'Garlic Rice', qty: 1, amt: 39.5 }] }]
+  }, extra || {});
+}
+
+function guestAt(kpos) {
+  const { Component, win } = guestClass();
+  Object.assign(win.KPOS, kpos);
+  const g = new Component({});
+  g.state = Object.assign({}, g.state, { table: 2, sent: [], ready: true });
+  g.pos = () => null;              // no co-located till: a real guest's phone
+  return g;
+}
+
+test('settlement closes the order, and what nobody answered is named', () => {
+  const k = sitting();
+  const g = guestAt(k);
+  const oo = g.openOrder();
+
+  // ── the reported defect ────────────────────────────────────────────────
+  assert.strictEqual(oo.waiting.length, 0,
+    'a round the counter never answered is not still "with the counter" on a '
+    + 'table whose bill has been settled — nothing is going to arrive on it');
+  assert.strictEqual(oo.off.length, 0,
+    'and a refusal from the closed sitting is answered: the receipt is the '
+    + 'record of what was had');
+  assert.strictEqual(oo.total, 0,
+    'so there is no running total to contradict the settled figure above it');
+  assert.ok(oo.closed, 'the order reads as closed');
+
+  // ── and the half that must NOT simply vanish ───────────────────────────
+  assert.strictEqual(oo.never.length, 1, 'the unanswered round is kept');
+  assert.match(oo.never[0].names, /Bottled water ×2/,
+    'named, because the guest ordered it and the money was taken without it');
+  assert.match(oo.never[0].why, /had not answered this when the bill was settled/);
+  assert.ok(!/MVR|\d+\.\d\d/.test(JSON.stringify(oo.never)),
+    'and carrying no money: nothing will be charged for it, and a figure there '
+    + 'reads as something still owed on a bill already paid');
+
+  /* THE LADDER MUST SURVIVE IT. `any` is what draws the tracker, and its last
+     rung IS the settlement — so a paid table with nothing outstanding still
+     has to count as something to draw, or paying makes the receipt vanish. */
+  const quiet = guestAt(sitting({ PENDING: [] }));
+  const oq = quiet.openOrder();
+  assert.ok(oq.any, 'a settled table still draws its ladder');
+  assert.strictEqual(oq.never.length + oq.waiting.length + oq.off.length, 0,
+    'with nothing left on the card');
+});
+
+test('a round sent after the bill reopens the order, on any phone', () => {
+  const k = sitting();
+  // The guest pays and then orders another coffee. This phone sent nothing —
+  // it is the SECOND phone at the table, which is the case `settledHere()`'s
+  // own guard cannot see, because that one reads `state.sent`.
+  k.PENDING = k.PENDING.concat([{ id: 'p2', table: 'T02', at: k.iso(30),
+    lines: [{ i: 0, id: 'm2', name: 'Garlic Rice', qty: 1, price: 45, addons: 0 }] }]);
+  const g = guestAt(k);
+  const oo = g.openOrder();
+  assert.strictEqual(oo.waiting.length, 1, 'the new round is with the counter');
+  assert.strictEqual(oo.waiting[0].name, 'Garlic Rice');
+  assert.strictEqual(oo.total, 45, 'and only it is in the total');
+  assert.strictEqual(oo.closed, null,
+    'the order is open again, so it is not captioned "settled"');
+  assert.strictEqual(oo.never.length, 1,
+    'and the round from the closed sitting is still unanswered');
+
+  /* AND THE LADDER FOLLOWS. `pendingHere()` is scoped to the sitting now, so a
+     round that survives it is newer than the settlement by construction —
+     which is why it is checked before the Paid rung. Without that the second
+     phone read "Paid" while the counter was holding a live round. */
+  const st = g.stage();
+  assert.strictEqual(st.at, 0, 'the tracker is back to Received');
+  assert.ok(!st.paid, 'and no longer claims the table has paid');
+});
+
+test('the guest portal never prints a tax code as though it were a tax', () => {
+  /* "NONE" IS A TRUTHY STRING — the code an unregistered business carries —
+     and two sentences here reached for `o.tax || "tax"` rather than
+     `taxRegistered()`, so every store below the GST threshold read "service
+     and NONE are added on the bill". Photographed on a live store. The service
+     charge was asserted the same way: a store that adds none was promised one. */
+  const reg = guestAt(sitting());
+  assert.strictEqual(reg.addedOn(), 'service and GGST are');
+
+  const noTax = guestAt(sitting({
+    OUTLETS: [{ id: 1, pos: true, name: 'Probe', tax: 'NONE', rate: 0, sc: 10 }] }));
+  assert.strictEqual(noTax.addedOn(), 'service is');
+  assert.ok(!/NONE/.test(noTax.addedOn()), 'never the code itself');
+
+  const noSvc = guestAt(sitting({
+    OUTLETS: [{ id: 1, pos: true, name: 'Probe', tax: 'GGST', rate: 8, sc: 0 }] }));
+  assert.strictEqual(noSvc.addedOn(), 'GGST is');
+
+  const neither = guestAt(sitting({
+    OUTLETS: [{ id: 1, pos: true, name: 'Probe', tax: 'NONE', rate: 0, sc: 0 }] }));
+  assert.strictEqual(neither.addedOn(), '',
+    'and a store that adds nothing on top says nothing rather than promising it');
+
+  // Neither sentence may reach for the column again — and the member card,
+  // which is the same product in the other shell, carries the same function
+  // rather than a second opinion about the same bill.
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.ok(!/\+ \(o\.tax \|\| "tax"\) \+/.test(g),
+    'the tax code is never printed as a fallback for the word "tax"');
+  const mm = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+  assert.match(mm, /addedOn\(\) \{/, 'the member card has it too');
+  assert.ok(!/"Service charge and " \+ o\.tax/.test(mm),
+    'and no longer asserts a service charge a store may not levy');
+});
+
+test('the counter is told before it takes money on a table with a round waiting', () => {
+  /* THE ROOT CAUSE, and it is the counter's half: the bill was settled while a
+     round sat unanswered on the Waiting tab. It has been on that tab and on
+     the floor card the whole time; what was missing is the one moment it costs
+     something to have missed it — the screen where the money is taken.
+
+     It NEVER BLOCKS. A cashier with a guest in front of them settles the bill,
+     and a modal that refused would be worse than the silence it replaces. And
+     it offers no button: `state.modal` is one slot, so a control that opened
+     the round would destroy the pay screen mid-settlement — the defect the
+     settled receipt and the invitation sheet have each paid for once. */
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const at = src.indexOf('const payWait = this.qrWaiting()');
+  assert.ok(at > 0, 'the pay screen asks what is waiting on this table');
+  const block = src.slice(at, at + 900);
+  assert.match(block, /\.filter\(\(r\) => this\.tableSlot\(r\.table\) === s\.activeTable\)/,
+    'for THIS table, on the till\'s own normalisation of a table label');
+  assert.match(block, /Settling now takes the money without/,
+    'and says what settling now means');
+  assert.ok(!/canConfirm\s*=[^\n]*payWait/.test(src),
+    'it never blocks the sale');
+  assert.ok(!/payWait[\s\S]{0,400}(setState\(\{\s*modal|this\.modal\()/.test(block),
+    'and opens nothing: one modal slot, and the pay screen is in it');
+  assert.match(src, /<div style="\{\{ payWaitStyle \}\}">\{\{ payWaitText \}\}<\/div>/,
+    'drawn on the pay screen itself');
+});
+
+test('the order card says NOT ANSWERED, and only where there is something to say', () => {
+  const g = fs.readFileSync(path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+  assert.match(g, /NOT ANSWERED/, 'the block exists');
+  assert.match(g, /<sc-for list="\{\{ ooNever \}\}" as="n"/, 'and is fed from the order');
+  /* The card is hidden where it has nothing to show. A settled table with
+     nothing outstanding has the ladder and the receipt, and an empty bordered
+     box under them says nothing at all — while `any` stays true so the ladder
+     itself survives. */
+  assert.match(g, /const ooHas = !!\(oo\.on\.length \|\| oo\.waiting\.length \|\| oo\.held\.length[\s\S]{0,80}oo\.never\.length\)/,
+    'the card is drawn only where it has content');
+  assert.match(g, /V\.ooWrapStyle = ooHas \?/, 'and the wrapper reads that');
+  // The subtitle stops promising the order is open once it is not.
+  assert.match(g, /V\.trackSub = oo\.closed\s*\n?\s*\? "Table " \+ tno \+ " · settled"/,
+    'and the subtitle says settled rather than "open until the bill is settled"');
+});

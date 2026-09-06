@@ -1139,6 +1139,10 @@
         <div style="padding:16px 18px;overflow-y:auto;overflow-x:hidden;flex:1;min-height:0;overscroll-behavior:contain">
 
           <sc-if value="{{ mPay }}">
+            <!-- A round on this table that nobody has accepted or declined.
+                 Said where the money is taken, because that is the moment it
+                 costs something to have missed it. It never blocks. -->
+            <div style="{{ payWaitStyle }}">{{ payWaitText }}</div>
             <div style="{{ payGridStyle }}">
               <div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -7388,7 +7392,42 @@ class Component extends DCLogic {
         press: () => this.payType(k === "⌫" ? "back" : k)
       }));
       const canConfirm = m.tender === "cash" ? given >= due : (m.tender === "credit" ? !!cust && (cust.credit - cust.used) >= gross : true);
+      /* ═══ A ROUND NOBODY ANSWERED, ON THE TABLE ABOUT TO BE PAID ═══════════
+         Reported from a live store: a guest added two coffees after one dish
+         was refused, the counter never accepted or declined that round, and
+         the bill was settled without it. The money was taken for a table that
+         had food outstanding, and nothing on any screen said so.
+
+         The round HAS been on the Waiting tab and on the floor card the whole
+         time. What was missing is the one moment it costs something to miss
+         it: the screen where the money is taken. So it is said here, where
+         somebody is already looking.
+
+         IT NEVER BLOCKS. A cashier with a guest in front of them settles the
+         bill; this build does not stop a sale, and a modal that refused would
+         be worse than the silence it replaces. It names the table, the dishes
+         and what settling now means, and leaves the decision where it is.
+
+         And it offers no button: `state.modal` is one slot, so a control that
+         opened the round would DESTROY the pay screen mid-settlement, which is
+         the defect the settled receipt and the invitation sheet have each paid
+         for once already. */
+      const payWait = this.qrWaiting()
+        .filter((r) => this.tableSlot(r.table) === s.activeTable);
+      const payWaitNames = payWait.map((r) => r.lines
+        .map((l) => l.name + (l.qty > 1 ? " ×" + l.qty : "")).join(", "))
+        .filter(Boolean).join(" · ");
       return {
+        payWaitStyle: payWait.length
+          ? "margin-bottom:12px;padding:10px 12px;border-radius:10px;background:var(--warn-dim);border:1px solid var(--warn-line);color:var(--warn-bright);font-size:11.5px;line-height:1.5;font-weight:600"
+          : "display:none",
+        payWaitText: payWait.length
+          ? this.slotName(s.activeTable) + " has "
+            + (payWait.length === 1 ? "a round" : payWait.length + " rounds")
+            + " nobody has answered" + (payWaitNames ? " — " + payWaitNames : "")
+            + ". Settling now takes the money without "
+            + (payWait.length === 1 ? "it" : "them") + "."
+          : "",
         modalTitle: "Settle · " + this.guestLabel(gAll[gIdx]),
         modalSub: this.slotName(s.activeTable) + " · " + o.name
           + (this.taxRegistered(o) ? " · " + this.taxLine(o) : "") + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),

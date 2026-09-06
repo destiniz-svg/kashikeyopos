@@ -264,6 +264,21 @@ a:hover{color:#d33d26}
                 </sc-for>
               </div>
 
+              <!-- AND WHAT NOBODY EVER ANSWERED. A round still with the
+                   counter when the bill was settled, or one this phone never
+                   got out on a sitting that is now over. No money on these
+                   rows: nothing will be charged for them, and a figure here
+                   would read as something still owed on a bill already paid. -->
+              <div style="{{ ooNeverStyle }}">
+                <div style="font-size:12px;font-weight:700;color:#b5651d;letter-spacing:.08em">NOT ANSWERED</div>
+                <sc-for list="{{ ooNever }}" as="n" hint-placeholder-count="1">
+                  <div style="margin-top:8px;padding:10px 12px;border-radius:11px;background:#fff6ed;border:1px solid #f0c9a0;font-size:13px;color:#7a4a12;line-height:1.5;text-wrap:pretty">
+                    <span style="{{ n.namesStyle }}">{{ n.names }}</span>
+                    <span style="display:block;margin-top:3px">{{ n.why }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
               <div style="{{ ooTotalStyle }}">
                 <span style="font-size:12.5px;color:#6a6a72;line-height:1.45;text-wrap:pretty;min-width:0">{{ ooTotalNote }}</span>
                 <span style="flex-shrink:0;font-size:15px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace">{{ ooTotal }}</span>
@@ -872,6 +887,28 @@ class Component extends DCLogic {
     const o = this.outlet();
     return !!o.tax && o.tax !== "NONE" && Number(o.rate || 0) > 0;
   }
+  /* WHAT THE TILL ADDS ON TOP, named only where it is actually charged.
+
+     Two sentences on this page reached for `o.tax || "tax"` instead, and
+     "NONE" is a TRUTHY STRING — it is the tax code an unregistered business
+     carries — so every store below the GST threshold read "service and NONE
+     are added on the bill". Photographed on a live store's own portal. It is
+     the exact defect this build refuses by name three files over, and
+     `taxRegistered()` has been the guard everywhere else on this page since
+     it was written.
+
+     The service charge was asserted the same way: a store that charges none
+     was told one was coming. Both are conditions, so both are asked, and a
+     store that adds neither gets no sentence rather than a promise of
+     nothing. */
+  addedOn() {
+    const o = this.outlet() || {};
+    const parts = [];
+    if (Number(o.sc || 0) > 0) parts.push("service");
+    if (this.taxRegistered()) parts.push(o.tax);
+    if (!parts.length) return "";
+    return parts.join(" and ") + (parts.length > 1 ? " are" : " is");
+  }
   // A table is stored by the label the floor plan gives it — "T04", "Deck 2".
   // What a guest is TOLD is the human half of that, so a standard floor still
   // reads "table 4" and a named one still reads "table Deck 2".
@@ -1242,12 +1279,67 @@ class Component extends DCLogic {
      drawn twice. That is the whole of why this stops growing a card per
      round. */
 
+  /* ═══ SETTLEMENT ENDS THE SITTING ═════════════════════════════════════════
+     "Round closes with settlement" is what this screen promises in its own
+     subtitle, and nothing enforced it. `openOrder()` read PENDING and DECLINED
+     with no reference to the bill at all, so a table that had been paid and
+     cleared went on drawing WITH THE COUNTER and NOT COMING from the sitting
+     that had just ended — with a running total of MVR 80.00 sitting directly
+     under a Paid rung reading MVR 39.50. Reported off a live install exactly
+     that way.
+
+     This is the floor: the moment the last bill on this table was settled.
+     Anything the outlet is still holding from BEFORE it belongs to a closed
+     sitting.
+
+     DELIBERATELY UNGUARDED, and that is the whole difference from
+     `settledHere()`. That one suppresses a settlement older than this phone's
+     last round, because the LADDER must not read Paid over an order somebody
+     has just placed. A settlement is still a boundary whatever has happened
+     since, so the two answer different questions and cannot share a body: this
+     one says "what belongs to a sitting that is over", and that one says "is
+     this table settled right now". */
+  sittingFrom() {
+    const at = ((window.KPOS || {}).SETTLED || [])
+      .filter((s) => this.sameTable(s.table, this.state.table))
+      .map((s) => new Date(s.at || 0).getTime())
+      .filter((t) => t > 0);
+    return at.length ? Math.max.apply(null, at) : 0;
+  }
+
   /* ROUNDS THIS TABLE HAS WITH THE COUNTER, as the OUTLET holds them. The
      phone used to infer this by elimination, which is unanswerable the moment
-     two phones share a table or one guest orders the same dish twice. */
+     two phones share a table or one guest orders the same dish twice.
+
+     Only rounds from THIS sitting: one the counter was still holding when the
+     bill closed is not waiting on anybody any more, and saying it is promises
+     food on a table that has been paid for. It is not dropped either — see
+     `unansweredHere()`. */
   pendingHere() {
+    const floor = this.sittingFrom();
     return ((window.KPOS || {}).PENDING || [])
       .filter((p) => this.sameTable(p.table, this.state.table))
+      .filter((p) => !floor || new Date(p.at || 0).getTime() > floor)
+      .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
+  }
+
+  /* AND A ROUND THE COUNTER NEVER ANSWERED, which is the half that must not
+     simply vanish.
+
+     The reported bill was settled with two coffees still waiting on a
+     decision: the money was taken and nobody had said yes or no. Hiding the
+     card once the bill closes fixes the lie and leaves the guest with no
+     record of a round they sent and never received — which is the "absence is
+     not an answer" defect this build has already paid for on the declined
+     round and on the settled receipt. So it is NAMED, under its own heading,
+     with no money beside it: nothing is going to be charged for it, and a
+     figure there would read as something still owed. */
+  unansweredHere() {
+    const floor = this.sittingFrom();
+    if (!floor) return [];
+    return ((window.KPOS || {}).PENDING || [])
+      .filter((p) => this.sameTable(p.table, this.state.table))
+      .filter((p) => new Date(p.at || 0).getTime() <= floor)
       .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
   }
 
@@ -1263,14 +1355,18 @@ class Component extends DCLogic {
      The guard stays and moves to the sitting's own floor. A refusal older
      than the FIRST round this phone sent belongs to an earlier sitting and is
      not this guest's; one after it is theirs, whatever they have ordered
-     since. */
+     since. And a SETTLEMENT raises that floor above any round, because it
+     ends the sitting outright: a dish refused before the bill closed is
+     answered, the receipt is the record of what was had, and repeating "not
+     coming" beside a paid bill reads as something still outstanding. */
   declinesHere() {
     const sent = this.state.sent || [];
     const first = sent.length
       ? Math.min.apply(null, sent.map((r) => r.at || 0)) : 0;
+    const floor = Math.max(first, this.sittingFrom());
     return ((window.KPOS || {}).DECLINED || [])
       .filter((d) => this.sameTable(d.table, this.state.table))
-      .filter((d) => !first || new Date(d.decided || 0).getTime() >= first)
+      .filter((d) => !floor || new Date(d.decided || 0).getTime() >= floor)
       .sort((a, b) => new Date(a.decided || 0) - new Date(b.decided || 0));
   }
 
@@ -1279,9 +1375,30 @@ class Component extends DCLogic {
      it is deliberately narrow: `oid` is stamped from the outlet's own answer,
      so a round without one is a round whose POST never came back. This is
      what `flushHeld()` sends again; `openOrder()` re-derives the same set
-     while it composes, because it is deciding a bucket rather than a queue. */
+     while it composes, because it is deciding a bucket rather than a queue.
+
+     AND A SETTLEMENT ENDS ITS RIGHT TO GO. A round the phone never delivered,
+     on a table whose bill has since closed, would open a SECOND ticket on a
+     table somebody has left — a new bill nobody is sitting at, for food nobody
+     is waiting for. So the sitting's floor stops it here, where the flush
+     reads it, rather than in the flush alone: `openOrder()` asks the same
+     question and must reach the same answer. What became of it is said under
+     NOT ANSWERED, beside the rounds the counter never got to. */
   heldHere() {
-    return (this.state.sent || []).filter((r) => !r.oid);
+    const floor = this.sittingFrom();
+    return (this.state.sent || [])
+      .filter((r) => !r.oid)
+      .filter((r) => !floor || (r.at || 0) > floor);
+  }
+
+  /* A ROUND THIS PHONE NEVER GOT OUT, ON A SITTING THAT IS OVER. Nothing is
+     going to send it now, so it stops being "not sent yet" — a heading that
+     promises it still will be — and joins what the counter never answered. */
+  strandedHere() {
+    const floor = this.sittingFrom();
+    if (!floor) return [];
+    return (this.state.sent || [])
+      .filter((r) => !r.oid && (r.at || 0) <= floor);
   }
 
   /* SEND A HELD ROUND AGAIN, which is safe because the round carries its own
@@ -1429,9 +1546,46 @@ class Component extends DCLogic {
         at: d.decided || d.at });
     });
 
+    /* AND WHAT NOBODY EVER ANSWERED. Two ways a round ends up here and the
+       guest's outcome is identical either way — they ordered it, the bill
+       closed, it never came — so it is one block with a sentence per round
+       rather than two headings saying the same thing about whose fault it
+       was. NO MONEY on these rows and none of it in the total: nothing will
+       be charged for a round nobody accepted, and a figure beside it reads as
+       something still owed on a bill that is already paid. */
+    const never = [];
+    const dishes = (lines) => lines.map((l) => {
+      const m = this.item(l.id);
+      const nm = l.name || (m ? m.name : "");
+      return nm ? nm + ((l.qty || 1) > 1 ? " ×" + l.qty : "") : "";
+    }).filter(Boolean).join(", ");
+    /* A round whose dishes cannot be named is the sentence alone — the same
+       rule the refusal above keeps, because a blank bold heading over an
+       explanation reads as a missing value rather than as a round. */
+    const nameRow = (key, names, why) => never.push({
+      key: key, names: names, why: why,
+      namesStyle: names ? "display:block;font-weight:700" : "display:none" });
+    this.unansweredHere().forEach((g) => nameRow("u" + g.id, dishes(g.lines || []),
+      "The counter had not answered this when the bill was settled"));
+    this.strandedHere().forEach((r) => nameRow("x" + r.rid,
+      dishes((r.lines || []).map((l) => ({ id: l.id, qty: l.qty }))),
+      "This never reached the counter, and the bill has since been settled"));
+
+    /* IS THIS ORDER CLOSED — which is the settlement AND nothing live on the
+       table since. A guest who pays and then orders another coffee has an open
+       order again, and it must not be captioned "settled" whichever phone is
+       reading it. `sittingFrom()` is the other question and stays unguarded;
+       see the comment there. */
+    const closed = (on.length || waiting.length || held.length)
+      ? null : this.settledHere();
     const total = raw.reduce((a, n) => a + n, 0);
-    return { on: on, waiting: waiting, held: held, off: off,
-      total: total, any: !!(on.length || waiting.length || held.length || off.length) };
+    return { on: on, waiting: waiting, held: held, off: off, never: never,
+      closed: closed, total: total,
+      /* The LADDER hangs off `any` too, and its last rung is the settlement —
+         so a paid table with nothing outstanding must still count as
+         something to draw, or paying makes the receipt disappear. */
+      any: !!(on.length || waiting.length || held.length || off.length
+        || never.length || closed) };
   }
 
   stage() {
@@ -1461,6 +1615,16 @@ class Component extends DCLogic {
        which is "Received". A guest who has paid was shown their food being
        received for ever. The outlet says a bill on this table was settled, so
        the ladder ends where it actually ended. */
+    /* A ROUND STILL WITH THE COUNTER OUTRANKS A SETTLED BILL, and it is
+       checked first now that `pendingHere()` is scoped to the sitting: a round
+       that survives that filter is by definition NEWER than the last
+       settlement, so the table is trading again and "Paid" is the older truth.
+
+       `settledHere()` has its own guard against this and it can only see what
+       THIS phone sent — so a guest who paid and whose companion then ordered
+       another coffee read "Paid" on the second phone while the counter was
+       holding the round. The outlet's own list answers it for every device. */
+    if (this.pendingHere().length) return { at: 0, steps: STEPS, when: null };
     const paid = this.settledHere();
     if (paid) return { at: 4, steps: STEPS.concat(["Paid"]), when: paid.at, paid: paid };
     /* DECLINED ENDS THE LADDER TOO, and it is checked after the open ticket
@@ -1468,16 +1632,15 @@ class Component extends DCLogic {
        then sent another that WAS accepted has a live ticket, and that is the
        later truth. Only where nothing is open and nothing was paid does a
        refusal describe where this table actually stands. */
-    /* A ROUND STILL WITH THE COUNTER IS "RECEIVED", on the outlet's own word.
-
-       This used to fall through to the localStorage rung — this phone's record
-       of what it last SENT — which happened to read "Received" and so happened
-       to be right. It stops being right the moment the round came from another
+    /* A ROUND STILL WITH THE COUNTER IS "RECEIVED", on the outlet's own word —
+       checked above, before the settled rung, for the reason stated there.
+       This used to fall through to the localStorage rung, this phone's record
+       of what it last SENT, which happened to read "Received" and so happened
+       to be right; it stops being right the moment the round came from another
        phone at this table, and a ladder that is accidentally correct is one
-       nobody can reason about. It is checked BEFORE the refusal below because
-       a guest refused one round who has since sent another is waiting on the
-       new one, and that is the later truth. */
-    if (this.pendingHere().length) return { at: 0, steps: STEPS, when: null };
+       nobody can reason about. It comes BEFORE the refusal below because a
+       guest refused one round who has since sent another is waiting on the new
+       one, and that is the later truth. */
     const no = this.declinedHere();
     if (no) {
       return { at: 1, steps: ["Received", "Declined"], when: no.decided,
@@ -1955,7 +2118,10 @@ class Component extends DCLogic {
       ? "Goods, before " + (o.sc ? "service and " : "") + o.tax
       : (o.sc ? "Goods, before service" : "Goods");
     V.cartSub = s.cart.length + " item" + (s.cart.length === 1 ? "" : "s") + " · table " + tno;
-    V.cartFoot = "Service charge and " + (o.tax || "tax") + " are added on the bill by the till. Send as many rounds as you like — they all join the same ticket.";
+    // The same rule as the order's own total line: name what is charged, and
+    // where nothing is added on top say nothing rather than promise it.
+    V.cartFoot = (this.addedOn() ? this.addedOn() + " added on the bill by the till. " : "")
+      + "Send as many rounds as you like — they all join the same ticket.";
     V.cart = s.cart.map((l, i) => {
       const m = this.item(l.id);
       return {
@@ -2008,9 +2174,13 @@ class Component extends DCLogic {
        it sits inside the order, under NOT COMING, where a guest reading their
        own order finds it beside what IS coming. */
     const oo = this.openOrder();
-    V.trackSub = oo.any
-      ? "Table " + tno + " · open until the bill is settled"
-      : "Nothing sent yet";
+    /* AND THE SUBTITLE STOPS PROMISING IT IS OPEN. "open until the bill is
+       settled" is the right sentence and it was printed over a settled bill,
+       which is the whole report in six words. */
+    V.trackSub = oo.closed
+      ? "Table " + tno + " · settled"
+      : oo.any ? "Table " + tno + " · open until the bill is settled"
+        : "Nothing sent yet";
     V.trackWrapStyle = oo.any ? "margin-top:20px;display:block" : "display:none";
     V.stages = STAGES.map((label, i) => {
       const done = i < at, on = i === at;
@@ -2049,7 +2219,12 @@ class Component extends DCLogic {
        stood here was `state.sent.map(...)` — a card per POST, which is why
        adding a dish drew a second one — composed from what this phone SENT
        rather than from what the counter accepted. */
-    V.ooWrapStyle = oo.any ? "margin-top:6px;display:block" : "display:none";
+    /* The card is drawn only where it has something to say. A settled table
+       with nothing outstanding has the ladder and the receipt, and an empty
+       bordered box under them says nothing at all. */
+    const ooHas = !!(oo.on.length || oo.waiting.length || oo.held.length
+      || oo.off.length || oo.never.length);
+    V.ooWrapStyle = ooHas ? "margin-top:6px;display:block" : "display:none";
     V.ooOn = oo.on;
     V.ooOnStyle = oo.on.length ? "display:block" : "display:none";
     V.ooWaiting = oo.waiting;
@@ -2063,14 +2238,18 @@ class Component extends DCLogic {
     V.ooSendAgain = () => { self.flushHeld(); self.toast("Trying again"); };
     V.ooOff = oo.off;
     V.ooOffStyle = oo.off.length ? "margin-top:15px;display:block" : "display:none";
+    V.ooNever = oo.never;
+    V.ooNeverStyle = oo.never.length ? "margin-top:15px;display:block" : "display:none";
     V.ooTotal = this.money(oo.total);
     V.ooTotalStyle = (oo.on.length || oo.waiting.length || oo.held.length)
       ? "margin-top:14px;padding-top:12px;border-top:1px solid #efefef;display:flex;justify-content:space-between;align-items:baseline;gap:10px"
       : "display:none";
     /* GOODS ONLY, and it says so. Service and tax are the till's arithmetic
        and they are on the Bill tab; a figure here that quietly matched
-       neither would be the invented number this build refuses by name. */
-    V.ooTotalNote = "Items so far — service and " + (o.tax || "tax") + " are added on the bill";
+       neither would be the invented number this build refuses by name. And it
+       names only what is ACTUALLY charged — see `addedOn()`. */
+    const adds = this.addedOn();
+    V.ooTotalNote = "Items so far" + (adds ? " — " + adds + " added on the bill" : "");
     V.trackEmpty = "Your order opens the moment you send a round, and it stays open — everything you add joins it — until the bill is settled.";
     V.trackEmptyStyle = oo.any ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
 
