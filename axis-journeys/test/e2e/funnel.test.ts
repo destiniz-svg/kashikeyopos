@@ -499,12 +499,23 @@ describe('a property page', () => {
     await settle(page)
     await page.locator('button[aria-label^="View Baros"]').first().click()
     await page.waitForTimeout(900)
+    // The drawer must NOT be sitting on the page's own address. It used to rewrite the path to
+    // `/properties/<id>` when it opened, which made this assertion pass before the click had
+    // happened — so a "Full details" that led nowhere a guest could see was green here for as
+    // long as it was broken. Reported from the live site as a button that is not wired.
+    assert.equal(new URL(page.url()).pathname, '/', 'the drawer took the property page’s address')
     const full = page.locator('#drawer a').filter({ hasText: /full details/i }).first()
     assert.equal(await full.count(), 1, 'the drawer has no route to the page')
     await full.click()
     await page.waitForURL(/\/properties\/baros$/, { timeout: 10_000 })
     await settle(page)
     assert.ok(((await page.locator('main').textContent()) || '').includes('Our positioning'))
+    // and the drawer is not left over the page it just handed the guest to
+    const left = await page.evaluate(() => {
+      const d = document.getElementById('drawer')
+      return d ? d.getAttribute('aria-hidden') !== 'true' || d.getBoundingClientRect().left < window.innerWidth - 4 : false
+    })
+    assert.equal(left, false, 'the drawer is still over the property page')
     assert.deepEqual(faults, [])
     await page.close()
   })

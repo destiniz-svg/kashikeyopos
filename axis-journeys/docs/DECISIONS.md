@@ -948,3 +948,48 @@ category filters and the matchmaker read only fields Studio already sets; the vi
 tuples are covered, `moreCol` naming slot 7 explicitly; and the save path takes the draft whole, so
 a new field persists without an allowlist to update. Proven by typing into one of the four new
 fields in the shipped editor and reloading — 285 unit, 110 API, 55 e2e green.
+
+## 24. The drawer was sitting on the property page's address
+
+Reported as a "Full details" button that is not wired. It is a plain `<a href="/properties/<id>">`
+and it always was — nothing intercepts it, and the e2e test that clicks it has been green since it
+was written. The defect is one layer up: **the address bar already showed that URL.**
+
+`openDrawer()` rewrote the path to `/properties/<id>` when a drawer opened. That was right while
+the drawer WAS the property view; the 2026-09-05 handoff gave that path a page of its own and the
+drawer went on claiming it. So opening a card from the home grid put `/properties/baros` in the
+bar while the screen showed the home grid with an overlay over it — and the overlay's own way
+through pointed at the address the bar was already showing. Chromium does navigate on a same-URL
+anchor, so the page did load; but nothing a guest can see changed at the moment of the press, which
+is what "not wired" means from the outside. Measured before the fix: URL `/properties/baros` on
+opening the drawer, `/properties/baros` after pressing the button.
+
+Two more costs came with it. The reason given for taking the address — *"a guest must be able to
+share what they are looking at"* — was not achieved: the URL they would copy hands the recipient
+the PAGE, not the drawer. And `closeDrawerAndUrl()` carried the other half of the claim, rewriting
+any `/properties/…` path to `/#properties` on close, which would have thrown a guest off a property
+page's own URL for closing a drawer opened from its Similar islands rail.
+
+**The entry stays; the address does not.** The history entry is what makes Back close the drawer
+rather than leave the site — measured at both viewports when that was missing, landing on
+about:blank — so it is pushed exactly as before, carrying the current URL unchanged. The stale
+rewrite on close is gone with the claim it belonged to.
+
+Measured after, desktop and phone: the bar reads `/` with the drawer open, the button navigates to
+`/properties/baros`, the page renders, the drawer is closed behind it (`aria-hidden="true"`, off
+screen), and Back from an open drawer returns to `/` without leaving the site.
+
+**The test was green because it asserted the symptom.** `waitForURL(/\/properties\/baros$/)` was
+already satisfied before the click, so a button that led nowhere visible passed for as long as it
+was broken. It now asserts the pathname is `/` while the drawer is open — the condition that makes
+the click meaningful — and that the drawer is not left over the page it handed the guest to. A
+static pin in `test/unit/wiring.test.ts` holds the shape without a browser: `openDrawer` still takes
+a history entry, and never writes `/properties/${…}` into it. Both fail against the version that
+shipped, verified by putting the old line back.
+
+One correction worth recording, because it was mine and it was a measurement. The first check after
+the fix reported the drawer still visible over the property page. It is not: the drawer is always
+mounted and hidden by `translateX(100%)`, and Playwright's `isVisible()` reads `display` and size
+rather than transforms, so it answers true for a panel parked off screen. Read off the app's own
+signal — `aria-hidden`, and the box against the viewport — it is closed. The fix was fine; the
+first reading was not.

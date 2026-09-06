@@ -296,3 +296,17 @@ describe('every field the site reads is a field Studio can set', () => {
     assert.match(geo[0], /single: true/, 'geo is drawn as a repeatable list')
   })
 })
+
+describe('the drawer does not take the property page’s address', () => {
+  it('opens on a history entry, not on a rewritten path', () => {
+    // `/properties/<id>` grew a page of its own in the 2026-09-05 handoff, and the drawer went on
+    // rewriting the address to it — so the drawer's own "Full details" pointed at the address the
+    // bar was already showing, and pressing it changed nothing a guest could see. The entry stays,
+    // because Back is how anyone leaves a screen on a phone; the path does not.
+    const src = read(STATE)
+    const fn = src.match(/const openDrawer = useCallback\([\s\S]*?\n {2}\)/)
+    assert.ok(fn, 'openDrawer moved')
+    assert.equal(/pushState|replaceState/.test(fn[0]), true, 'the drawer no longer takes a history entry, so Back leaves the site')
+    assert.equal(/\/properties\/\$\{/.test(fn[0]), false, 'opening the drawer rewrites the address to the property page')
+  })
+})

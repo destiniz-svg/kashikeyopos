@@ -618,11 +618,20 @@ export function SiteProvider({
       lock(true)
       // A drawer is somewhere a guest can be, so it takes a history entry: on a phone the drawer
       // is the whole screen and Back is how anyone leaves a screen. Before this it replaced the
-      // entry, so the address read `/properties/<id>` and Back left the site altogether — measured
-      // at both viewports, landing on about:blank. Switching from one property to another
-      // replaces, or Back would walk the guest through everything they had glanced at.
+      // entry, so Back left the site altogether — measured at both viewports, landing on
+      // about:blank. Switching from one property to another replaces, or Back would walk the guest
+      // through everything they had glanced at.
+      //
+      // THE ENTRY CARRIES THE ADDRESS UNCHANGED. It used to rewrite the path to
+      // `/properties/<id>`, which was right while the drawer WAS the property view and became
+      // wrong the moment that path grew a page of its own: the drawer then sat over the home grid
+      // announcing an address that belongs to something else. Two costs, both reported. The
+      // drawer's own “Full details” points at `/properties/<id>` — the address the bar was already
+      // showing — so pressing it changed nothing a guest could see and read as a dead control.
+      // And sharing what the bar showed handed the recipient the PAGE rather than the drawer,
+      // which is the one thing owning the address was supposed to buy.
       if (typeof history !== 'undefined') {
-        const url = resort ? `/properties/${resort.id}` : location.pathname + location.search + location.hash
+        const url = location.pathname + location.search + location.hash
         const already = (history.state as { axisDrawer?: boolean } | null)?.axisDrawer
         if (already) history.replaceState({ axisDrawer: true }, '', url)
         else history.pushState({ axisDrawer: true }, '', url)
@@ -652,22 +661,20 @@ export function SiteProvider({
     return () => window.clearTimeout(t)
   }, [initialPage])
 
-  // The drawer owns the URL while it is open, and hands it back when it closes: a guest who opened
-  // a property from the home page must be able to share what they are looking at.
+  // The drawer takes a history ENTRY while it is open and gives it back when it closes. It does
+  // not take the address: `/properties/<id>` is a page, and what a guest is looking at through the
+  // drawer is the list they opened it from.
   const closeDrawerAndUrl = useCallback(() => {
     // Where opening pushed an entry, closing goes back through it, so the address and the history
     // agree however the guest closed it — Escape, the backdrop, the close button or Back itself.
-    // A deep link straight to /properties/<id> pushed nothing, and there the address is handed
-    // back by hand: a guest who opened the site on a property must be able to share where they
-    // now are, and going back from there means leaving, which is correct.
     if (typeof history !== 'undefined' && (history.state as { axisDrawer?: boolean } | null)?.axisDrawer) {
       history.back()
       return
     }
+    // Nothing to hand back: the drawer no longer takes the address. Rewriting it here used to be
+    // the other half of that claim, and now it would throw a guest off a property page's own URL
+    // for closing a drawer they opened from its Similar islands rail.
     closeDrawer()
-    if (typeof history !== 'undefined' && location.pathname.startsWith('/properties/')) {
-      history.replaceState(null, '', '/#properties')
-    }
   }, [closeDrawer])
 
   // Back out of the drawer. The entry `openDrawer` pushed is gone by the time this runs, so the
