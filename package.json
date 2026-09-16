@@ -10,6 +10,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "node --env-file=.env server.js",
     "migrate": "node src/scripts/migrate.js",
     "provision:outlet": "node src/scripts/provision-outlet.js",
     "backup": "node src/scripts/backup.js",

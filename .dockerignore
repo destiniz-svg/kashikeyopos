@@ -2,3 +2,7 @@ node_modules
 .git
 .github
 *.log
+.vscode
+.env
+.env.*
+!.env.example

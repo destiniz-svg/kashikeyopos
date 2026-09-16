@@ -35,22 +35,38 @@ statutory rate or an account code.
 
 ```bash
 npm ci
-cp .env.example .env          # then set the three secrets
-npm start
+cp .env.example .env          # then set the three secrets and CONTROL_DB
+npm run dev                   # not `npm start` — see below
 ```
 
-Open the service. An empty install lands on the fourteen-step onboarding panel,
-which ends with you signed in on the floor. There is no seed data and no demo
-account.
+Open the service. An empty install lands on the onboarding panel — three
+application steps, then ten that set the shop up — which ends with you signed in
+on the floor. There is no seed data and no demo account.
+
+**`dev` and `start` are different on purpose.** Nothing in this repo reads a
+`.env` file: there are two runtime dependencies, `express` and `pg`, and a third
+to parse one would not earn its place. So `npm run dev` passes node's own
+`--env-file=.env`, and `npm start` stays exactly what production runs, where the
+variables are set on the service instead. A missing `.env` makes `dev` fail by
+name rather than booting with no secrets.
 
 ```bash
-npm test                      # 57 tests, against a fresh Postgres
+npm test                      # the suite, against a fresh Postgres
 npm run leak-test             # isolation, on its own
 npm run migrate               # migrations, outside the boot path
 npm run provision:outlet -- --all
 ```
 
-Requires Node 20+ and PostgreSQL 16.
+Run the suite with **no `CONTROL_DB` in the environment** — each suite makes and
+drops its own registry, and an inherited name makes tests fail on rows a previous
+run left behind. Run it under `TZ=Indian/Maldives` as well as UTC: the business
+date is the outlet's own, and that class of bug only shows when the container's
+zone differs from the store's.
+
+Requires Node 20+ and PostgreSQL 16. In VS Code the repo carries a `.vscode/`
+that turns off HTML validation for `app/*.html` — one of them is a 1.6 MB page
+with a 1.5 MB inline script, which is deliberate and is more than the language
+service will keep up with — and an F5 launch configuration that loads `.env`.
 
 ## Documentation
 

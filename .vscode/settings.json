@@ -1,0 +1,50 @@
+{
+  // ── WHY THIS FILE EXISTS ─────────────────────────────────────────────────
+  // This repo ships hand-written HTML with no build step, so `app/index.html`
+  // is one 1.6 MB file carrying a ~1.5 MB inline <script>. That is deliberate
+  // (CLAUDE.md: "what ships is the file that was read") and it is more than
+  // VS Code's HTML language service will keep up with: left alone it
+  // re-validates the whole embedded script on every keystroke.
+  //
+  // So the language service is told to stop validating the embedded scripts,
+  // and the VENDORED bundles — 3 MB of babel, react, react-dom, none of them
+  // ours — are kept out of search, the file watcher and the explorer.
+  // Nothing here changes what ships.
+
+  "html.validate.scripts": false,
+  "html.validate.styles": false,
+  "html.format.enable": false,
+  "editor.largeFileOptimizations": true,
+
+  // The two runtime dependencies are express and pg. Everything under app/ that
+  // is minified is vendored, so it is noise in a search and load in a watcher.
+  "search.exclude": {
+    "**/node_modules": true,
+    "app/babel.min.js": true,
+    "app/react.production.min.js": true,
+    "app/react-dom.production.min.js": true,
+    "package-lock.json": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/objects/**": true,
+    "app/*.min.js": true
+  },
+  "files.exclude": { "**/.DS_Store": true },
+
+  // The pages are edited as text, not reformatted: a formatter run over
+  // app/*.html would rewrite the whole inline script and make every diff
+  // unreadable. Format JS and SQL, leave the pages alone.
+  "[html]": { "editor.formatOnSave": false },
+  "[javascript]": { "editor.formatOnSave": false },
+  "[sql]": { "editor.formatOnSave": false },
+
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // The suite is `node --test`, so VS Code's own JS/TS service is all that is
+  // needed — there is no tsconfig and no bundler to configure.
+  "javascript.preferences.importModuleSpecifier": "relative",
+  "terminal.integrated.scrollback": 20000
+}

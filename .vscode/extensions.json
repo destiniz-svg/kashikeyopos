@@ -1,0 +1,12 @@
+{
+  // Claude Code is how this project has been built; the rest is what the
+  // repo actually contains — Postgres for the migrations, DotENV for .env.
+  // No linter or formatter is recommended on purpose: this repo has no dev
+  // dependencies, and a formatter let loose on app/*.html would rewrite a
+  // 1.5 MB inline script in one commit.
+  "recommendations": [
+    "anthropic.claude-code",
+    "ms-ossdata.vscode-pgsql"
+  ],
+  "unwantedRecommendations": []
+}

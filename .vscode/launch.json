@@ -1,0 +1,27 @@
+{
+  // F5 runs the server the way `npm run dev` does — with .env loaded by node
+  // itself (--env-file, built in since 20.6), because nothing in this repo
+  // reads a .env file on its own and adding a package to do it would break the
+  // two-runtime-dependency rule.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Server (.env)",
+      "program": "${workspaceFolder}/server.js",
+      "runtimeArgs": ["--env-file=.env"],
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Test: current file",
+      "program": "${file}",
+      "runtimeArgs": ["--test", "--env-file=.env"],
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
