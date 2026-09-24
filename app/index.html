@@ -5112,7 +5112,9 @@ class Component extends DCLogic {
       return [
         card("Stations in the chain", "9", "Order through to intelligence"),
         card("Sales closed here", String(mine.length), mine.length ? "Each one posted the full chain" : "Settle one and watch it travel"),
-        card("Food cost today", (net ? Math.round((cogs / net) * 100) : 0) + "%", net ? "From recipes, not an estimate" : "Nothing sold yet", net && (cogs / net) > 0.34 ? big + ";color:var(--red-bright)" : big),
+        this.canSeeCost()
+          ? card("Food cost today", (net ? Math.round((cogs / net) * 100) : 0) + "%", net ? "From recipes, not an estimate" : "Nothing sold yet", net && (cogs / net) > 0.34 ? big + ";color:var(--red-bright)" : big)
+          : card("Your role", this.role().label || s.roleKey, "What this terminal lets you do"),
         card("Your rank", String(this.rank()) + " · " + (this.role().label || s.roleKey), "What you can approve is set by this")
       ];
     }
@@ -5145,6 +5147,12 @@ class Component extends DCLogic {
       card("Open tables", openTables.length + " / " + this.floorTables().length, Math.round((openTables.length / (this.floorTables().length || 1)) * 100) + "% full · " + MVRc(openVal) + " on the floor"),
       card("Covers", String(covers), "Avg cheque " + MVR(netSales / (covers || 1))),
       (() => {
+        // Food cost is a margin, and a cashier never sees cost or margin (the
+        // Cashier role's own description). The slot says what the till needs.
+        if (!this.canSeeCost()) {
+          return card("Register", this.registerOpen() ? "Open" : "Closed",
+            this.registerOpen() ? "Cash sales can be rung" : "Open it to take cash", big);
+        }
         const d = this.outletDay(o);
         const act = d.sales ? (d.cogs / d.sales) * 100 : 0;
         const th = this.blendedCost();
