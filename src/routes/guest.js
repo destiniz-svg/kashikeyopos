@@ -131,7 +131,14 @@ r.get('/:slug/menu', guest, async function (req, res, next) {
     // else's open bill and never anyone else's ticket in the kitchen. The
     // floor plan itself stays — it is what the table chooser offers when the
     // QR does not name a table — but it carries labels and seats, nothing more.
-    const mine = (data.tickets || []).filter((t) => t.table_no === req.guest.table);
+    /* By the DIGITS, not the spelling — the rule TABLE_KEY keeps in apply.js
+       when a round lands: the card says "3" and the floor labels it "T03".
+       An exact spelling still wins, so a floor holding both keeps them apart. */
+    const key = (v) => String(v == null ? '' : v).toUpperCase().replace(/^T0*/, '');
+    const all = data.tickets || [];
+    const exact = all.filter((t) => t.table_no === req.guest.table);
+    const mine = exact.length ? exact
+      : all.filter((t) => req.guest.table && key(t.table_no) === key(req.guest.table));
     const ids = mine.map((t) => t.id);
     const stages = (data.stages || []).filter((k) => ids.indexOf(k.ticket_id) >= 0);
     res.set('cache-control', 'no-store').json(Object.assign({}, data, {

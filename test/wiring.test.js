@@ -4768,15 +4768,15 @@ test('the member card draws the same plates as the guest portal', () => {
    sale.discount_reason and discount_by were NULL for every discount ever
    given. */
 test('a discounted receipt shows its discount on every surface', () => {
-  // 1 · the settled receipt modal (its rows are also what the print maps)
-  assert.match(SRC, /\{ n: "Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\),\s*\n\s*v: "\\u2212 " \+ MVRc\(T\.disc\)/,
-    'the settled receipt carries a Discount row between Subtotal and Service');
+  // 1 · one list of totals for the settled receipt and the paper (receiptTotals)
+  assert.match(SRC, /\.concat\(T\.disc \? \[\["Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\), "\\u2212 " \+ MVRc\(T\.disc\)\]\] : \[\]\)/,
+    'the receipt totals carry a Discount row between Subtotal and Service');
+  assert.match(SRC, /const rows = this\.receiptTotals\(T, p\.pay, o\)/,
+    'the settled receipt modal draws them');
 
-  // 2 · the auto-printed paper carries totals, discount included
-  assert.match(SRC, /const totalRows = \[\["Subtotal", MVRc\(T\.sub\)\]\]/,
-    'the auto-printed receipt composes its totals');
-  assert.match(SRC, /\.concat\(T\.disc \? \[\["Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\), "\\u2212 " \+ MVRc\(T\.disc\)\]\] : \[\]\)/,
-    'with the discount where one was given');
+  // 2 · the auto-printed paper carries the same totals
+  assert.match(SRC, /const totalRows = this\.receiptTotals\(T, snapshot\.pay, oA\)/,
+    'the auto-printed receipt composes its totals from the same list');
   assert.match(SRC, /rows: \(snapshot\.lines \|\| \[\]\)\.map\(\(l\) => \[l\.n, l\.v\]\)\.concat\(\[\{ rule: 1 \}\], totalRows\)/,
     'and they reach the paper after the rule');
 
@@ -8802,4 +8802,82 @@ test('the till reads at 11px and taps at 44px', () => {
   assert.match(SRC, /aria-label="One fewer \{\{ m\.name \}\}" style="width:44px;height:44px;/, 'the dish stepper is 44px');
   assert.match(SRC, /min-height:52px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px/,
     'the tender keypad is 52px');
+});
+/* ═══════════════════════════════════════════════════════════════════════
+   THE PORTALS, DRIVEN AS A GUEST AND A MEMBER. Each of these was found by
+   ordering, being served and paying through the shipped pages against a
+   real store, and none of them is visible from a single screen.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('the portals: a table is its digits, a tip is on goods, a point is at the store rate', () => {
+  const rd = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const G = rd('app/guest.html'), M = rd('app/member.html'), GR = rd('src/routes/guest.js');
+  const O = rd('src/routes/outlet.js'), B = rd('app/guest-bridge.js'), BS = rd('src/bootstrap.js');
+  // The card says "3", the floor says "T03": the server kept only exact
+  // spellings, so an accepted round never reached the phone's Order or Bill.
+  assert.match(GR, /replace\(\/\^T0\*\/, ''\)/, 'the guest projection matches a table by its digits');
+  assert.doesNotMatch(G, /String\(t\.table\) === want/, 'the phone bill uses sameTable()');
+  // The tip, the points and the amount due are KPOS_BILL.settle on every
+  // surface — the behaviour is pinned in the settlement test below.
+  assert.match(G, /window\.KPOS_BILL\.settle\(/, 'the guest bill settles through the shared module');
+  assert.match(M, /window\.KPOS_BILL\.settle\(/, 'the member bill settles through the shared module');
+  // A literal ×10 asked the till to redeem 772 points from a member holding 640.
+  assert.doesNotMatch(M, /pts \* 10/, 'no hard-coded points rate');
+  assert.match(M, /points: spent, ref:/, 'the request carries the points the settlement spent');
+  // "T05" > 0 is false: a floor label never bound the card to a table.
+  assert.match(M, /const bound = !!s\.table;/, 'a floor label seats the member');
+  assert.doesNotMatch(M, /fmt\(nextAt - m\.spent\)/, 'the bar counts points to the next tier, not money');
+  // A dish's own add-ons, not every group linked to anything in its section.
+  assert.match(O, /addons: addonsOf\(i\.id\)/, 'the projection carries each dish\'s add-ons');
+  assert.match(B, /addons: Array\.isArray\(i\.addons\) \? i\.addons : null/, 'the bridge keeps them');
+  assert.match(G, /if \(m\.addons\) return/, 'the guest sheet offers the dish\'s own list');
+  assert.match(M, /if \(m\.addons\) return/, 'the member sheet offers the dish\'s own list');
+  // A returning member painted sign-in whenever the menu beat /member/me.
+  assert.match(M, /\} else if \(card\) \{[\s\S]{0,400}this\.forceUpdate\(\);/, 'the card repaints when it arrives');
+  // "Thu Sep 24" never matched the joined-this-month comparison.
+  assert.doesNotMatch(BS, /joined_at \|\| ''\)\.toString\(\)\.slice/, 'since is an ISO date');
+  // A toast over the sheet foot hid the total and the send button.
+  assert.doesNotMatch(G, /bottom:112px;z-index:60/, 'the guest toast is not over the actions');
+  assert.match(M, /top:calc\(env\(safe-area-inset-top\)/, 'the member toast sits at the top');
+});
+
+/* ONE SETTLEMENT (app/kashikeyo-bill.js): subtotal → discounts → points →
+   amount due → tip → paid. The till, the guest phone and the member card each
+   worked this out, and disagreed: the till tipped on goods the member paid for
+   in points, the card took points off the total where the till took them off
+   the goods, and every share of an even split carried the whole bill's tip. */
+test('the settlement: points off the goods, the tip on what is paid, one copy everywhere', () => {
+  const rd = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const B = require('../app/kashikeyo-bill.js');
+  // net 120, service 10%, GST 8%: 120 + 12 + 10.56 = 142.56
+  const bill = { net: 120, svc: 12, tax: 10.56, total: 142.56 };
+  const plain = B.settle(Object.assign({ tipPct: 10 }, bill));
+  assert.strictEqual(plain.due, 142.56); assert.strictEqual(plain.tip, 12); assert.strictEqual(plain.pay, 154.56);
+  // Two blocks of 100 pts = MVR 25 off the goods; service and tax follow them.
+  const pts = B.settle(Object.assign({ tipPct: 10, balance: 640, blockPts: 100, blockVal: 25, blocks: 2 }, bill));
+  assert.strictEqual(pts.pointsValue, 50); assert.strictEqual(pts.pointsSpent, 200);
+  assert.strictEqual(pts.goodsAfter, 70);
+  assert.strictEqual(pts.due, 83.16, '70 + 7 + 6.16');
+  assert.strictEqual(pts.tip, 7, 'the tip is on the 70 paid for, not the 120');
+  // As many blocks as fit: capped by the balance, then by the goods.
+  assert.strictEqual(B.settle(Object.assign({ balance: 640, blockPts: 100, blockVal: 25, blocks: Infinity }, bill)).blocks, 4);
+  assert.strictEqual(B.settle(Object.assign({ balance: 9000, blockPts: 100, blockVal: 25, blocks: Infinity }, bill)).blocks, 4);
+  assert.strictEqual(B.settle(Object.assign({ balance: 99, blockPts: 100, blockVal: 25, blocks: Infinity }, bill)).blocks, 0);
+  // A share tips on its own goods, and keeps its exact whole-laari amount.
+  const third = B.settle(Object.assign({ amount: 47.52, tipPct: 10 }, bill));
+  assert.strictEqual(third.due, 47.52); assert.strictEqual(third.tip, 4);
+  // Every surface loads it.
+  ['app/index.html', 'app/guest.html', 'app/member.html'].forEach((f) =>
+    assert.match(rd(f), /<script src="\.\/kashikeyo-bill\.js"><\/script>/, f + ' loads the settlement'));
+  const I = rd('app/index.html');
+  assert.match(I, /window\.KPOS_BILL\.settle\(/, 'the till pay screen settles through it');
+  assert.doesNotMatch(I, /T\.net \* \(tipPct \/ 100\)/, 'no second tip formula at the till');
+  assert.doesNotMatch(I, /\.tip \|\| 0\) \/ 100 \* T\.net/, 'the sale row carries the tip that was charged');
+  // A share's leg carries its own tip, and the running total leaves tips out.
+  assert.match(I, /chg: change, tip: tipAmt, tendered: r2\(due \+ change\)/, 'each share leg names its tip');
+  assert.match(I, /paidAmt: r2\(paidAmt \+ due - tipAmt\), paidTip:/, 'shares accumulate bill and tip apart');
+  // Receipts name the bill, the tip and what was handed over.
+  assert.match(I, /\["TOTAL PAID", MVRc\(r2\(bill \+ P\.tip\)\)\]/, 'the till receipt says total paid');
+  assert.match(rd('app/doc.html'), /row\("Total paid"/, 'the shared receipt says total paid');
+  assert.match(rd('app/guest.html'), /V\.paidTotalLabel = "Total paid"/, 'the guest receipt says total paid');
+  assert.match(rd('src/routes/outlet.js'), /s\.total, s\.tip, s\.pts_value, s\.at/, 'the settled projection carries the tip');
 });

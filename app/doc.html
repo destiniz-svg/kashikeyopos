@@ -218,8 +218,16 @@
     }
     if (d.pointsValue) t.appendChild(row("Points redeemed", 0, "− " + money(d.currency, d.pointsValue)));
     if (d.rounding) t.appendChild(row("Cash rounding", 0, money(d.currency, d.rounding)));
-    if (d.tip) t.appendChild(row("Tip", 0, money(d.currency, d.tip)));
-    t.appendChild(row("Total", 0, money(d.currency, d.total), "big"));
+    /* The tip rides outside the bill, so a Tip line above a Total that does
+       not include it read as if it did. Tipped: the bill, the tip, and what
+       was handed over, each named. */
+    if (d.tip) {
+      t.appendChild(row("Food & drinks", 0, money(d.currency, d.total)));
+      t.appendChild(row("Tip", 0, money(d.currency, d.tip)));
+      t.appendChild(row("Total paid", 0, money(d.currency, Math.round((+d.total + +d.tip) * 100) / 100), "big"));
+    } else {
+      t.appendChild(row("Total", 0, money(d.currency, d.total), "big"));
+    }
     body.appendChild(t);
 
     if ((d.payments || []).length) {

@@ -1210,7 +1210,9 @@ function customerOf(r, h) {
   const hist = h || {};
   return {
     id: r.id, name: r.name || r.phone, phone: r.phone, email: r.email || '',
-    since: (r.joined_at || '').toString().slice(0, 10),
+    // A timestamptz arrives as a Date, whose toString() starts "Thu Sep 24" —
+    // which never matched the "YYYY-MM" the "joined this month" card compares.
+    since: r.joined_at ? new Date(r.joined_at).toISOString().slice(0, 10) : '',
     visits: num(hist.visits), spent: num(hist.spent),
     // No tier. It is worked out from these points against the published
     // ladder, by the one reader every surface goes through, so a column here

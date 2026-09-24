@@ -160,6 +160,7 @@
         price: Number(i.price) || 0, veg: (i.diets || []).indexOf("veg") >= 0,
         img: i.image || "", allergens: i.allergens || [], diets: i.diets || [],
         offMenu: i.off_menu, soldOutReason: i.sold_out_reason || "",
+        addons: Array.isArray(i.addons) ? i.addons : null,
         recipe: []            // a guest device holds no recipe and no cost
       };
     });
@@ -240,6 +241,9 @@
     K.SETTLED = (snap.settled || []).map(function (s) {
       return { table: s.table_no, no: s.receipt_no,
         total: Number(s.total) || 0, at: s.at,
+        // The receipt says the bill, the points and the tip apart: "Paid" over
+        // the bill alone read short by the tip the guest had just added.
+        tip: Number(s.tip) || 0, pts: Number(s.pts_value) || 0,
         /* WHAT WAS ON IT. The row carried a total and a number, so a guest's
            own record of what they paid for named nothing they had eaten.
            These are the SALE's lines, so they are what was delivered by

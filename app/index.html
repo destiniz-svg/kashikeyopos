@@ -28,6 +28,7 @@
      state that names the action which fills it. -->
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-bill.js"></script>
 <script src="./kashikeyo-qr.js"></script>
 <script src="./kashikeyo-yield.js"></script>
 <script src="./kashikeyo-invite.js"></script>
@@ -7512,35 +7513,26 @@ class Component extends DCLogic {
       const paidN = m.paidN || 0, paidAmt = m.paidAmt || 0;
       const shareBase = evenN > 1 ? Math.floor((T.total / evenN) * 100) / 100 : T.total;
       const gross = evenN > 1 ? (paidN === evenN - 1 ? T.total - shareBase * (evenN - 1) : shareBase) : T.total;
-      // The tip rides on top of the bill: the guest hands over more than the
-      // total, and the drawer must expect the larger figure.
+      /* ── points, amount due and tip: KPOS_BILL.settle ─────────────────────
+         The one order of operations the guest phone and the member card use
+         too (kashikeyo-bill.js): points in whole blocks off the GOODS, service
+         and tax rebuilt on what is left, then the tip on the goods this payer
+         actually pays for. It used to be the whole bill's goods, so the till
+         asked a member who had paid half in points for a tip on the half they
+         had not paid, and every share of an even split carried the whole
+         bill's tip. Points ride the whole bill only: a share cannot absorb
+         a redemption without restating the bill's service and tax. */
       const tipPct = ((tk || {}).payIntent || {}).tip || 0;
-      const tipAmt = Math.round(T.net * (tipPct / 100) * 100) / 100;
-      /* ── points are a tender ─────────────────────────────────────────────
-         Whole redemption blocks only — a half block is not something the
-         catalogue prices — never more than the bill, and taken off the GOODS,
-         before service and tax. A guest should not have service charged on
-         money they did not hand over, and the government should not be taxing
-         a discount. */
       const L = this.LOY();
       const blockPts = Math.max(1, +L.redeemPts || 100);
       const blockVal = Math.max(0, +L.redeemValue || 25);
       const payMember = this.member(this.ticketMember(tk));
-      // Blocks the member can actually afford, capped by what the bill can
-      // absorb — points are released as revenue, so they cannot exceed goods.
-      const maxBlocks = (payMember && blockVal > 0)
-        ? Math.min(Math.floor((payMember.points || 0) / blockPts),
-          Math.floor((T.net || 0) / blockVal))
-        : 0;
-      const blocks = Math.min(Math.max(0, m.blocks || 0), maxBlocks);
-      const ptsSpent = blocks * blockPts;
-      const ptsValue = r2(blocks * blockVal);
-      // The bill after redemption, rebuilt from the components rather than
-      // discounted at the end: service and tax follow the goods.
-      const goods = r2((T.net || 0) - ptsValue);
-      const svcAfter = r2(goods * ((T.net ? (T.svc || 0) / T.net : 0)));
-      const taxAfter = r2((goods + svcAfter) * ((T.net + (T.svc || 0)) ? (T.tax || 0) / (T.net + (T.svc || 0)) : 0));
-      const billTotal = ptsValue > 0 ? r2(goods + svcAfter + taxAfter) : T.total;
+      const S = window.KPOS_BILL.settle({ net: T.net || 0, svc: T.svc || 0, tax: T.tax || 0, total: T.total,
+        amount: evenN > 1 ? gross : undefined,
+        balance: payMember && evenN === 1 ? payMember.points || 0 : 0, blockPts: blockPts, blockVal: blockVal,
+        blocks: m.blocks || 0, tipPct: tipPct });
+      const maxBlocks = S.maxBlocks, blocks = S.blocks, ptsSpent = S.pointsSpent, ptsValue = S.pointsValue;
+      const svcAfter = S.service, taxAfter = S.tax, billTotal = S.due, tipAmt = S.tip;
       const rounding = (m.tender === "cash" && this.cashStep() > 0);
       // Rounding is measured against THE FIGURE ACTUALLY BEING ROUNDED. It
       // used to be measured against the pre-points gross, so the redemption
@@ -7691,7 +7683,7 @@ class Component extends DCLogic {
             ? "Spending " + ptsSpent + " pts \u00b7 \u2212" + MVRc(ptsValue) + " off the goods"
             : maxBlocks
               ? payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + blockPts + " = " + MVRc(blockVal)
-              : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 not enough for a block")
+              : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + (evenN > 1 ? "points pay a whole bill, not a share" : "not enough for a block"))
           : "",
         ptsStyle: "width:100%;padding:11px 13px;border-radius:10px;font-size:12px;font-weight:700;text-align:left;font-family:inherit;border:1px solid "
           + (blocks ? "var(--violet-bright)" : "var(--line)") + ";background:"
@@ -7827,11 +7819,11 @@ class Component extends DCLogic {
                is the sum of what each cash share rounded, not the last one's. */
             const shareLeg = { method: m.tender === "wallet" ? "card" : (m.tender || "cash"),
               amt: due, cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
-              chg: change, tip: 0, tendered: r2(due + change), ref: m.ref || "" };
-            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: paidAmt + due, given: "", cust: "", approving: 0,
+              chg: change, tip: tipAmt, tendered: r2(due + change), ref: m.ref || "" };
+            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: r2(paidAmt + due - tipAmt), paidTip: r2((m.paidTip || 0) + tipAmt), given: "", cust: "", approving: 0,
               shares: (m.shares || []).concat([shareLeg]),
               paidRound: r2((m.paidRound || 0) + roundDiff), ref: "" }) });
-            this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - due) + " left to collect");
+            this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - (due - tipAmt)) + " left to collect");
             return;
           }
           /* DOUBLE-TAP GUARD. From here the settle is irreversible: it mints an
@@ -7878,7 +7870,10 @@ class Component extends DCLogic {
             // ledger uses; the foreign amount and rate are what make the entry
             // defensible three years later, when the rate is different.
             cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
-            split: evenN > 1 ? evenN + " ways · " + MVRc(shareBase) + " each" : ""
+            split: evenN > 1 ? evenN + " ways · " + MVRc(shareBase) + " each" : "",
+            // What the settlement did to the bill, so the paper can say it.
+            pay: { pts: ptsValue, svc: svcAfter, tax: taxAfter, bill: ptsValue ? billTotal : T.total,
+              tip: r2((m.paidTip || 0) + tipAmt) }
           };
           const last = gAll.length < 2;
           const tables = Object.assign({}, s.tickets);
@@ -7910,7 +7905,7 @@ class Component extends DCLogic {
               // rounded cash sale those differ, and the drawer reconciles against
               // this figure. The rounding sits on its own line rather than being
               // absorbed into revenue.
-              channel: (tk || {}).channel || "dine_in", total: r2(paidAmt + due),
+              channel: (tk || {}).channel || "dine_in", total: r2(paidAmt + (m.paidTip || 0) + due),
               round: evenN > 1 ? r2((m.paidRound || 0) + roundDiff) : roundDiff, tender: m.tender,
               status: "closed", server: (tk || {}).waiter || "Unassigned",
               // What the processor issued, captured at the counter. This was
@@ -7922,7 +7917,7 @@ class Component extends DCLogic {
             // string — so every QR table settled as "referenced" without
             // anyone ever having seen an approval code.
             ref: m.ref || "",
-              tip: Math.round((((tk || {}).payIntent || {}).tip || 0) / 100 * T.net * 100) / 100,
+              tip: r2((m.paidTip || 0) + tipAmt),
               customer: m.tender === "credit" ? (m.cust || "") : this.ticketMember(tk) || "",
               // A cover is a guest at the table, so it is the LARGER of the two
               // things the ticket knows: how many seats were opened, and the
@@ -7957,7 +7952,7 @@ class Component extends DCLogic {
             settledRow.shares = (m.shares || []).concat([{
               method: m.tender === "wallet" ? "card" : (m.tender || "cash"),
               amt: due, cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
-              chg: change, tip: settledRow.tip, tendered: r2(due + change), ref: m.ref || "" }]);
+              chg: change, tip: tipAmt, tendered: r2(due + change), ref: m.ref || "" }]);
           }
           // The same row shape the Orders panel writes, and the same method
           // books it: dish ids so the volume can be joined to a recipe, and the
@@ -7993,11 +7988,8 @@ class Component extends DCLogic {
                settled screen shows: subtotal, the discount where one was
                given, service, tax, TOTAL, the tender and the change. */
             const oA = this.outlet() || {};
-            const totalRows = [["Subtotal", MVRc(T.sub)]]
-              .concat(T.disc ? [["Discount" + (T.discCode ? " " + T.discCode : ""), "\u2212 " + MVRc(T.disc)]] : [])
-              .concat(oA.sc ? [["Service " + oA.sc + "%", MVRc(T.svc)]] : [])
-              .concat(this.taxRegistered(oA) ? [[this.taxLine(oA), MVRc(T.tax)]] : [])
-              .concat([[ "TOTAL", MVRc(T.total) ], [this.tenderName(snapshot.tender), MVRc(snapshot.given || T.total)]])
+            const totalRows = this.receiptTotals(T, snapshot.pay, oA)
+              .concat([[this.tenderName(snapshot.tender), MVRc(snapshot.given || due)]])
               .concat(snapshot.tender === "cash" && snapshot.change > 0 ? [["Change", MVRc(snapshot.change)]] : []);
             this.printJob("Receipt", "receipt", "Receipt " + (snapshot.no || "") + " \u00b7 " + MVRc(T.total), { no: snapshot.no,
               doc: { title: oA.name || "", sub: "Receipt " + (snapshot.no || "") + " \u00b7 " + snapshot.time + " \u00b7 " + snapshot.table,
@@ -9626,6 +9618,23 @@ class Component extends DCLogic {
         : "text-align:center;margin-top:9px;font-size:11px;letter-spacing:.08em;opacity:.5"
     };
   }
+  /* THE RECEIPT'S TOTALS, one list for the paper and the screen. Points come
+     off the goods with service and tax rebuilt, as the settlement took them
+     (kashikeyo-bill.js), so the rows add up to TOTAL; the tip rides outside
+     the bill, so it is named under it with what was handed over. The paper
+     printed TOTAL at the pre-points figure and no tip at all, so a tipped card
+     sale read "TOTAL 142.56 · Card 162.56". */
+  receiptTotals(T, P, o) {
+    P = P || {};
+    const pts = P.pts || 0, bill = pts ? P.bill : T.total;
+    return [["Subtotal", MVRc(T.sub)]]
+      .concat(T.disc ? [["Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""), "\u2212 " + MVRc(T.disc)]] : [])
+      .concat(pts ? [["Points redeemed", "\u2212 " + MVRc(pts)]] : [])
+      .concat(o.sc ? [["Service " + o.sc + "%", MVRc(pts ? P.svc : T.svc)]] : [])
+      .concat(this.taxRegistered(o) ? [[this.taxLine(o), MVRc(pts ? P.tax : T.tax)]] : [])
+      .concat([["TOTAL", MVRc(bill)]])
+      .concat(P.tip ? [["Tip", MVRc(P.tip)], ["TOTAL PAID", MVRc(r2(bill + P.tip))]] : []);
+  }
   receiptVals(m) {
     const s = this.state, K0 = K(), o = this.outlet();
 
@@ -9648,21 +9657,11 @@ class Component extends DCLogic {
       const srv = (s.settled || []).find((x) => x && x.cid && p.cid && x.cid === p.cid) || {};
       const srvId = srv.id || null;
       const tn = { cash: "Cash", card: "Card", wallet: "BML Pay", credit: "Customer credit" }[p.tender] || p.tender;
-      const rows = [
-        { n: "Subtotal", v: MVRc(T.sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
-        /* A discounted receipt without its discount row is a paper whose own
-           arithmetic does not reconcile: service and tax follow the DISCOUNTED
-           goods, so Subtotal + Service + Tax overshoots TOTAL by exactly the
-           discount, and the guest is never told a discount was given. */
-        { n: "Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""),
-          v: "\u2212 " + MVRc(T.disc),
-          style: T.disc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
-        { n: "Service " + (o.sc || 0) + "%", v: MVRc(T.svc), style: o.sc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
-        { n: this.taxLine(o), v: MVRc(T.tax),
-          style: this.taxRegistered(o) ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
-        { n: "TOTAL", v: MVRc(T.total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
-        { n: tn, v: MVRc(p.given || T.total), style: "display:flex;justify-content:space-between;padding:5px 0 0" }
-      ];
+      const big = "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px";
+      const rows = this.receiptTotals(T, p.pay, o).map((x) => ({ n: x[0], v: x[1],
+        style: /^TOTAL/.test(x[0]) ? big : "display:flex;justify-content:space-between;padding:2px 0" }))
+        .concat([{ n: tn, v: MVRc(p.given || (p.pay ? r2((p.pay.pts ? p.pay.bill : T.total) + (p.pay.tip || 0)) : T.total)),
+          style: "display:flex;justify-content:space-between;padding:5px 0 0" }]);
       // A guest who paid in dollars must be able to read the dollar figure and the
       // rate off the receipt — that is what makes the conversion checkable rather
       // than something the till decided on their behalf.
