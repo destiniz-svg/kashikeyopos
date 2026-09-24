@@ -4516,6 +4516,22 @@ test('the till never fabricates an approval code', () => {
   assert.ok(!/Math\.random/.test(payZone), 'nothing random inside the settle path');
 });
 
+/* A CASHIER RINGS, SETTLES AND SIGNS FOR WHAT COMES IN. Asked for plainly:
+   "Cashier should not see food cost. Menu inventory stuffs. Cashier only
+   receive inventory and what come in." The role's own blurb already promised
+   "never sees cost or margin"; the ribbon's Food cost card ignored that, and
+   the role could open stock levels, counts, batches, the ledger and suppliers. */
+test('a cashier sees no food cost and no stock screens, only receiving', () => {
+  const data = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-data.js'), 'utf8');
+  const cashier = /key: "Cashier"[\s\S]*?perms: perms\((\{[^}]*\})\)/.exec(data);
+  assert.ok(cashier, 'the Cashier role is where it was');
+  assert.match(cashier[1], /purchases: VA\b/, 'receiving stays');
+  ['inventory', 'counts', 'batches', 'ledger', 'vendors', 'menu', 'recipes', 'accounting'].forEach((m) =>
+    assert.ok(!new RegExp('\\b' + m + ':').test(cashier[1]), 'a cashier does not open ' + m));
+  assert.match(SRC, /if \(!this\.canSeeCost\(\)\) \{\s*return card\("Register"/, 'the ribbon swaps Food cost for the register');
+  assert.match(SRC, /this\.canSeeCost\(\)\s*\? card\("Food cost today"/, 'and so does the Start ribbon');
+});
+
 /* ONE PRODUCT, ONE FACE, ONE PRIMARY. The critique found the till, account and
    onboarding in Inter while the guest, member, receipt and panel pages wore
    Instrument Sans; the primary button near-black in light and brand coral in

@@ -147,7 +147,10 @@
     {
       key: "Cashier", label: "Cashier / Waiter", color: "#0074D9", scope: "outlet",
       blurb: "Sells, settles, voids before fire, 86s a dish and signs for a delivery. Never sees cost or margin, and never prices what it receives.",
-      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, promos: V, kds: V, purchases: VA, counts: VA, inventory: V, ledger: V, batches: V, vendors: V })
+      /* Receiving is the cashier's one stock job: signing for what comes in, blind
+         to price. Stock levels, counts, batches, the ledger and suppliers are the
+         back office's, and the menu's costing never was the cashier's. */
+      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, promos: V, kds: V, purchases: VA })
     },
     {
       key: "KitchenManager", label: "Kitchen", color: "#e65100", scope: "outlet",
