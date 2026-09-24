@@ -1773,7 +1773,7 @@ class Component extends DCLogic {
         + (this.posSession() ? "#4ade80;animation:qpulse 2s infinite" : "#62626a"),
       liveText: (() => {
         const d = this.posSession();
-        if (!d) return "The till is not open in this browser. Open the POS alongside this and the two talk to each other.";
+        if (!d) return "Your round goes to the counter the moment you send it.";
         const n = ((d.roster) || []).length;
         return n
           ? "Live: " + (this.outlet().name || "the outlet") + " has published " + n

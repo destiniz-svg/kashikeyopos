@@ -68,6 +68,10 @@
          background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
   .msg h1 { font-size: 17px; margin: 0 0 6px; }
   .msg p { color: var(--dim); font-size: 13.5px; margin: 0; }
+  .retry { margin-top: 16px; min-height: 44px; padding: 0 20px; border: 0; border-radius: 12px;
+           background: var(--ink); color: var(--paper); font: 600 14px/1 "Instrument Sans", system-ui, sans-serif;
+           cursor: pointer; }
+  .retry:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   @media print {
     body { background: #fff; padding: 0; }
     .sheet { border: 0; max-width: none; }
@@ -98,12 +102,19 @@
     return cur + " " + (Math.round((Number(n) || 0) * 100) / 100)
       .toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
-  function fail(title, note) {
+  function fail(title, note, retry) {
     var d = $("root");
     d.className = "msg";
     d.textContent = "";
     d.appendChild(el("h1", null, title));
     d.appendChild(el("p", null, note));
+    // A dropped connection is the one failure the reader can fix from here.
+    if (retry) {
+      var b = el("button", "retry", "Try again");
+      b.type = "button";
+      b.onclick = function () { location.reload(); };
+      d.appendChild(b);
+    }
   }
 
   var parts = location.pathname.split("/").filter(Boolean);
@@ -136,7 +147,7 @@
       render(r.b);
     })
     .catch(function () {
-      fail("Could not load", "Check the connection and try again.");
+      fail("Could not load", "Check the connection and try again.", true);
     });
 
   function render(d) {
