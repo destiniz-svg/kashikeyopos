@@ -91,11 +91,11 @@ test('a customer signs up and confirms the address is theirs', opts, async () =>
   /* Before confirming, the door to CREATE DATABASE is shut. This is the check
      that keeps a bot with a wordlist from minting infrastructure. */
   const early = await post('/api/account/signin', { email: email, password: 'a-good-long-password' });
-  const earlyTok = early.body.token;
-  const refused = await post('/api/account/business', { name: 'Too Soon Ltd' }, earlyTok);
-  assert.strictEqual(refused.status, 403, JSON.stringify(refused.body));
+  assert.strictEqual(early.status, 403, JSON.stringify(early.body));
+  assert.ok(!early.body.token, 'an unproven address gets no token to reach it with');
 
-  const ver = await post('/api/account/code/verify', { email: email, code: up.body.code });
+  const ver = await post('/api/account/code/verify',
+    { email: email, code: up.body.code, password: 'a-good-long-password' });
   assert.strictEqual(ver.status, 200, JSON.stringify(ver.body));
   accountToken = ver.body.token;
   accountId = ver.body.account && ver.body.account.id;

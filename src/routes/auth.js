@@ -528,9 +528,26 @@ const PIN_TAKEN = 'Somebody at this outlet already keys that PIN. Every person'
   + ' has their own, because that is what makes a void, a discount and a drawer'
   + ' opening attributable — choose four different digits';
 
+/* WHERE ELSE A PERSON MAY SIGN IN is a decision about OTHER outlets, and an
+   admin here holds no rank there. `outlets` was taken from the body unchecked,
+   and the sign-in functions honour it — so an admin at one outlet could create
+   an admin who signed in at a sibling, whom that sibling's own admins could not
+   then edit, because their writes are scoped to their own outlet. The owner
+   holds every outlet in the business, so only the owner may name another. */
+function outletsRefused(req, outlets) {
+  if (!Array.isArray(outlets)) return null;
+  if ((req.ctx.rank || 0) >= 5) return null;
+  const here = Number(req.ctx.outletId);
+  return outlets.some((o) => Number(o) !== here)
+    ? 'Only the owner can give somebody another outlet'
+    : null;
+}
+
 r.post('/staff', atLeast('admin'), async function (req, res, next) {
   const { name, rank, roleKey, pin, outlets } = req.body || {};
   if (!name || !rank || !pin) return res.status(400).json({ error: 'name, rank and pin required' });
+  const elsewhere = outletsRefused(req, outlets);
+  if (elsewhere) return res.status(403).json({ error: elsewhere });
   if (Number(rank) > req.ctx.rank) {
     return res.status(403).json({ error: 'You cannot create an account above your own rank' });
   }
@@ -559,6 +576,8 @@ r.patch('/staff/:id', atLeast('admin'), async function (req, res, next) {
   if (b.rank != null && Number(b.rank) > req.ctx.rank) {
     return res.status(403).json({ error: 'You cannot set a rank above your own' });
   }
+  const elsewhere = outletsRefused(req, b.outlets);
+  if (elsewhere) return res.status(403).json({ error: elsewhere });
   try {
     const row = await withOutlet(req.ctx, async function (c) {
       const before = await c.query('SELECT name, rank, role_key, active FROM chain.staff'

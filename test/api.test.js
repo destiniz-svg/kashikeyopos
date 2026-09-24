@@ -535,6 +535,34 @@ test('a rank cannot reach past itself', opts, async () => {
   assert.strictEqual(up.status, 403, 'rank 3 cannot create staff at all');
 });
 
+/* AN ADMIN HERE HOLDS NO RANK THERE. `outlets` names where else a person may
+   sign in, and it was taken from the body unchecked — so an admin at one outlet
+   could mint an admin who signs in at a sibling, whom the sibling's own admins
+   cannot then edit. Only the owner may name another outlet. */
+test('an admin cannot give anybody another outlet', opts, async () => {
+  const made = await post('/api/auth/staff',
+    { name: 'Scope Admin', rank: 4, pin: '8316' }, token);
+  assert.strictEqual(made.status, 201, JSON.stringify(made.body));
+  const admin = await post('/api/auth/pin', { outletId, pin: '8316' });
+  assert.strictEqual(admin.body.rank, 4, JSON.stringify(admin.body));
+  const t4 = admin.body.token;
+
+  const elsewhere = outletId + 999;
+  const create = await post('/api/auth/staff',
+    { name: 'Roamer', rank: 4, pin: '8427', outlets: [elsewhere] }, t4);
+  assert.strictEqual(create.status, 403, JSON.stringify(create.body));
+  assert.match(create.body.error, /Only the owner/);
+
+  const edit = await patch('/api/auth/staff/' + made.body.id, { outlets: [elsewhere] }, t4);
+  assert.strictEqual(edit.status, 403, JSON.stringify(edit.body));
+
+  // Naming its own outlet is not naming another.
+  const home = await patch('/api/auth/staff/' + made.body.id, { outlets: [outletId] }, t4);
+  assert.strictEqual(home.status, 200, JSON.stringify(home.body));
+
+  await patch('/api/auth/staff/' + made.body.id, { active: false }, token);
+});
+
 test('the outlet in the path must be the outlet in the token', opts, async () => {
   const other = outletId + 999;
   const r = await get('/api/outlet/' + other + '/bootstrap', token);
@@ -4178,7 +4206,7 @@ test('a code signs an account in, and is spent on use', opts, async () => {
   assert.strictEqual(wrong.status, 401);
 
   const ok = await post('/api/account/code/verify',
-    { email: 'founder@example.mv', code });
+    { email: 'founder@example.mv', code, password: 'a-good-long-password' });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
   assert.ok(ok.body.token, 'an account token is minted');
   assert.strictEqual(ok.body.account.email, 'founder@example.mv');
@@ -4204,6 +4232,31 @@ test('a password signs an account in, and a wrong one says nothing useful',
     assert.deepStrictEqual(bad.body, missing.body,
       'no such account and wrong password are the same answer');
   });
+
+/* A STRANGER'S PASSWORD DOES NOT SURVIVE THE OWNER'S PROOF. Anybody can post
+   /signup for an address they do not own. The password it stored used to be
+   kept when the real owner verified the address, so the stranger signed into
+   the account that went on to own the business. */
+test('a password set before the address is proven is not the owner\'s', opts, async () => {
+  const addr = 'takeover-' + Date.now() + '@example.mv';
+  const stranger = await post('/api/account/signup',
+    { email: addr, password: 'stranger-password-1' });
+  assert.strictEqual(stranger.status, 200, JSON.stringify(stranger.body));
+
+  const early = await post('/api/account/signin', { email: addr, password: 'stranger-password-1' });
+  assert.strictEqual(early.status, 403, 'no sign-in on an unproven address');
+  assert.ok(!early.body.token);
+
+  const issued = await post('/api/account/code', { email: addr });
+  const ok = await post('/api/account/code/verify',
+    { email: addr, code: issued.body.code, password: 'owner-password-22' });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+
+  const theirs = await post('/api/account/signin', { email: addr, password: 'stranger-password-1' });
+  assert.strictEqual(theirs.status, 401, 'the stranger\'s password is gone');
+  const mine = await post('/api/account/signin', { email: addr, password: 'owner-password-22' });
+  assert.strictEqual(mine.status, 200, 'the owner\'s is the one that counts');
+});
 
 test('an account token is not a staff session, and vice versa', opts, async () => {
   const s = await post('/api/account/signin',

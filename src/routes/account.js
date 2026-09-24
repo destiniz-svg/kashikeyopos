@@ -224,6 +224,19 @@ r.post('/code/verify', gate('acct-guess', guesses, who), async function (req, re
       await logAccount('account_code_failed', account.id, { tries: account.code_tries + 1 });
       return res.status(401).json(no);
     }
+    /* THE FIRST PROOF OF AN ADDRESS DECIDES ITS PASSWORD. Anybody can post
+       /signup for an address they do not own, and the password it stores is
+       theirs — so a password set before the inbox was proven is kept only if
+       whoever holds the code presents it now. Otherwise it is dropped, and the
+       owner sets one once signed in. Without this, a stranger who registered
+       the address first signed in with their own password the moment the real
+       owner verified it. */
+    if (!account.verified_at) {
+      const pw = String(b.password || '');
+      const h = pw.length >= 8 ? hashPin(pw, null) : { hash: null, salt: null };
+      await control().query('UPDATE chain.account SET password_hash = $2, password_salt = $3'
+        + ' WHERE id = $1', [account.id, h.hash, h.salt]);
+    }
     await clearCode(account.id, true);
     await logAccount('account_sign_in', account.id, { by: 'code' });
     res.json(await session(account.id));
@@ -272,6 +285,10 @@ r.post('/signin', gate('acct-guess', guesses, who), async function (req, res, ne
       return res.status(401).json(no);
     }
     if (account.status !== 'active') return res.status(403).json({ error: 'this account is suspended' });
+    // A password on an unproven address is one anybody could have set.
+    if (!account.verified_at) {
+      return res.status(403).json({ error: 'confirm your email address first — ask for a code' });
+    }
     await control().query(
       'UPDATE chain.account SET failed = 0, locked_until = NULL, last_seen_at = now()'
       + ' WHERE id = $1', [account.id]);
@@ -550,8 +567,9 @@ async function linkIdentity(provider, subject, addr, name, verified) {
     await logAccount('account_signup', account.id, { by: provider });
   } else if (!account.verified_at) {
     // The provider has already proved the address; that is what verification is.
-    await control().query('UPDATE chain.account SET verified_at = now() WHERE id = $1',
-      [account.id]);
+    // A password stored before that proof is nobody's to trust, so it goes.
+    await control().query('UPDATE chain.account SET verified_at = now(),'
+      + ' password_hash = NULL, password_salt = NULL WHERE id = $1', [account.id]);
   }
   await control().query(
     'INSERT INTO chain.account_identity (account_id, provider, subject, email)'

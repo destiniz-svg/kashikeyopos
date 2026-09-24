@@ -335,6 +335,11 @@ button.link:hover{text-decoration:underline}
   var signedOut = /[?&]signedout=1\b/.test(location.search);
   var mode = (forStore || signedOut) ? "signin" : "signup";  // signup | signin | code
   var pending = "";                          // the address a code went to
+  /* The password chosen at sign-up rides back WITH the code. The server keeps
+     a password only once the address is proven, and only the one presented by
+     whoever holds the code — a password stored before that proof could have
+     been typed by anybody who knew the address. Held in memory, never stored. */
+  var chosen = "";
   /* WHETHER IT ACTUALLY WENT. "Check your email" and "We sent a six-digit code
      to …" are both statements of fact, and on an install whose transport
      refused they were both false — printed over an inbox that was never going
@@ -587,7 +592,7 @@ button.link:hover{text-decoration:underline}
     if (mode === "code") {
       var value = ($("code").value || "").trim();
       if (value.length < 4) return say("err", "Enter the six digits from the email.");
-      run(api("/code/verify", { email: pending, code: value }).then(land));
+      run(api("/code/verify", { email: pending, code: value, password: chosen || undefined }).then(land));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
@@ -603,6 +608,7 @@ button.link:hover{text-decoration:underline}
          — and across a reload in between, which is the one thing plain
          variables do not survive. */
       rememberStore(store);
+      chosen = password;
       run(api("/signup", { email: email, password: password, name: name })
         .then(function (r) {
           pending = email; mode = "code"; sent = r.delivered !== "not-sent"; paint();
@@ -637,6 +643,7 @@ button.link:hover{text-decoration:underline}
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       return say("err", "Type your email address first, and we will send a code to it.");
     }
+    chosen = "";
     run(api("/code", { email: email }).then(function (r) {
       pending = email; mode = "code"; sent = r.delivered !== "not-sent"; paint();
       say(sent ? "ok" : "warn", sent
