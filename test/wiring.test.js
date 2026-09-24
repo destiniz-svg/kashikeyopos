@@ -8600,6 +8600,26 @@ test('the order card says NOT ANSWERED, and only where there is something to say
     'and the subtitle says settled rather than "open until the bill is settled"');
 });
 
+/* THE FIRST SCREENS A CUSTOMER SEES SPEAK THEIR LANGUAGE, AND A DOT DOES NOT
+   SWITCH A TILL OFF. The re-run critique found signup and onboarding talking
+   schemas, login roles and chain.company (and claiming a database per outlet,
+   which is untrue: it is one per business), onboarding failing with a bare
+   "HTTP 404", and the top-bar status dot taking the till offline on one tap. */
+test('signup speaks to an owner, and the status dot never takes a till offline', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const acct = read('app/account.html'), onb = read('app/onboarding.html');
+  assert.ok(acct.indexOf('Every outlet gets its own database') < 0, 'account makes no untrue claim about databases');
+  for (const gone of ['Saving writes chain.', 'Its own schema and its own login role', 'Saving creates the schema', 'Rank 5 — the only account']) {
+    assert.ok(onb.indexOf(gone) < 0, 'onboarding no longer says: ' + gone);
+  }
+  assert.ok(onb.indexOf('The server is not answering') < 0 && /"Try again"/.test(onb), 'a failure offers a retry, not a status code');
+  const dot = /toggleOnline: \(\) => \{[\s\S]*?\n      \},/.exec(SRC);
+  assert.ok(dot, 'the dot handler is where it was');
+  assert.ok(!/setOffline\(true\)|setOffline\(!on\)/.test(dot[0]), 'the dot can only bring a till back online');
+  assert.match(SRC, /Tap again to go offline/, 'going offline on Sync & devices arms first');
+  assert.ok(SRC.indexOf('simulate a network drop') < 0, 'nothing calls a real switch a simulation');
+});
+
 /* ═══ A TERMINAL SAYS WHICH BUILD IT IS RUNNING ═════════════════════════════
    Reported as "still when I open it didn't ask for pin", after the idle-lock
    fix had shipped and been measured green on every path — the credential, the

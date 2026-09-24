@@ -442,7 +442,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
           options: [["MVR", "MVR — Maldivian rufiyaa"], ["USD", "USD — US dollar"]],
           hint: "The currency this business keeps its books in. Every price, receipt, report and ledger figure is in it. A guest may still pay in another currency at the counter." }
       ],
-      foot: "Saving writes chain.company. Every receipt, invoice and tax return reads it back from there rather than keeping its own copy, so a correction lands everywhere at once.",
+      foot: "Receipts, invoices and tax returns all read these details, so a correction here shows up everywhere at once.",
       write: function (v) {
         return post("company", {
           legalName: v.legalName, regNo: v.regNo, gstRegistered: v.gstRegistered,
@@ -458,7 +458,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
     },
     {
       key: "outlet", label: "Outlet", eyebrow: "Step 2",
-      sub: "Its own schema and its own login role",
+      sub: "The first place you trade from",
       title: "Outlet information",
       lede: "Details about your first outlet. An outlet sits under the business you named on step 1 — one business, one or many outlets, and this is the first. Give it the name a guest would recognise on the door. An outlet is not a filter on shared data: it gets its own Postgres schema and its own database login, granted access to that schema alone.",
       why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Whether there is a rate at all was answered on step 1 — a business below the threshold charges nothing rather than quietly assuming 8%.",
@@ -536,7 +536,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
         { k: "email", label: "Email", type: "email", showIf: { k: "sameAs", is: "no" } },
         { k: "website", label: "Website", showIf: { k: "sameAs", is: "no" } }
       ],
-      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, records the tax version in force from the date above, and reserves the store address for good.",
+      foot: "Saving sets the outlet up: its receipt numbering, its books and its tax rate from the date above, and it reserves the store address for good.",
       write: function (v) {
         var c = companyFacts();
         var own = v.sameAs !== "yes";
@@ -562,7 +562,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
     },
     {
       key: "owner", label: "Your account", eyebrow: "Step 3",
-      sub: "Rank 5 — the only account that can create others",
+      sub: "The owner, who adds everyone else",
       title: "Your account",
       lede: "This will be the admin user for your business. One five-rank ladder runs the whole system: Kitchen 1, Till 2, Manager 3, Admin 4, Owner 5. This is the rank-5 account, and it is the only one that can create the others.",
       why: "A shared till never asks for a password. Staff tap their own face and key four digits — that is what makes a void, a discount or a drawer opening attributable to a person. Your PIN is hashed with scrypt and a per-row salt the moment you set it, and is never displayed again.",
@@ -611,7 +611,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
           { k: "start", label: "Starts at", type: "number", mono: true, w: ".8fr" }
         ]
       },
-      foot: "Saving writes chain.doc_series. A series already in use is left alone and named back to you rather than silently ignored.",
+      foot: "A numbering series that has already been used is left as it is, and we tell you which one.",
       write: function (v) {
         return post("series", { series: v.series }).then(function (r) {
           if (r.refused && r.refused.length) {
@@ -871,7 +871,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
       fields: [
         { k: "float", label: "Cash in the drawer, MVR", type: "number", mono: true, v: "0", req: true }
       ],
-      foot: "Saving opens the drawer session. From this moment the till can ring a sale, and every sale will move stock, tax, cost and the ledger in one transaction.",
+      foot: "Saving opens the drawer session. From this moment the till can ring a sale, and every sale updates stock, tax and the books together.",
       write: function (v) { return post("register", { float: Number(v.float) || 0 }); }
     }
   ];
@@ -2067,9 +2067,17 @@ button.go.ok{background:var(--go);color:var(--on-go);
   begin().catch(function (e) {
     document.getElementById("stage").innerHTML = "";
     var stage = document.getElementById("stage");
-    stage.appendChild(el("h1", {}, "The server is not answering"));
+    stage.appendChild(el("h1", {}, "We can't reach your store right now"));
     stage.appendChild(el("p", { class: "sub" },
-      "Set-up needs the database to be reachable. " + e.message));
+      "Nothing you typed has been lost. Check the connection, then try again."));
+    // A status code is for the log, not for somebody setting up a café; the
+    // one thing they can do from here is ask again.
+    console.error("[onboarding] " + ((e && e.message) || e));
+    var again = el("button", { class: "go", type: "button" }, "Try again");
+    again.onclick = function () { location.reload(); };
+    var row = el("div", { class: "row" });
+    row.appendChild(again);
+    stage.appendChild(row);
   });
 
   /* One element helper, so the markup above reads as markup. Text is set with
