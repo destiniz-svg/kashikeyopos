@@ -186,6 +186,14 @@ test('onboarding writes the records the running app reads', opts, async () => {
     legalName: 'Someone Else', regNo: 'C-9999/2026', tin: 'X', address: 'Elsewhere'
   });
   assert.strictEqual(again2.status, 409, 'the company is already set');
+  // And a header is not a sign-in: this let any string rename the company,
+  // rewrite its TIN or switch GST off on an install that is its own business.
+  const forged = await postWith('/api/onboarding/company', {
+    legalName: 'Someone Else', regNo: 'C-9999/2026', address: 'Elsewhere'
+  }, { authorization: 'Bearer not-a-token' });
+  assert.strictEqual(forged.status, 409, 'a forged Authorization header edits nothing');
+  const still = await get('/api/onboarding/state');
+  assert.strictEqual(still.body.company.address, 'Test address, Malé', 'the company is untouched');
 
   // 2 · first outlet — its own schema and its own login role
   r = await post('/api/onboarding/outlet', {

@@ -36,6 +36,23 @@ const { owner, withOutlet, control, ownerFor, CONTROL_DB } = require('../db');
    It shipped that way for one deploy, because /account sent a verified account
    to /onboarding without creating a business first and nothing here refused.
    A missing business is now a refusal that says what to do. */
+/* WHETHER THE CALLER IS SIGNED IN HERE, not whether they sent a header. Steps
+   1 and 2 let an existing company be edited, or another outlet added, only
+   "with authorization" — and that was checked as the header's PRESENCE, so on
+   an install whose own database is the business (an adopted one) any string
+   renamed the company, rewrote its TIN or switched GST off. The token must
+   verify, still be live, carry the rank, and name an outlet of THIS business. */
+async function signedInHere(req, min) {
+  const h = req.get('authorization') || '';
+  const claims = h.startsWith('Bearer ') ? verify(h.slice(7)) : null;
+  if (!claims || (Number(claims.r) || 0) < min) return false;
+  const live = await stillGood({ outletId: claims.o, rank: claims.r, actor: claims.s,
+    sessionId: claims.sid || null, deviceId: claims.d || null, scope: 'outlet' });
+  if (!live.ok) return false;
+  const o = await biz(req).query('SELECT 1 FROM chain.outlet WHERE id = $1', [claims.o]);
+  return o.rows.length > 0;
+}
+
 function biz(req) {
   if (req && req.bizDb) return ownerFor(req.bizDb);
   /* An ACCOUNT with no business never reaches a handler — the middleware below
@@ -66,7 +83,8 @@ async function businessIdOf(outletId) {
 }
 const { provisionOutlet } = require('../provision');
 const { normalise, shapeError, baseDomain, storeUrl, memberUrl } = require('../handle');
-const { hashPin, sign, verifyAccount } = require('../secrets');
+const { hashPin, sign, verify, verifyAccount } = require('../secrets');
+const { stillGood } = require('../revoked');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { applyOp } = require('../apply');
 const { presetCounts, applyPreset } = require('../preset');
@@ -494,8 +512,9 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
     await c.query('BEGIN');
     const already = await c.query('SELECT id FROM chain.company WHERE id = 1');
     if (already.rows.length) {
-      // Editable from Settings afterwards, through the same columns.
-      if (!req.get('authorization')) {
+      // Editable from Settings afterwards, through the same columns — by the
+      // owner, signed in at this business. A header alone is not a sign-in.
+      if (!(await signedInHere(req, 5))) {
         await c.query('ROLLBACK');
         return res.status(409).json({ error: 'company already set — edit it in Settings' });
       }
@@ -598,7 +617,7 @@ r.post('/outlet', openDoor, claim, async function (req, res, next) {
   try {
     const st = await biz(req).query('SELECT * FROM chain.install_state()');
     const first = Number(st.rows[0].outlets) === 0;
-    if (!first && !req.get('authorization')) {
+    if (!first && !(await signedInHere(req, 5))) {
       return res.status(403).json({ error: 'sign in to add another outlet' });
     }
     const out = await provisionOutlet({
