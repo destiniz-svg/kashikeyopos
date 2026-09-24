@@ -4507,7 +4507,7 @@ test('the till never fabricates an approval code', () => {
   assert.ok(!/Captured from the terminal/.test(code),
     'the reference field never claims to be captured');
   // The honest lane: a blank reference is flagged, never filled in.
-  assert.match(app, /Leave blank and the sale is flagged unreferenced/,
+  assert.match(app, /can't be matched to their statement and shows at close as one to follow up/,
     'the field says what a blank one costs');
   /* And Math.random never touches a payment. The only remaining uses in the
      till are the CSPRNG-absent uuid fallback (unreachable in any browser that
@@ -8945,9 +8945,9 @@ test('money is read leg by leg: the drawer, the Z-report and the card batch agre
   const z = F.receiptVals({ kind: 'z' });
   const line = (n) => ((z.rcpLines || []).find((l) => l.n === n) || {}).v;
   const num = (v) => +String(v).replace(/[^0-9.]/g, '');
-  assert.strictEqual(num(line('Gross taken')), num(line('Cash · rufiyaa')) + num(line('Card and wallet')),
+  assert.strictEqual(num(line('Total taken')), num(line('Cash (rufiyaa)')) + num(line('Card and wallet')),
     'the tender lines add up to what was taken');
-  assert.strictEqual(num(line('Cash · rufiyaa')), 215);
+  assert.strictEqual(num(line('Cash (rufiyaa)')), 215);
 
   // The outlet's copy of a bill this till settled REPLACES it, by the cid.
   F.applyLive({ settledToday: [row({ id: 's5', cid: 'R1', no: 'E', tender: 'cash', total: 55, payments: [{ method: 'cash', amt: 55, cur: B }] })] });

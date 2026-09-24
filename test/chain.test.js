@@ -137,18 +137,18 @@ test('Orders & Tickets settles through the till, and takes a tender', () => {
   // confirm that refuses until enough has actually been tendered.
   assert.ok((pay.quickTender || []).length, 'quick cash notes are offered');
   assert.ok((pay.keys || []).length, 'and a keypad to type an amount on');
-  assert.match(String(pay.confirmLabel), /Tender/,
+  assert.match(String(pay.confirmLabel), /Short by/,
     'nothing tendered yet — the button says how much more is needed');
 
   // Hand over a 500 note against a bill of ~552.9, which is not enough.
   F.state.modal = Object.assign({}, F.state.modal, { given: '500' });
-  assert.match(String(F.overlayVals().confirmLabel), /Tender/,
+  assert.match(String(F.overlayVals().confirmLabel), /Short by/,
     'a short tender is refused by name, not silently accepted');
 
   // Now a 600.
   F.state.modal = Object.assign({}, F.state.modal, { given: '600' });
   const ready = F.overlayVals();
-  assert.doesNotMatch(String(ready.confirmLabel), /Tender/, 'enough is enough');
+  assert.doesNotMatch(String(ready.confirmLabel), /Short by/, 'enough is enough');
   ready.confirmPay();
 
   const row = F.state.settled[0];
