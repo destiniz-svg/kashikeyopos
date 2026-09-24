@@ -515,7 +515,7 @@ BEGIN
       value         numeric(12,2) NOT NULL DEFAULT 0,
       reason        text NOT NULL CHECK (reason IN
                     ('purchase','sale','refund','audit','manual','waste',
-                     'transfer','produce','prep','opening')),
+                     'transfer','produce','prep','opening','void')),
       location_id   text,
       sale_id       uuid REFERENCES %1$I.sale(id),
       batch_id      uuid,

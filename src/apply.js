@@ -838,7 +838,14 @@ H.close_register = async (c, p, ctx) => {
 };
 
 H.sale = applySale;
-H.split_payment = applySale;
+/* A SHARE OF A SPLIT BILL IS NOT A SALE. The till queues one per share with no
+   payload — the shares ride as payment legs on the closing `sale` op — and
+   aliasing it to applySale turned every one into an empty sale holding a real
+   number from the statutory receipt series. Only a payload that actually
+   carries a sale is applied as one, for a device still holding such an op. */
+H.split_payment = async (c, p, ctx) =>
+  (arr(p.lines).length || arr(p.payments).length) ? applySale(c, p, ctx)
+    : { recorded: true };
 
 /* A line on an open ticket. `lid` is the id the TILL gave it, which is what
    makes this idempotent: the same line arriving twice — a retry, a replay from
@@ -3235,7 +3242,12 @@ H.loyalty_update = async (c, p, ctx) => {
        moved are not always the points asked for, so the accrual follows the
        BALANCE, never the request. */
     const moved = Math.trunc(num(after && after.points)) - Math.trunc(num(before && before.points));
-    if (moved !== 0) {
+    /* A REDEMPTION IS ALREADY IN THE LEDGER. The till queues this op with
+       reason 'redeem' beside every sale that spends points, and the sale's own
+       journal releases 2350 for `ptsValue`. Journalling it here too released
+       the liability twice and credited 6550 for points nobody withdrew by hand.
+       The balance still moves here — the sale does not deduct spent points. */
+    if (moved !== 0 && p.reason !== 'redeem') {
       const cfg = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
       const v = (cfg.rows[0] || {}).value || {};
       const worth = r2(Math.abs(moved) / (Number(v.redeemPts) || 100)

@@ -5867,6 +5867,65 @@ test('voiding a settled sale reverses its money, stock, points and credit',
     assert.strictEqual(still.voided_at, null, 'and the refused void changed nothing');
   });
 
+/* A VOID OF A SALE THAT MOVED STOCK. The test above voids a sale with no stock
+   moves, which is the only kind that could ever be voided: the reversal writes
+   stock_move rows with reason 'void', which the CHECK did not permit, so every
+   other void rolled back whole and parked (migration 056). */
+test('a sale that moved stock can be voided, and the stock comes back', opts, async () => {
+  const ing = await one('SELECT id, on_hand, avg_cost FROM ingredient'
+    + ' WHERE on_hand > 5 ORDER BY name LIMIT 1');
+  assert.ok(ing, 'the fixture has stock to move');
+  const cost = Number(ing.avg_cost) || 1;
+  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    cogs: round(2 * cost),
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: [{ ing: ing.id, qty: 2, cost: cost, value: round(2 * cost) }]
+  } }]);
+  const saleId = sold.body.results[0].result.saleId;
+  const v = await push([{ opId: uuid(), kind: 'void_sale', payload: {
+    saleId: saleId, reason: 'Rung on the wrong table', bizDate: today() } }]);
+  assert.ok(!v.body.results[0].error, JSON.stringify(v.body.results[0]));
+  const row = await one('SELECT voided_at FROM sale WHERE id = $1', [saleId]);
+  assert.ok(row.voided_at, 'the sale is void');
+  const back = await one('SELECT on_hand FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(back.on_hand), Number(ing.on_hand), 'and the stock is back');
+});
+
+/* A SHARE OF A SPLIT BILL IS NOT A SALE. The till queues `split_payment` bare,
+   once per share; aliased to applySale it wrote an empty sale per share and
+   spent a number from the statutory receipt series on each. */
+test('a bare split_payment writes no sale and draws no receipt number', opts, async () => {
+  const count = () => one('SELECT count(*)::int AS n FROM sale').then((r) => r.n);
+  const before = await count();
+  const r = await push([{ opId: uuid(), kind: 'split_payment' }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  assert.strictEqual(await count(), before, 'no sale row appeared');
+});
+
+/* A REDEMPTION IS ALREADY IN THE LEDGER. The sale releases 2350 for the points
+   spent; the till's `loyalty_update` with reason 'redeem' moves the balance and
+   must not release the liability a second time. */
+test('a redeem loyalty_update moves the points and not the ledger', opts, async () => {
+  const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Redeem Customer', phone: '9994433' } }]);
+  const mid = made.body.results[0].result.memberId;
+  await push([{ opId: uuid(), kind: 'loyalty_update', payload: {
+    member: mid, points: 300, reason: 'goodwill' } }]);
+  const liability = () => one("SELECT coalesce(sum(l.cr) - sum(l.dr), 0)::numeric AS v"
+    + ' FROM journal j JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE l.account_code = '2350'").then((x) => Number(x.v));
+  const pts = () => one('SELECT points FROM chain.member WHERE id = $1', [mid])
+    .then((x) => Number(x.points));
+  const [l0, p0] = [await liability(), await pts()];
+  await push([{ opId: uuid(), kind: 'loyalty_update', payload: {
+    member: mid, points: -100, reason: 'redeem', sale: 'TEST-1' } }]);
+  assert.strictEqual(await pts(), p0 - 100, 'the balance moved');
+  assert.strictEqual(await liability(), l0, 'and 2350 did not — the sale releases it');
+});
+
 test('a refund marked "untouched — return to stock" actually returns it', opts, async () => {
   /* The refund form asks the one question that matters for the shelf, and the
      answer used to go nowhere: "untouched" queued a stock_return op carrying no
