@@ -337,19 +337,20 @@ test('a verified account creates its own business, and an unverified one cannot'
       // Unverified: refused, and told what to do rather than given a 500.
       const acct = await db.control().query(
         'SELECT id FROM chain.account WHERE lower(email) = lower($1)', [email]);
+      /* No token at all before the address is proven: a password on an
+         unproven address is one anybody could have set, and a token minted
+         for it would still be good after the real owner verified. */
       const signedIn = await post('/api/account/signin',
         { email: email, password: 'a-long-password' });
-      assert.strictEqual(signedIn.status, 200, JSON.stringify(signedIn.body));
-      const token = signedIn.body.token;
-
-      const tooSoon = await post('/api/account/business', { name: 'Too Soon' }, token);
-      assert.strictEqual(tooSoon.status, 403,
-        'an unverified address must not mint infrastructure');
-      assert.match(tooSoon.body.error, /confirm your email/);
+      assert.strictEqual(signedIn.status, 403, JSON.stringify(signedIn.body));
+      assert.match(signedIn.body.error, /confirm your email/);
+      assert.ok(!signedIn.body.token, 'and no token rides on the refusal');
 
       // Verify the way a customer does, then create.
-      await db.control().query(
-        'UPDATE chain.account SET verified_at = now() WHERE id = $1', [acct.rows[0].id]);
+      const ver = await post('/api/account/code/verify',
+        { email: email, code: up.body.code, password: 'a-long-password' });
+      assert.strictEqual(ver.status, 200, JSON.stringify(ver.body));
+      const token = ver.body.token;
       const made = await post('/api/account/business', { name: 'Self Serve Cafe' }, token);
       assert.strictEqual(made.status, 201, JSON.stringify(made.body));
       assert.strictEqual(made.body.next, 'onboarding');
