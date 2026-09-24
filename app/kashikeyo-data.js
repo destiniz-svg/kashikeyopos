@@ -155,7 +155,9 @@
     {
       key: "KitchenManager", label: "Kitchen", color: "#e65100", scope: "outlet",
       blurb: "The pass. Bumps a line, moves an order through the kitchen, keeps the recipes and the batches. Sells nothing and settles nothing.",
-      perms: perms({ kds: VAE, pos: V, production: VAE, recipes: VAE, requests: VAE, dispatches: VAE, consumption: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, menu: V, reports: V, sync: V, staff: V, assets: VAE })
+      /* No reports and no staff screen: both are takings and wages, and the
+         pass needs neither. Costing stays — keeping the recipes is the job. */
+      perms: perms({ kds: VAE, pos: V, production: VAE, recipes: VAE, requests: VAE, dispatches: VAE, consumption: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, menu: V, sync: V, assets: VAE })
     },
     {
       key: "StoreKeeper", label: "Store Keeper", color: "#67a2d9", scope: "outlet",

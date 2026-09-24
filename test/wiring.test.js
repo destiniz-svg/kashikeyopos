@@ -1009,7 +1009,8 @@ test('a split bill remembers every share\'s tender, not just the last', () => {
     'and its own cash rounding — the bill\'s rounding is the sum, not the last');
   assert.ok(/row\.shares && row\.shares\.length\) \? row\.shares/.test(SRC),
     'bookSale sends the shares as the payment legs');
-  assert.ok(/x\.shares\.filter\(\(sh\) => sh\.method === "cash"\)/.test(SRC),
+  assert.ok(/this\.payLegs\(x\)\.filter\(\(l\) => l\.method === "cash"\)/.test(SRC)
+    && /if \(x\.shares && x\.shares\.length\) return x\.shares;/.test(SRC),
     'the drawer expectation counts only the cash shares of a split');
 });
 
@@ -8916,4 +8917,97 @@ test('the production run: money that was invented, dropped or scaled by a thousa
   assert.match(SRC, /clearT: \(\) => \{[\s\S]{0,900}this\.queue\("void_line"/);
   // Payment terms travel as days, from the form's own word.
   assert.doesNotMatch(SRC, /terms: num\(r\.termsDays\) \|\| 30/);
+});
+
+/* ═══ THE REGISTER, THE Z AND THE BOOKS, AFTER A MULTI-TERMINAL RUN ═══════
+   One bill has one set of payment legs, and the drawer, the Z-report and the
+   card batch read them through `payLegs()` rather than three ways off
+   `tender`/`total` — which is how a tipped cash bill, a split from the outlet
+   and a tipped card sale each landed short or nowhere. */
+test('money is read leg by leg: the drawer, the Z-report and the card batch agree', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const B = F.base(), o = F.state.outletId, at = Date.now();
+  F.state.register = { open: true, float: 1000, openedAt: at - 1000 };
+  const row = (x) => Object.assign({ outletId: o, at: at, status: 'closed', net: 0, bizDate: '2026-03-10' }, x);
+  F.state.settled = [
+    // The outlet's rows: `total` is the bill alone, the legs carry the tip.
+    row({ id: 's1', no: 'A', tender: 'cash', total: 100, tip: 10, payments: [{ method: 'cash', amt: 110, cur: B }] }),
+    row({ id: 's2', no: 'B', tender: 'split', total: 110, payments: [{ method: 'cash', amt: 50, cur: B }, { method: 'card', amt: 60, cur: B, ref: 'X1' }] }),
+    row({ id: 's3', no: 'C', tender: 'card', total: 223, tip: 17.8, payments: [{ method: 'card', amt: 240.8, cur: B, ref: 'A9' }] }),
+    row({ id: 's4', no: 'D', tender: 'cash', total: 999, status: 'void', payments: [{ method: 'cash', amt: 999, cur: B }] }),
+    // This till's own whole bill: no legs, and its total already holds the tip.
+    row({ cid: 'R1', no: 'E', tender: 'cash', total: 55 })
+  ];
+  assert.strictEqual(F.cashTakings(), 215, 'tip in, split cash share in, void out');
+  const card = F.settlementBatches().filter((b) => b.proc === 'term')[0];
+  assert.strictEqual(Math.round(card.gross * 100) / 100, 300.8, 'the acquirer settles the bill AND the tip, and the split card share');
+  assert.strictEqual(card.noRef, 0, 'evidence is the leg\'s approval code');
+  const z = F.receiptVals({ kind: 'z' });
+  const line = (n) => ((z.rcpLines || []).find((l) => l.n === n) || {}).v;
+  const num = (v) => +String(v).replace(/[^0-9.]/g, '');
+  assert.strictEqual(num(line('Gross taken')), num(line('Cash · rufiyaa')) + num(line('Card and wallet')),
+    'the tender lines add up to what was taken');
+  assert.strictEqual(num(line('Cash · rufiyaa')), 215);
+
+  // The outlet's copy of a bill this till settled REPLACES it, by the cid.
+  F.applyLive({ settledToday: [row({ id: 's5', cid: 'R1', no: 'E', tender: 'cash', total: 55, payments: [{ method: 'cash', amt: 55, cur: B }] })] });
+  assert.strictEqual(F.state.settled.filter((x) => x.no === 'E').length, 1, 'never counted twice');
+  assert.strictEqual(F.cashTakings(), 215);
+});
+
+test('an outlet count with no lines is a figure, not a NaN that eats 1200', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const o = F.state.outletId;
+  const c = F.countOf({ id: 'k1', outletId: o, at: Date.now(), value: -12.5, lines: [] });
+  assert.strictEqual(c.varValue, -12.5);
+  F.state.counts = [c, { outletId: o, at: Date.now(), lines: [] }];
+  F.state.settled = [{ outletId: o, no: 'A', tender: 'cash', total: 100, net: 100, svc: 0, tax: 0, cogs: 469, at: Date.now() }];
+  const tb = F.trialBalance(F.ACCPERIODS()[0]);
+  const dr = tb.reduce((a, r) => a + r.dr, 0), cr = tb.reduce((a, r) => a + r.cr, 0);
+  assert.ok(Math.abs(dr - cr) < 0.005, 'in balance');
+  assert.strictEqual((tb.find((r) => r.code === '1200') || {}).cr, 481.5, 'COGS and the count both reach 1200');
+});
+
+test('growth against no honest baseline says so; one average cheque', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  assert.strictEqual(F.growthPct(1467, 0), null, 'nothing last week');
+  assert.strictEqual(F.growthPct(1467, 1), null, 'a test sale last week');
+  assert.strictEqual(Math.round(F.growthPct(110, 100)), 10);
+  assert.match(F.wowText(null), /new this week/);
+  assert.doesNotMatch(SRC, /\(prev7 \|\| 1\)/, 'no division by a pretend baseline');
+  assert.doesNotMatch(SRC, /"Avg cheque " \+ MVR\(netSales \/ \(covers/, 'settled money over settled covers only');
+  assert.doesNotMatch(SRC, /awaiting\.reduce\(\(a, e\) => a \+ Math\.abs\(e\.amt\)/,
+    'money due in and money due out are never summed into one "awaiting"');
+});
+
+test('the kitchen: a palette job needs its screen, and a voided line leaves the pass', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.state.roleKey = 'KitchenManager'; F.state.session = { rank: 1, role: 'KitchenManager' };
+  const jobs = F.palIndex().filter((x) => x.kind === 'do').map((x) => x.label);
+  assert.ok(jobs.indexOf('Z-report') < 0 && jobs.indexOf('Close the register') < 0, 'no cash-up for the kitchen');
+  assert.ok(jobs.indexOf('Build a recipe') >= 0, 'the kitchen keeps its own jobs');
+  // An outlet line no longer listed was voided there, and goes here too.
+  assert.match(SRC, /if \(!theirs\[key\] && l\.serverId != null && !fresh\) return;/);
+  assert.match(SRC, /cur\.localAt = Date\.now\(\);/, 'an edit on its way is not overwritten by the poll');
+  assert.match(SRC, /l\.fired \? \(l\.done \? "Ready" :/, 'a finished line says so on the bill');
+  // A typed search spans the whole menu.
+  assert.match(SRC, /\.filter\(\(m\) => q \|\| s\.cat === "all"/);
+});
+
+test('the loose ends of the second run', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const o = F.state.outletId;
+  // A count that finds MORE on the shelf raises 1200, as the server posts it.
+  F.state.counts = [{ outletId: o, at: Date.now(), lines: [], varValue: 40 }];
+  const tb = F.trialBalance(F.ACCPERIODS()[0]);
+  assert.strictEqual((tb.find((r) => r.code === '1200') || {}).dr, 40, 'a surplus is Dr 1200');
+  // The Kitchen reads neither takings nor wages.
+  const kit = F.roleFor('KitchenManager').perms;
+  assert.ok(!kit.reports.v && !kit.staff.v, 'no reports or staff screen for the pass');
+  assert.match(SRC, /if \(!this\.can\("pos", "a"\)\) \{\s*return \[\s*card\("Open tables"/, 'the ribbon without the money');
+  // The Delivery & QR tabs draw their own bodies, and nothing is priced at 180 an item.
+  assert.doesNotMatch(SRC, /x\.items \* 180/);
+  assert.match(SRC, /if \(tab === 1\) \{\s*const steps = this\.QR_STAGES/);
+  // The pay preview restates the bill after points.
+  assert.match(SRC, /label: "Points redeemed", value:/);
 });
