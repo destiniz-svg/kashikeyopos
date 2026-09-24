@@ -8597,3 +8597,18 @@ test('a terminal running an earlier build says so, and nothing reloads on its ow
     'it is not restored from the session');
   assert.ok(!/buildStale: s\.buildStale/.test(SRC), 'and not written to it');
 });
+
+/* ═══ A REFUND IS BOOKED ONCE ═════════════════════════════════════════════
+   The refund form queues `refund`, then calls issueCreditNote() for the paper.
+   That used to queue `credit_note` too — and the server's credit_note IS
+   refund — so every refund posted two credit notes and paid the cash out
+   twice. The document is the paper; the op is the refund's alone. And a share
+   of a split bill carries the same double-tap guard as the closing share. */
+test('a refund queues one money op, and a split share cannot be banked twice', () => {
+  const at = SRC.indexOf('  issueCreditNote(ord');
+  const body = SRC.slice(at, SRC.indexOf('  showDoc(', at));
+  assert.ok(at > 0 && body.length > 0, 'issueCreditNote is where it was');
+  assert.ok(!/this\.queue\(/.test(body), 'issueCreditNote queues nothing');
+  assert.ok(/if \(\(\(this\.state\.modal \|\| \{\}\)\.paidN \|\| 0\) !== paidN\) return;\s*this\.queue\("split_payment"/.test(SRC),
+    'a split share re-reads the state before it banks');
+});

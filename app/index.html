@@ -7760,6 +7760,11 @@ class Component extends DCLogic {
           // Not the last share: bank it and come back for the next one. The
           // ticket, its lines and its journal stay open until the bill is whole.
           if (evenN > 1 && paidN + 1 < evenN) {
+            /* DOUBLE-TAP GUARD, for the same reason as the one below: this
+               closure holds the paidN it was rendered with, and a second tap
+               before the re-render would bank the same share twice. The state
+               updates synchronously, so a share already taken shows here. */
+            if (((this.state.modal || {}).paidN || 0) !== paidN) return;
             this.queue("split_payment", "Share " + (paidN + 1) + " of " + evenN + " settled · " + MVR(due) + " · " + m.tender + (payCur !== this.base() ? " in " + payCur + " @ " + fx : "") + " · " + this.slotName(s.activeTable), "payments");
             /* This share's tender is REMEMBERED, not just announced. The sale
                op used to carry one payment leg — the LAST share's tender for
@@ -16810,18 +16815,12 @@ class Component extends DCLogic {
       state: "issued"
     };
     this.setState({ docs: [row].concat(this.state.docs || []) });
-    this.queue("credit_note", doc.no + " · " + MVRc(amt) + " against " + ord.no + " · " + reason + " · " + this.me(), "documents", {
-      saleId: ord.id || null, bizDate: ord.bizDate || ord.date || this.today(),
-      net: T.sub, svc: T.svc, tax: T.tax, amt: T.total,
-      method: ord.tender || "cash", reason: reason, note: note,
-      // A credit note is issued where the goods are NOT coming back — that is
-      // what separates it from a refund at the counter — so nothing returns to
-      // the shelf unless somebody says otherwise. The NUMBER on the local row
-      // is this device's own count; the outlet allocates the real one
-      // atomically, which is what stops two tills issuing one.
-      restock: false, docNo: doc.no,
-      lines: (ord.sold || []).map((l) => ({ id: l.id, name: l.name, qty: l.qty, price: l.price }))
-    });
+    /* NOTHING IS QUEUED HERE. The only caller is the refund form, which has
+       already queued `refund` — and the server's `credit_note` IS `refund`
+       (H.credit_note = H.refund), so a second op here booked every refund
+       twice: two credit notes, two CN numbers, the cash paid out twice and the
+       output tax reversed twice. The outlet's credit note is the one `refund`
+       writes; this row is the document handed across the counter. */
     return row;
   }
   showDoc(d) {
