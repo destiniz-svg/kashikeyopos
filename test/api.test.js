@@ -2106,14 +2106,18 @@ test('revoking stops the sign-in and keeps the history', opts, async () => {
   await post('/api/outlet/' + outletId + '/member/' + id + '/revoke', {}, token);
   const gone = await getWith('/api/g/' + slug + '/member/me', card);
   assert.strictEqual(gone.status, 401, 'a revoked card does not read: ' + JSON.stringify(gone.body));
+  const seated = await get('/api/g/' + slug + '/token?t=4');
   const round = await postWith('/api/g/' + slug + '/order',
-    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() }, Object.assign({}, card, table));
+    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() },
+    Object.assign({ 'x-table-token': seated.body.token }, card));
   assert.strictEqual(round.status, 201, 'the round still lands');
   const who = await one('SELECT member_id FROM guest_order WHERE id = $1', [round.body.id]);
   assert.strictEqual(who.member_id, null, 'but a revoked card earns nobody points');
 });
 
 test('respelling a number does not buy fresh guesses at its code', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
   const t = await get('/api/g/' + slug + '/token?t=4');
   const table = { 'x-table-token': t.body.token };
   const spellings = ['7123456', '+960 7123456', '712 3456', '9607123456', '(960) 712-3456'];
@@ -6857,6 +6861,7 @@ test('an invoice scan resolves against the outlet, and posts nothing', opts, asy
     assert.strictEqual(moved.n, 0, 'a scan moves no stock');
     const doc = await one("SELECT count(*)::int AS n FROM document WHERE no LIKE '%INV-9001%'");
     assert.strictEqual(doc.n, 0, 'and draws no document number');
+
 
     // A FIGURE OFF THE SCALE IS CLAMPED, never stored as the model sent it.
     ai.ask = async () => ({ ok: true, model: 'stub', data: {
