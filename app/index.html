@@ -4606,7 +4606,7 @@ class Component extends DCLogic {
       // sitting inside one. The glyph rides over the padding it makes.
       searchInputStyle: "background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:12px;min-width:0;border-radius:inherit;" + (s.searchOpen ? "flex:1;width:auto;padding:0 10px 0 30px" : "width:0;flex:0 0 0;padding:0"),
       searchIconStyle: "position:absolute;top:50%;transform:translateY(-50%);pointer-events:none;left:" + (s.searchOpen ? "10px" : "8px"),
-      netTitle: s.online ? "Online — tap to simulate a network drop" : "Offline — tap to restore the link",
+      netTitle: s.online ? "Online — tap for sync status" : "Offline — tap to reconnect",
       netDotBtnStyle: "display:flex;align-items:center;justify-content:center;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 8px 0 10px" : "7px 10px 7px 12px") + ";flex-shrink:0",
       linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:999px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
       searchStyle: isM ? "display:none" : "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;flex-shrink:0;color:var(--text-dim);height:32px;" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
@@ -4695,13 +4695,22 @@ class Component extends DCLogic {
         ? "background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:8px 10px;max-width:150px;min-width:110px;outline:none"
         : "display:none",
       search: s.search, onSearch: (e) => this.setState({ search: e.target.value }),
+      /* THE DOT REPORTS; IT DOES NOT SWITCH. It used to take the till offline
+         on a tap — a real switch, not a simulation — sitting beside the clock
+         where a thumb brushes it mid-service, with its meaning only in a title
+         a touch screen never shows. Going offline is a decision and lives on
+         Sync & devices behind a second tap. Coming back online stays one tap
+         here, because that is the recovery nobody should have to hunt for. */
       toggleOnline: () => {
-        const on = !s.online;
-        // The pill flips the queue itself: offline means nothing is POSTed and
-        // every write holds durably in IndexedDB until it is flipped back.
-        if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(!on);
-        this.setState({ online: on });
-        if (on) this.flush(); else this.toast("Terminal offline — orders will queue locally", "warn");
+        if (!s.online) {
+          if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(false);
+          this.setState({ online: true });
+          this.flush();
+          return this.toast("Back online — sending anything that queued");
+        }
+        const waiting = (this.state.outbox || []).filter((o) => o.state !== "done").length;
+        this.toast("Online" + (waiting ? " · " + waiting + " waiting to send" : " · everything sent")
+          + ". To work offline, use Sync & devices.");
       },
       netLabel: s.online ? "Online" : "Offline",
       netStyle: "display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid " + (s.online ? "var(--green-line)" : "var(--red-line)") + ";background:" + (s.online ? "var(--ok-dim)" : "var(--bad-dim)") + ";color:" + (s.online ? "var(--green)" : "var(--red-bright)"),
@@ -22074,11 +22083,25 @@ class Component extends DCLogic {
     }
     const held = this.heldRows();
     return {
-      tabs: stabs.concat([{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => {
-        const on = !s.online;
-        if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(!on);
-        this.setState({ online: on });
-        if (on) this.flush();
+      /* Taking the till offline stops every write reaching the outlet until
+         somebody turns it back, so it arms first — the two taps and four
+         seconds the fired-line void already uses. Coming back is one tap. */
+      tabs: stabs.concat([{ label: s.online ? (s.offlineArmed ? "Tap again to go offline" : "Terminal is online") : "Terminal is offline", on: !s.online || !!s.offlineArmed, pick: () => {
+        if (!s.online) {
+          if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(false);
+          this.setState({ online: true, offlineArmed: false });
+          return this.flush();
+        }
+        if (!s.offlineArmed) {
+          this.setState({ offlineArmed: true });
+          clearTimeout(this._offArm);
+          this._offArm = setTimeout(() => this.setState({ offlineArmed: false }), 4000);
+          return this.toast("Tap again to take this terminal offline — orders will queue here until you turn it back", "warn");
+        }
+        clearTimeout(this._offArm);
+        if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(true);
+        this.setState({ online: false, offlineArmed: false });
+        this.toast("Terminal offline — orders will queue locally", "warn");
       } }]),
       actions: [
         { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); } },
