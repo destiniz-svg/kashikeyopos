@@ -5791,7 +5791,7 @@ test('a stranger cannot walk phone numbers and harvest the customer roster',
 // released 1040 while credit_used stayed where the sale put it.
 test('a credit refund lowers the customer\'s drawn balance', opts, async () => {
   const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
-    name: 'Refund Customer', phone: '9994433', credit: 500 } }]);
+    name: 'Refund Customer', phone: '9994466', credit: 500 } }]);
   const mid = made.body.results[0].result.memberId;
   const used = () => one('SELECT credit_used FROM chain.member WHERE id = $1', [mid])
     .then((r) => Number(r.credit_used));
