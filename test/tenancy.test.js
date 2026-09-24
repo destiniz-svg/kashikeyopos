@@ -209,8 +209,26 @@ test('an owner\'s estate read opens their own business', opts, async () => {
   const id = await BIZ.nextOutletId(other.id);
   await db.ownerFor(other.db_name).query('SELECT chain.provision_outlet($1,$2,$3,$4)',
     [id, 'KE' + id, 'Estate Store', outletPassword(id)]);
-  const where = await db.withEstate({ outletId: id, rank: 5, actor: null },
-    (c) => c.query('SELECT current_database() AS d').then((r) => r.rows[0].d));
+  /* kashikeyo_report is ONE role for the whole cluster, and the suites run
+     concurrently: another suite's migration can be mid-way through creating
+     or re-passwording it as this one logs in, which Postgres answers
+     "password authentication failed". Re-assert it here and retry on that.
+     ponytail: retry, not a cross-suite lock; add one if this ever flakes. */
+  const pw = outletPassword('report').replace(/'/g, "''");
+  let where;
+  for (let tries = 0; ; tries++) {
+    await db.withRoleLock(() => db.owner().query("DO $r$ BEGIN"
+      + " IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kashikeyo_report')"
+      + " THEN CREATE ROLE kashikeyo_report LOGIN NOINHERIT; END IF;"
+      + " ALTER ROLE kashikeyo_report PASSWORD '" + pw + "'; END $r$"));
+    try {
+      where = await db.withEstate({ outletId: id, rank: 5, actor: null },
+        (c) => c.query('SELECT current_database() AS d').then((r) => r.rows[0].d));
+      break;
+    } catch (e) {
+      if (e.code !== '28P01' || tries >= 3) throw e;
+    }
+  }
   assert.strictEqual(where, other.db_name, 'the report read the owner\'s business');
 });
 
