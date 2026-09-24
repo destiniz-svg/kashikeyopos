@@ -56,7 +56,7 @@ html,body{margin:0;padding:0;height:auto;min-height:100%;overflow-x:hidden;overf
 body{padding-bottom:env(safe-area-inset-bottom,0px)}
 body{
   background:var(--bg); color:var(--text);
-  font-family:'Inter',system-ui,sans-serif;
+  font-family:'Instrument Sans',system-ui,sans-serif;
   font-size:14px; line-height:1.5;
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }
@@ -91,7 +91,7 @@ body{
   background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;
   position:relative;border-radius:0;transition:background .14s}
 .step:hover:not(:disabled){background:var(--bg-2)}
-.step:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.step:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .step[aria-current="true"]{background:var(--bg-2)}
 .step[aria-current="true"]:after{content:"";position:absolute;left:0;top:6px;bottom:6px;
   width:3px;border-radius:0 3px 3px 0;background:var(--amber)}
@@ -183,7 +183,7 @@ input.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
   text-transform:uppercase;color:var(--amber-bright)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}
 button{font:inherit;cursor:pointer}
-button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 button.go{flex:0 0 auto;padding:13px 22px;min-height:48px;border-radius:12px;border:0;
   background:var(--amber);color:var(--on-amber);font-size:13.5px;font-weight:700;
   letter-spacing:-.01em;transition:transform .12s,filter .14s;
@@ -305,7 +305,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   background:var(--text-muted);transition:transform .16s,background .16s;display:block}
 .sw.on::before{background:var(--go);border-color:var(--go)}
 .sw.on i{transform:translateX(22px);background:var(--on-go)}
-.sw:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.sw:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* ── the logo, and what became of the file that was picked ──────────────── */
 .logo{display:flex;align-items:center;gap:15px;flex-wrap:wrap}

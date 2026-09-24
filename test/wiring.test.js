@@ -4477,6 +4477,32 @@ test('the till never fabricates an approval code', () => {
   assert.ok(!/Math\.random/.test(payZone), 'nothing random inside the settle path');
 });
 
+/* ONE PRODUCT, ONE FACE, ONE PRIMARY. The critique found the till, account and
+   onboarding in Inter while the guest, member, receipt and panel pages wore
+   Instrument Sans; the primary button near-black in light and brand coral in
+   dark on /account and onboarding (which never run applyTheme(), so they wore
+   the stylesheet's coral default while the till wore the Ink accent); and three
+   focus-ring colours. One face, the Ink accent as the default in both themes,
+   one --focus token. */
+test('the app wears one face, one primary and one focus ring', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  for (const f of ['app/kashikeyo.css', 'app/account.html', 'app/onboarding.html', 'app/index.html', 'app/fonts.css']) {
+    assert.ok(!/font-family:\s*'Inter'/.test(read(f)), f + ' no longer names Inter');
+    assert.ok(!/Manrope/.test(read(f)), f + ' names no font it does not load');
+  }
+  const css = read('app/kashikeyo.css');
+  const ink = /ink: \{ label: "Ink", base: "(#[0-9a-f]+)", bright: "(#[0-9a-f]+)", dim: "(#[0-9a-f]+)", line: "(#[0-9a-f]+)", deep: "(#[0-9a-f]+)", on: "(#[0-9a-f]+)"/.exec(SRC);
+  assert.ok(ink, 'the Ink accent is where it was');
+  assert.ok(css.includes('--amber:' + ink[1] + '; --amber-bright:' + ink[2] + '; --amber-dim:' + ink[3]
+    + '; --amber-line:' + ink[4] + '; --amber-deep:' + ink[5] + ';'), 'the dark default accent IS the Ink accent');
+  assert.ok(css.includes('--on-amber:' + ink[6] + ';'), 'with its ink on top');
+  assert.match(css, /--focus:var\(--fwd\);/, 'one focus token');
+  assert.match(css, /button:focus-visible,\[role="button"\]:focus-visible\{outline:2px solid var\(--focus\)/);
+  for (const f of ['app/account.html', 'app/onboarding.html']) {
+    assert.ok(!/outline:2px solid var\(--amber\)/.test(read(f)), f + ' draws its rings from --focus');
+  }
+});
+
 /* ═══ THE ROLE LOCK SPANS THE COMMIT ════════════════════════════════════════
    provisionOutlet's cluster mutex used to wrap only the provision_outlet
    STATEMENT — and an advisory lock on the maintenance connection frees when

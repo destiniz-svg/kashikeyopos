@@ -33,7 +33,7 @@
      and in the light block, and applyTheme() never touches it. A user picking
      the crimson accent previously repainted every warning into the destructive
      red — an open table then signalled in the same hue as Void. */
-  --amber:#f4553c; --amber-bright:#ff7a63; --amber-dim:#331611; --amber-line:#7d3325; --amber-deep:#d63f27;
+  --amber:#f0f0f0; --amber-bright:#ffffff; --amber-dim:#232323; --amber-line:#3a3a3a; --amber-deep:#cfcfcf;
   --warn:#f2a43a; --warn-bright:#ffc14a; --warn-dim:rgba(242,164,58,.14); --warn-line:#6b4a1f; --on-warn:#1a0f00;
   /* Tint tokens for the four STATUS families. Hard-coded rgba() tints cannot
      follow the theme, so in light mode a tint kept its dark-theme hue while its
@@ -41,11 +41,11 @@
      apart on the same chip. Every status tint now resolves per theme. */
   --ok-dim:#12281d; --bad-dim:#301218;
   --info-dim:#171c33; --violet-dim:#221a30;
-  --brand-dim:#331611;
+  --brand-dim:#232323;
   --brand-red:#8e3226; --brand-red-bright:#f4553c; --brand-olive:#8a9440; --brand-olive-bright:#a8b354;
   --brand-cream:#f0e2c0; --brand-grey:#a4a8af;
   --brand-plate:#ffffff; --brand-plate-line:#3d2c28;
-  --on-amber:#fff4f0;
+  --on-amber:#111111;
   /* Semantic. Colour states intent and never decorates: green commits money,
      blue advances the order, red destroys, amber warns. Nothing else is
      allowed a filled background, so a fill always means "this does something". */
@@ -73,6 +73,7 @@
   --red-dim:#7a4050; --red-dim-2:#c06880; --red-soft:#f0a8b8;
   --blue:#8ba0f7; --blue-bright:#adbaf9; --violet:#a88ad9; --violet-bright:#c3aae6;
   --paper:#fdfbf6; --paper-ink:#1a1a1a; --qr-ink:#0e0f11;
+  --focus:var(--fwd);
   --scrim:rgba(8,9,11,.76); --shadow-lg:0 2px 4px rgba(0,0,0,.4), 0 24px 64px rgba(0,0,0,.55);
 }
 [data-theme="light"]{
@@ -168,8 +169,8 @@
 *{box-sizing:border-box}
 /* Tabular figures everywhere, inherited, not opt-in. A total that reflows its
    own width as digits change reads as a glitch and pulls the eye off the line
-   being rung. Inter's tnum keeps every numeric column static. */
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;overflow:hidden;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+   being rung. Instrument Sans's tnum keeps every numeric column static. */
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Instrument Sans',system-ui,sans-serif;height:100%;overflow:hidden;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
 input,select,textarea,button{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;text-align:left;
   -webkit-tap-highlight-color:transparent;touch-action:manipulation;
@@ -190,7 +191,7 @@ button:active:not(:disabled){transform:translateY(1px)}
 }
 /* Keyboard focus only. A till is driven by touch and the ring would otherwise
    sit under every finger; :focus-visible keeps it for the people who need it. */
-button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--fwd);outline-offset:2px;border-radius:inherit}
+button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:inherit}
 /* A BUTTON was all that rule ever covered. Every input, select and textarea in
    the terminal carries `outline:none` in its inline style — a layout decision
    each one has its own reason for — and an inline declaration beats a plain
