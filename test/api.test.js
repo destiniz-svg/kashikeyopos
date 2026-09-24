@@ -236,6 +236,14 @@ test('onboarding writes the records the running app reads', opts, async () => {
   }
   token = r.body.token;
   assert.strictEqual(r.body.rank, 5);
+  {
+    // The founder's first token names its session row, or "Sign out other
+    // sessions" and src/revoked.js have nothing to find it by.
+    const sid = require('../src/secrets').verify(token).sid;
+    assert.ok(sid, 'the setup token carries its session id');
+    const s = await db.owner().query('SELECT staff_id FROM chain.session WHERE id = $1', [sid]);
+    assert.strictEqual(s.rows[0].staff_id, r.body.staffId, 'and that session is the founder\'s');
+  }
 
   const again = await post('/api/onboarding/owner', { name: 'Impostor', pin: '0000' });
   assert.strictEqual(again.status, 409, 'a second owner cannot be claimed');
@@ -2115,6 +2123,50 @@ test('revoking stops the sign-in and keeps the history', opts, async () => {
   const ok = await postWith('/api/g/' + slug + '/member/verify',
     { id: phone, code: code }, table);
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+
+  // The card is this store's: another store's address does not open it.
+  const card = { 'x-member-token': ok.body.token };
+  assert.strictEqual((await getWith('/api/g/' + slug + '/member/me', card)).status, 200);
+  assert.strictEqual((await getWith('/api/g/not-' + slug + '/member/me', card)).status, 401,
+    'a member token names the store it was minted at');
+
+  // And revoking closes the token they already hold, not only the next code.
+  await post('/api/outlet/' + outletId + '/member/' + id + '/revoke', {}, token);
+  const gone = await getWith('/api/g/' + slug + '/member/me', card);
+  assert.strictEqual(gone.status, 401, 'a revoked card does not read: ' + JSON.stringify(gone.body));
+  const seated = await get('/api/g/' + slug + '/token?t=4');
+  const round = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() },
+    Object.assign({ 'x-table-token': seated.body.token }, card));
+  assert.strictEqual(round.status, 201, 'the round still lands');
+  const who = await one('SELECT member_id FROM guest_order WHERE id = $1', [round.body.id]);
+  assert.strictEqual(who.member_id, null, 'but a revoked card earns nobody points');
+});
+
+test('respelling a number does not buy fresh guesses at its code', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=4');
+  const table = { 'x-table-token': t.body.token };
+  const spellings = ['7123456', '+960 7123456', '712 3456', '9607123456', '(960) 712-3456'];
+  const LIMIT = require('../src/limit');
+  const prev = process.env.RATE_LIMIT_SCALE;
+  process.env.RATE_LIMIT_SCALE = '1';
+  LIMIT._reset();
+  try {
+    // Ten guesses per number per window; the eleventh, under any spelling, waits.
+    const seen = [];
+    for (let i = 0; i < 11; i++) {
+      const r = await postWith('/api/g/' + slug + '/member/verify',
+        { id: spellings[i % spellings.length], code: '0000' }, table);
+      seen.push(r.status);
+    }
+    assert.deepStrictEqual(seen.slice(0, 10), Array(10).fill(401), 'ten wrong codes: ' + seen);
+    assert.strictEqual(seen[10], 429, 'one number, however it is typed, is one bucket');
+  } finally {
+    process.env.RATE_LIMIT_SCALE = prev || '100';
+    LIMIT._reset();
+  }
 });
 
 test('the terminal is told the invitation, not a flag', opts, async () => {
@@ -4943,7 +4995,7 @@ test('a social sign-in joins an existing account only on a VERIFIED address', op
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 
-  const sign = (nonce) => signAccount({ n: 'x', p: 'google', nn: nonce,
+  const sign = (nonce, b) => signAccount({ n: 'x', p: 'google', nn: nonce, b: b,
     exp: Date.now() + 60e3 });
   const realFetch = global.fetch;
 
@@ -4974,10 +5026,13 @@ test('a social sign-in joins an existing account only on a VERIFIED address', op
     // 2 · The same address, VERIFIED, is the person coming back — it joins.
     restore = fakeProvider({ sub: 'g-owner', email: mine, email_verified: true, nonce: 'n2' });
     r = await call('GET', '/api/account/oauth/google/callback?code=c&state='
-      + encodeURIComponent(sign('n2')), undefined, {});
+      + encodeURIComponent(sign('n2', 'tab-7f3a')), undefined, {});
     restore();
     const back = String((r.headers && r.headers.location) || '');
     assert.ok(/#token=/.test(back), 'signed in: ' + back);
+    // The tab that started it gets its binding back beside the token; a link
+    // somebody else started carries theirs, and /account refuses it.
+    assert.match(back, /&b=tab-7f3a$/, 'the token rides with its tab binding');
 
     const joined = await db.control().query(
       "SELECT account_id FROM chain.account_identity WHERE subject = 'g-owner'");

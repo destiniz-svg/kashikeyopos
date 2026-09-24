@@ -13,6 +13,7 @@ const { signTable, verifyTable, signMember, verifyMember,
 const { snapshot } = require('./outlet');
 const { hostHandle } = require('../handle');
 const INVITE = require('../../app/kashikeyo-invite.js');
+const SHARE = require('../../app/kashikeyo-share.js');
 const email = require('../email');
 const { gate } = require('../limit');
 
@@ -26,7 +27,13 @@ const r = express.Router();
    request is ABOUT; the IP ceilings are deliberately wide, because a
    restaurant's wifi puts the whole room behind one address and the doorman
    must not lock forty guests out for the sins of none of them. */
-const askedFor = (req) => (req.body || {}).id || (req.body || {}).phone || '';
+/* Keyed on the DIGITS, the rule the resolver itself matches by (046): keyed
+   on the raw string, "+960 7793216", "7793216" and "779 3216" were three
+   buckets for one member, so respelling the number bought fresh guesses. */
+const askedFor = (req) => {
+  const raw = String((req.body || {}).id || (req.body || {}).phone || '').trim();
+  return raw.indexOf('@') >= 0 ? raw : (SHARE.msisdn(raw) || raw);
+};
 const askedToken = (req) => INVITE.cleanToken((req.body || {}).token);
 const codeIssue = { id: [3, 10 * 60e3], ip: [20, 10 * 60e3] };
 const codeGuess = { id: [10, 10 * 60e3], ip: [40, 10 * 60e3] };
@@ -147,9 +154,13 @@ r.post('/:slug/order', guest, async function (req, res, next) {
      would let anybody earn on anybody's card. A token for another outlet is
      simply not this outlet's member. */
   const mt = verifyMember(String(req.get('x-member-token') || ''));
-  const memberId = (mt && mt.o === req.ctx.outletId && mt.m) ? mt.m : null;
+  let memberId = (mt && mt.o === req.ctx.outletId && mt.m) ? mt.m : null;
   try {
     const out = await withOutlet(req.ctx, async function (c) {
+      // A revoked card (057) still carries a signed token; it earns nothing.
+      if (memberId && !(await c.query('SELECT 1 FROM chain.member_card($1)', [memberId])).rows.length) {
+        memberId = null;
+      }
       if (b.opId) {
         const seen = await c.query('SELECT result FROM op_log WHERE op_id = $1', [b.opId]);
         if (seen.rows.length) return seen.rows[0].result;   // replay, not a second order
@@ -477,6 +488,9 @@ r.post('/:slug/member/verify', guest, gate('member-guess', codeGuess, askedFor),
 function member(req, res, next) {
   const claims = verifyMember(String(req.get('x-member-token') || ''));
   if (!claims || !claims.m) return res.status(401).json({ error: 'sign in again' });
+  // A card is one store's. The token names the handle it was minted under, so
+  // another store's address does not open it; a renamed store costs a sign-in.
+  if (claims.sl !== req.params.slug) return res.status(401).json({ error: 'sign in again' });
   req.member = { id: claims.m, outletId: claims.o };
   req.ctx = { outletId: claims.o, rank: 0, actor: null, scope: 'outlet' };
   next();
@@ -523,7 +537,9 @@ r.get('/:slug/member/me', member, async function (req, res, next) {
         stage: stage.rows[0] || null
       };
     });
-    if (!out) return res.status(404).json({ error: 'no card on this token' });
+    // No card is a revoked membership (057) or a removed one: the token no
+    // longer opens anything, and the counter is who can restore it.
+    if (!out) return res.status(401).json({ error: 'This card is not signed in here any more — ask at the counter' });
     res.set('cache-control', 'no-store').json(out);
   } catch (e) { next(e); }
 });

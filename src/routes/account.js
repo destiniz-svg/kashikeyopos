@@ -396,8 +396,15 @@ r.get('/oauth/:provider/start', function (req, res) {
      inside it and comes back inside the id_token, which is what ties the token
      we are handed to the request we actually made. */
   const nonce = crypto.randomBytes(16).toString('base64url');
+  /* `b` binds the round trip to the TAB that started it. A signed state is
+     good anywhere, so an attacker could finish a sign-in as themselves and hand
+     somebody the callback link — who would land signed in to the ATTACKER's
+     account and onboard their business into it. The page keeps `b` in its own
+     sessionStorage and accepts a returning token only when it comes back
+     beside the same value. No cookie: this plane has none, by design. */
+  const bind = String(req.query.b || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
   const state = signAccount({ n: crypto.randomBytes(9).toString('base64url'),
-    p: key, nn: nonce, exp: Date.now() + 10 * 60e3 });
+    p: key, nn: nonce, b: bind, exp: Date.now() + 10 * 60e3 });
 
   const params = {
     client_id: p.id(),
@@ -487,7 +494,8 @@ async function oauthCallback(req, res, next) {
     const s = await session(account.id);
     // The token goes to the page in the fragment, which is never sent to a
     // server or written to a proxy log.
-    res.redirect('/account#token=' + encodeURIComponent(s.token));
+    res.redirect('/account#token=' + encodeURIComponent(s.token)
+      + '&b=' + encodeURIComponent(claims.b || ''));
   } catch (e) { next(e); }
 }
 r.get('/oauth/:provider/callback', oauthCallback);

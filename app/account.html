@@ -671,15 +671,30 @@ button.link:hover{text-decoration:underline}
   $("startOver").addEventListener("click", function () {
     mode = "signup"; pending = ""; sent = true; otpSet(""); say("", ""); paint();
   });
-  $("google").addEventListener("click", function () { location.href = "/api/account/oauth/google/start"; });
-  $("apple").addEventListener("click", function () { location.href = "/api/account/oauth/apple/start"; });
+  /* A social sign-in is bound to THIS tab: a random value kept here, carried
+     through the provider inside the signed state, and required back beside the
+     token. A callback link somebody else started carries their value, not
+     ours, and is refused rather than signing this browser in as them. */
+  var OAUTH_BIND = "kashikeyo.oauth";
+  function social(p) {
+    var a = new Uint8Array(18), b = "";
+    crypto.getRandomValues(a);
+    for (var i = 0; i < a.length; i++) b += ("0" + a[i].toString(16)).slice(-2);
+    try { sessionStorage.setItem(OAUTH_BIND, b); } catch (e) {}
+    location.href = "/api/account/oauth/" + p + "/start?b=" + b;
+  }
+  $("google").addEventListener("click", function () { social("google"); });
+  $("apple").addEventListener("click", function () { social("apple"); });
 
   // A social sign-in comes back with the token in the fragment, which is never
   // sent to a server and never written to a proxy log.
   var frag = new URLSearchParams((location.hash || "").replace(/^#/, ""));
   if (frag.get("token")) {
-    keep(frag.get("token"));
+    var mine = null;
+    try { mine = sessionStorage.getItem(OAUTH_BIND); sessionStorage.removeItem(OAUTH_BIND); } catch (e) {}
     history.replaceState(null, "", location.pathname);
+    if (mine && frag.get("b") === mine) keep(frag.get("token"));
+    else say("err", "That sign-in was not started on this page — start it again here");
   }
   var q = new URLSearchParams(location.search);
   /* Typed once, on the website. A prefill and nothing more: the code still
