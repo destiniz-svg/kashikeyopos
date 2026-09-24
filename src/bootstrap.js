@@ -49,6 +49,13 @@ const MOVEMENT = {
 // what a gram of it costs.
 const r2 = (v) => Math.round(Number(v) * 1000) / 1000;
 const iso = (d) => (d ? new Date(d).toISOString() : null);
+const clockOf = (d, tz) => {
+  if (!d) return '';
+  try {
+    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: tz || 'Indian/Maldives' }).format(new Date(d));
+  } catch (e) { return iso(d); }
+};
 const ms = (d) => (d ? new Date(d).getTime() : 0);
 
 /* One client, one query at a time.
@@ -151,10 +158,15 @@ async function buildBootstrap(ctx) {
       deliveries: ['SELECT d.id, d.grn_no, d.supplier_id, d.business_date, d.at,'
         + ' d.received_by, d.priced, d.net, d.total, d.location_id, d.note,'
         + " coalesce(json_agg(json_build_object('ing', gl.ingredient_id,"
-        + " 'qty', gl.qty, 'rate', gl.unit_price, 'total', gl.line_total)"
+        /* In the item's STOCK unit, the one the line editor keys and labels:
+           grn_line holds BASE units, and a list reading "0.01 kg at 180,000"
+           for ten kilos at 180 is the conversion done in one direction only. */
+        + " 'qty', gl.qty / coalesce(nullif(ig.stock_factor, 0), 1),"
+        + " 'rate', gl.unit_price * coalesce(nullif(ig.stock_factor, 0), 1), 'total', gl.line_total)"
         + " ORDER BY gl.id) FILTER (WHERE gl.id IS NOT NULL), '[]') AS lines,"
         + ' max(vi.invoice_no) AS invoice_no'
         + ' FROM delivery d LEFT JOIN grn_line gl ON gl.delivery_id = d.id'
+        + ' LEFT JOIN ingredient ig ON ig.id = gl.ingredient_id'
         + ' LEFT JOIN vendor_invoice vi ON vi.delivery_id = d.id'
         + ' GROUP BY d.id ORDER BY d.at DESC LIMIT 300'],
       indents: ['SELECT i.id, i.pr_no, i.to_outlet, i.at, i.needed_by, i.raised_by,'
@@ -647,7 +659,10 @@ async function buildBootstrap(ctx) {
          screen's own fallback, which reads as "not recorded". */
       vendors: suppliers.rows.map((r) => ({
         id: r.id, name: r.name, contact: r.contact || '', phone: r.phone || '',
-        email: r.email || '', tin: r.trn || '', terms: r.terms_days,
+        email: r.email || '', tin: r.trn || '',
+        // The form's own word ("cod", "net30"), not the bare day count: a 0 read
+        // back as the fallback "Net 30" and failed the form's own COD check.
+        terms: Number(r.terms_days) === 0 ? 'cod' : 'net' + (r.terms_days == null ? 30 : Number(r.terms_days)),
         lead: r.lead_days, status: r.active === false ? 'inactive' : 'active'
       })),
       /* THE FOUR COLLECTIONS THAT WERE LITERAL EMPTY ARRAYS, in the shapes
@@ -867,7 +882,7 @@ async function buildState(ctx, opts) {
 
       // The money already taken. One row shape, whichever screen settled it.
       settled: sales.rows.map((s) => settledOf(s, slByeSale[s.id] || [],
-        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id])),
+        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id], ctx.tz)),
       refunds: creditMap(credits.rows),
 
       register: open ? {
@@ -1358,7 +1373,7 @@ async function buildLive(ctx, opts) {
       at: Date.now(),
       tickets: ticketMap(q.tickets.rows, linesByTicket),
       settledToday: q.sales.rows.map((s) => settledOf(s, slBySale[s.id] || [],
-        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id])),
+        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id], ctx.tz)),
       register: open ? {
         open: true, id: open.id, float: num(open.float_amount),
         openedBy: open.opened_by, openedAt: ms(open.opened_at)
@@ -1419,14 +1434,17 @@ function ticketOf(t, lines) {
 /* The settled row — ONE shape, both settle paths, twenty-nine fields. The
    reference's own defect was a second path writing thirteen of them and
    booking the pre-discount subtotal as revenue. */
-function settledOf(s, lines, pays, outletId, table) {
+function settledOf(s, lines, pays, outletId, table, tz) {
   const tender = pays.length === 1 ? pays[0].method
     : pays.length > 1 ? 'split' : 'cash';
   return {
     // The row names its own outlet: the estate screens group by it, and an
     // unlabelled sale is a sale that belongs to nobody.
     outletId: outletId,
-    id: s.id, no: s.receipt_no, time: iso(s.at), at: ms(s.at),
+    // The clock time on the OUTLET's clock, the shape the till writes for its
+    // own rows ("23:40"). It was the ISO instant, printed verbatim on the
+    // receipt a guest is sent: "2026-09-24T18:40:55.393Z".
+    id: s.id, no: s.receipt_no, time: clockOf(s.at, tz), at: ms(s.at),
     /* The name the TILL gave this bill, so the terminal that rang it can find
        its own row coming back wearing the outlet's id and the outlet's
        receipt number — neither of which it could have known. Null for a bill

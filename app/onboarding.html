@@ -592,6 +592,11 @@ button.go.ok{background:var(--go);color:var(--on-go);
             token: r.token, outletId: r.outletId, rank: r.rank, name: r.name,
             roleKey: r.roleKey, staffId: r.staffId, exp: Date.now() + 11 * 3600e3
           })); } catch (e) {}
+          /* WHICH STORE this terminal is, beside the credential. Only a PIN
+             sign-in and /account wrote it, so a till set up here forgot its store
+             the moment its session ended — a revoked session left a lock screen
+             saying nobody was on the roll, with no way back but /account. */
+          try { if (r.outletId) localStorage.setItem("kashikeyo.outlet", String(r.outletId)); } catch (e) {}
           return r;
         });
       }
@@ -625,7 +630,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
       key: "chart", label: "Chart of accounts",
       sub: "Shipped complete — confirm the bank",
       title: "The books are already set up",
-      lede: "Thirty-five accounts ship with the product, and the codes are load-bearing: the auto-posting rules, the profit and loss grouping and the GST return all read them. Nine of them belong to the till and a manual journal will refuse to touch them, because the ledger reconciles to the POS by construction.",
+      lede: "Thirty-eight accounts ship with the product, and the codes are load-bearing: the auto-posting rules, the profit and loss grouping and the GST return all read them. Eleven of them belong to the till and a manual journal will refuse to touch them, because the ledger reconciles to the POS by construction.",
       why: "The only thing the app cannot know is your bank account and what was in it on the day your books start. The reconciliation counts forward from that figure.",
       edit: "Accounting → Chart of accounts",
       fields: [
@@ -1906,9 +1911,9 @@ button.go.ok{background:var(--go);color:var(--on-go);
     var box = el("div");
     box.style.marginTop = "18px";
     var rows = [
-      ["Accounts shipped", "35"],
-      ["Owned by the till, refused to a manual journal", "9"],
-      ["Expense accounts on the P&L", "17"],
+      ["Accounts shipped", "38"],
+      ["Owned by the till, refused to a manual journal", "11"],
+      ["Expense accounts on the P&L", "18"],
       ["Document series created", "7"]
     ];
     rows.forEach(function (r) {

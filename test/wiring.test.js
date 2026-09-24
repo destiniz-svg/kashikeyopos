@@ -4769,7 +4769,7 @@ test('the member card draws the same plates as the guest portal', () => {
    given. */
 test('a discounted receipt shows its discount on every surface', () => {
   // 1 · one list of totals for the settled receipt and the paper (receiptTotals)
-  assert.match(SRC, /\.concat\(T\.disc \? \[\["Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\), "\\u2212 " \+ MVRc\(T\.disc\)\]\] : \[\]\)/,
+  assert.match(SRC, /\.concat\(T\.disc \? \[\["Discount" \+ \(T\.discCode \? " " \+ T\.discCode : ""\) \+ \(T\.discPct \? " " \+ T\.discPct \+ "%" : ""\), "\\u2212 " \+ MVR\(T\.disc\)\]\] : \[\]\)/,
     'the receipt totals carry a Discount row between Subtotal and Service');
   assert.match(SRC, /const rows = this\.receiptTotals\(T, p\.pay, o\)/,
     'the settled receipt modal draws them');
@@ -6021,8 +6021,12 @@ test('choosing a dish at the till shows its add-ons, and the money follows', () 
      outlet while the till's own subtotal added up menuPrice alone — and the
      pay screen takes money on the till's figure. */
   assert.ok(/linePrice\(l\) \{/.test(SRC), 'linePrice is the one definition');
-  assert.ok(/\(m \? this\.menuPrice\(m\) : 0\) \+ \(\+\(l \|\| \{\}\)\.extra \|\| 0\)/.test(SRC),
+  assert.ok(/\(m \? this\.menuPrice\(m\) : 0\) \+ \(\+l\.extra \|\| 0\)/.test(SRC),
     'menu price plus what was chosen on THAT line');
+  // A line the OUTLET published carries its rung price and no \`extra\`: that
+  // price is the line's, or the poll gives every priced add-on away.
+  assert.ok(/if \(l\.extra == null && l\.price != null && isFinite\(\+l\.price\)\) return \+l\.price;/.test(SRC),
+    'a line the outlet published is charged at the price it was rung at');
   assert.ok(!/menuPrice\(mi\) \* l\.qty/.test(SRC) && !/menuPrice\(m\) \* l\.qty/.test(SRC),
     'and no renderer prices a line any other way');
   assert.ok(/extra: \+ql\.addons \|\| 0/.test(SRC),
@@ -6061,7 +6065,7 @@ test('the role a new account gets by default is the safest one, not the stronges
     const roles = F.assignableRoles();
     assert.ok(roles.length > 1, who + ' can grant more than one role');
 
-    const ranks = roles.map((r) => F.rankOf(r.key));
+    const ranks = roles.map((r) => F.rankFor(r.key));
     const sorted = ranks.slice().sort((a, b) => a - b);
     assert.deepStrictEqual(ranks, sorted,
       'assignableRoles() must be ordered from the least reach upward, because'
@@ -8876,8 +8880,40 @@ test('the settlement: points off the goods, the tip on what is paid, one copy ev
   assert.match(I, /chg: change, tip: tipAmt, tendered: r2\(due \+ change\)/, 'each share leg names its tip');
   assert.match(I, /paidAmt: r2\(paidAmt \+ due - tipAmt\), paidTip:/, 'shares accumulate bill and tip apart');
   // Receipts name the bill, the tip and what was handed over.
-  assert.match(I, /\["TOTAL PAID", MVRc\(r2\(bill \+ P\.tip\)\)\]/, 'the till receipt says total paid');
+  assert.match(I, /\["TOTAL PAID", MVR\(r2\(bill \+ round \+ tip\)\)\]/, 'the till receipt says total paid');
+  assert.match(I, /\["Cash rounding", \(round > 0/, 'and names the cash rounding on its own line');
   assert.match(rd('app/doc.html'), /row\("Total paid"/, 'the shared receipt says total paid');
   assert.match(rd('app/guest.html'), /V\.paidTotalLabel = "Total paid"/, 'the guest receipt says total paid');
   assert.match(rd('src/routes/outlet.js'), /s\.total, s\.tip, s\.pts_value, s\.at/, 'the settled projection carries the tip');
+});
+
+/* ═══ THE PRODUCTION RUN ═══════════════════════════════════════════════════
+   A real account, a real store, every area driven in Chromium against the
+   live install. These are what it found in the till and the back office. */
+test('the production run: money that was invented, dropped or scaled by a thousand', () => {
+  const H = require('./harness');
+  const F = H.makeInstance({ role: 'SuperAdmin' });
+  // A delivery keyed in the item's STOCK unit reaches the outlet in BASE units:
+  // ten kilos at 180 is 10,000 g at 0.18, never 10 g at 180.
+  F.item = (id) => id === 'rice' ? ['rice', 'Dry', 'Rice', 'kg', 32, 'raw', 'rice', 'g', 'kg', '0.032', 25] : null;
+  F.convFactor = (it) => (it && it[8] === 'kg' ? 1000 : 1);
+  const b = F.toBase('rice', 10, 180);
+  assert.strictEqual(b.qty, 10000);
+  assert.ok(Math.abs(b.rate - 0.18) < 1e-12, 'the rate is not rounded to the laari');
+  // Par is the item's own figure, never one derived from its id.
+  F.state.parOv = {};
+  assert.strictEqual(F.parOf('rice'), 25);
+  assert.strictEqual(F.parOf('nothing'), 0);
+  const SRC = require('fs').readFileSync(require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.doesNotMatch(SRC, /8 \+ \(id % 17\) \* 2 : ov/, 'no invented par');
+  // No payslip carries an allowance nobody agreed.
+  assert.doesNotMatch(SRC, /const allow = st\.kind === "expat" \? 1500 : 1000;/);
+  // The card's accept runs before the signal is marked read, or it finds nothing.
+  assert.match(SRC, /if \(id\.indexOf\("go_"\) === 0\) this\.acceptQr\(id\);\s*\n\s*this\.patchSignal\(id, \{ ack: 1 \}\);/);
+  // A split share is an even part of what is still owed; the last is the rest.
+  assert.match(SRC, /const gross = evenN > 1 \? \(paidN === evenN - 1 \? left : shareBase\) : T\.total;/);
+  // Clear voids the lines at the outlet rather than only forgetting them here.
+  assert.match(SRC, /clearT: \(\) => \{[\s\S]{0,900}this\.queue\("void_line"/);
+  // Payment terms travel as days, from the form's own word.
+  assert.doesNotMatch(SRC, /terms: num\(r\.termsDays\) \|\| 30/);
 });

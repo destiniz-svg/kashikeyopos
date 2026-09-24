@@ -331,6 +331,15 @@ r.get('/state', async function (req, res, next) {
         address: c.address, atoll: c.atoll, phone: c.phone, email: c.email,
         currency: c.base_currency, brand: c.brand || {} };
     }
+    /* The CODE survives the owner, because the steps after it still need it:
+       the document-series step builds its prefixes from it, and with the
+       record withheld it offered "DOC-R" to a store whose receipts are
+       "E2ET-R" — a prefix that, once saved and used, can never be changed.
+       The code is printed on every receipt, so it is no secret. */
+    if (done.outlet && done.owner) {
+      const oc = await biz(req).query('SELECT code FROM chain.outlet ORDER BY id LIMIT 1');
+      if (oc.rows[0]) outletRec = { code: oc.rows[0].code };
+    }
     if (done.outlet && !done.owner) {
       const o = await biz(req).query('SELECT o.id, o.code, o.name, o.slug, o.kind,'
         + ' o.tax_code, o.service_pct, o.day_start, o.address, o.atoll, o.phone, o.brand,'

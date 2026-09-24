@@ -154,7 +154,7 @@ a:hover{color:#d33d26}
             </sc-for>
           </div>
 
-          <div class="qs" style="margin-top:13px;padding:0 20px 3px;display:flex;gap:7px;overflow-x:auto">
+          <div class="qs" style="{{ dietRowStyle }}">
             <sc-for list="{{ diets }}" as="d" hint-placeholder-count="4">
               <button onClick="{{ d.tap }}" style="{{ d.style }}">{{ d.label }}</button>
             </sc-for>
@@ -193,7 +193,7 @@ a:hover{color:#d33d26}
       </sc-if>
 
       <sc-if value="{{ onTrack }}">
-        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+        <div style="{{ tabScrollStyle }}" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
           <div style="margin-top:5px;font-size:13.5px;color:#62626a">{{ trackSub }}</div>
 
@@ -301,7 +301,7 @@ a:hover{color:#d33d26}
       </sc-if>
 
       <sc-if value="{{ onBill }}">
-        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+        <div style="{{ tabScrollStyle }}" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">The bill</div>
           <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
 
@@ -435,7 +435,7 @@ a:hover{color:#d33d26}
       </sc-if>
 
       <sc-if value="{{ onYou }}">
-        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+        <div style="{{ tabScrollStyle }}" class="qs">
           <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">{{ youTitle }}</div>
           <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
 
@@ -1948,7 +1948,13 @@ class Component extends DCLogic {
     V.clearQ = () => self.setState({ q: "" });
     V.clearQStyle = s.q ? "width:22px;height:22px;border-radius:50%;background:#e2e2e5;color:#6a6a70;font-size:15px;line-height:1;display:grid;place-items:center;flex-shrink:0" : "display:none";
 
-    V.diets = (k.DIETS || []).map((d) => {
+    /* Only a diet some dish on this menu actually suits is offered. A dish
+       with no recipe claims nothing — silence beats an unearned "Vegetarian"
+       on a reef fish — so on a store with no recipes every chip returned an
+       empty menu, six filters that could only ever say no. */
+    const menuNow = this.menu();
+    V.diets = (k.DIETS || []).filter((d) => s.diet.indexOf(d.k) >= 0 || !k.dishSuits
+      || menuNow.some((m) => k.dishSuits(m, d.k))).map((d) => {
       const on = s.diet.indexOf(d.k) >= 0;
       return {
         label: d.label,
@@ -1957,6 +1963,7 @@ class Component extends DCLogic {
         tap: () => self.setState({ diet: on ? s.diet.filter((x) => x !== d.k) : s.diet.concat([d.k]) })
       };
     });
+    V.dietRowStyle = V.diets.length ? "margin-top:13px;padding:0 20px 3px;display:flex;gap:7px;overflow-x:auto" : "display:none";
 
     /* THE TILL'S OWN RAIL, in the guest palette: the selected tab FILLS with
        its section's hue and drops its plate — its whole field is already that
@@ -2542,6 +2549,9 @@ class Component extends DCLogic {
     // ── bar ────────────────────────────────────────────────────────────────
     V.showBar = !!s.table && !s.dish && !s.cartOpen;
     V.cartBadgeOn = s.cart.length > 0;
+    // The review button floats over the foot of every tab, so a tab pads by its
+    // height while it shows — it sat on "Ask for the bill" on the You tab.
+    V.tabScrollStyle = "flex:1;min-height:0;overflow-y:auto;padding:6px 20px " + (V.cartBadgeOn ? 96 : 24) + "px";
     V.barStyle = "position:absolute;left:0;right:0;bottom:0;z-index:30;background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 22%)";
     const dot = (on) => on
       ? "position:absolute;top:6px;right:calc(50% - 15px);width:6px;height:6px;border-radius:50%;background:#f4553c;display:block"
