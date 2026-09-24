@@ -3898,11 +3898,11 @@ class Component extends DCLogic {
     this.setState({ tickets: t, activeTable: n, activeSplit: 0, pane: "menu" });
   }
   applyDiscount(v) {
-    if (!this.canApprove()) return this.toast("A discount needs a manager", "warn");
+    if (!this.canApprove()) return this.toast("Discounts need a manager — ask one to sign in and apply it", "warn");
     const pct = +v.pct || 0;
     if (pct < 0) return this.toast("A discount cannot be negative", "warn");
-    if (pct > this.MAX_DISC) return this.toast("The ceiling is " + this.MAX_DISC + "% — above that, write the line down or issue a credit note", "warn");
-    if (pct > 0 && !v.why) return this.toast("Record why — a discount with no reason is indistinguishable from a leak", "warn");
+    if (pct > this.MAX_DISC) return this.toast("The most a discount can be is " + this.MAX_DISC + "%", "warn");
+    if (pct > 0 && !v.why) return this.toast("Add a reason — it is recorded with the discount", "warn");
     const slot = this.slotName(this.state.activeTable);
     this.mutate(undefined, (t) => {
       if (!pct) delete t.promo;
@@ -3913,7 +3913,7 @@ class Component extends DCLogic {
     this.queue(pct ? "discount_applied" : "discount_cleared",
       pct ? slot + " · " + pct + "% off" + (v.code ? " · " + v.code : "") + " · " + v.why + " · authorised by " + this.me()
           : slot + " · discount removed by " + this.me(), "orders");
-    this.toast(pct ? pct + "% applied — it shows on the bill and comes off before tax" : "Discount cleared");
+    this.toast(pct ? pct + "% off applied to this bill" : "Discount removed");
   }
   blankTicket() { return { guests: [this.newGuest(0)], lines: [], waiter: "", channel: "dine_in", opened: 0, party: 2, status: "occupied", bizDate: this.today() }; }
 
@@ -6652,7 +6652,7 @@ class Component extends DCLogic {
           // is the void worth controlling; removing something never fired is
           // just correcting a keystroke.
           if (l.fired && this.prefs().voidPin !== false && !this.canApprove()) {
-            this.toast("A fired line needs a manager to void — food has already been committed", "err");
+            this.toast(m.name + " is already in the kitchen — a manager has to void it", "err");
             this.queue("void_refused", this.me() + " attempted to void " + m.name + " · " + this.slotName(s.activeTable), "order_lines");
             return;
           }
@@ -6675,7 +6675,7 @@ class Component extends DCLogic {
             this._voidArm = l.lid;
             clearTimeout(this._voidArmT);
             this._voidArmT = setTimeout(() => { this._voidArm = null; }, 4000);
-            this.toast("Tap void again to throw away " + m.name + " — it is already cooking", "warn");
+            this.toast(m.name + " is already cooking. Tap void again within 4 seconds to remove it", "warn");
             return;
           }
           this._voidArm = null;
@@ -7724,7 +7724,7 @@ class Component extends DCLogic {
           return {
             label: n === 1 ? "One bill" : "\u00d7" + n,
             pick: () => locked
-              ? this.toast("A share is already paid — void the ticket to re-split", "warn")
+              ? this.toast("A share is already paid, so the split can't change now", "warn")
               : this.setState({ modal: Object.assign({}, m, { evenN: n, given: "", paidN: 0, paidAmt: 0, paidGross: 0, paidTip: 0 }) }),
             style: "padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1px solid "
               + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)")
@@ -7781,7 +7781,7 @@ class Component extends DCLogic {
         refWrap: payProc ? "margin-bottom:12px;display:block" : "display:none",
         refLabel: payProc ? payProc.evidence + " — optional" : "",
         refValue: m.ref || "",
-        refHint: "Leave blank and the sale is flagged unreferenced",
+        refHint: "Optional — the bill still closes without it",
         onRef: (e) => this.setState({ modal: Object.assign({}, m, { ref: e.target.value }) }),
         /* The same sentence for every processor. The card and wallet rows used
            to promise "the terminal writes this in when it approves" — no
@@ -7789,7 +7789,7 @@ class Component extends DCLogic {
            random six-digit code, which is worse than the blank it papered
            over. Key it off the slip, or leave it for the close to chase. */
         refNote: payProc
-          ? "Type it off the slip " + payProc.name + " issued. Without it this sale cannot be matched against their statement — it still settles, the guest has paid, and it surfaces at close as one to chase."
+          ? "Copy it from the " + payProc.name + " slip. Without it, this sale can't be matched to their statement and shows at close as one to follow up."
           : "",
         refNoteStyle: payProc ? "margin-top:7px;font-size:11px;color:var(--text-muted);line-height:1.55" : "display:none",
         /* One control steps a block on and wraps back to none, so the same
@@ -7802,7 +7802,7 @@ class Component extends DCLogic {
             ? "Spending " + ptsSpent + " pts \u00b7 \u2212" + MVRc(ptsValue) + " off the goods"
             : maxBlocks
               ? payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + blockPts + " = " + MVRc(blockVal)
-              : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + (evenN > 1 ? "points pay a whole bill, not a share" : "not enough for a block"))
+              : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + (evenN > 1 ? "points can only pay a whole bill, not a share" : "needs " + blockPts + " to redeem"))
           : "",
         ptsStyle: "width:100%;padding:11px 13px;border-radius:10px;font-size:12px;font-weight:700;text-align:left;font-family:inherit;border:1px solid "
           + (blocks ? "var(--violet-bright)" : "var(--line)") + ";background:"
@@ -7811,16 +7811,16 @@ class Component extends DCLogic {
         ptsGo: () => {
           if (!maxBlocks) {
             return this.toast(payMember
-              ? payMember.name + " needs " + blockPts + " points for a block, and the bill has to be able to absorb it"
-              : "Link a member to the bill first", "warn");
+              ? "Points are redeemed " + blockPts + " at a time, and the food and drinks must come to at least " + MVRc(blockVal)
+              : "Add a member to the bill first", "warn");
           }
           // Steps on, then wraps back to none: one button spends and cancels.
           this.setState({ modal: Object.assign({}, m, { blocks: (blocks + 1) > maxBlocks ? 0 : blocks + 1, given: "" }) });
         },
         ptsNote: payMember && blocks
-          ? "Released from 2350 Loyalty points liability and recognised as revenue \u2014 points are a liability the business already owes, not a discount off the sale."
+          ? "Tap again to redeem more; past the most this bill allows, it cancels. Taken off the food and drinks, so service and tax go down too."
           : payMember && maxBlocks
-            ? "Up to " + maxBlocks + " block" + (maxBlocks === 1 ? "" : "s") + " on this bill. Taken off the goods, so service and tax follow."
+            ? "Tap to redeem " + blockPts + " points for " + MVRc(blockVal) + " off \u2014 up to " + (maxBlocks * blockPts) + " points on this bill."
             : "",
         ptsNoteStyle: payMember && (blocks || maxBlocks) ? "margin-top:7px;font-size:11px;color:var(--text-muted);line-height:1.55" : "display:none",
         curWrap: m.tender === "cash" ? "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" : "display:none",
@@ -7828,7 +7828,7 @@ class Component extends DCLogic {
           const on = payCur === c.code;
           return {
             label: c.code,
-            sub: c.code === this.base() ? "book" : "@ " + c.rate,
+            sub: c.code === this.base() ? "default" : "@ " + c.rate,
             // Switching currency clears the pad rather than converting what was
             // typed: 200 keyed as rufiyaa is not 200 dollars, and quietly
             // reinterpreting it is how a drawer ends up 2,800 short.
@@ -7874,7 +7874,7 @@ class Component extends DCLogic {
         payCust: m.cust || "",
         custOpts: (K0.CUSTOMERS || []).filter((c) => c.credit > 0).map((c) => ({ id: c.id, label: c.name + " · " + MVRc(c.credit - c.used) + " available" })),
         onPayCust: (e) => this.setState({ modal: Object.assign({}, m, { cust: e.target.value }) }),
-        creditInfo: cust ? (cust.credit - cust.used >= gross ? cust.name + " has " + MVRc(cust.credit - cust.used) + " of headroom. The charge posts Dr 1040 and raises their outstanding balance." : cust.name + " is over the limit — this charge is blocked here. An overrun that reaches the outlet offline is recorded and flagged for a manager, never silent.") : "",
+        creditInfo: cust ? (cust.credit - cust.used >= gross ? cust.name + " has " + MVRc(cust.credit - cust.used) + " of credit left. This bill is added to what they owe." : cust.name + " doesn't have enough credit left for this bill. Take another tender, or ask a manager to raise their limit.") : "",
         creditInfoStyle: cust ? "margin-top:10px;font-size:11.5px;line-height:1.6;padding:10px 12px;border-radius:8px;background:" + (cust.credit - cust.used >= gross ? "var(--ok-dim);border:1px solid var(--ok-dim);color:var(--green-soft)" : "var(--bad-dim);border:1px solid var(--bad-dim);color:var(--red-soft)") : "display:none",
         payRows: [
           { label: "Subtotal", value: MVR(T.sub), style: rowS },
@@ -7894,12 +7894,12 @@ class Component extends DCLogic {
         ],
         changeVal: MVR(change),
         changeStyle: m.tender === "cash" && given > 0 ? "display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--green);padding:6px 0" : "display:none",
-        offlineNote: s.online ? "" : "Offline — this payment is written locally and replays when the link returns. A closed ticket is never overwritten on replay.",
+        offlineNote: s.online ? "" : "Offline — this payment is saved on this till and sent as soon as the connection is back.",
         offlineNoteStyle: s.online ? "display:none" : "font-size:11px;color:var(--warn-bright);line-height:1.55;padding:9px 11px;background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:8px;margin-bottom:10px",
         confirmLabel:
-          (m.tender === "cash" && given < due ? "Tender " + MVR(due - given) + " more"
-            : evenN > 1 ? (paidN + 1 < evenN ? "Take share " + (paidN + 1) + " of " + evenN + " · " + MVRc(due) : "Last share · close ticket · " + MVRc(due))
-            : (gAll.length > 1 ? "Settle " + this.guestLabel(gAll[gIdx]) + " · " + MVRc(due) : "Close ticket · " + MVRc(due))),
+          (m.tender === "cash" && given < due ? "Short by " + MVR(due - given)
+            : evenN > 1 ? (paidN + 1 < evenN ? "Take share " + (paidN + 1) + " of " + evenN + " · " + MVRc(due) : "Take the last share · " + MVRc(due))
+            : (gAll.length > 1 ? "Settle " + this.guestLabel(gAll[gIdx]) + " · " + MVRc(due) : "Take " + MVRc(due) + " and close")),
         // Permanently hidden: the spinner and the tick claimed a terminal
         // round-trip this build does not make. The SVGs stay in the template
         // for a build that one day genuinely integrates an acquirer.
@@ -7911,7 +7911,7 @@ class Component extends DCLogic {
         confirmStyle: "width:100%;padding:15px 12px;border-radius:999px;font-size:15px;font-weight:800;letter-spacing:-.012em;min-height:54px;display:flex;align-items:center;justify-content:center;gap:9px;"
           + (canConfirm ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
         confirmPay: () => {
-          if (!canConfirm) return this.toast(m.tender === "credit" ? "Pick a customer with enough headroom" : "Not enough tendered", "warn");
+          if (!canConfirm) return this.toast(m.tender === "credit" ? "Pick a customer with enough credit left" : "The cash given is less than the amount due", "warn");
           /* NO PRETEND ACQUIRER. This used to hold the operator on a 780 ms
              spinner reading "Waiting for the terminal…" and then stamp a
              SIX-DIGIT CODE MINTED FROM Math.random INTO `ref` — the field the
@@ -9952,15 +9952,15 @@ class Component extends DCLogic {
         [(this.taxRegistered() ? V.tax + " " + V.rate + "%" : "GST"),
           this.taxRegistered() ? MVRc(tax) : "not registered"],
         ["Cash rounding", rnd ? (rnd > 0 ? "+" : "\u2212") + MVRc(Math.abs(rnd)) : "none"],
-        ["Tips held for the team", sum((x) => x.tip) ? MVRc(sum((x) => x.tip)) : "none"],
-        ["Gross taken", MVRc(gross)],
+        ["Tips for staff", sum((x) => x.tip) ? MVRc(sum((x) => x.tip)) : "none"],
+        ["Total taken", MVRc(gross)],
         ["Credit notes issued", credits.length ? credits.length + " · " + MVRc(refunded) : "none"],
-        ["Cash · rufiyaa", MVRc(byTender("cash"))],
+        ["Cash (rufiyaa)", MVRc(byTender("cash"))],
         ["Card and wallet", MVRc(byTender("card") + byTender("wallet"))],
         ["Customer credit", MVRc(byTender("credit"))]
       ].concat(byTender("qr") ? [["QR", MVRc(byTender("qr"))]] : [])
         .concat(byTender("transfer") ? [["Bank transfer", MVRc(byTender("transfer"))]] : [])
-        .concat(fxCash ? [["Cash · foreign, at the ticket rate", MVRc(fxCash)]] : [])
+        .concat(fxCash ? [["Cash in foreign notes, at each bill's rate", MVRc(fxCash)]] : [])
         .concat(Math.abs(other) >= 0.01 ? [["Other tenders", MVRc(other)]] : [])
         .concat(fx.map((f) => [f.code + " notes in drawer", this.fmtCur(f.code, f.amt) + " · " + MVRc(f.mvr)]))
         .concat([["Opening float", MVRc(reg.float || 0)], ["Expected in drawer", MVRc(expected)]]);
@@ -9975,21 +9975,16 @@ class Component extends DCLogic {
         rcpLines: rows.map((r) => ({ n: r[0], v: r[1] })),
         rcpTotals: [
           { n: "NET SALES", v: MVRc(net - refunded), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
-          { n: "Of which not yet money", v: MVRc(byTender("card") + byTender("wallet") + byTender("qr") + byTender("credit")), style: "display:flex;justify-content:space-between;font-size:11px;padding:2px 0" }
+          { n: "Paid by card, wallet, QR or credit", v: MVRc(byTender("card") + byTender("wallet") + byTender("qr") + byTender("credit")), style: "display:flex;justify-content:space-between;font-size:11px;padding:2px 0" }
         ],
         rcpFoot: (this.prefs().device || "unpaired terminal") + " · " + this.me() + " · " + this.rankName() + " rank"
           + (reg.openedAt ? "\nRegister opened " + pad(new Date(reg.openedAt).getHours()) + ":" + pad(new Date(reg.openedAt).getMinutes()) + " by " + (reg.openedBy || "—") : "\nNo register was opened for this shift")
-          + "\nCard and credit are revenue, not cash — the drawer reconciles on the rufiyaa line only.",
-        settledDoneLabel: "Print \u0026 close",
+          + "\nOnly the cash (rufiyaa) line is counted against the drawer.",
+        settledDoneLabel: "Print the Z-report",
         settledDone: () => {
           this.printJob("Z-report", "receipt", "Z-report · " + this.shiftLabel() + " · " + MVRc(net), { net: net,
             doc: { title: this.outlet().name, sub: "Z-report · " + this.shiftLabel(),
-              rows: [["Gross takings", MVRc(gross)], ["Net sales", MVRc(net)],
-                ["Service charge", MVRc(svc)], ["Tax collected", MVRc(tax)],
-                ["Discounts", MVRc(disc)], ["Cash rounding", MVRc(rnd)],
-                ["Refunded", MVRc(refunded)], { rule: 1 },
-                ["Cash", MVRc(byTender("cash"))], ["Card", MVRc(byTender("card"))],
-                ["Wallet", MVRc(byTender("wallet"))], ["NET SALES", MVRc(net - refunded)]],
+              rows: rows.concat([{ rule: 1 }, ["NET SALES", MVRc(net - refunded)]]),
               foot: this.me() + " · " + this.rankName() + " rank" } });
           this.setState({ modal: null });
         }
@@ -19619,18 +19614,18 @@ class Component extends DCLogic {
         }
       },
       refund: {
-        title: "Refund a settled ticket", sub: "Reverses money already taken", save: "Authorise refund",
-        foot: "A refund never edits the original sale. It posts an opposing entry — Dr 4000 sales returns and the tax back to 2200, Cr whatever tender is being repaid — so the original receipt, the Z-report it landed in and the GST return all stay intact. That is what makes the day still reconcile after a guest is paid back.",
+        title: "Refund a settled bill", sub: "Pays money back to the guest · manager only", save: "Refund the guest",
+        foot: "The original receipt is never changed. The refund is recorded as its own entry, paid back by the tender the bill was paid with, so the day's takings, the Z-report and the GST return still add up.",
         fields: [
-          { k: "amt", label: "Amount to refund MVR", v: "0" },
-          { k: "kind", label: "Scope", options: [{ v: "full", l: "Full ticket" }, { v: "part", l: "Partial — one line or a goodwill amount" }] },
+          { k: "amt", label: "Amount to refund (MVR)", v: "0" },
+          { k: "kind", label: "Refund", options: [{ v: "full", l: "Full ticket" }, { v: "part", l: "Partial — one line or a goodwill amount" }] },
           { k: "reason", label: "Reason", options: [
             { v: "quality", l: "Food or drink not right" }, { v: "wrong", l: "Wrong item served" },
             { v: "delay", l: "Excessive wait" }, { v: "overcharge", l: "Charged in error" },
             { v: "goodwill", l: "Goodwill" }
           ], full: 1 },
           { k: "note", label: "What happened", v: "", full: 1 },
-          { k: "restock", label: "Stock", options: [{ v: "no", l: "Consumed or discarded — no stock back" }, { v: "yes", l: "Untouched — return to stock" }], full: 1 }
+          { k: "restock", label: "The food or drink", options: [{ v: "no", l: "Eaten or thrown away — nothing goes back to stock" }, { v: "yes", l: "Untouched — put it back in stock" }], full: 1 }
         ],
         pre: (r) => ({ amt: String(Math.round(r.max)), kind: "full" }),
         onSave: (v, row) => {
@@ -19643,9 +19638,9 @@ class Component extends DCLogic {
           if (!this.state.modal) return;
           const amt = +v.amt || 0;
           if (amt <= 0) return this.toast("Enter the amount to refund", "warn");
-          if (ord.max && amt > ord.max + 0.005) return this.toast("A refund cannot exceed the " + MVRc(ord.max) + " taken — issue a credit note instead", "warn");
-          if (!v.note) return this.toast("A refund needs a written reason — it is the first thing an auditor reads", "warn");
-          if (!this.canApprove()) return this.toast("A refund needs a manager", "warn");
+          if (ord.max && amt > ord.max + 0.005) return this.toast("You can refund up to " + MVRc(ord.max) + " — what was taken on this bill", "warn");
+          if (!v.note) return this.toast("Describe what happened — it goes on the refund record", "warn");
+          if (!this.canApprove()) return this.toast("Refunds need a manager — ask one to sign in and refund it", "warn");
           const R = Object.assign({}, this.state.refunds || {});
           R[ord.no] = { amt: amt, reason: v.reason, note: v.note, at: Date.now(), by: this.me() };
           this.setState({ refunds: R, modal: null });
@@ -19707,9 +19702,12 @@ class Component extends DCLogic {
       },
       regopen: {
         title: "Open the register", sub: "Declare the opening float", save: "Open register",
-        foot: "Cash cannot be sold against a closed register. The float you declare here is what the expected total is measured from at close — without it there is no over/short, and no over/short means no cash control at all.",
-        fields: [{ k: "float", label: "Opening float MVR", v: "2000", full: 1 }],
-        onSave: (v) => this.openRegister(+v.float || 0)
+        foot: "Count the cash in the drawer before the first sale. At close, the till compares your count with this float plus the cash taken.",
+        // Blank, not a figure: a pre-filled float is a float nobody counted.
+        fields: [{ k: "float", label: "Cash in the drawer now (MVR)", v: "", full: 1 }],
+        onSave: (v) => String(v.float == null ? "" : v.float).trim() === ""
+          ? this.toast("Count the drawer and enter the float — 0 if it is empty", "warn")
+          : this.openRegister(+v.float || 0)
       },
       // Recording a yield test. Weigh in, butcher, weigh out — two numbers the
       // kitchen can actually produce, rather than a factor someone reads off a
@@ -19859,14 +19857,14 @@ class Component extends DCLogic {
         }
       },
       regclose: {
-        title: "Close the register", sub: "Count the drawer before you see the total", save: "Declare and close",
-        foot: "This is a blind close: you enter what you counted, and only then does the terminal show what it expected. A close that shows the expected figure first is a fill-in-the-blank form, not a count.",
-        fields: [{ k: "counted", label: "Counted rufiyaa MVR", v: "", full: 1 }]
+        title: "Close the register", sub: "Count the drawer first — the expected total shows after", save: "Close the register",
+        foot: "Enter what you counted. The till shows what it expected only after you close, so the count stays honest.",
+        fields: [{ k: "counted", label: "Rufiyaa counted (MVR)", v: "", full: 1 }]
           // Foreign notes are counted in their own currency, and only asked for
           // when the drawer actually took some — a field for every currency on
           // every close is a form nobody reads.
-          .concat(this.fxTakings().map((f) => ({ k: "c_" + f.code, label: "Counted " + f.code + " notes", v: "" })))
-          .concat([{ k: "tips", label: "Declared tips MVR", v: "0" }]),
+          .concat(this.fxTakings().map((f) => ({ k: "c_" + f.code, label: f.code + " notes counted", v: "" })))
+          .concat([{ k: "tips", label: "Tips taken out for staff (MVR)", v: "0" }]),
         onSave: (v) => {
           const r = this.state.register || {};
           // Read once, BEFORE the register is cleared below — cashTakings() of a
@@ -19886,10 +19884,10 @@ class Component extends DCLogic {
           this.setState({ register: null, modal: null });
           this.queue("close_register", "Register closed · counted " + MVRc(counted) + " · expected " + MVRc(expected) + " · variance " + MVRc(variance) + (fxRows.length ? " · plus " + (fxRows.length / 2) + " foreign currenc" + (fxRows.length === 2 ? "y" : "ies") : ""), "shifts", { counted: counted, note: v.note || "" });
           this.info("Register closed", (r.no || "") + " · " + (r.openedBy || ""),
-            [["Opening float", MVRc(r.float || 0)], ["Rufiyaa takings", MVRc(takings)], ["Expected in drawer", MVRc(expected)], ["Counted", MVRc(counted)], ["Variance", (variance >= 0 ? "+" : "") + MVRc(variance), Math.abs(variance) > 50 ? "var(--red-bright)" : "var(--green)"]].concat(fxRows).concat([["Declared tips", MVRc(+v.tips || 0)]]),
+            [["Opening float", MVRc(r.float || 0)], ["Cash taken", MVRc(takings)], ["Expected in drawer", MVRc(expected)], ["Counted", MVRc(counted)], [variance > 0 ? "Over" : variance < 0 ? "Short" : "Difference", (variance >= 0 ? "+" : "") + MVRc(variance), Math.abs(variance) > 50 ? "var(--red-bright)" : "var(--green)"]].concat(fxRows).concat([["Tips taken out", MVRc(+v.tips || 0)]]),
             Math.abs(variance) > 50 || fxVar > 50
-              ? "A variance above MVR 50 posts to 5200 Cash over / short and needs a manager reason before the next register opens. Each currency is reconciled against itself — a dollar shortage is never netted off against a rufiyaa surplus."
-              : "Within tolerance. The variance posts to 5200 and the Z-report is now immutable." + (fxRows.length ? " Foreign notes are banked at the rate on each ticket, so a rate move between the sale and the deposit lands in 7100 FX gain / loss, not in the cashier's variance." : ""));
+              ? "More than MVR 50 out. Recount before banking and tell a manager — the difference is recorded as cash over / short." + (fxRows.length ? " Each currency is checked on its own." : "")
+              : "Within MVR 50. The difference is recorded as cash over / short, and this shift's Z-report is final." + (fxRows.length ? " Foreign notes are checked in their own currency, so an exchange-rate move doesn't show as a shortage." : ""));
         }
       },
       brand: {
@@ -21524,13 +21522,13 @@ class Component extends DCLogic {
         }
       },
       discount: {
-        title: "Discount this bill", sub: "Comes off the goods, before service charge and tax",
-        save: "Apply it", editSave: "Apply it",
-        foot: "Discounting before tax is not a preference — service charge and GST are levied on what is actually being sold, so taking it off afterwards would collect tax on money the guest never handed over. Set 0% to clear the discount.",
+        title: "Discount this bill", sub: "Comes off the food and drinks, before service charge and tax",
+        save: "Apply discount", editSave: "Apply discount",
+        foot: "Service charge and GST are worked out after the discount, so the guest isn't charged tax on money they don't pay. Enter 0 to remove a discount.",
         fields: [
           { k: "pct", label: "Percent off (0 to " + this.MAX_DISC + ")", v: "10" },
-          { k: "code", label: "Promotion or authority", v: "" },
-          { k: "why", label: "Why this bill", v: "", full: 1 }
+          { k: "code", label: "Promotion code (optional)", v: "" },
+          { k: "why", label: "Reason", v: "", full: 1 }
         ],
         onSave: (v) => this.applyDiscount(v),
         onEdit: (v) => this.applyDiscount(v)
