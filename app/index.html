@@ -14,7 +14,7 @@
 <body>
 <x-dc>
 <helmet>
-<!-- Self-hosted Inter + JetBrains Mono. The reference linked Google Fonts; a
+<!-- Self-hosted Instrument Sans + JetBrains Mono. The reference linked Google Fonts; a
      till that has to keep selling through a dropped link cannot wait on a
      third-party request, and the headers this app ships under forbid one.
      Same families, same weights, same metrics. -->
@@ -4392,7 +4392,7 @@ class Component extends DCLogic {
     return {
       isMobile: isM, isRail: rail,
       shellStyle: "height:100dvh;display:" + (isM ? "flex;flex-direction:column" : "grid;grid-template-columns:" + (pinned ? "236px" : "60px") + " minmax(0,1fr)")
-        + ";background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;overflow:hidden",
+        + ";background:var(--bg);color:var(--text);font-family:'Instrument Sans',system-ui,sans-serif;overflow:hidden",
       // PINNED TO TRACK 2. With the panel `position:fixed` the aside leaves the
       // grid, and without an explicit track the content auto-places into track
       // 1 — the 60px rail — so the whole app collapses to 60px and only still
@@ -5472,7 +5472,7 @@ class Component extends DCLogic {
             // artifact for a dish with no photograph, and the colour chip for a
             // menu section. Inline-grid so it rides inside the ellipsised cell.
             dotText: cc.dot ? (cc.dot[2] || "") : "",
-            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:6px;margin-right:9px;vertical-align:-6px;font-size:8.5px;font-weight:800;font-family:'Manrope',sans-serif;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
+            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:6px;margin-right:9px;vertical-align:-6px;font-size:11px;font-weight:800;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
             style: "text-align:" + (col.a || "left") + ";font-size:" + (cc.size || 12) + "px;font-weight:" + (cc.w || (j === 0 ? 600 : 400)) + ";color:" + (cc.c || (j === 0 ? "var(--text)" : "var(--text-dim)")) + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (cc.mono || col.mono ? "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;" : "") + (cc.chip ? "display:inline-block;justify-self:" + (col.a === "right" ? "end" : "start") + ";padding:3px 8px;border-radius:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + cc.chip[0] + ";color:" + cc.chip[1] : "")
           };
         })
