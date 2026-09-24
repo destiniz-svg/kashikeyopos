@@ -6862,7 +6862,6 @@ test('an invoice scan resolves against the outlet, and posts nothing', opts, asy
     const doc = await one("SELECT count(*)::int AS n FROM document WHERE no LIKE '%INV-9001%'");
     assert.strictEqual(doc.n, 0, 'and draws no document number');
 
-
     // A FIGURE OFF THE SCALE IS CLAMPED, never stored as the model sent it.
     ai.ask = async () => ({ ok: true, model: 'stub', data: {
       lines: [{ text: 'x'.repeat(500), qty: -5, rate: -2, total: -9 }],
