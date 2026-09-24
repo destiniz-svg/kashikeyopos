@@ -931,7 +931,7 @@ async function snapshot(c, outletId) {
        still sees it, short enough that tomorrow's guest on the same table is
        never shown yesterday's bill. The phone guards it further against its
        own last round. */
-    settled: ["SELECT t.table_no, s.receipt_no, s.total, s.at,"
+    settled: ["SELECT t.table_no, s.receipt_no, s.total, s.tip, s.pts_value, s.at,"
       /* WHAT THEY ACTUALLY PAID FOR, line by line. The settled row carried a
          total and a receipt number, so the guest's bill after settlement was
          one sentence — "Paid MVR 218.40 by cash" — over the tab whose whole

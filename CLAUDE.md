@@ -84,6 +84,8 @@ app/onboarding.html    the panel an empty install lands on — three application
 app/guest.html         the QR portal
 app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
+app/kashikeyo-bill.js  the settlement — points, amount due, tip — loaded by the till,
+                        both portals and the server
 app/kashikeyo-yield.js  what a kilo plates — the estimate BOTH runtimes read
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
 app/kashikeyo-share.js  what a shared bill says, and how a number reaches an app
@@ -474,6 +476,33 @@ absorbed into 4900 as fake rounding — revenue nobody could ever pay out — wh
 salary in the company and neither figure could be reconciled. Net pay now lands
 on **2400 Net wages payable** (migration 023). Historical payroll rows are not
 restated: they are what was posted, and the trail says so.
+
+## One settlement, on every surface
+
+subtotal → discounts → points → amount due → tip → what is paid.
+
+`KPOS_BILL.settle()` in `app/kashikeyo-bill.js` is that order, once, and the
+till pay screen, the guest phone and the member card all call it. Four copies
+had drifted: the till tipped on goods a member had paid for in points, the card
+took points off the TOTAL where the till took them off the GOODS (so the two
+quoted different figures for one redemption), the sale row recomputed the tip a
+third way, and every share of an even split carried the WHOLE bill's tip.
+
+- **Points** come off the goods in whole blocks at the store rate, capped by
+  the balance and by the goods; service and tax are rebuilt on what is left.
+  They ride a whole bill only — a share cannot absorb a redemption without
+  restating the bill's service and tax, so the till and the card both say so.
+- **The tip** is a percentage of the goods this payer actually pays for: never
+  service and tax, never points, never another share. A split leg carries its
+  own tip, and the sale's tip is the sum of them.
+- **Receipts name the bill, the tip and what was handed over apart** —
+  `receiptTotals()` on the till (screen and paper), `doc.html`, and the guest
+  card, which reads `tip` off the settled projection. "Paid" over the bill
+  alone read short by exactly the tip.
+
+The server does not recompute the tip — the till settles offline, so the
+module runs where the money is taken, and `applySale()` still ties the claimed
+figure against `total + tip`.
 
 ## Money
 

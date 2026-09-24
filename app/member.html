@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="fonts.css"/>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-bill.js"></script>
 <script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./guest-bridge.js"></script>
@@ -170,7 +171,7 @@ a:hover{color:#d63f27}
                 {{ tierLine }}
               </div>
             </div>
-            <button onClick="{{ openSheet }}" style="width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.10);display:grid;place-items:center;flex-shrink:0">
+            <button aria-label="Menu" onClick="{{ openSheet }}" style="width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.10);display:grid;place-items:center;flex-shrink:0">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f4553c" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h11"></path></svg>
             </button>
           </div>
@@ -197,7 +198,7 @@ a:hover{color:#d63f27}
                   <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
                 </span>
               </span>
-              <span style="{{ tierBadgeStyle }}">{{ tierMark }}</span>
+              <span style="{{ tierBadgeStyle }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"></circle><path d="M8.5 14 7 22l5-3 5 3-1.5-8"></path></svg>{{ tierMark }}</span>
             </span>
             <span style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:26px">
               <span style="display:block">
@@ -277,8 +278,8 @@ a:hover{color:#d63f27}
       <sc-if value="{{ sOrder }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
           <div style="{{ bindWrapStyle }}">
-            <div style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Order from your table</div>
-            <div style="margin-top:7px;font-size:13px;color:#62626a;line-height:1.55;text-wrap:pretty">Key the number printed on your table card, or scan its QR. Everything you order is attached to your membership and earns points.</div>
+            <div style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Select your table</div>
+            <div style="margin-top:7px;font-size:13px;color:#62626a;line-height:1.55;text-wrap:pretty">Select your table below, or scan the QR on your table card. Everything you order is attached to your membership and earns points.</div>
             <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap">
               <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="8">
                 <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -296,7 +297,7 @@ a:hover{color:#d63f27}
               <button onClick="{{ unbind }}" style="flex-shrink:0;font-size:12.5px;font-weight:600;color:#c2452f;padding:7px 12px;border-radius:18px;background:rgba(244,85,60,.12)">Change</button>
             </div>
 
-            <div style="{{ usualHeadStyle }}">Your usuals</div>
+            <div style="{{ usualHeadStyle }}">{{ usualHead }}</div>
             <div style="{{ usualWrapStyle }}">
               <sc-for list="{{ usuals }}" as="u" hint-placeholder-count="3">
                 <button onClick="{{ u.add }}" style="flex-shrink:0;width:132px;text-align:left;background:#fff;border:1px solid #efefef;border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px">
@@ -355,11 +356,11 @@ a:hover{color:#d63f27}
                     <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:4px">{{ l.priceLabel }}</span>
                   </span>
                   <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-                    <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+                    <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                     </button>
                     <span style="font-size:14.5px;font-weight:600;color:#1a1a1a;min-width:9px;text-align:center">{{ l.qty }}</span>
-                    <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+                    <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                     </button>
                   </span>
@@ -483,11 +484,11 @@ a:hover{color:#d63f27}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
                 <span style="display:flex;align-items:center;gap:12px">
-                  <button onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f2f2f4;display:grid;place-items:center;color:#f4553c">
+                  <button aria-label="One fewer share" onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f2f2f4;display:grid;place-items:center;color:#f4553c">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
                   <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
-                  <button onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <button aria-label="One more share" onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
@@ -719,7 +720,7 @@ a:hover{color:#d63f27}
             <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ dsName }}</span>
             <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:3px">{{ dsPrice }}</span>
           </span>
-          <button onClick="{{ dsClose }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ dsClose }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
@@ -732,11 +733,11 @@ a:hover{color:#d63f27}
                 <span style="display:block;font-size:13.5px;font-weight:600;color:#1a1a1a">{{ a.name }}</span>
                 <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px">{{ a.price }}</span>
               </span>
-              <button onClick="{{ a.dec }}" style="{{ a.decStyle }}">
+              <button aria-label="{{ a.decLabel }}" onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-              <button onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+              <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </div>
@@ -744,11 +745,11 @@ a:hover{color:#d63f27}
         </div>
         <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
           <span style="display:flex;align-items:center;gap:11px;flex-shrink:0;border:1.4px solid #ececef;border-radius:999px;padding:6px 8px">
-            <button onClick="{{ dsQtyDec }}" style="width:30px;height:30px;border-radius:50%;background:#f5f5f6;color:#f4553c;display:grid;place-items:center">
+            <button aria-label="One fewer" onClick="{{ dsQtyDec }}" style="width:30px;height:30px;border-radius:50%;background:#f5f5f6;color:#f4553c;display:grid;place-items:center">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
             </button>
             <span style="font-size:15px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dsQty }}</span>
-            <button onClick="{{ dsQtyInc }}" style="width:30px;height:30px;border-radius:50%;background:#f4553c;display:grid;place-items:center">
+            <button aria-label="One more" onClick="{{ dsQtyInc }}" style="width:30px;height:30px;border-radius:50%;background:#f4553c;display:grid;place-items:center">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
             </button>
           </span>
@@ -762,7 +763,7 @@ a:hover{color:#d63f27}
             <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Show this at the till</span>
             <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px">Your cashier keys the code to attach this visit</span>
           </span>
-          <button onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
@@ -785,7 +786,7 @@ a:hover{color:#d63f27}
             <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
             <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px">{{ mTier }} · {{ mPoints }} points</span>
           </span>
-          <button onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
@@ -1256,15 +1257,26 @@ class Component extends DCLogic {
     });
     return out;
   }
-  // "Usuals" are a real preference signal, not a guess: the dishes this member
-  // has ordered through the portal before, most recent first, then the outlet's
-  // own staples to fill the row.
+  /* "Your usuals" is a claim about THIS member, so it is made only from what
+     they have ordered here, most recent first. It used to pad the row with the
+     first dishes on the menu, so a member on their first visit was told their
+     usuals were six dishes they had never heard of. With no history the row is
+     the outlet's own measured "Popular choices"; with neither, it is not drawn. */
+  // "2026-09-24" → "24 September 2026". Read as a calendar date, never through
+  // UTC, or a date read west of Greenwich prints the day before.
+  longDate(v) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ""));
+    const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(v);
+    return isNaN(d) ? String(v || "") : d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  }
   usualIds() {
     const seen = [];
     this.state.sent.slice().reverse().forEach((r) => r.lines.forEach((l) => { if (seen.indexOf(l.id) < 0) seen.push(l.id); }));
-    const off = this.eightySix();
-    this.menu().forEach((m) => { if (seen.length < 6 && seen.indexOf(m.id) < 0 && off.indexOf(m.id) < 0) seen.push(m.id); });
-    return seen.filter((id) => off.indexOf(id) < 0).slice(0, 6);
+    const off = this.eightySix(), menu = this.menu();
+    const live = (id) => off.indexOf(id) < 0 && menu.some((m) => m.id === id);
+    const own = seen.filter(live);
+    if (own.length) return { own: true, ids: own.slice(0, 6) };
+    return { own: false, ids: ((this.K() || {}).POPULAR || []).filter(live).slice(0, 6) };
   }
   /* THE SAME ADD-ONS THE GUEST PORTAL OFFERS, from the outlet's own
      published modifiers — a dish that has them opens the sheet, a dish that
@@ -1694,45 +1706,44 @@ class Component extends DCLogic {
     }
     return b.total;
   }
-  // Points are money the member already earned, so they come off before the tip
-  // is worked out — tipping on money you are not paying would be a fee.
-  /* In WHOLE redemption blocks at the store's own rate, because that is all the
-     till redeems — a phone quoting MVR 77.22 off is a promise the counter
-     cannot keep. `ptsFor()` is the one conversion back to points; it was a
-     literal ×10, so a store at 100 pts = MVR 25 was asked to take 772 points
-     from a member holding 640. */
+  /* THE TILL'S OWN SETTLEMENT (kashikeyo-bill.js), not a phone's idea of it:
+     points in whole blocks at the store's rate, off the GOODS, with service
+     and tax rebuilt on what is left; then the tip on the goods the member
+     actually pays for. This took points off the total and the till took them
+     off the goods, so the card and the counter quoted different figures for
+     the same redemption. Points pay a whole bill, as at the till: a share
+     cannot absorb a redemption without restating the bill's service and tax. */
   redeemBlock() {
     const P = this.programme();
     return { pts: Math.max(1, +P.redeemPts || 100), val: +P.redeemValue || 25 };
   }
-  pointsApplied() {
-    if (!this.state.usePoints) return 0;
-    const r = this.redeemBlock();
-    return Math.floor(Math.min(this.ptValue(), this.myShare()) / r.val) * r.val;
-  }
-  ptsFor(mvr) { const r = this.redeemBlock(); return Math.round(mvr / r.val * r.pts); }
-  // And on the GOODS in that, the till's base (T.net), never on service and tax.
-  tipAmount() {
+  settlement() {
     const b = this.billMath();
-    if (!b || !b.total) return 0;
-    return Math.max(0, this.myShare() - this.pointsApplied()) * (b.net / b.total) * ((this.state.tip || 0) / 100);
+    if (!b) return null;
+    const r = this.redeemBlock();
+    return window.KPOS_BILL.settle({ net: b.net, svc: b.svc, tax: b.tax, total: b.total, amount: this.myShare(),
+      balance: this.points(), blockPts: r.pts, blockVal: r.val,
+      blocks: this.state.usePoints && this.pointsFitSplit() ? Infinity : 0, tipPct: this.state.tip || 0 });
   }
-  payDue() { return Math.max(0, this.myShare() - this.pointsApplied()) + this.tipAmount(); }
+  pointsFitSplit() { return (this.state.split || "all") === "all"; }
+  pointsApplied() { const x = this.settlement(); return x ? x.pointsValue : 0; }
+  tipAmount() { const x = this.settlement(); return x ? x.tip : 0; }
+  payDue() { const x = this.settlement(); return x ? x.pay : 0; }
   requestBill() {
     const b = this.billMath();
     if (!b) return this.toast("Nothing on your table yet");
     const m = this.member();
-    const pts = this.pointsApplied();
+    const pts = this.pointsApplied(), spent = (this.settlement() || {}).pointsSpent || 0;
     const ok = this.bridgePush("bill", m.name + " is ready to pay at table " + b.table, {
       table: b.table, tender: this.state.tender || "card", tip: this.state.tip || 0,
-      due: Math.round(this.payDue() * 100) / 100,
-      points: this.ptsFor(pts), ref: "M" + m.id,
+      due: this.payDue(),
+      points: spent, ref: "M" + m.id,
       split: this.state.split || "all", parts: this.state.splitN || 2
     });
     // Points spent are pending until the till clears them, exactly like a
     // redeemed reward — a phone may not decrement a balance it does not own.
     if (pts > 0) {
-      this.setState({ redeemed: this.state.redeemed.concat([{ id: "pay" + Date.now(), name: "Paid with points", cost: this.ptsFor(pts), code: "PTS", at: Date.now() }]) });
+      this.setState({ redeemed: this.state.redeemed.concat([{ id: "pay" + Date.now(), name: "Paid with points", cost: spent, code: "PTS", at: Date.now() }]) });
     }
     this.setState({ asked: Date.now() });
     this.toast(ok ? "Your server is on the way" : "Saved — it will send when you are back online");
@@ -1901,7 +1912,9 @@ class Component extends DCLogic {
       const jn = onOtp ? null : this.joinFresh();
       const lapsed = !onOtp && !jn && this.joinLive();
       V.signInTitle = onOtp ? "Ask for your code"
-        : jn ? "Welcome back, " + (jn.first || "there")
+        // "Welcome back" only to somebody who has been: a first visit is greeted by the room.
+        : jn ? (jn.visits ? "Welcome back, " + (jn.first || "there")
+          : "Welcome to " + (this.outlet().name || "Kashikeyo"))
           : lapsed ? "That link has expired"
             /* The OUTLET'S name, not the company's. CHAIN.name is the legal
                entity — "Test Trading Pvt Ltd Rewards" greeted guests with a
@@ -1939,7 +1952,7 @@ class Component extends DCLogic {
         V.joinWorth = jn.worth || this.money(this.ptValue(jn.points || 0));
         V.joinFrom = (jn.invitedBy ? jn.invitedBy + " invited you" : "You were invited")
           + " at " + (this.outlet().name || "the restaurant")
-          + (jn.invitedAt ? " on " + jn.invitedAt : "") + ".";
+          + (jn.invitedAt ? " on " + this.longDate(jn.invitedAt) : "") + ".";
         // Only inside two days, and "tomorrow" at one — `left` is whole days.
         V.joinWarnStyle = (jn.state === "expiring")
           ? "margin-top:12px;padding:11px 13px;border-radius:12px;background:#fff4f2;border:1px solid #ffd9d1;font-size:12.5px;color:#c2452f;line-height:1.5"
@@ -2039,7 +2052,8 @@ class Component extends DCLogic {
     V.mName = m.name;
     V.mPhone = m.phone;
     V.mTier = tier.name;
-    V.tierMark = tier.mark;
+    // The tier by NAME beside a medal: a Roman numeral read as a pause button.
+    V.tierMark = String(tier.name || "").toUpperCase();
     V.mPoints = pts.toLocaleString("en-US");
     V.mWorth = this.money(this.ptValue());
     V.mSpent = this.fmt(m.spent);
@@ -2055,7 +2069,7 @@ class Component extends DCLogic {
     V.mInitials = m.name.split(" ").map((x) => x[0]).slice(0, 2).join("");
     V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:#fff;letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
     V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
-    V.tierBadgeStyle = "width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:700;color:#fff;letter-spacing:.04em";
+    V.tierBadgeStyle = "height:30px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:inline-flex;align-items:center;gap:6px;flex-shrink:0;font-size:11px;font-weight:700;color:#fff;letter-spacing:.12em";
 
     // The bar climbs in POINTS, because that is what the ladder measures. It
     // ran on spend against point thresholds, so it was full at every tier.
@@ -2145,7 +2159,9 @@ class Component extends DCLogic {
     V.boundLine = "Ordering at table " + s.table;
     V.boundSub = o.name + " · attached to your membership";
 
-    V.usuals = this.usualIds().map((id) => {
+    const usual = this.usualIds();
+    V.usualHead = usual.own ? "Your usuals" : "Popular choices";
+    V.usuals = usual.ids.map((id) => {
       const d = this.item(id);
       return {
         name: d.name, priceLabel: this.fmt(this.price(d)),
@@ -2226,6 +2242,7 @@ class Component extends DCLogic {
         name: d.name + (l.opt ? " \u00b7 " + l.opt : ""), qty: l.qty,
         priceLabel: this.fmt((this.price(d) + (l.extra || 0)) * l.qty),
         imgStyle: this.plate(d, "55%") + "width:52px;height:52px;border-radius:11px;flex-shrink:0;display:block",
+        decLabel: "One fewer " + d.name, incLabel: "One more " + d.name,
         inc: () => this.bumpLine(i, 1),
         dec: () => this.bumpLine(i, -1)
       };
@@ -2252,10 +2269,11 @@ class Component extends DCLogic {
       V.dsAddons = dsMods.map((a) => {
         const n = s.dishAddons[a.id] || 0;
         return {
-          name: a.name, price: "+" + this.fmt(a.price), qty: String(n),
+          name: a.name, price: +a.price ? "+" + this.fmt(a.price) : "Free", qty: String(n),
           qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
           decStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
             + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+          decLabel: "Remove " + a.name, incLabel: "Add " + a.name,
           inc: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: n + 1 }) }),
           dec: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: Math.max(0, n - 1) }) })
         };
@@ -2552,7 +2570,9 @@ class Component extends DCLogic {
     V.ptsRowStyle = "margin-top:16px;width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;min-height:60px;text-align:left;"
       + (s.usePoints ? "background:#f0f9f2;border:1.4px solid #a8dcb8" : "background:#fff;border:1px solid #e8e8ea");
     V.ptsRowSub = ptsWorth > 0
-      ? (s.usePoints
+      ? (s.usePoints && !this.pointsFitSplit()
+        ? "Points pay the whole bill, not a share — switch to the whole table to use them."
+        : s.usePoints
         ? "Using " + this.money(this.pointsApplied()) + " of your " + this.money(ptsWorth) + ". The till clears them when it settles."
         : this.money(ptsWorth) + " available · " + pts.toLocaleString("en-US") + " points")
       : "No points to spend yet";

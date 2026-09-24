@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="fonts.css"/>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-bill.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./guest-bridge.js"></script>
 <style>
@@ -413,6 +414,14 @@ a:hover{color:#d33d26}
                   </div>
                 </sc-for>
               </div>
+              <div style="{{ paidRowsStyle }}">
+                <sc-for list="{{ paidRows }}" as="r" hint-placeholder-count="2">
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13.5px;color:#4a4a4f">
+                    <span>{{ r.k }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ r.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
               <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111">
                 <span>{{ paidTotalLabel }}</span>
                 <span style="font-family:'JetBrains Mono',monospace">{{ paidTotal }}</span>
@@ -460,7 +469,7 @@ a:hover{color:#d33d26}
             <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW WAS IT?</div>
             <div style="margin-top:11px;display:flex;gap:8px">
               <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
-                <button onClick="{{ st.tap }}" style="{{ st.style }}">
+                <button aria-label="{{ st.label }}" onClick="{{ st.tap }}" style="{{ st.style }}">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
                 </button>
               </sc-for>
@@ -517,11 +526,11 @@ a:hover{color:#d33d26}
                     <span style="min-width:0;font-size:14px;color:#1a1a1a">{{ a.name }}</span>
                     <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
                       <span style="font-size:13px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
-                      <button onClick="{{ a.dec }}" style="{{ a.decStyle }}">
+                      <button aria-label="{{ a.decLabel }}" onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                       </button>
                       <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-                      <button onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0">
+                      <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                       </button>
                     </span>
@@ -537,11 +546,11 @@ a:hover{color:#d33d26}
           </div>
           <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:13px 20px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:13px;background:#fff">
             <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-              <button onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+              <button aria-label="One fewer" onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="font-size:16px;font-weight:700;color:#111;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
-              <button onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+              <button aria-label="One more" onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </span>
@@ -568,11 +577,11 @@ a:hover{color:#d33d26}
                   <span style="display:block;margin-top:5px;font-size:13.5px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ l.amt }}</span>
                 </span>
                 <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                  <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                  <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
                   <span style="font-size:14px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
-                  <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
@@ -1766,15 +1775,16 @@ class Component extends DCLogic {
     }
     return b.total;
   }
-  /* A tip is a percentage of the GOODS — the base the till's pay screen uses
-     (T.net) — never of service and tax. Tipping on the total quoted the guest
-     a figure the counter would not ask for. A share tips on its own goods. */
-  tipAmount() {
+  /* The till's own settlement (kashikeyo-bill.js): the tip is a percentage of
+     the GOODS this guest pays for — never of service and tax, never of another
+     share. One copy, so the phone cannot quote a figure the counter will not ask. */
+  settlement() {
     const b = this.billMath();
-    if (!b || !b.total) return 0;
-    return this.myShare() * (b.net / b.total) * (this.state.tip / 100);
+    return b ? window.KPOS_BILL.settle({ net: b.net, svc: b.svc, tax: b.tax, total: b.total,
+      amount: this.myShare(), tipPct: this.state.tip || 0 }) : null;
   }
-  payDue() { return this.myShare() + this.tipAmount(); }
+  tipAmount() { const x = this.settlement(); return x ? x.tip : 0; }
+  payDue() { const x = this.settlement(); return x ? x.pay : 0; }
 
   renderVals() {
     const s = this.state, k = this.K();
@@ -2092,10 +2102,11 @@ class Component extends DCLogic {
       V.addons = mods.map((a) => {
         const n = s.addons[a.id] || 0;
         return {
-          name: a.name, price: "+" + this.fmt(a.price), qty: String(n),
+          name: a.name, price: +a.price ? "+" + this.fmt(a.price) : "Free", qty: String(n),
           qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
           decStyle: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
             + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+          decLabel: "Remove " + a.name, incLabel: "Add " + a.name,
           inc: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: n + 1 }) }),
           dec: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: Math.max(0, n - 1) }) })
         };
@@ -2149,6 +2160,7 @@ class Component extends DCLogic {
           + ((m && m.img)
             ? "background:#f1f1f3 center/cover url('" + this.photoUrl(m.img) + "')"
             : this.artifact((m || {}).cat, "52%")),
+        decLabel: "One fewer " + (m ? m.name : "item"), incLabel: "One more " + (m ? m.name : "item"),
         inc: () => { const c = s.cart.slice(); c[i] = Object.assign({}, c[i], { qty: c[i].qty + 1 }); self.setState({ cart: c }); },
         dec: () => {
           const c = s.cart.slice();
@@ -2322,23 +2334,33 @@ class Component extends DCLogic {
       name: l.name + (Number(l.qty) > 1 ? " ×" + (+Number(l.qty).toFixed(3)) : ""),
       amt: this.money(l.amt)
     }));
-    V.paidTotalLabel = "Paid";
+    /* THE BILL, THE TIP AND WHAT WAS HANDED OVER, NAMED APART. This read
+       "Paid MVR 142.56" on a bill the guest had tipped 20 on: the sale's total
+       is the bill, the tip rides outside it, and "Paid" over the bill alone
+       was short by exactly the tip. */
+    const tipPaid = (rec && rec.tip) || 0, ptsPaid = (rec && rec.pts) || 0;
+    // The outlet's row carries the bill; the co-located till's record carries
+    // what was handed over, tip included.
+    const billPaid = done ? done.total : rec ? rec.total - tipPaid : 0;
+    V.paidRows = tipPaid ? [{ k: "Food & drinks", v: this.money(billPaid) }, { k: "Tip", v: this.money(tipPaid) }] : [];
+    V.paidRowsStyle = tipPaid ? "margin-top:11px;padding-top:10px;border-top:1px solid #f0f0f0" : "display:none";
+    V.paidTotalLabel = "Total paid";
     // money(), never fmt(): fmt() rounds to whole units, which is right for a
     // menu price and a lie on the figure somebody actually handed over.
-    V.paidTotal = this.money(rec ? rec.total : 0);
+    V.paidTotal = this.money(billPaid + tipPaid);
     V.paidFoot = "Receipt " + ((rec && rec.no) || "—")
       + (paid && (paid.tenderName || paid.tender) ? " · paid by " + (paid.tenderName || paid.tender) : "")
-      + (paid && paid.tip ? " · including a " + paid.tip + "% tip" : "")
+      + (ptsPaid ? " · " + this.money(ptsPaid) + " came off in points" : "")
       + ". Thank you — we hope to see you again.";
 
     /* The sentence stays for the one case the card cannot cover: a bill this
        phone knows was settled and whose lines it was never given — an older
        build, or a settlement outside the projection's two-hour window. */
     V.billEmpty = rec
-      ? "Paid " + this.money(rec.total)
+      ? (tipPaid ? "Food & drinks " + this.money(billPaid) + " · tip " + this.money(tipPaid) + " · total paid " : "Paid ")
+        + this.money(billPaid + tipPaid)
         + (paid && (paid.tenderName || paid.tender) ? " by " + (paid.tenderName || paid.tender) : "")
         + " · Receipt " + (rec.no || "—")
-        + (paid && paid.tip ? " · including a " + paid.tip + "% tip" : "")
         + ". Thank you — we hope to see you again."
       : "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
     V.billEmptyStyle = (b || (rec && paidLines.length)) ? "display:none"
@@ -2480,6 +2502,7 @@ class Component extends DCLogic {
     const served = at >= 3;
     V.rateWrapStyle = served ? "display:block" : "display:none";
     V.stars = [1, 2, 3, 4, 5].map((n) => ({
+      label: n + (n === 1 ? " star" : " stars"),
       style: "width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:"
         + (n <= s.stars ? "#f4553c" : "#e4e4e7") + ";background:" + (n <= s.stars ? "#fff4f2" : "#fafafb"),
       tap: () => self.setState({ stars: n })
