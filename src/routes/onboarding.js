@@ -653,9 +653,12 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
       await biz(req).query('UPDATE chain.staff SET phone = $2 WHERE id = $1',
         [staffId, String(b.phone).trim()]).catch(() => {});
     }
-    await withOutlet({ outletId: o.rows[0].id, rank: 5, actor: staffId }, (c) =>
+    /* The token names its session row, exactly as a PIN sign-in's does, or
+       src/revoked.js has nothing to look up and "Sign out other sessions" can
+       never reach the founder's first token. */
+    const sess = await withOutlet({ outletId: o.rows[0].id, rank: 5, actor: staffId }, (c) =>
       c.query('INSERT INTO chain.session (staff_id, outlet_id, rank, expires_at)'
-        + " VALUES ($1,$2,5, now() + ($3 || ' hours')::interval)",
+        + " VALUES ($1,$2,5, now() + ($3 || ' hours')::interval) RETURNING id",
       [staffId, o.rows[0].id, String(hours)]));
     /* The account that completed onboarding becomes this outlet's OWNER —
        the master admin — and keeps the rank-5 staff record it just created for
@@ -682,7 +685,7 @@ r.post('/owner', openDoor, claim, async function (req, res, next) {
     res.status(201).json({
       staffId,
       token: sign({ o: o.rows[0].id, r: 5, s: staffId, n: b.name,
-        rk: 'SuperAdmin', exp: Date.now() + hours * 3600e3 }),
+        rk: 'SuperAdmin', sid: sess.rows[0].id, exp: Date.now() + hours * 3600e3 }),
       name: b.name, rank: 5, roleKey: 'SuperAdmin', outletId: o.rows[0].id,
       ownedBy: req.account ? req.account.email : null
     });

@@ -2957,6 +2957,19 @@ test('an account code that could not be sent is where the screen says it is', ()
     'the sign-in screen still points at the trail — which is now true');
 });
 
+/* A social sign-in's state is signed, so it is good in ANY browser: finish a
+   Google sign-in as yourself, hand somebody the callback link, and they landed
+   signed in to your account — and onboarded their business into it. The page
+   now binds the round trip to the tab that started it. */
+test('a social sign-in is accepted only by the tab that started it', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  assert.match(page, /sessionStorage\.setItem\(OAUTH_BIND, b\)/, 'the tab keeps its binding');
+  assert.match(page, /\/start\?b=" \+ b/, 'and sends it through the provider');
+  assert.match(page, /if \(mine && frag\.get\("b"\) === mine\) keep\(frag\.get\("token"\)\)/,
+    'and a returning token is kept only beside the same value');
+  assert.ok(!/frag\.get\("token"\)\)\s*\{\s*keep\(/.test(page), 'nothing keeps it unconditionally');
+});
+
 /* THE PASSWORDLESS DOOR ON THE SIGNUP FORM SENT NOTHING.
 
    Found in a live install's own HTTP log: two POSTs to /api/account/code at
