@@ -485,7 +485,28 @@ async function postJournal(c, ctx, lines, source, sourceId, date, memo) {
   }
   // Resolve the entry date ONCE, on the outlet's clock, so the period this
   // opens and the period the row lands in can never be different months.
-  const entryDate = date || today(ctx);
+  let entryDate = date || today(ctx);
+  /* A SALE IS NEVER REFUSED, AND A CLOSED MONTH IS NEVER REOPENED BY ONE. A
+     till offline across a month-end delivers last month's bills after the
+     books were closed, and ensurePeriodOpen() refused them — the op parked,
+     the money stayed in the drawer with no ledger entry, and the only way out
+     was to reopen filed books. So the entry lands in the first OPEN month
+     instead, the sale keeps its own business date, and the move is stamped on
+     the row and the trail. Every other source still refuses: a manual journal
+     or a void into a closed month is a person's decision, and theirs to make. */
+  if (source === 'sale') {
+    const lands = await firstOpenOnOrAfter(c, entryDate);
+    if (lands !== entryDate) {
+      const late = { soldOn: entryDate, postedOn: lands,
+        why: 'period ' + entryDate.slice(0, 7) + ' was closed when this sale arrived' };
+      await c.query("UPDATE sale SET server_audit = coalesce(server_audit, '{}'::jsonb)"
+        + " || jsonb_build_object('posted_late', $2::jsonb) WHERE id = $1",
+      [sourceId, JSON.stringify(late)]);
+      await log(c, 'sale_posted_late', 'sale', sourceId ? String(sourceId) : null, null, late);
+      memo = (memo || source) + ' · sold ' + entryDate + ', posted late';
+      entryDate = lands;
+    }
+  }
   await ensurePeriodOpen(c, entryDate);
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['JV']);
   const j = await one(c, 'INSERT INTO journal (jv_no, entry_date, memo, source,'
@@ -496,6 +517,23 @@ async function postJournal(c, ctx, lines, source, sourceId, date, memo) {
       + ' VALUES ($1,$2,$3,$4,$5)', [j.id, l.acct, r2(l.dr), r2(l.cr), l.memo || null]);
   }
   return j.id;   // the deferred trigger refuses an unbalanced entry at COMMIT
+}
+
+/* The date itself where its month is open (or not yet opened), else the first
+   day of the next month that is not closed. */
+async function firstOpenOnOrAfter(c, date) {
+  const d = String(date).slice(0, 10);
+  const closed = new Set((await c.query(
+    "SELECT id FROM period WHERE state = 'closed' AND id >= $1", [d.slice(0, 7)]))
+    .rows.map((r) => r.id));
+  let m = d.slice(0, 7);
+  if (!closed.has(m)) return d;
+  while (closed.has(m)) {
+    let [y, mo] = m.split('-').map(Number);
+    mo += 1; if (mo > 12) { mo = 1; y += 1; }
+    m = y + '-' + String(mo).padStart(2, '0');
+  }
+  return m + '-01';
 }
 
 async function ensurePeriodOpen(c, date) {
