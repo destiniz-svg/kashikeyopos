@@ -4516,6 +4516,17 @@ test('the till never fabricates an approval code', () => {
   assert.ok(!/Math\.random/.test(payZone), 'nothing random inside the settle path');
 });
 
+/* A GUIDE IS READ ONCE. Every back-office screen led with a numbered "how
+   this works" band that could not be put away, so on the fifth visit it was
+   prose above the work. Hidden per terminal, like the pinned rail, and one
+   tap brings it back. */
+test('a screen guide can be hidden on this terminal and brought back', () => {
+  assert.match(SRC, /hasGuide: !!\(g\.guide && g\.guide\.length\) && !\(\(this\.prefs\(\)\.guidesHidden \|\| \{\}\)\[g\.guideTitle \|\| s\.view\]\)/);
+  assert.match(SRC, /onClick="\{\{ guideHide \}\}"/, 'the guide offers Hide');
+  assert.match(SRC, /onClick="\{\{ guideShow \}\}"/, 'and a hidden guide leaves a way back');
+  assert.match(SRC, /DEVICE_PREFS = \{[\s\S]*?guidesHidden: 1/, 'which guides are hidden is this terminal\'s, and does not travel');
+});
+
 /* A CASHIER RINGS, SETTLES AND SIGNS FOR WHAT COMES IN. Asked for plainly:
    "Cashier should not see food cost. Menu inventory stuffs. Cashier only
    receive inventory and what come in." The role's own blurb already promised

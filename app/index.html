@@ -959,7 +959,11 @@
                 <span style="font-size:11.5px;color:var(--text-dim);line-height:1.45">{{ g.text }}</span>
               </div>
             </sc-for>
+            <button onClick="{{ guideHide }}" title="Hide this guide on this terminal" style="align-self:center;margin:0 10px 0 auto;padding:0 14px;min-height:36px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--text-muted);font-family:inherit;font-size:12px;font-weight:600;white-space:nowrap">Hide</button>
           </div>
+        </sc-if>
+        <sc-if value="{{ hasGuideChip }}">
+          <button onClick="{{ guideShow }}" title="Show how this screen works" style="display:inline-flex;align-items:center;gap:7px;margin-bottom:12px;padding:0 13px;min-height:34px;border-radius:999px;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim);font-family:inherit;font-size:12px;font-weight:600"><span style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--bg-2);font-size:11px;font-weight:800">?</span>{{ guideTitle }}</button>
         </sc-if>
 
         <sc-if value="{{ hasBar }}">
@@ -5507,7 +5511,21 @@ class Component extends DCLogic {
       emptyText: g.empty || "Nothing here yet.",
       // Guided steps: the order of operations for this screen, stated once at
       // the top. A back-office module is only obvious to whoever built it.
-      hasGuide: !!(g.guide && g.guide.length),
+      /* Read once, then out of the way. The guide is the order of operations
+         for a first visit; on the fifth it is a band of prose above the work.
+         Hidden per terminal (a device preference, like the pinned rail), and
+         one tap brings it back. */
+      hasGuide: !!(g.guide && g.guide.length) && !((this.prefs().guidesHidden || {})[g.guideTitle || s.view]),
+      hasGuideChip: !!(g.guide && g.guide.length) && !!((this.prefs().guidesHidden || {})[g.guideTitle || s.view]),
+      guideHide: () => {
+        const k = g.guideTitle || s.view, h = Object.assign({}, this.prefs().guidesHidden || {}, { [k]: true });
+        this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { guidesHidden: h }) });
+      },
+      guideShow: () => {
+        const k = g.guideTitle || s.view, h = Object.assign({}, this.prefs().guidesHidden || {});
+        delete h[k];
+        this.setState({ prefs: Object.assign({}, this.state.prefs || {}, { guidesHidden: h }) });
+      },
       guideTitle: g.guideTitle || "How this works",
       guide: (g.guide || []).map((t, i) => ({
         n: String(i + 1), text: t,
@@ -10393,7 +10411,7 @@ class Component extends DCLogic {
   DEVICE_PREFS = {
     navPinned: 1, kdsStation: 1, printConn: 1, printerHost: 1, printerName: 1,
     paper: 1, copies: 1, autoPrint: 1, theme: 1, shell: 1, deviceLabel: 1,
-    receiptPrinter: 1, kotPrinter: 1, device: 1
+    receiptPrinter: 1, kotPrinter: 1, device: 1, guidesHidden: 1
   };
   isDevicePref(k) { return !!this.DEVICE_PREFS[String(k)]; }
   prefs() {
