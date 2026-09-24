@@ -146,7 +146,7 @@ h1{font-size:clamp(24px,3.2vw,32px);font-weight:800;letter-spacing:-.042em;
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
 .f{display:flex;flex-direction:column;gap:6px;min-width:0}
 .f.full{grid-column:1/-1}
-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;
+label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
   color:var(--text-faint)}
 label .req{color:var(--amber-bright);margin-left:3px}
 input,select,textarea{
@@ -409,7 +409,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
       edit: "Settings → Company",
       fields: [
         { k: "logo", label: "Logo", type: "logo", full: true,
-          hint: "PNG or JPG, up to 2 MB. It is scaled down on this device before it is sent — a four-megapixel photograph of a signboard costs every terminal its storage budget. Prints on the receipt and heads the guest's menu." },
+          hint: "PNG or JPG, up to 2 MB. It prints on your receipts and heads the guest's menu." },
         { k: "legalName", label: "Business name", req: true, full: true, ph: "Your registered legal name" },
         { k: "bizType", label: "Business type", type: "select", req: true,
           options: [
@@ -1623,7 +1623,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
       pick.textContent = has ? "Replace" : "Upload logo";
       drop.style.display = has ? "" : "none";
       says.textContent = msg || (has ? "Stored with the record and printed from it."
-        : "None — click to browse. PNG or JPG, up to 2 MB.");
+        : "None yet.");
       says.style.color = msg ? "var(--danger-bright)" : "";
     }
     pick.addEventListener("click", function () { file.click(); });
