@@ -5867,6 +5867,48 @@ test('voiding a settled sale reverses its money, stock, points and credit',
     assert.strictEqual(still.voided_at, null, 'and the refused void changed nothing');
   });
 
+/* ═══ THE LEDGER MOVES THE WAY THE SHELF DOES, AND ONCE ═════════════════════ */
+const journals = (source, id) => one('SELECT count(*)::int AS n FROM journal'
+  + ' WHERE source = $1 AND source_id = $2', [source, String(id)]).then((r) => r.n);
+const balance = (acct) => one('SELECT coalesce(sum(l.dr) - sum(l.cr), 0)::numeric AS v'
+  + ' FROM journal_line l WHERE l.account_code = $1', [acct]).then((r) => Number(r.v));
+
+test('a write-on raises stock in the ledger, not lowers it', opts, async () => {
+  const ing = await one('SELECT id FROM ingredient ORDER BY name LIMIT 1');
+  const before = await balance('1200');
+  const r = await push([{ opId: uuid(), kind: 'stock_adjust', payload: {
+    ing: ing.id, qty: 5, cost: 10, value: 50, reason: 'manual', note: 'found a case' } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  assert.strictEqual(round(await balance('1200') - before), 50, '1200 rose with the shelf');
+});
+
+test('a delivery priced at receipt is booked, and pricing it again is not', opts, async () => {
+  const v = await push([{ opId: uuid(), kind: 'vendor_upsert',
+    payload: { name: 'Priced At Door Supplies', terms: 30 } }]);
+  const ing = await one('SELECT id FROM ingredient ORDER BY name LIMIT 1');
+  const got = await push([{ opId: uuid(), kind: 'grn_receive', payload: {
+    vendor: v.body.results[0].result.vendorId,
+    lines: [{ ing: ing.id, qty: 4, price: 25, total: 100 }] } }]);
+  const d = got.body.results[0].result;
+  assert.ok(d && d.deliveryId, JSON.stringify(got.body.results[0]));
+  assert.strictEqual(await journals('delivery', d.deliveryId), 1, 'the payable is booked');
+
+  const again = await push([{ opId: uuid(), kind: 'grn_priced', payload: {
+    deliveryId: d.deliveryId, net: 100, tax: 0 } }]);
+  assert.strictEqual(again.body.results[0].result.skipped, 'already priced');
+  assert.strictEqual(await journals('delivery', d.deliveryId), 1, 'and only once');
+});
+
+test('a month is depreciated once, however many times it is sent', opts, async () => {
+  const period = '2099-01';
+  const send = () => push([{ opId: uuid(), kind: 'depreciate',
+    payload: { period: period, amount: 120 } }]);
+  await send();
+  const second = await send();
+  assert.strictEqual(second.body.results[0].result.skipped, 'already depreciated');
+  assert.strictEqual(await journals('depreciation', period), 1);
+});
+
 test('a refund marked "untouched — return to stock" actually returns it', opts, async () => {
   /* The refund form asks the one question that matters for the shelf, and the
      answer used to go nowhere: "untouched" queued a stock_return op carrying no

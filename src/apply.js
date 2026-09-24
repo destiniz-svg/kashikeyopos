@@ -816,10 +816,17 @@ H.close_register = async (c, p, ctx) => {
     + ' WHERE closed_at IS NULL LIMIT 1');
   if (!open.rows.length) return { closed: false, why: 'no open register' };
   const d = open.rows[0];
+  /* WHAT THE DRAWER SHOULD HOLD IS WHAT CAME IN LESS WHAT WENT OUT. Cash paid
+     back on a credit note, and the cash of a sale since voided, both already
+     left 1010 in their own journals; counting them as still in the drawer made
+     every cash refund show up again at close as a "Cash short" of itself. */
   const takings = await one(c,
     "SELECT coalesce(sum(p.amount),0) AS cash FROM payment p JOIN sale s ON s.id = p.sale_id"
-    + " WHERE p.method = 'cash' AND p.at >= $1", [d.opened_at]);
-  const expected = r2(num(d.float_amount) + num(takings.cash));
+    + " WHERE p.method = 'cash' AND p.at >= $1 AND s.voided_at IS NULL", [d.opened_at]);
+  const paidOut = await one(c,
+    "SELECT coalesce(sum(amount),0) AS cash FROM credit_note"
+    + " WHERE method = 'cash' AND at >= $1", [d.opened_at]);
+  const expected = r2(num(d.float_amount) + num(takings.cash) - num(paidOut.cash));
   const counted = r2(p.counted);
   const variance = r2(counted - expected);
   await c.query('UPDATE drawer_session SET closed_at = now(), closed_by = $2,'
@@ -1106,8 +1113,14 @@ H.void_sale = async (c, p, ctx) => {
     throw Object.assign(new Error('A void needs a written reason'), { status: 400 });
   }
 
-  await c.query('UPDATE sale SET voided_at = now(), voided_by = $2 WHERE id = $1',
-    [sale.id, ctx.actor]);
+  /* The claim IS the guard. The read above takes no lock, so two devices
+     voiding one sale under different opIds both saw it live and both reversed
+     it — journal, stock, points and credit, twice. Only the void whose UPDATE
+     actually flips the row goes on; the row lock makes the second one wait and
+     then find it already void. */
+  const claimed = await c.query('UPDATE sale SET voided_at = now(), voided_by = $2'
+    + ' WHERE id = $1 AND voided_at IS NULL RETURNING id', [sale.id, ctx.actor]);
+  if (!claimed.rows.length) return { skipped: 'already void', saleId: sale.id };
 
   /* The ledger, reversed from itself. Every leg of the sale's own entry with
      the sides swapped — including the rounding and the loyalty legs — so the
@@ -1200,11 +1213,19 @@ H.stock_adjust = async (c, p, ctx) => {
     reason: p.reason === 'waste' ? 'waste' : 'manual', note: p.note, loc: loc
   }) : null;
   const id = mv && mv.id;
-  if (r2(p.value)) {
-    await postJournal(c, ctx, [
-      { acct: '5100', dr: Math.abs(r2(p.value)), memo: p.note || 'Stock adjustment' },
-      { acct: '1200', cr: Math.abs(r2(p.value)) }
-    ], 'stock', id, today(ctx), 'Stock adjustment');
+  /* THE DIRECTION IS THE QUANTITY'S. A write-on (qty > 0) puts stock back on
+     the shelf, so 1200 rises and the loss account is relieved; journalling it
+     as a write-off credited 1200 while the shelf went up, leaving the ledger
+     and the stock twice the amount apart. A value with no item is a write-off. */
+  const v = Math.abs(r2(p.value));
+  if (v) {
+    const on = p.ing && num(p.qty) > 0;
+    await postJournal(c, ctx, on
+      ? [{ acct: '1200', dr: v, memo: p.note || 'Stock written on' },
+        { acct: '5100', cr: v }]
+      : [{ acct: '5100', dr: v, memo: p.note || 'Stock adjustment' },
+        { acct: '1200', cr: v }],
+    'stock', id, today(ctx), on ? 'Stock written on' : 'Stock adjustment');
   }
   return { moveId: id };
 };
@@ -1448,6 +1469,16 @@ H.grn_receive = async (c, p, ctx) => {
     [no.no, date, d.id, ctx.actor]);
   await log(c, 'grn_receive', 'delivery', d.id, null,
     { no: no.no, ref: p.ref || null, lines: lines.length });
+  /* A DELIVERY A MANAGER PRICED AT THE DOOR IS PRICED. Every line carrying a
+     rate means the stock moved at its value, and the till then treats the
+     delivery as posted and never sends `grn_priced` — so 1200 and the supplier
+     payable never moved while the shelf did. The same pricing step runs here,
+     once; its own guard makes a later price check a no-op. */
+  if (lines.every((l) => l.price > 0)) {
+    await H.grn_priced(c, { deliveryId: d.id, vendor: p.vendor, vendorName: p.vendorName,
+      invoiceNo: p.invoiceNo || null, date: date,
+      net: r2(lines.reduce((s, l) => s + l.total, 0)), tax: 0 }, ctx);
+  }
   /* The till's OWN number rides back beside the outlet's. A document number is
      a statutory sequence and cannot be minted on a device that has been dark
      all evening — but the counter wrote one on the paper pad, and the two have
@@ -1460,9 +1491,17 @@ H.grn_receive = async (c, p, ctx) => {
 // nobody priced is a credit being left on the table, and the return says so.
 H.grn_priced = async (c, p, ctx) => {
   const net = r2(p.net), tax = r2(p.tax), total = r2(net + tax);
-  await c.query('UPDATE delivery SET priced = true, priced_at = now(), priced_by = $2,'
-    + ' net = $3, tax = $4, total = $5 WHERE id = $1',
-    [p.deliveryId, ctx.actor, net, tax, total]);
+  /* A DELIVERY IS PRICED ONCE. The price check and the edit form can both
+     price one, and so can two devices; each posted Dr 1200 / Cr 2100 again.
+     Where the delivery is named, only the first price lands. An op naming no
+     delivery (priced before it reached the outlet) still books the payable,
+     because there is nothing to dedupe it against and dropping it loses one. */
+  if (p.deliveryId) {
+    const won = await c.query('UPDATE delivery SET priced = true, priced_at = now(),'
+      + ' priced_by = $2, net = $3, tax = $4, total = $5 WHERE id = $1 AND NOT priced'
+      + ' RETURNING id', [p.deliveryId, ctx.actor, net, tax, total]);
+    if (!won.rows.length) return { skipped: 'already priced' };
+  }
   const sup = p.invoiceNo ? await supplierIdOf(c, p.vendor, p.vendorName) : null;
   if (p.invoiceNo && sup) {
     await c.query('INSERT INTO vendor_invoice (supplier_id, invoice_no, invoice_date,'
@@ -1792,9 +1831,19 @@ H.batch_close = async (c, p, ctx) => {
     return { batchId: b.id, state: b.state, already: true };
   }
   let moveId = null;
-  if (state === 'wasted' && num(b.qty) > 0) {
-    const value = r2(num(b.qty) * num(b.unit_cost));
-    const mv = await moveStock(c, ctx, { ing: b.ingredient_id, qty: -Math.abs(num(b.qty)),
+  /* WHAT IS THROWN AWAY IS WHAT IS LEFT. `batch.qty` is what ARRIVED — nothing
+     draws a lot down as sales consume it — so writing it off whole took a lot
+     of 60, of which 40 had been sold, to minus 40 on the shelf and credited
+     1200 for stock that had already left through the sales. The operator's
+     own count wins where one is sent; either way it is capped at the lot and
+     at what the shelf still holds. */
+  const shelf = await one(c, 'SELECT on_hand FROM ingredient WHERE id = $1', [b.ingredient_id]);
+  const left = Math.max(0, Math.min(num(b.qty),
+    p.qty != null ? num(p.qty) : num(b.qty),
+    shelf ? num(shelf.on_hand) : 0));
+  if (state === 'wasted' && left > 0) {
+    const value = r2(left * num(b.unit_cost));
+    const mv = await moveStock(c, ctx, { ing: b.ingredient_id, qty: -left,
       cost: num(b.unit_cost), value: value, reason: 'waste', loc: b.location_id,
       note: 'Lot ' + (b.lot || String(b.id).slice(0, 6)) + ' thrown away'
         + (p.note ? ' \u2014 ' + String(p.note).slice(0, 120) : '') });
@@ -2148,11 +2197,27 @@ H.post_payroll = async (c, p, ctx) => {
   const gross = r2(p.gross), ee = r2(p.pensionEe), er = r2(p.pensionEr);
   const wht = r2(p.withholding), svc = r2(p.service);
   const net = r2(gross - ee - wht + svc);
+  /* A PERIOD IS PAID ONCE. The run row was upserted and then the whole journal
+     posted and every line inserted again, so a second op for the month — two
+     devices, or one device re-sending — doubled the wage bill in the ledger.
+     The till's only guard was one device's own state. A period that already
+     carries a journal is refused here, under the row's lock. */
+  const prior = await c.query('SELECT journal_id FROM payroll_run WHERE id = $1 FOR UPDATE',
+    [p.period]);
+  if (prior.rows.length && prior.rows[0].journal_id) {
+    return { skipped: 'payroll for ' + p.period + ' is already posted' };
+  }
   await c.query('INSERT INTO payroll_run (id, posted_at, posted_by, gross, pension_ee,'
     + ' pension_er, withholding, service_pool, net) VALUES ($1, now(), $2,$3,$4,$5,$6,$7,$8)'
     + ' ON CONFLICT (id) DO UPDATE SET posted_at = now(), posted_by = $2, gross = $3,'
-    + ' pension_ee = $4, pension_er = $5, withholding = $6, service_pool = $7, net = $8',
-    [p.period, ctx.actor, gross, ee, er, wht, svc, net]);
+    + ' pension_ee = $4, pension_er = $5, withholding = $6, service_pool = $7, net = $8'
+    + ' WHERE payroll_run.journal_id IS NULL RETURNING id',
+    [p.period, ctx.actor, gross, ee, er, wht, svc, net]).then((q) => {
+    // Two first posts at once: the loser's upsert waits on the winner's row and
+    // then matches nothing, because by then it carries a journal.
+    if (!q.rows.length) throw Object.assign(new Error('payroll for ' + p.period
+      + ' is already posted'), { status: 409 });
+  });
   for (const l of arr(p.lines)) {
     await c.query('INSERT INTO payroll_line (run_id, employee_id, hours, ot_hours,'
       + ' basic, ot_pay, service, pension_ee, pension_er, withholding, net)'
@@ -2190,13 +2255,17 @@ H.opex_insert = async (c, p, ctx) => {
 
 H.opex_pay = async (c, p, ctx) => {
   const amt = r2(p.amt);
+  const period = p.period || String(today(ctx)).slice(0, 7);
+  // Claimed before it is journalled, for the reason depreciation is.
+  const won = await c.query('INSERT INTO opex_payment (opex_id, period, paid_on, amount,'
+    + ' by_staff) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (opex_id, period) DO NOTHING'
+    + ' RETURNING id', [p.id, period, p.on || today(ctx), amt, ctx.actor]);
+  if (!won.rows.length) return { skipped: 'already paid for ' + period };
   const j = await postJournal(c, ctx, [
     { acct: p.acct || '6300', dr: amt, memo: p.cat || 'Operating cost' },
     { acct: p.method === 'cash' ? '1010' : '1020', cr: amt }
   ], 'opex', p.id, p.on || today(ctx), 'Operating cost · ' + (p.cat || ''));
-  await c.query('INSERT INTO opex_payment (opex_id, period, paid_on, amount, by_staff,'
-    + ' journal_id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (opex_id, period) DO NOTHING',
-    [p.id, p.period || String(today(ctx)).slice(0, 7), p.on || today(ctx), amt, ctx.actor, j]);
+  await c.query('UPDATE opex_payment SET journal_id = $2 WHERE id = $1', [won.rows[0].id, j]);
   return { ok: true };
 };
 
@@ -2238,12 +2307,18 @@ H.maintenance_log = async (c, p, ctx) => {
 H.depreciate = async (c, p, ctx) => {
   const amt = r2(p.amount);
   if (!amt) return { skipped: 'nothing to depreciate' };
+  /* The period is claimed BEFORE the journal. It used to journal first and
+     then insert ON CONFLICT DO NOTHING, so a second op for the same month
+     posted the depreciation again and only the row was deduplicated. */
+  const won = await c.query('INSERT INTO depreciation_run (period, posted_by, amount)'
+    + ' VALUES ($1,$2,$3) ON CONFLICT (period) DO NOTHING RETURNING period',
+  [p.period, ctx.actor, amt]);
+  if (!won.rows.length) return { skipped: 'already depreciated', period: p.period };
   const j = await postJournal(c, ctx, [
     { acct: '5500', dr: amt, memo: 'Depreciation ' + p.period },
     { acct: '1510', cr: amt }
   ], 'depreciation', p.period, p.date || today(ctx), 'Depreciation ' + p.period);
-  await c.query('INSERT INTO depreciation_run (period, posted_by, amount, journal_id)'
-    + ' VALUES ($1,$2,$3,$4) ON CONFLICT (period) DO NOTHING', [p.period, ctx.actor, amt, j]);
+  await c.query('UPDATE depreciation_run SET journal_id = $2 WHERE period = $1', [p.period, j]);
   return { period: p.period, amount: amt };
 };
 
