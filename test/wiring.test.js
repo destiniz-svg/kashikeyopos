@@ -2970,6 +2970,28 @@ test('a social sign-in is accepted only by the tab that started it', () => {
   assert.ok(!/frag\.get\("token"\)\)\s*\{\s*keep\(/.test(page), 'nothing keeps it unconditionally');
 });
 
+/* STAFF SCREENS SPEAK TO STAFF. The critique found the till explaining its
+   security model to a cashier ("the bootstrap this device holds", "a hash this
+   terminal has never seen", "value sits in 1220"), printing "undefined" where an
+   outlet had no name or no manager, and telling every real guest "the till is
+   not open in this browser". One plain line each, and a fallback where a value
+   can be missing. */
+test('staff and guest copy names what matters, and never prints undefined', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  for (const gone of ['the bootstrap this device holds', 'a hash this terminal has never seen',
+    'value sits in 1220', 'append-only ledger row']) {
+    assert.ok(SRC.indexOf(gone) < 0, 'staff copy no longer says: ' + gone);
+  }
+  assert.ok(!/" · manager " \+ o\.mgr,/.test(SRC), 'no manager line without a manager');
+  assert.ok(!/siteFloorLabel\(\), o\.name \+/.test(SRC) && !/ o\.name \+ " has no tables/.test(SRC),
+    'an outlet with no name reads as This location');
+  for (const f of ['app/guest.html', 'app/member.html']) {
+    assert.ok(read(f).indexOf('The till is not open in this browser') < 0, f + ' tells a guest nothing untrue');
+  }
+  assert.match(read('app/account.html'), /id="useCode" type="button">Forgot your password\? Email me a code</);
+  assert.match(read('app/doc.html'), /fail\("Could not load", "Check the connection and try again\.", true\)/, 'a dropped connection offers a retry');
+});
+
 /* THE PASSWORDLESS DOOR ON THE SIGNUP FORM SENT NOTHING.
 
    Found in a live install's own HTTP log: two POSTs to /api/account/code at

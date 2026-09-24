@@ -4759,7 +4759,7 @@ class Component extends DCLogic {
         ? ["POS Floor", o.name
           + (this.taxRegistered(o) ? " · " + this.taxLine(o) : " · no GST charged")
           + ((o.sc || 0) ? " · " + o.sc + "% service charge" : "")]
-        : [this.siteFloorLabel(), o.name + " · no till here · " + (this.siteKind() === "store" ? "receiving, counting and dispatch" : "production and dispatch")],
+        : [this.siteFloorLabel(), (o.name || "This location") + " · no till here · " + (this.siteKind() === "store" ? "receiving, counting and dispatch" : "production and dispatch")],
       kds: ["Kitchen Display", "Live fire queue · longest ticket first"],
       orders: ["Orders & Tickets", "Every ticket written by this outlet today"],
       delivery: ["Delivery & QR Orders", "Table QR sessions, aggregator and own-fleet delivery"],
@@ -6762,7 +6762,7 @@ class Component extends DCLogic {
       })(this),
       low: out86.map((id) => (K0.MENU.find((m) => m.id === id) || {}).name), hasLow: out86.length > 0,
       floorSub: plan.reduce((a, t) => a + (t.seats || 0), 0) + " covers · " + nT + " tables · " + openHere + " open"
-        + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
+        + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + (o.mgr ? " · manager " + o.mgr : ""),
 
       // Arranging the room and working it are different jobs an hour apart, so
       // the layout stays its own pane — no risk of ringing a sale into a rename.
@@ -6823,7 +6823,7 @@ class Component extends DCLogic {
         : edit
         ? plan.reduce((a, t) => a + (t.seats || 0), 0) + " covers · " + nT + " tables · " + zoneList.length + " zone" + (zoneList.length === 1 ? "" : "s") + " · tap a table to rename it, set seats or move its zone"
         : plan.reduce((a, t) => a + (t.seats || 0), 0) + " covers · " + nT + " tables · " + openHere + " open"
-            + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
+            + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + (o.mgr ? " · manager " + o.mgr : ""),
       paneBack: () => this.setState({ pane: "floor" }),
       paneBackStyle: "display:none",
       // Ordering channels belong to service, not to arranging the room.
@@ -8045,7 +8045,7 @@ class Component extends DCLogic {
                said you were, was. */
             go: () => this.setState({ modal: { kind: "lock", who: u.id, pin: "" } })
           })),
-          lockHint: "Tap your own name, then key your own PIN. It is checked by the server against a hash this terminal has never seen \u2014 a PIN compared in the browser is a PIN shipped to the browser, and then every \u201cwho voided this\u201d answer in the audit log is a guess. Five wrong attempts hold this terminal for fifteen minutes. A suspended account is refused at the keypad rather than hidden from it, so nobody is left wondering.",
+          lockHint: "Tap your name, then key your PIN. Six wrong tries lock this terminal for fifteen minutes.",
           /* THE DOOR OUT. The lock holds through reloads now, so without this
              a locked till is a dead end for its own owner. Arming it turns the
              NEXT keyed PIN into authority for the sign-out — rank 4 or above,
@@ -10194,7 +10194,7 @@ class Component extends DCLogic {
     if (kind === "store") {
       line("GRN", q.grnOpen, "to receive", (l) => "Vendor deliveries booked against " + o.code + ", not yet posted to stock", "purchases", "a");
       line("Indent", q.indentOpen, "to fulfil", (l) => "Outlet requests routed here, " + l.filter((x) => /approv/i.test(x.status)).length + " already approved", "requests", "a");
-      line("Dispatch", q.dispOpen, "not accepted", (l) => "Loads sent from " + o.code + " and still in transit — value sits in 1220 until acceptance", "dispatches", "b");
+      line("Dispatch", q.dispOpen, "not accepted", (l) => "Loads sent from " + o.code + " and still in transit, carried as stock in transit until the other outlet accepts it", "dispatches", "b");
       line("Count", q.countsDue, "categories due", (l) => "On the count schedule by category frequency, counted blind", "counts", "n");
     } else {
       line("Production", q.prodOpen, "batches open", (l) => "Started or planned batches, output not yet posted", "production", "a");
@@ -10228,8 +10228,8 @@ class Component extends DCLogic {
       })),
       notes: [
         [kind === "store" ? "This location does not sell" : "This kitchen does not sell",
-          o.name + " has no tables and no till, so there is no floor plan and no ticket to open. Its work is " + (kind === "store" ? "receiving, counting, picking and dispatching" : "producing, and dispatching to the outlets") + " — the queue above is the equivalent of a floor: the things waiting for someone here. The selling screens are hidden for this location rather than shown empty."],
-        ["Stock here is real", MVRc(totalVal) + " across " + mine.length + " item lines and " + cats.length + " categories, with " + batches.length + " open batches, earliest use-by first. Consumption at the restaurants deducts against these balances by recipe explosion, and every movement writes an append-only ledger row with a running balance."],
+          (o.name || "This location") + " has no tables and no till, so there is no floor plan and no ticket to open. Its work is " + (kind === "store" ? "receiving, counting, picking and dispatching" : "producing, and dispatching to the outlets") + " — the queue above is the equivalent of a floor: the things waiting for someone here. The selling screens are hidden for this location rather than shown empty."],
+        ["Stock here is real", MVRc(totalVal) + " across " + mine.length + " item lines and " + cats.length + " categories, with " + batches.length + " open batches, earliest use-by first. Sales at the restaurants take stock off these balances by each dish's recipe, and every movement shows in the stock ledger with a running balance."],
         ["Sub-locations", kids.length ? kids.map((k) => k.code + " " + (k.loc || "").replace("_", " ")).join(" · ") + " — these are RLS scopes inside " + o.code + ", so a store keeper's token reaches the location and its bins and nothing else. Balances are held against " + o.code + " itself." : "This location has no child bins; stock is held against " + o.code + " directly."]
       ]
     };
@@ -13044,7 +13044,7 @@ class Component extends DCLogic {
         };
       }),
       empty: q ? "No dish matches that." : "No dishes in this section yet.",
-      notes: showCost ? [["Hidden is not 86'd", "Hiding a dish takes it off every channel until someone puts it back \u2014 a seasonal item, a discontinued line. 86 is tonight's stock talking, clears with the next service, and is what the floor uses. The two are deliberately separate switches so a stock-out never quietly deletes a dish from the menu."]] : [["Cost prices hidden", "Your rank is below the one that reads cost, so the terminal does not show it. Be clear about what that is and is not: this is the SCREEN, not the wire \u2014 the bootstrap this device holds carries the figure, and hiding it is a courtesy to the counter rather than a boundary. What the ranks actually gate is the API and the row-level policies underneath it, which is where a hand-crafted request is refused."]]
+      notes: showCost ? [["Hidden is not 86'd", "Hiding a dish takes it off every channel until someone puts it back \u2014 a seasonal item, a discontinued line. 86 is tonight's stock talking, clears with the next service, and is what the floor uses. The two are deliberately separate switches so a stock-out never quietly deletes a dish from the menu."]] : [["Cost prices hidden", "Cost prices show for managers and above. Ask one if you need a dish's margin."]]
     };
   }
 

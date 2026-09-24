@@ -1828,7 +1828,7 @@ class Component extends DCLogic {
       ? (liveN
         ? "Live: table " + tno + " has " + liveN + " line" + (liveN === 1 ? "" : "s") + " on the till right now."
         : "Live: connected to " + (o.name || "the outlet") + ". Send a round and it appears on the floor terminal.")
-      : "The till is not open in this browser. Open the POS alongside this and the two talk to each other.";
+      : "Your round goes to the counter the moment you send it.";
 
     Object.assign(V, this.deadVals());
 
