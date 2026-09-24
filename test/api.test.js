@@ -5787,37 +5787,6 @@ test('a stranger cannot walk phone numbers and harvest the customer roster',
     }
   });
 
-/* A till offline across a month-end delivers last month's bills after the
-   books were closed. The sale was refused (the money stayed in the drawer with
-   no ledger entry) — it lands in the first open month instead, keeps its own
-   business date, and says so. Anything else into a closed month still refuses. */
-test('a sale into a closed month posts in the first open one, and says so', opts, async () => {
-  await push([{ opId: uuid(), kind: 'period_close', payload: { period: '2024-03' } },
-    { opId: uuid(), kind: 'period_close', payload: { period: '2024-04' } }]);
-  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
-    bizDate: '2024-03-30', covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
-    tax: 0, round: 0, total: 50, taxCode: 'NONE', taxLabel: '', taxRate: 0,
-    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 50, amount: 50 }],
-    payments: [{ method: 'cash', amt: 50 }], stockMoves: []
-  } }]);
-  const res = sold.body.results[0];
-  assert.ok(!res.error, 'the sale is not refused: ' + JSON.stringify(res));
-  const saleId = res.result.saleId;
-  const row = await one('SELECT business_date::text AS d, server_audit FROM sale WHERE id = $1', [saleId]);
-  assert.strictEqual(row.d, '2024-03-30', 'the sale keeps the day it was rung');
-  assert.strictEqual(row.server_audit.posted_late.postedOn, '2024-05-01',
-    'and says where its entry went, past both closed months');
-  const j = await one("SELECT entry_date::text AS d FROM journal WHERE source = 'sale'"
-    + ' AND source_id = $1', [String(saleId)]);
-  assert.strictEqual(j.d, '2024-05-01', 'the closed months are untouched');
-
-  const manual = await push([{ opId: uuid(), kind: 'post_journal', payload: {
-    date: '2024-03-15', memo: 'Late accrual',
-    lines: [{ acct: '5600', dr: 10 }, { acct: '2100', cr: 10 }] } }]);
-  assert.match(String(manual.body.results[0].error || ''), /closed/,
-    'a person posting into a closed month is still refused');
-});
-
 /* ═══ A VOID HAS TO UNDO SOMETHING ═══════════════════════════════════════════
    sale.voided_at existed from the first migration and five readers trusted it;
    nothing ever wrote it, so voiding a settled sale was a line in the trail and
@@ -5977,6 +5946,37 @@ test('an exhausted pool answers fast and retryably, instead of hanging', opts, a
     held.release();
     await tiny.end();
   }
+});
+
+/* A till offline across a month-end delivers last month's bills after the
+   books were closed. The sale was refused (the money stayed in the drawer with
+   no ledger entry) — it lands in the first open month instead, keeps its own
+   business date, and says so. Anything else into a closed month still refuses. */
+test('a sale into a closed month posts in the first open one, and says so', opts, async () => {
+  await push([{ opId: uuid(), kind: 'period_close', payload: { period: '2024-03' } },
+    { opId: uuid(), kind: 'period_close', payload: { period: '2024-04' } }]);
+  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: '2024-03-30', covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
+    tax: 0, round: 0, total: 50, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 50, amount: 50 }],
+    payments: [{ method: 'cash', amt: 50 }], stockMoves: []
+  } }]);
+  const res = sold.body.results[0];
+  assert.ok(!res.error, 'the sale is not refused: ' + JSON.stringify(res));
+  const saleId = res.result.saleId;
+  const row = await one('SELECT business_date::text AS d, server_audit FROM sale WHERE id = $1', [saleId]);
+  assert.strictEqual(row.d, '2024-03-30', 'the sale keeps the day it was rung');
+  assert.strictEqual(row.server_audit.posted_late.postedOn, '2024-05-01',
+    'and says where its entry went, past both closed months');
+  const j = await one("SELECT entry_date::text AS d FROM journal WHERE source = 'sale'"
+    + ' AND source_id = $1', [String(saleId)]);
+  assert.strictEqual(j.d, '2024-05-01', 'the closed months are untouched');
+
+  const manual = await push([{ opId: uuid(), kind: 'post_journal', payload: {
+    date: '2024-03-15', memo: 'Late accrual',
+    lines: [{ acct: '5600', dr: 10 }, { acct: '2100', cr: 10 }] } }]);
+  assert.match(String(manual.body.results[0].error || ''), /closed/,
+    'a person posting into a closed month is still refused');
 });
 
 test('a killed idle connection is a log line, not an outage', opts, async () => {
