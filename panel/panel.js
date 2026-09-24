@@ -1125,7 +1125,7 @@
         out.push(el("div", { class: "sechead", text: "System events" }));
         out.push(el("div", { class: "card" }, last.events.map(function (ev) {
           return el("div", { style: "display:flex;gap:12px;align-items:baseline;padding:3px 0;flex-wrap:wrap" }, [
-            el("span", { class: "mono", style: "font-size:10.5px;color:var(--text-faint)",
+            el("span", { class: "mono", style: "font-size:11px;color:var(--text-faint)",
               text: new Date(ev.at).toLocaleString() }),
             el("span", { class: ev.kind === "app_down" ? "warn-t" : "",
               style: "font-weight:600;font-size:11.5px",

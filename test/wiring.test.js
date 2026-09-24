@@ -4509,6 +4509,23 @@ test('the provision lock wraps the transaction, not the statement', () => {
   }
 });
 
+/* A PHONE ZOOMS THE PAGE ON A FIELD UNDER 16PX. The guest's search, name,
+   phone, notes and promo sat at 13.5-14.5px and account/onboarding at 14-15px,
+   so a guest at the table landed in a zoomed, sideways-scrolling menu. And the
+   11px text floor the terminal keeps holds on every other page of the app. */
+test('phone fields are 16px and no page of the app drops under 11px', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  for (const f of ['app/guest.html', 'app/member.html']) {
+    const fields = read(f).match(/<(?:input|textarea)\b[^>]*style="[^"]*font-size:\s*([0-9.]+)px/g) || [];
+    fields.forEach((x) => assert.ok(parseFloat(/font-size:\s*([0-9.]+)px/.exec(x)[1]) >= 16, f + ': ' + x.slice(0, 60)));
+  }
+  assert.match(read('app/account.html'), /min-height:50px;color:var\(--text\);font:inherit;font-size:16px;/, 'account fields are 16px');
+  assert.match(read('app/onboarding.html'), /min-height:50px;color:var\(--text\);font:inherit;font-size:16px;/, 'onboarding fields match account');
+  for (const f of ['app/account.html', 'app/onboarding.html', 'app/guest.html', 'app/member.html', 'app/doc.html', 'panel/panel.html', 'panel/panel.js']) {
+    assert.deepStrictEqual(read(f).match(/font-size\s*:\s*(?:[0-9]|10)(?:\.\d+)?px/g) || [], [], f + ' has no text under 11px');
+  }
+});
+
 /* ═══ THE PHONE QUOTES THE MERCHANT'S RATE, WITH OR WITHOUT A ROSTER ════════
    The member card's programme() preferred the till-published roster and, when
    no roster had ever been published, fell back to a hard-coded 100-for-25 —
