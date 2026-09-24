@@ -5882,17 +5882,21 @@ test('a write-on raises stock in the ledger, not lowers it', opts, async () => {
   assert.strictEqual(round(await balance('1200') - before), 50, '1200 rose with the shelf');
 });
 
-test('a delivery priced at receipt is booked, and pricing it again is not', opts, async () => {
+test('a delivery is priced once, from however many screens', opts, async () => {
   const v = await push([{ opId: uuid(), kind: 'vendor_upsert',
-    payload: { name: 'Priced At Door Supplies', terms: 30 } }]);
+    payload: { name: 'Priced Once Supplies', terms: 30 } }]);
   const ing = await one('SELECT id FROM ingredient ORDER BY name LIMIT 1');
   const got = await push([{ opId: uuid(), kind: 'grn_receive', payload: {
     vendor: v.body.results[0].result.vendorId,
     lines: [{ ing: ing.id, qty: 4, price: 25, total: 100 }] } }]);
   const d = got.body.results[0].result;
   assert.ok(d && d.deliveryId, JSON.stringify(got.body.results[0]));
-  assert.strictEqual(await journals('delivery', d.deliveryId), 1, 'the payable is booked');
+  assert.strictEqual(await journals('delivery', d.deliveryId), 0,
+    'receiving waits for the price check');
 
+  await push([{ opId: uuid(), kind: 'grn_priced', payload: {
+    deliveryId: d.deliveryId, net: 100, tax: 0 } }]);
+  assert.strictEqual(await journals('delivery', d.deliveryId), 1, 'the payable is booked');
   const again = await push([{ opId: uuid(), kind: 'grn_priced', payload: {
     deliveryId: d.deliveryId, net: 100, tax: 0 } }]);
   assert.strictEqual(again.body.results[0].result.skipped, 'already priced');

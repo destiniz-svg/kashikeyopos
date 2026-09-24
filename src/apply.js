@@ -1469,16 +1469,6 @@ H.grn_receive = async (c, p, ctx) => {
     [no.no, date, d.id, ctx.actor]);
   await log(c, 'grn_receive', 'delivery', d.id, null,
     { no: no.no, ref: p.ref || null, lines: lines.length });
-  /* A DELIVERY A MANAGER PRICED AT THE DOOR IS PRICED. Every line carrying a
-     rate means the stock moved at its value, and the till then treats the
-     delivery as posted and never sends `grn_priced` — so 1200 and the supplier
-     payable never moved while the shelf did. The same pricing step runs here,
-     once; its own guard makes a later price check a no-op. */
-  if (lines.every((l) => l.price > 0)) {
-    await H.grn_priced(c, { deliveryId: d.id, vendor: p.vendor, vendorName: p.vendorName,
-      invoiceNo: p.invoiceNo || null, date: date,
-      net: r2(lines.reduce((s, l) => s + l.total, 0)), tax: 0 }, ctx);
-  }
   /* The till's OWN number rides back beside the outlet's. A document number is
      a statutory sequence and cannot be minted on a device that has been dark
      all evening — but the counter wrote one on the paper pad, and the two have
