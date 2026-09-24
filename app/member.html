@@ -1680,7 +1680,10 @@ class Component extends DCLogic {
     const o = this.outlet(), k = this.K();
     const lines = (tk.lines || []).map((l) => {
       const m = (k.MENU || []).filter((x) => x.id === l.id)[0];
-      return { name: (m ? m.name : "Item") + (l.qty > 1 ? " \u00d7" + l.qty : ""), amt: (m ? this.price(m) : 0) * l.qty };
+      // The price the till RANG, add-ons included, as guest.html reads it \u2014
+      // the menu price alone quoted a dressed dish short by its add-ons.
+      const unit = (l.price !== undefined && l.price !== null) ? +l.price : (m ? this.price(m) : 0) + (+l.extra || 0);
+      return { name: (m ? m.name : "Item") + (l.qty > 1 ? " \u00d7" + l.qty : ""), amt: unit * l.qty };
     });
     const sub = lines.reduce((a, l) => a + l.amt, 0);
     const pr = tk.promo || null;
