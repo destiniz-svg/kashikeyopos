@@ -3374,7 +3374,10 @@ class Component extends DCLogic {
         lines.push(fresh ? l : (theirs[key] || l));
       });
       (there.lines || []).forEach((l) => { const key = keyOf(l); if (!seen[key]) { seen[key] = 1; lines.push(l); } });
-      mine[k] = Object.assign({}, there, here, { id: there.id || here.id, lines: lines });
+      mine[k] = Object.assign({}, there, here, { id: there.id || here.id, lines: lines,
+        // A table a phone opened is a QR session on every device, whatever
+        // channel this device's blank ticket defaulted to.
+        channel: there.channel === "qr" ? "qr" : (here.channel || there.channel) });
     });
     // Adopt the outlet's rung for every table it knows about, keyed the way the
     // pass and the orders list read it. A ticket this device opened and has not
@@ -5137,11 +5140,12 @@ class Component extends DCLogic {
       const owing = custs.reduce((a, c) => a + (c.used || 0), 0);
       const overLimit = custs.filter((c) => c.credit && c.used >= c.credit).length;
       const today = this.today();
-      const F = s.fulfil || {};
-      const qr = Object.keys(F).map((k) => F[k]).filter((x) => x && x.kind === "qr");
-      const qrToday = qr.filter((x) => this.dayOf(x.at) === today).length;
-      const qrLive = new Set(qr.filter((x) => (x.stage || 0) < 4)
-        .map((x) => String(x.table || ""))).size;
+      // Every floor ticket carries a stage row of kind "qr", so counting those
+      // counted every open table as a phone session. A QR table is one a phone
+      // ordered on: its channel, or a line accepted from a round.
+      const qrLive = this.qrTickets().length;
+      const qrToday = qrLive + (s.settled || []).filter((x) => x.outletId === s.outletId
+        && x.channel === "qr" && x.bizDate === today).length;
       const deliv = (s.settled || []).filter((x) => x.outletId === s.outletId
         && x.channel === "delivery" && x.bizDate === today);
       return [
@@ -5199,6 +5203,16 @@ class Component extends DCLogic {
         card("Location type", this.siteKind() === "store" ? "Main store" : "Central kitchen", "No till, no covers — this location does not sell"),
         card("Feeds", String(this.posOutlets().length) + " outlets", "By indent, dispatch and acceptance"),
         card("Manager", o.mgr || "—", o.region + " · " + o.addr)
+      ];
+    }
+    // A role that cannot ring a sale (the Kitchen) is not shown the takings:
+    // the floor's own figures, without the money.
+    if (!this.can("pos", "a")) {
+      return [
+        card("Open tables", openTables.length + " / " + this.floorTables().length, "Tables with an order on them", amber),
+        card("Covers", String(covers), "In the room and served today"),
+        card("On the pass", String(this.kdsTickets().length), "Tickets still cooking"),
+        card("Kitchen target", this.stationTarget("expo")[0] + " min", "Before a ticket on the pass turns amber")
       ];
     }
     return [
@@ -6157,6 +6171,13 @@ class Component extends DCLogic {
   }
 
   // ── KDS ──────────────────────────────────────────────────────────────────
+  // This outlet's open tables a phone ordered on.
+  qrTickets() {
+    const s = this.state;
+    return Object.keys(s.tickets || {}).filter((k) => +k.split(":")[0] === s.outletId)
+      .map((k) => s.tickets[k])
+      .filter((t) => t && (t.lines || []).length && (t.channel === "qr" || t.lines.some((l) => l.sig)));
+  }
   kdsTickets() {
     const s = this.state, K0 = window.KPOS; if (!K0) return [];
     const out = [];
@@ -6443,7 +6464,7 @@ class Component extends DCLogic {
           : st === "reserved" ? t.resName + " · " + t.resAt
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
           : tb.seats + " seats",
-        total: edit || !tot ? "" : MVRc(tot),
+        total: edit || !tot || !this.can("pos", "a") ? "" : MVRc(tot),
         totalStyle: "font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace"
       });
     });
@@ -6989,7 +7010,7 @@ class Component extends DCLogic {
         return {
           name: t.name,
           meta: t.n + (t.n === 1 ? " item" : " items")
-            + (t.total ? " · " + MVRc(t.total).replace("MVR ", "") : "")
+            + (t.total && this.can("pos", "a") ? " · " + MVRc(t.total).replace("MVR ", "") : "")
             + (t.wait ? " · " + (t.wait < 90 ? t.wait + "m" : t.wait < 1440 ? Math.round(t.wait / 60) + "h" : "old") : ""),
           hint: t.wait >= 1440
             ? t.name + " has been open since a previous day — settle or void it"
@@ -7858,10 +7879,13 @@ class Component extends DCLogic {
         payRows: [
           { label: "Subtotal", value: MVR(T.sub), style: rowS },
           { label: "Discount " + T.discCode + " " + T.discPct + "%" + (T.discFrom === "qr" ? " · from the guest's phone" : ""), value: "\u2212 " + MVR(T.disc), style: T.disc ? rowS + ";color:var(--warn-bright)" : "display:none" },
-          { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: o.sc ? rowS : "display:none" },
-          { label: this.taxLine(o), value: MVR(T.tax),
+          // A redemption restates the bill here too, as the receipt will:
+          // points off the goods, service and tax rebuilt on what is left.
+          { label: "Points redeemed", value: "− " + MVR(ptsValue), style: ptsValue ? rowS + ";color:var(--warn-bright)" : "display:none" },
+          { label: "Service charge " + (o.sc || 0) + "%", value: MVR(ptsValue ? svcAfter : T.svc), style: o.sc ? rowS : "display:none" },
+          { label: this.taxLine(o), value: MVR(ptsValue ? taxAfter : T.tax),
             style: this.taxRegistered(o) ? rowS : "display:none" },
-          { label: "Total", value: MVR(T.total), style: "display:flex;justify-content:space-between;font-size:17px;font-weight:700;padding:9px 0;margin-top:6px;border-top:1px solid var(--line);color:var(--text)" },
+          { label: "Total", value: MVR(ptsValue ? billTotal : T.total), style: "display:flex;justify-content:space-between;font-size:17px;font-weight:700;padding:9px 0;margin-top:6px;border-top:1px solid var(--line);color:var(--text)" },
           { label: "Split " + evenN + " ways", value: MVR(shareBase) + " each", style: evenN > 1 ? rowS : "display:none" },
           { label: "Already collected", value: "\u2212 " + MVR(paidAmt), style: paidAmt ? rowS : "display:none" },
           { label: "This share", value: MVR(gross), style: evenN > 1 ? "display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding:6px 0;color:var(--text)" : "display:none" },
@@ -15740,11 +15764,10 @@ class Component extends DCLogic {
         eta: x.eta || "", total: x.total || 0,
         status: x.status === "closed" ? "delivered" : (x.status || "preparing")
       }));
-    const qrTables = Object.keys(s.tickets || {})
-      .map((k) => s.tickets[k])
-      .filter((t) => t && t.channel === "qr")
+    const qrTables = this.qrTickets()
       .map((t) => ({
         t: t.table || "", items: (t.lines || []).reduce((a, l) => a + (l.qty || 1), 0),
+        value: (t.lines || []).reduce((a, l) => a + this.linePrice(l) * (l.qty || 1), 0),
         since: Math.max(0, Math.round((Date.now() - (t.opened || Date.now())) / 60000))
       }));
     const tab = s.tab.del || 0;
@@ -15756,7 +15779,7 @@ class Component extends DCLogic {
       ? { chipBg: "var(--ok-dim)", chipFg: "var(--green)", bar: "var(--go)" }
       : { chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)", bar: "var(--warn)" };
 
-    if (tab === 2) {
+    if (tab === 1) {
       const steps = this.QR_STAGES, last = steps.length - 1;
       return {
         tabs: tabs,
@@ -15775,7 +15798,7 @@ class Component extends DCLogic {
             pct: ((cur + 1) / steps.length) * 100, barColor: tn.bar,
             rows: [
               ["Session open", x.since + " min"],
-              ["Cart value", MVRc(x.items * 180)],
+              ["On the bill", MVRc(x.value)],
               ["On their phone", "Step " + (cur + 1) + " of " + steps.length, cur >= last ? "var(--green)" : "var(--warn-bright)"]
             ],
             picks: this.stagePicks(id, "qr", dflt, { table: x.t.replace(/^T/, ""), title: "Table " + x.t, source: "qr" }),
@@ -15788,7 +15811,7 @@ class Component extends DCLogic {
       };
     }
 
-    if (tab === 3) {
+    if (tab === 2) {
       const steps = this.QR_STAGES, last = steps.length - 1;
       // Live rounds arriving off the bridge, then a seeded tail so the board
       // reads the same way on a cold terminal.
@@ -15846,7 +15869,7 @@ class Component extends DCLogic {
       };
     }
 
-    if (tab === 4) {
+    if (tab === 3) {
       const steps = this.DEL_STAGES, last = steps.length - 1;
       return {
         tabs: tabs,
@@ -17173,7 +17196,8 @@ class Component extends DCLogic {
       chan: chan,
       name: mem.name,
       outlet: (this.outlet() || {}).name || "",
-      chain: ((K() || {}).CHAIN || {}).name || "Kashikeyo",
+      // The server's order: the brand name, then the legal name.
+      chain: (((K() || {}).CHAIN || {}).brand || {}).name || ((K() || {}).CHAIN || {}).name || "Kashikeyo",
       points: pts,
       worth: MVRc(this.ptsValue(pts)),
       sender: this.meName(),
@@ -21895,7 +21919,10 @@ class Component extends DCLogic {
       // Written so a NaN is skipped rather than posted: one NaN line turns an
       // account's whole total into NaN, and the trial balance loses it.
       if (!(Math.abs(c.varValue) >= 0.005)) return;
-      out.push({ ref: je(), t: t(c.at), src: "Count variance · " + c.lines.length + " lines", dr: "5100", cr: "1200", amt: Math.abs(c.varValue), by: c.by });
+      // A shortfall is Dr 5100 / Cr 1200; a surplus is the reverse — the server's
+      // own count journal (H.count_post) posts it that way, and so does this.
+      const short = c.varValue < 0;
+      out.push({ ref: je(), t: t(c.at), src: "Count variance · " + c.lines.length + " lines", dr: short ? "5100" : "1200", cr: short ? "1200" : "5100", amt: Math.abs(c.varValue), by: c.by });
     });
     Object.keys(s.vendPays || {}).forEach((no) => {
       const pay = s.vendPays[no];

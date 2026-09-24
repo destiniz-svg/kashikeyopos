@@ -8993,3 +8993,21 @@ test('the kitchen: a palette job needs its screen, and a voided line leaves the 
   // A typed search spans the whole menu.
   assert.match(SRC, /\.filter\(\(m\) => q \|\| s\.cat === "all"/);
 });
+
+test('the loose ends of the second run', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const o = F.state.outletId;
+  // A count that finds MORE on the shelf raises 1200, as the server posts it.
+  F.state.counts = [{ outletId: o, at: Date.now(), lines: [], varValue: 40 }];
+  const tb = F.trialBalance(F.ACCPERIODS()[0]);
+  assert.strictEqual((tb.find((r) => r.code === '1200') || {}).dr, 40, 'a surplus is Dr 1200');
+  // The Kitchen reads neither takings nor wages.
+  const kit = F.roleFor('KitchenManager').perms;
+  assert.ok(!kit.reports.v && !kit.staff.v, 'no reports or staff screen for the pass');
+  assert.match(SRC, /if \(!this\.can\("pos", "a"\)\) \{\s*return \[\s*card\("Open tables"/, 'the ribbon without the money');
+  // The Delivery & QR tabs draw their own bodies, and nothing is priced at 180 an item.
+  assert.doesNotMatch(SRC, /x\.items \* 180/);
+  assert.match(SRC, /if \(tab === 1\) \{\s*const steps = this\.QR_STAGES/);
+  // The pay preview restates the bill after points.
+  assert.match(SRC, /label: "Points redeemed", value:/);
+});

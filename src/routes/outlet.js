@@ -672,7 +672,7 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
             req.ctx.actor || null, tokenHash(tok), TOKEN_DAYS]);
         if (!inv.rows.length) return null;
         const m = inv.rows[0];
-        const co = await c.query('SELECT brand FROM chain.company LIMIT 1');
+        const co = await c.query('SELECT brand, legal_name FROM chain.company LIMIT 1');
         // A guest should read a person's name, not a login handle: "Sent by
         // nashwa" is a system talking about itself. The audit trail keeps the
         // handle; the message carries the name they can ask for at the counter.
@@ -683,7 +683,9 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
           chan: via,
           name: m.name || m.phone,
           outlet: (o.rows[0] || {}).name || '',
-          chain: ((co.rows[0] || {}).brand || {}).name || 'Kashikeyo',
+          // The name the till's preview composes with (CHAIN.name, the legal
+          // name) — or the guest reads one subject there and another in the inbox.
+          chain: ((co.rows[0] || {}).brand || {}).name || (co.rows[0] || {}).legal_name || 'Kashikeyo',
           points: Number(m.points) || 0,
           worth: await pointsWorth(c, m.points),
           sender: (by.rows[0] || {}).name || req.ctx.name || '',
