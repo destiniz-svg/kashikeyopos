@@ -8803,3 +8803,40 @@ test('the till reads at 11px and taps at 44px', () => {
   assert.match(SRC, /min-height:52px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px/,
     'the tender keypad is 52px');
 });
+/* ═══════════════════════════════════════════════════════════════════════
+   THE PORTALS, DRIVEN AS A GUEST AND A MEMBER. Each of these was found by
+   ordering, being served and paying through the shipped pages against a
+   real store, and none of them is visible from a single screen.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('the portals: a table is its digits, a tip is on goods, a point is at the store rate', () => {
+  const rd = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const G = rd('app/guest.html'), M = rd('app/member.html'), GR = rd('src/routes/guest.js');
+  const O = rd('src/routes/outlet.js'), B = rd('app/guest-bridge.js'), BS = rd('src/bootstrap.js');
+  // The card says "3", the floor says "T03": the server kept only exact
+  // spellings, so an accepted round never reached the phone's Order or Bill.
+  assert.match(GR, /replace\(\/\^T0\*\/, ''\)/, 'the guest projection matches a table by its digits');
+  assert.doesNotMatch(G, /String\(t\.table\) === want/, 'the phone bill uses sameTable()');
+  // The till tips on T.net; a phone tipping on the total quoted more.
+  assert.match(G, /this\.myShare\(\) \* \(b\.net \/ b\.total\)/, 'the guest tip is on the goods');
+  assert.match(M, /\(b\.net \/ b\.total\) \* \(\(this\.state\.tip/, 'the member tip is on the goods');
+  // A literal ×10 asked the till to redeem 772 points from a member holding 640.
+  assert.doesNotMatch(M, /pts \* 10/, 'no hard-coded points rate');
+  assert.match(M, /points: this\.ptsFor\(pts\)/, 'the request converts at the store rate');
+  assert.match(M, /Math\.floor\(Math\.min\(this\.ptValue\(\), this\.myShare\(\)\) \/ r\.val\) \* r\.val/,
+    'points come off in whole blocks, as the till redeems them');
+  // "T05" > 0 is false: a floor label never bound the card to a table.
+  assert.match(M, /const bound = !!s\.table;/, 'a floor label seats the member');
+  assert.doesNotMatch(M, /fmt\(nextAt - m\.spent\)/, 'the bar counts points to the next tier, not money');
+  // A dish's own add-ons, not every group linked to anything in its section.
+  assert.match(O, /addons: addonsOf\(i\.id\)/, 'the projection carries each dish\'s add-ons');
+  assert.match(B, /addons: Array\.isArray\(i\.addons\) \? i\.addons : null/, 'the bridge keeps them');
+  assert.match(G, /if \(m\.addons\) return/, 'the guest sheet offers the dish\'s own list');
+  assert.match(M, /if \(m\.addons\) return/, 'the member sheet offers the dish\'s own list');
+  // A returning member painted sign-in whenever the menu beat /member/me.
+  assert.match(M, /\} else if \(card\) \{[\s\S]{0,400}this\.forceUpdate\(\);/, 'the card repaints when it arrives');
+  // "Thu Sep 24" never matched the joined-this-month comparison.
+  assert.doesNotMatch(BS, /joined_at \|\| ''\)\.toString\(\)\.slice/, 'since is an ISO date');
+  // A toast over the sheet foot hid the total and the send button.
+  assert.doesNotMatch(G, /bottom:112px;z-index:60/, 'the guest toast is not over the actions');
+  assert.match(M, /top:calc\(env\(safe-area-inset-top\)/, 'the member toast sits at the top');
+});

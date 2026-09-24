@@ -1080,6 +1080,18 @@ async function snapshot(c, outletId) {
     cats: Array.from(new Set((modsByGroup[m.group_id] || [])
       .map((itemId) => catOfItem[itemId]).filter(Boolean)))
   }));
+  /* AND EACH DISH'S OWN LIST, which `cats` cannot say: a group linked to ONE
+     breakfast dish put "3 pcs" on all nineteen. `addons` is the till's
+     `m.addons` — the option ids a dish is dressed with, or null where it has
+     no links and so inherits its section. */
+  const groupsOfItem = {};
+  q.itemMods.rows.forEach((im) => {
+    (groupsOfItem[im.item_id] = groupsOfItem[im.item_id] || new Set()).add(im.group_id);
+  });
+  const addonsOf = (itemId) => {
+    const g = groupsOfItem[itemId];
+    return g ? modifiers.filter((m) => g.has(m.group)).map((m) => m.id) : null;
+  };
 
   /* The RANKING, never a re-ordered menu: the phone keeps the outlet's own
      section order and draws this as one more chip, so a store's menu is not
@@ -1095,7 +1107,7 @@ async function snapshot(c, outletId) {
     tax: q.tax.rows[0] || null,
     popular: popular,
     categories: q.cats.rows,
-    items: q.items.rows,
+    items: q.items.rows.map((i) => Object.assign({}, i, { addons: addonsOf(i.id) })),
     floor: q.floor.rows.map((t) => ({
       id: t.id, label: t.label, seats: t.seats, zone: zoneName[t.zone_id] || ''
     })),

@@ -876,7 +876,7 @@ class Component extends DCLogic {
     // table token. This is the bill.
     const k = window.KPOS || {};
     const want = String(this.state.table);
-    const live = (k.TICKETS || []).filter((t) => String(t.table) === want)[0];
+    const live = (k.TICKETS || []).filter((t) => this.sameTable(t.table, want))[0];
     if (live) return live;
     // A till running in another tab of THIS device — the reference's own
     // demo path, and the fallback when the link is down.
@@ -955,6 +955,9 @@ class Component extends DCLogic {
   // kitchen has no ticket line for.
   addonsFor(m) {
     const k = this.K(); if (!k || !m) return [];
+    // The till's rule: a dish's own list where it has one, its section's
+    // where it has none — never every extra anybody in the section carries.
+    if (m.addons) return (k.MODIFIERS || []).filter((x) => m.addons.indexOf(x.id) >= 0);
     return (k.MODIFIERS || []).filter((x) => !x.cats || x.cats.indexOf(m.cat) >= 0);
   }
   // A stable hue from the name, so Garlic Rice is the same colour on every
@@ -1763,7 +1766,14 @@ class Component extends DCLogic {
     }
     return b.total;
   }
-  tipAmount() { return this.myShare() * (this.state.tip / 100); }
+  /* A tip is a percentage of the GOODS — the base the till's pay screen uses
+     (T.net) — never of service and tax. Tipping on the total quoted the guest
+     a figure the counter would not ask for. A share tips on its own goods. */
+  tipAmount() {
+    const b = this.billMath();
+    if (!b || !b.total) return 0;
+    return this.myShare() * (b.net / b.total) * (this.state.tip / 100);
+  }
   payDue() { return this.myShare() + this.tipAmount(); }
 
   renderVals() {
@@ -2527,7 +2537,7 @@ class Component extends DCLogic {
 
     V.toast = s.toast;
     V.toastStyle = s.toast
-      ? "position:absolute;left:18px;right:18px;bottom:112px;z-index:60;padding:13px 16px;border-radius:15px;background:rgba(20,20,22,.94);color:#fff;font-size:13.5px;font-weight:600;line-height:1.45;text-align:center;animation:qfade .16s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+      ? "position:absolute;left:18px;right:18px;top:calc(env(safe-area-inset-top) + " + (SH.bare ? 14 : 44) + "px);z-index:60;pointer-events:none;padding:13px 16px;border-radius:15px;background:rgba(20,20,22,.94);color:#fff;font-size:13.5px;font-weight:600;line-height:1.45;text-align:center;animation:qfade .16s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
       : "display:none";
     return V;
   }

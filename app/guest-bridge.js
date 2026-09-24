@@ -160,6 +160,7 @@
         price: Number(i.price) || 0, veg: (i.diets || []).indexOf("veg") >= 0,
         img: i.image || "", allergens: i.allergens || [], diets: i.diets || [],
         offMenu: i.off_menu, soldOutReason: i.sold_out_reason || "",
+        addons: Array.isArray(i.addons) ? i.addons : null,
         recipe: []            // a guest device holds no recipe and no cost
       };
     });

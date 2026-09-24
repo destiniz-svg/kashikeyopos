@@ -895,6 +895,12 @@ class Component extends DCLogic {
       const card = (window.KPOS_GUEST || {}).card;
       if (card && card.id !== this.state.memberId) {
         this.setState({ memberId: card.id, step: "phone", otp: "", otpErr: "" });
+      } else if (card) {
+        /* A RETURNING member's id was restored from storage, so nothing above
+           changes — and the page had painted before the card arrived, which
+           left it on the sign-in screen until the member touched something.
+           Whenever the menu beat /member/me, which is a race it often wins. */
+        this.forceUpdate();
       }
     };
     window.addEventListener("kpos-member-ready", this._onCard);
@@ -1266,6 +1272,8 @@ class Component extends DCLogic {
   addonsForDish(m) {
     const k = window.KPOS || {};
     if (!k || !m) return [];
+    // A dish's own list first, as the till does; the section only where none.
+    if (m.addons) return (k.MODIFIERS || []).filter((x) => m.addons.indexOf(x.id) >= 0);
     return (k.MODIFIERS || []).filter((x) => !x.cats || !x.cats.length
       || x.cats.indexOf(m.cat) >= 0);
   }
@@ -1688,11 +1696,27 @@ class Component extends DCLogic {
   }
   // Points are money the member already earned, so they come off before the tip
   // is worked out — tipping on money you are not paying would be a fee.
+  /* In WHOLE redemption blocks at the store's own rate, because that is all the
+     till redeems — a phone quoting MVR 77.22 off is a promise the counter
+     cannot keep. `ptsFor()` is the one conversion back to points; it was a
+     literal ×10, so a store at 100 pts = MVR 25 was asked to take 772 points
+     from a member holding 640. */
+  redeemBlock() {
+    const P = this.programme();
+    return { pts: Math.max(1, +P.redeemPts || 100), val: +P.redeemValue || 25 };
+  }
   pointsApplied() {
     if (!this.state.usePoints) return 0;
-    return Math.min(this.ptValue(), this.myShare());
+    const r = this.redeemBlock();
+    return Math.floor(Math.min(this.ptValue(), this.myShare()) / r.val) * r.val;
   }
-  tipAmount() { return Math.max(0, this.myShare() - this.pointsApplied()) * ((this.state.tip || 0) / 100); }
+  ptsFor(mvr) { const r = this.redeemBlock(); return Math.round(mvr / r.val * r.pts); }
+  // And on the GOODS in that, the till's base (T.net), never on service and tax.
+  tipAmount() {
+    const b = this.billMath();
+    if (!b || !b.total) return 0;
+    return Math.max(0, this.myShare() - this.pointsApplied()) * (b.net / b.total) * ((this.state.tip || 0) / 100);
+  }
   payDue() { return Math.max(0, this.myShare() - this.pointsApplied()) + this.tipAmount(); }
   requestBill() {
     const b = this.billMath();
@@ -1702,13 +1726,13 @@ class Component extends DCLogic {
     const ok = this.bridgePush("bill", m.name + " is ready to pay at table " + b.table, {
       table: b.table, tender: this.state.tender || "card", tip: this.state.tip || 0,
       due: Math.round(this.payDue() * 100) / 100,
-      points: Math.round(pts * 10), ref: "M" + m.id,
+      points: this.ptsFor(pts), ref: "M" + m.id,
       split: this.state.split || "all", parts: this.state.splitN || 2
     });
     // Points spent are pending until the till clears them, exactly like a
     // redeemed reward — a phone may not decrement a balance it does not own.
     if (pts > 0) {
-      this.setState({ redeemed: this.state.redeemed.concat([{ id: "pay" + Date.now(), name: "Paid with points", cost: Math.round(pts * 10), code: "PTS", at: Date.now() }]) });
+      this.setState({ redeemed: this.state.redeemed.concat([{ id: "pay" + Date.now(), name: "Paid with points", cost: this.ptsFor(pts), code: "PTS", at: Date.now() }]) });
     }
     this.setState({ asked: Date.now() });
     this.toast(ok ? "Your server is on the way" : "Saved — it will send when you are back online");
@@ -1826,7 +1850,7 @@ class Component extends DCLogic {
         if (el) el.scrollTop = 0;
       }),
       toastStyle: s.toast
-        ? "position:absolute;left:50%;bottom:" + (M.bare ? 108 : 128) + "px;transform:translateX(-50%);max-width:300px;padding:12px 18px;border-radius:24px;background:rgba(20,20,22,.94);color:#fff;font-size:13px;font-weight:500;text-align:center;line-height:1.4;z-index:20;animation:qtoast .18s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+        ? "position:absolute;left:50%;top:calc(env(safe-area-inset-top) + " + (M.bare ? 14 : 44) + "px);transform:translateX(-50%);max-width:300px;pointer-events:none;padding:12px 18px;border-radius:24px;background:rgba(20,20,22,.94);color:#fff;font-size:13px;font-weight:500;text-align:center;line-height:1.4;z-index:20;animation:qtoast .18s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
         : "display:none",
       toastMsg: s.toast ? s.toast.msg : ""
     };
@@ -2087,7 +2111,9 @@ class Component extends DCLogic {
     }));
 
     // ── ordering ───────────────────────────────────────────────────────────
-    const bound = s.table > 0;
+    // 0 is "not seated"; a table is the floor's own LABEL ("T05"), and
+    // "T05" > 0 is false — which left every store with a floor unable to order.
+    const bound = !!s.table;
     const off = this.eightySix();
     const inCart = {};
     s.cart.forEach((l) => { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
@@ -2560,7 +2586,8 @@ class Component extends DCLogic {
         + (x.k === "credit" && !canCredit ? "background:#fafafb;color:#6e6e77"
           : (s.tender || "card") === x.k ? "background:#1a1a1a;color:#fff" : "background:#f4f4f6;color:#6a6a70"),
       tap: () => (x.k === "credit" && !canCredit)
-        ? this.toast("Not enough headroom on your house account")
+        ? this.toast(this.payDue() > 0 ? "Not enough headroom on your house account"
+          : "Your points cover this — there is nothing to charge")
         : this.setState({ tender: x.k })
     }));
     V.creditNote = s.tender === "credit"
@@ -2642,7 +2669,9 @@ class Component extends DCLogic {
     } else {
       barHot(false);
       V.barLine = pts.toLocaleString("en-US") + " points · " + this.money(this.ptValue());
-      V.barSub = next ? this.fmt(nextAt - m.spent) + " to " + next.name : tier.name + " · top tier";
+      // In POINTS, the ladder's own unit — a points threshold less money spent,
+      // printed as money, read "MVR 1,500 to Gold" beside "860 pts to go".
+      V.barSub = next ? toGo.toLocaleString("en-US") + " pts to " + next.name : tier.name + " · top tier";
       V.barBtn = "Show code";
       V.barTap = () => this.setState({ scan: true });
     }
