@@ -172,6 +172,8 @@
           roleKey: r.roleKey, staffId: r.staffId,
           exp: r.expiresAt || (Date.now() + 11 * 3600e3)
         }));
+        // The token names its store, so the store outlives the token here.
+        if (r.outletId) localStorage.setItem("kashikeyo.outlet", String(r.outletId));
       }
     }
 

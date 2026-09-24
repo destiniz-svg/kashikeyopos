@@ -3207,7 +3207,7 @@ class Component extends DCLogic {
       }
     }
     if (live.register) patch.register = live.register;
-    if (live.counts) patch.counts = live.counts;
+    if (live.counts) patch.counts = live.counts.map((c) => this.countOf(c));
     if (live.res) patch.res = live.res;
     if (live.priceOv) patch.priceOv = this.foldPriceOv(live.priceOv);
     if (live.periods) patch.periods = live.periods;
@@ -3421,7 +3421,7 @@ class Component extends DCLogic {
       .filter((x) => (x.bizDate || this.dayKey(new Date(x.at))) === this.dayKey(y))
       .reduce((a, x) => a + (x.net || 0), 0);
     return {
-      sales: d.sales, covers: d.covers || 1, orders: d.orders,
+      sales: d.sales, covers: d.covers || 0, orders: d.orders,
       // Food cost is measured, not guessed: it is what the recipes actually
       // consumed against what was actually sold.
       fc: d.sales ? Math.round((d.cogs / d.sales) * 1000) / 10 : 0,
@@ -4122,9 +4122,16 @@ class Component extends DCLogic {
      `menuPrice` alone. The pay screen takes money on the till's figure, so
      every add-on a guest ordered and was shown was charged to nobody. The QR
      ingest stamps `extra` on the line now, and this is what reads it. */
+  /* A line the OUTLET published carries the unit price it was rung at — menu
+     plus add-ons — and no `extra`, because `extra` is this device's own
+     bookkeeping. Recomputing menu + 0 for it gave every priced add-on away the
+     first time the poll merged the outlet's copy over the local one: the sheet
+     said "Add · MVR 135" and the bill charged 120. */
   linePrice(l) {
-    const m = (K().MENU || []).find((x) => x.id === (l || {}).id);
-    return (m ? this.menuPrice(m) : 0) + (+(l || {}).extra || 0);
+    l = l || {};
+    if (l.extra == null && l.price != null && isFinite(+l.price)) return +l.price;
+    const m = (K().MENU || []).find((x) => x.id === l.id);
+    return (m ? this.menuPrice(m) : 0) + (+l.extra || 0);
   }
   totals(tk, split) {
     const o = this.outlet();
@@ -6719,7 +6726,8 @@ class Component extends DCLogic {
                 if (r) return this.qrRoundSheet(r);
               }
               this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" });
-              this.ackSignal(x.id);
+              // Opening a table to LOOK must not accept a round and fire it.
+              if (x.kind !== "order") this.ackSignal(x.id);
             },
             goLabel: x.kind === "order" ? "Open the round" : "Open table",
             goStyle: isCode ? "display:none" : GOS,
@@ -7267,7 +7275,7 @@ class Component extends DCLogic {
       fireStyle: this.btn(unfired ? "tonal-fwd" : "ghost", { size: "lg", full: 1, fs: 12.5, disabled: !unfired }),
       fireHover: this.btnHover("tonal-fwd", { disabled: !unfired }),
       fireDisabled: !unfired,
-      pay: () => { if (!this.guardRegister()) return; canPay ? this.setState({ modal: { kind: "pay", tender: ((tk || {}).payIntent || {}).tender || "cash", cust: "", given: "" } }) : this.toast("Add items before taking payment", "warn"); },
+      pay: () => { if (!this.guardRegister()) return; canPay ? this.setState({ modal: this.payModalFor(tk) }) : this.toast("Add items before taking payment", "warn"); },
       payLabel: canPay ? "Pay " + MVRc(T.total) : "Pay",
       // Ink is the primary CTA, per the reference profile: hierarchy is carried by
       // size and weight, not hue. Green now appears only on the APPROVED frame of
@@ -7280,13 +7288,35 @@ class Component extends DCLogic {
           doc: { title: this.outlet().name, sub: "Bill · " + this.slotName(s.activeTable),
             rows: (tk ? tk.lines : []).map((l) => {
               const mi = (K().MENU || []).find((x) => x.id === l.id) || { name: "Item" };
-              return [l.qty + " x " + mi.name, MVRc(this.linePrice(l) * l.qty)];
-            }).concat([{ rule: 1 }, ["TOTAL", MVRc(T.total)]]),
+              return [l.qty + " x " + mi.name, MVR(this.linePrice(l) * l.qty)];
+            }).concat([{ rule: 1 }, ["TOTAL", MVR(T.total)]]),
             foot: "Not a tax invoice — settle to receive one" } });
         this.toast("Bill sent to " + this.printer("receipt").name);
       },
       qrOrder: () => s.activeTable ? this.setState({ modal: { kind: "qr" } }) : this.toast("Select a table first", "warn"),
-      clearT: () => { if (!s.activeTable) return; const t = Object.assign({}, s.tickets); delete t[this.ticketKey()]; this.setState({ tickets: t, activeTable: null, pane: "floor" }); this.toast(this.slotName(s.activeTable) + " cleared"); }
+      /* CLEAR VOIDS THE LINES AT THE OUTLET. It deleted the bill on this
+         device and told nobody, so the next poll adopted the outlet's copy back
+         and the "cleared" table reopened with every line on it — a bill a guest
+         had walked away from, presented again. Food the kitchen already has
+         needs the same manager a fired-line void does. */
+      clearT: () => {
+        if (!s.activeTable) return;
+        const cur = s.tickets[this.ticketKey()] || {};
+        const lines = cur.lines || [];
+        if (lines.some((l) => l.fired) && !this.canApprove()) {
+          return this.toast("Part of this bill is already with the kitchen — clearing it needs a manager", "warn");
+        }
+        lines.forEach((l) => {
+          if (!l.lid) return;
+          this.queue("void_line", "Void " + (((K().MENU || []).find((x) => x.id === l.id) || {}).name || l.id) + " · "
+            + this.slotName(s.activeTable) + " · bill cleared by " + this.me(), "order_lines",
+            { table: this.slotName(s.activeTable), split: l.split || 0, lid: l.lid,
+              reason: (l.fired ? "Bill cleared after firing · " : "Bill cleared · ") + this.me() });
+        });
+        const t = Object.assign({}, s.tickets); delete t[this.ticketKey()];
+        this.setState({ tickets: t, activeTable: null, pane: "floor" });
+        this.toast(this.slotName(s.activeTable) + " cleared");
+      }
     };
   }
 
@@ -7511,8 +7541,15 @@ class Component extends DCLogic {
       // LAST share, so N shares always sum back to the total exactly.
       const evenN = Math.max(1, m.evenN || 1);
       const paidN = m.paidN || 0, paidAmt = m.paidAmt || 0;
-      const shareBase = evenN > 1 ? Math.floor((T.total / evenN) * 100) / 100 : T.total;
-      const gross = evenN > 1 ? (paidN === evenN - 1 ? T.total - shareBase * (evenN - 1) : shareBase) : T.total;
+      /* Each share is an even split of what is STILL OWED, and the last share
+         is exactly the rest. It was a third of the bill as it stood when the
+         split began, with the last share "total less two shares" — so a dish
+         added between shares was split into nobody: a 223.30 bill closed as
+         settled on 189.50 collected. `paidGross` is the bill paid so far, before
+         any cash rounding, which is what the rest is measured from. */
+      const paidGross = r2(m.paidGross || 0), left = r2(T.total - paidGross), sharesLeft = Math.max(1, evenN - paidN);
+      const shareBase = evenN > 1 ? Math.floor((left / sharesLeft) * 100) / 100 : T.total;
+      const gross = evenN > 1 ? (paidN === evenN - 1 ? left : shareBase) : T.total;
       /* ── points, amount due and tip: KPOS_BILL.settle ─────────────────────
          The one order of operations the guest phone and the member card use
          too (kashikeyo-bill.js): points in whole blocks off the GOODS, service
@@ -7522,7 +7559,12 @@ class Component extends DCLogic {
          had not paid, and every share of an even split carried the whole
          bill's tip. Points ride the whole bill only: a share cannot absorb
          a redemption without restating the bill's service and tax. */
-      const tipPct = ((tk || {}).payIntent || {}).tip || 0;
+      /* A phone that asked to pay ONE even share asked for ONE tip: it rides the
+         first share, the one the asker is paying. On every share it charged the
+         table the asker's tip once per person. A whole-table ask tips every
+         share on its own goods, which sums to the table's tip. */
+      const pi = (tk || {}).payIntent || {};
+      const tipPct = (evenN > 1 && pi.split === "even" && paidN > 0) ? 0 : (pi.tip || 0);
       const L = this.LOY();
       const blockPts = Math.max(1, +L.redeemPts || 100);
       const blockVal = Math.max(0, +L.redeemValue || 25);
@@ -7606,7 +7648,7 @@ class Component extends DCLogic {
             label: n === 1 ? "One bill" : "\u00d7" + n,
             pick: () => locked
               ? this.toast("A share is already paid — void the ticket to re-split", "warn")
-              : this.setState({ modal: Object.assign({}, m, { evenN: n, given: "", paidN: 0, paidAmt: 0 }) }),
+              : this.setState({ modal: Object.assign({}, m, { evenN: n, given: "", paidN: 0, paidAmt: 0, paidGross: 0, paidTip: 0 }) }),
             style: "padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1px solid "
               + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)")
               + ";color:" + (on ? "var(--bg)" : locked ? "var(--text-faint)" : "var(--text-dim)")
@@ -7650,7 +7692,7 @@ class Component extends DCLogic {
           const pi = (tk || {}).payIntent;
           if (!pi) return "";
           const bits = ["Table asked to pay by " + this.tenderName(pi.tender)];
-          if (pi.tip) bits.push(pi.tip + "% tip");
+          if (pi.tip) bits.push(pi.tip + "% tip" + (pi.split === "even" ? " on their share" : ""));
           if (pi.due) {
             bits.push(pi.due > T.total + 0.005
               ? "quoted " + MVRc(pi.due) + " — asked for the whole table"
@@ -7737,7 +7779,7 @@ class Component extends DCLogic {
           });
           return opts.map((x) => ({
             label: x.label,
-            sub: x.v > due ? "change " + MVRc(x.v - due) : "no change",
+            sub: x.v > due ? "change " + MVR(r2(x.v - due)) : "no change",
             pick: () => self.setState({ modal: Object.assign({}, m, { given: String(Math.round(x.v * 100) / 100) }) }),
             style: "display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 13px;border-radius:10px;min-height:44px;justify-content:center;font-family:inherit;flex:1 0 auto;border:1px solid "
               + (Math.abs((+m.given || 0) - x.v) < 0.005 ? "var(--text);background:var(--bg-3);color:var(--text)" : "var(--line);background:var(--bg-2);color:var(--text-dim)")
@@ -7820,7 +7862,7 @@ class Component extends DCLogic {
             const shareLeg = { method: m.tender === "wallet" ? "card" : (m.tender || "cash"),
               amt: due, cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
               chg: change, tip: tipAmt, tendered: r2(due + change), ref: m.ref || "" };
-            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: r2(paidAmt + due - tipAmt), paidTip: r2((m.paidTip || 0) + tipAmt), given: "", cust: "", approving: 0,
+            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidGross: r2(paidGross + gross), paidAmt: r2(paidAmt + due - tipAmt), paidTip: r2((m.paidTip || 0) + tipAmt), given: "", cust: "", approving: 0,
               shares: (m.shares || []).concat([shareLeg]),
               paidRound: r2((m.paidRound || 0) + roundDiff), ref: "" }) });
             this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - (due - tipAmt)) + " left to collect");
@@ -7859,7 +7901,7 @@ class Component extends DCLogic {
                  owed the line that explains it. They ride the note, so this
                  is the same string the kitchen was given. */
               return { n: l.qty + "× " + mi.name + (l.note ? " · " + l.note : ""),
-                v: MVRc(this.linePrice(l) * l.qty) };
+                v: MVR(this.linePrice(l) * l.qty) };
             }),
             // Dish ids and quantities, not just the printed strings: the sale's
             // consequences (stock, COGS, journal) can only be shown if the close
@@ -7873,7 +7915,7 @@ class Component extends DCLogic {
             split: evenN > 1 ? evenN + " ways · " + MVRc(shareBase) + " each" : "",
             // What the settlement did to the bill, so the paper can say it.
             pay: { pts: ptsValue, svc: svcAfter, tax: taxAfter, bill: ptsValue ? billTotal : T.total,
-              tip: r2((m.paidTip || 0) + tipAmt) }
+              tip: r2((m.paidTip || 0) + tipAmt), round: evenN > 1 ? r2((m.paidRound || 0) + roundDiff) : roundDiff }
           };
           const last = gAll.length < 2;
           const tables = Object.assign({}, s.tickets);
@@ -7989,8 +8031,8 @@ class Component extends DCLogic {
                given, service, tax, TOTAL, the tender and the change. */
             const oA = this.outlet() || {};
             const totalRows = this.receiptTotals(T, snapshot.pay, oA)
-              .concat([[this.tenderName(snapshot.tender), MVRc(snapshot.given || due)]])
-              .concat(snapshot.tender === "cash" && snapshot.change > 0 ? [["Change", MVRc(snapshot.change)]] : []);
+              .concat([[this.tenderName(snapshot.tender), MVR(snapshot.given || due)]])
+              .concat(snapshot.tender === "cash" && snapshot.change > 0 ? [["Change", MVR(snapshot.change)]] : []);
             this.printJob("Receipt", "receipt", "Receipt " + (snapshot.no || "") + " \u00b7 " + MVRc(T.total), { no: snapshot.no,
               doc: { title: oA.name || "", sub: "Receipt " + (snapshot.no || "") + " \u00b7 " + snapshot.time + " \u00b7 " + snapshot.table,
                 rows: (snapshot.lines || []).map((l) => [l.n, l.v]).concat([{ rule: 1 }], totalRows),
@@ -8273,6 +8315,13 @@ class Component extends DCLogic {
          in IndexedDB and survive signing out, but nothing will deliver them
          until somebody signs in again, and that is a fact whoever is walking
          away needs before they walk away — not after. */
+      /* Your own PIN is yours to change, whatever your rank (037) — and it was
+         reachable only through Settings, which a cashier and a cook cannot
+         open. The form is the same one Settings opens. */
+      if (sess) {
+        acts.push({ label: "Change my PIN", sub: "Knowing your current PIN is what proves it is you",
+          style: btn, go: () => this.openForm("pin") });
+      }
       const owed = (s.outbox || []).filter((x) => x.state === "queued"
         || x.state === "refused" || x.state === "parked").length;
       const armed = this._signOutArmed;
@@ -9624,16 +9673,30 @@ class Component extends DCLogic {
      the bill, so it is named under it with what was handed over. The paper
      printed TOTAL at the pre-points figure and no tip at all, so a tipped card
      sale read "TOTAL 142.56 · Card 162.56". */
+  /* The pay screen opens on what the guest asked for: their tender, and the
+     even split their phone chose. It opened on "One bill" under a banner
+     quoting one share, so the default press closed the whole table. */
+  payModalFor(tk) {
+    const pi = (tk || {}).payIntent || {};
+    const parts = pi.split === "even" ? Math.max(1, Math.min(6, +pi.parts || 1)) : 1;
+    return { kind: "pay", tender: pi.tender || "cash", cust: "", given: "", evenN: parts };
+  }
   receiptTotals(T, P, o) {
     P = P || {};
-    const pts = P.pts || 0, bill = pts ? P.bill : T.total;
-    return [["Subtotal", MVRc(T.sub)]]
-      .concat(T.disc ? [["Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""), "\u2212 " + MVRc(T.disc)]] : [])
-      .concat(pts ? [["Points redeemed", "\u2212 " + MVRc(pts)]] : [])
-      .concat(o.sc ? [["Service " + o.sc + "%", MVRc(pts ? P.svc : T.svc)]] : [])
-      .concat(this.taxRegistered(o) ? [[this.taxLine(o), MVRc(pts ? P.tax : T.tax)]] : [])
-      .concat([["TOTAL", MVRc(bill)]])
-      .concat(P.tip ? [["Tip", MVRc(P.tip)], ["TOTAL PAID", MVRc(r2(bill + P.tip))]] : []);
+    /* A receipt is a tax invoice, so every figure is to the laari (MVR, never
+       MVRc, which rounds to whole units for a dashboard tile): the paper read
+       "TGST 16% MVR 37" over a 36.96 liability. Cash rounding is its own line,
+       so the rows add up to what was handed over. */
+    const pts = P.pts || 0, bill = pts ? P.bill : T.total, round = +P.round || 0, tip = +P.tip || 0;
+    return [["Subtotal", MVR(T.sub)]]
+      .concat(T.disc ? [["Discount" + (T.discCode ? " " + T.discCode : "") + (T.discPct ? " " + T.discPct + "%" : ""), "\u2212 " + MVR(T.disc)]] : [])
+      .concat(pts ? [["Points redeemed", "\u2212 " + MVR(pts)]] : [])
+      .concat(o.sc ? [["Service " + o.sc + "%", MVR(pts ? P.svc : T.svc)]] : [])
+      .concat(this.taxRegistered(o) ? [[this.taxLine(o), MVR(pts ? P.tax : T.tax)]] : [])
+      .concat([["TOTAL", MVR(bill)]])
+      .concat(round ? [["Cash rounding", (round > 0 ? "+ " : "\u2212 ") + MVR(Math.abs(round))]] : [])
+      .concat(tip ? [["Tip", MVR(tip)]] : [])
+      .concat(round || tip ? [["TOTAL PAID", MVR(r2(bill + round + tip))]] : []);
   }
   receiptVals(m) {
     const s = this.state, K0 = K(), o = this.outlet();
@@ -9660,7 +9723,7 @@ class Component extends DCLogic {
       const big = "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px";
       const rows = this.receiptTotals(T, p.pay, o).map((x) => ({ n: x[0], v: x[1],
         style: /^TOTAL/.test(x[0]) ? big : "display:flex;justify-content:space-between;padding:2px 0" }))
-        .concat([{ n: tn, v: MVRc(p.given || (p.pay ? r2((p.pay.pts ? p.pay.bill : T.total) + (p.pay.tip || 0)) : T.total)),
+        .concat([{ n: tn, v: MVR(p.given || (p.pay ? r2((p.pay.pts ? p.pay.bill : T.total) + (p.pay.round || 0) + (p.pay.tip || 0)) : T.total)),
           style: "display:flex;justify-content:space-between;padding:5px 0 0" }]);
       // A guest who paid in dollars must be able to read the dollar figure and the
       // rate off the receipt — that is what makes the conversion checkable rather
@@ -9670,7 +9733,7 @@ class Component extends DCLogic {
         rows.push({ n: "Paid in " + p.cur, v: this.fmtCur(p.cur, p.fgn || 0), style: rw + ";font-weight:700" });
         rows.push({ n: "Rate applied", v: "1 " + p.cur + " = " + (p.rate || this.fxRate(p.cur)) + " " + this.base(), style: rw });
       }
-      if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change" + (p.cur && p.cur !== this.base() ? " (" + this.base() + ")" : ""), v: MVRc(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
+      if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change" + (p.cur && p.cur !== this.base() ? " (" + this.base() + ")" : ""), v: MVR(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
       if (p.tender === "credit" && p.cust) rows.push({ n: "Charged to", v: p.cust.name, style: "display:flex;justify-content:space-between;padding:2px 0" });
       if (p.split) rows.push({ n: "Split", v: p.split, style: "display:flex;justify-content:space-between;padding:2px 0" });
       return {
@@ -10100,7 +10163,7 @@ class Component extends DCLogic {
     return {
       hasDetailEdit: this.can("inventory"), detailEditLabel: "Edit item cost", detailEdit: () => this.openForm("item", it),
       modalTitle: this.itemName(m.id), modalSub: (it[6] || "") + " · " + (it[5] || ""),
-      detailRows: [Rt("Item code", it[6] || "—"), Rt("Base unit", it[7] || "—"), Rt("Stock unit", it[8] || "—"), R("Unit cost", MVR(it[4] || 0) + " / " + (it[8] || ""), "var(--warn-bright)"), Rt("Storage", it[9] || "—"), R("Shelf life", (it[10] || 0) + " days"), Rt("Sellable", it[11] ? "Yes" : "No"), Rt("Recipe item", it[12] ? "Yes" : "No")].concat(rowsAt.map((r) => R("· " + this.locName(r[0]), (Math.round(this.stockQty(it, r[2]) * 100) / 100) + " " + (it[8] || ""), "var(--text-dim)"))),
+      detailRows: [Rt("Item code", it[6] || "—"), Rt("Base unit", it[7] || "—"), Rt("Stock unit", it[8] || "—"), R("Unit cost", MVR(it[4] || 0) + " / " + (it[8] || ""), "var(--warn-bright)"), Rt("Par level", it[10] ? it[10] + " " + (it[8] || "") : "not set"), Rt("Shelf life", it[15] ? it[15] + " days" : "not set"), Rt("Sold on its own", it[12] ? "Yes" : "No"), Rt("Made in this kitchen", it[5] === "prep" ? "Yes" : "No")].concat(rowsAt.map((r) => R("· " + this.locName(r[0]), (Math.round(this.stockQty(it, r[2]) * 100) / 100) + " " + (it[8] || ""), "var(--text-dim)"))),
       detailNote: "Cost is a moving average, recalculated on every GRN line. Consumption deducts against it at the moment a ticket closes.",
       detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px"
     };
@@ -10543,6 +10606,11 @@ class Component extends DCLogic {
      A server-sourced signal carries its row id in its own id ("go_<uuid>",
      "gr_<uuid>"), so the acknowledgement is one op against that row. */
   ackSignal(id) {
+    /* THE ACCEPT RUNS BEFORE THE MARK. `acceptQr()` finds its round in
+       `signals()`, and `allSignals()` drops anything marked acknowledged — so
+       marking first made the card's own "Accept the order" find nothing, return
+       quietly, and leave the round waiting under a toast saying it was fired. */
+    if (id.indexOf("go_") === 0) this.acceptQr(id);
     this.patchSignal(id, { ack: 1 });
     const acked = this._ackedSig || (this._ackedSig = {});
     acked[id] = 1;
@@ -10554,8 +10622,9 @@ class Component extends DCLogic {
          settle, and the round gone from every terminal. It was masked while
          the poll auto-accepted first, and it is the same defect underneath —
          closing a round is only ever safe as half of accepting it. One seam,
-         so no caller can do the destructive half alone. */
-      return this.acceptQr(id);
+         so no caller can do the destructive half alone. The accept itself ran
+         at the top, before the mark. */
+      return this.forceUpdate();
     } else if (id.indexOf("gr_") === 0) {
       this.queue("flag_ack", "Guest call acknowledged by " + this.me(), "guest_signals",
         { id: id.slice(3) });
@@ -11505,7 +11574,12 @@ class Component extends DCLogic {
       const otEligible = st.ot !== false;
       const otPay = otEligible ? otHours * this.rate(st) * (R.ot_weekday || 1.25) : 0;
       const svcShare = st.svc === false ? 0 : share;
-      const allow = st.kind === "expat" ? 1500 : 1000;
+      /* No allowance is paid that nobody agreed. This was a literal MVR 1,000
+         (1,500 for an expat) on every payslip — on no contract, no form and no
+         column of the run, so a basic of 8,500 grossed 9,500 and the business
+         paid, taxed and journalled money it never owed. The employee record
+         carries no allowance, so there is none to pay. */
+      const allow = +st.allow || 0;
       const gross = st.basic + otPay + allow + svcShare;
       const mrpsEe = st.mrps ? st.basic * (R.mrps_employee || 0.07) : 0;
       const mrpsEr = st.mrps ? st.basic * (R.mrps_employer || 0.07) : 0;
@@ -11902,7 +11976,7 @@ class Component extends DCLogic {
     const chainFc = measured.s ? +((measured.c / measured.s) * 100).toFixed(1) : this.blendedCost();
     const rows = outs.map((o) => {
       const stO = this.outletStats(o);
-      const net = stO.sales, cov = stO.covers || 1;
+      const net = stO.sales, cov = stO.covers || 0;
       const L = this.labourToday(o.id);
       return {
         id: o.id, code: o.code || "", name: o.name || "",
@@ -12802,7 +12876,7 @@ class Component extends DCLogic {
     return {
       guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — general, tourism zone, or not registered for GST", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
       actions: [
-        { label: "Add outlet", primary: true, go: () => this.openForm("outlet") },
+        { label: "Add outlet", primary: true, go: () => this.rank() >= 5 ? this.openForm("outlet") : this.toast("Adding an outlet is the owner's — it creates a new store under the business", "warn") },
         { label: "Printer profiles", go: () => this.info("Printer profiles", "Stations bound per outlet", this.posOutlets().map((o) => [o.name, "KOT " + this.fileTag() + "-kot · Bar " + this.fileTag() + "-bar · Bill " + this.fileTag() + "-bill", "t"])) }
       ],
       cols: [
@@ -13103,7 +13177,7 @@ class Component extends DCLogic {
   g_users() {
     const K0 = K(), s = this.state;
     const tab = s.tab.users || 0;
-    if (tab === 2) {
+    if (tab === 1) {
       /* READ-ONLY, AND HONEST ABOUT WHY. Every cell here used to cycle on tap,
          writing `state.permOverride` — one browser's local object — and queuing
          `permission_change`, which is AUDIT_ONLY. Nothing per-ROLE is stored
@@ -13463,19 +13537,34 @@ class Component extends DCLogic {
     rows.push(["Stock moved", t.stock.length ? t.stock.length + " ingredient" + (t.stock.length > 1 ? "s" : "") + " deducted" : "Nothing to deduct", "t"]);
     t.stock.slice(0, 14).forEach((r) => rows.push(["· " + r.name, r.moved + "  \u00b7  " + r.left + " left", r.low ? "var(--red-bright)" : "t"]));
     if (t.flat.length) rows.push(["· " + t.flat.join(", "), "no recipe \u2014 costed at 30%", "t"]);
-    rows.push(["Journal posted", "Four lines, one transaction", "t"]);
-    rows.push(["Dr " + acct[0] + " " + acct[1], MVR(T.total || 0)]);
+    /* What the SERVER posts for this sale (saleJournal in src/apply.js), not a
+       picture of it: the tender at what was handed over, cash rounding on
+       4900, the tip on 2450, and cost of sales only where stock actually left
+       the shelf. It read "Four lines" over six, debited cash at the unrounded
+       total, and credited 1200 for a bill whose recipes moved nothing. */
+    const P = snap.pay || {}, round = +P.round || 0, tip = +P.tip || +snap.tip || 0;
+    const bill = P.pts ? P.bill : (T.total || 0);
+    const jr = [];
+    jr.push(["Dr " + acct[0] + " " + acct[1], MVR(r2(bill + round + tip))]);
     if (snap.cur && snap.cur !== this.base()) {
-      rows.push(["· tendered", this.fmtCur(snap.cur, snap.fgn || 0) + " at " + (snap.rate || 0), "t"]);
-      rows.push(["· posted at", "the rate on the ticket, not today's", "var(--green)"]);
+      jr.push(["· tendered", this.fmtCur(snap.cur, snap.fgn || 0) + " at " + (snap.rate || 0), "t"]);
+      jr.push(["· posted at", "the rate on the ticket, not today's", "var(--green)"]);
     }
-    rows.push(["Cr 4000 Food and beverage", MVR(T.net === undefined ? (T.sub || 0) : T.net)]);
-    if (T.disc) rows.push(["Dr 4200 Discounts and allowances", MVR(T.disc)]);
-    if (T.svc) rows.push(["Cr 2300 Service charge payable", MVR(T.svc)]);
-    if (this.taxRegistered(o)) rows.push(["Cr 2200 " + o.tax + " payable", MVR(T.tax || 0)]);
-    if (snap.tip) rows.push(["Cr 2450 Tips payable to staff", MVR(snap.tip)]);
-    rows.push(["Dr 5000 Cost of sales", MVR(t.cogs)]);
-    rows.push(["Cr 1200 Inventory", MVR(t.cogs)]);
+    if (P.pts) jr.push(["Dr 2350 Loyalty points liability", MVR(P.pts)]);
+    jr.push(["Cr 4000 Food and beverage", MVR(r2((T.net === undefined ? (T.sub || 0) : T.net) + (T.disc || 0)))]);
+    if (T.disc) jr.push(["Dr 4200 Discounts and allowances", MVR(T.disc)]);
+    const svc = P.pts ? P.svc : T.svc, tax = P.pts ? P.tax : T.tax;
+    if (svc) jr.push(["Cr 2300 Service charge payable", MVR(svc)]);
+    if (this.taxRegistered(o)) jr.push(["Cr 2200 " + o.tax + " payable", MVR(tax || 0)]);
+    if (round) jr.push([(round > 0 ? "Cr" : "Dr") + " 4900 Cash rounding", MVR(Math.abs(round))]);
+    if (tip) jr.push(["Cr 2450 Tips payable to staff", MVR(tip)]);
+    if (t.stock.length) {
+      jr.push(["Dr 5000 Cost of sales", MVR(t.cogs)]);
+      jr.push(["Cr 1200 Inventory", MVR(t.cogs)]);
+    }
+    rows.push(["Journal posted", jr.filter((x) => /^(Dr|Cr) /.test(x[0])).length + " lines, one transaction", "t"]);
+    jr.forEach((x) => rows.push(x));
+    if (!t.stock.length && t.cogs) rows.push(["· cost of sales", "none posted \u2014 nothing left the shelf; the " + Math.round(t.pct) + "% estimate stays on the sale as its margin", "t"]);
     const may = this.canSeeCost();
     this.setState({
       modal: {
@@ -13772,9 +13861,16 @@ class Component extends DCLogic {
   }
   // Par lives in one place so the agent, the reorder list and the below-par
   // count can never disagree about it.
+  /* The item's OWN par (index 10, what the item form asks for), or this
+     terminal's override. It was `8 + (id % 17) * 2` — a par invented from the
+     id, which is NaN for every id a till mints ("PAR NaN" down the whole
+     stock screen) and a plausible fiction for a numeric one, and the
+     auto-indent ordered up to it. Unset is 0, and 0 flags nothing. */
   parOf(id) {
     const ov = (this.state.parOv || {})[id];
-    return ov === undefined ? 8 + (id % 17) * 2 : ov;
+    if (ov !== undefined) return ov;
+    const it = this.item(id);
+    return it ? (+it[10] || 0) : 0;
   }
 
   // A folded screen has to light its family in the rail, or the sidebar says
@@ -13803,6 +13899,17 @@ class Component extends DCLogic {
      for everything else, which costs a plate at a thousandth of what it cost
      and reports a food cost of 0.0%. A conversion that fails quietly is worse
      than one that fails loudly. */
+  /* A line as the operator keys it — the item's STOCK unit and a rate per
+     stock unit, which is what the line editor labels it in — into what the
+     outlet keeps: on_hand, grn_line.qty and avg_cost are all BASE units. Sent
+     unconverted, "10 kg at 180" landed as 10 g at 180 a gram: the shelf read
+     a thousandth of the delivery and every dish drawing on it cost a thousand
+     times what the kitchen paid. The rate is NOT rounded here — 32 a kilo is
+     0.032 a gram, and grn_line.unit_price is numeric(14,6) for that reason. */
+  toBase(id, qty, rate) {
+    const f = this.convFactor(this.item(id)) || 1;
+    return { qty: Math.round((+qty || 0) * f * 10000) / 10000, rate: (+rate || 0) / f };
+  }
   convFactor(it) {
     if (!it) return 1;
     const b = String(it[7] || "").toLowerCase(), st = String(it[8] || "").toLowerCase();
@@ -13954,7 +14061,7 @@ class Component extends DCLogic {
           cells: [
             this.itemName(id), { t: it[6] || "\u2014", mono: 1 },
             { t: (Math.round(on * 100) / 100) + " " + su, c: short ? "var(--red-bright)" : low ? "var(--warn-bright)" : "var(--text)", w: 600 },
-            String(p),
+            p ? String(p) : "—",
             { t: usedQty ? (Math.round(usedQty * 100) / 100) + " " + su : "\u2014", c: usedQty ? "var(--text-dim)" : "var(--text-faint)" },
             MVR(it[4] || 0),
             MVRc((it[4] || 0) * Math.max(0, on)),
@@ -13968,7 +14075,7 @@ class Component extends DCLogic {
         const low = q < p * ((this.prefs().lowStock || 50) / 100), ok = q >= p;
         return {
           go: () => this.setState({ modal: { kind: "item", id: r[1], loc: r[0] } }),
-          cells: [this.itemName(r[1]), { t: it[6] || "—", mono: 1 }, this.locName(r[0]), { t: (Math.round(q * 100) / 100) + " " + (it[8] || it[3] || ""), c: low ? "var(--red-bright)" : "var(--text)", w: 600 }, String(p), MVR(it[4] || 0), MVRc((it[4] || 0) * q), { t: low ? "Below par" : ok ? "OK" : "Watch", chip: this.chip(low ? "err" : ok ? "ok" : "warn") }]
+          cells: [this.itemName(r[1]), { t: it[6] || "—", mono: 1 }, this.locName(r[0]), { t: (Math.round(q * 100) / 100) + " " + (it[8] || it[3] || ""), c: low ? "var(--red-bright)" : "var(--text)", w: 600 }, p ? String(p) : "—", MVR(it[4] || 0), MVRc((it[4] || 0) * q), { t: low ? "Below par" : ok ? "OK" : "Watch", chip: this.chip(low ? "err" : ok ? "ok" : "warn") }]
         };
       }),
       notes: [
@@ -15147,7 +15254,7 @@ class Component extends DCLogic {
         if (!this.guardRegister()) return;
         this.setState({
           activeTable: m.slot, activeSplit: 0,
-          modal: { kind: "pay", tender: ((tk.payIntent || {}).tender) || "cash", cust: "", given: "" }
+          modal: this.payModalFor(tk)
         });
       },
       tkFloorGo: () => this.setState({ view: "pos", pane: "floor", activeTable: m.slot, activeSplit: 0, modal: null }),
@@ -16454,7 +16561,10 @@ class Component extends DCLogic {
       })],
       vendors: ["vendor_upsert", (r) => ({
         name: r.name, trn: r.trn, contact: r.contact, phone: r.phone,
-        email: r.email, terms: num(r.termsDays) || 30, lead: num(r.lead) || 2
+        // Days from the form's word: it sent termsDays, which the form never
+        // sets, so every supplier saved as Net 30 and cash on delivery with it.
+        email: r.email, terms: (() => { const t = String(r.terms != null ? r.terms : (r.termsDays != null ? r.termsDays : "")); const d = t.match(/(d+)/); return d ? +d[1] : (/cod|cash/i.test(t) ? 0 : 30); })(),
+        lead: num(r.lead) || 2
       })],
       staff: ["employee_upsert", (r) => ({
         id: r.id, name: r.name, job: r.job, kind: r.kind, basic: num(r.basic),
@@ -16687,7 +16797,8 @@ class Component extends DCLogic {
       vendor: v.vendor === NEW_VENDOR ? null : v.vendor, vendorName: vendorName,
       bizDate: when, note: String(v.notes || "").trim() || null,
       lines: lines.map((L) => ({
-        ing: L[0], qty: L[1], price: L[2], total: Math.round(L[1] * L[2] * 100) / 100,
+        ing: L[0], qty: this.toBase(L[0], L[1], L[2]).qty, price: this.toBase(L[0], L[1], L[2]).rate,
+        total: Math.round(L[1] * L[2] * 100) / 100,
         // Where it is being put, inside this outlet. Blank is the store itself.
         loc: String(v.branch || "") || null
       }))
@@ -17792,8 +17903,8 @@ class Component extends DCLogic {
   assignableRoles() {
     const mine = this.rankOf(this.state.roleKey);
     return (K().ROLES || []).filter((r) => this.rankOf(r.key) <= mine)
-      .slice().sort((a, b) => this.rankOf(a.key) - this.rankOf(b.key)
-        || this.rankFor(a.key) - this.rankFor(b.key));
+      .slice().sort((a, b) => this.rankFor(a.key) - this.rankFor(b.key)
+        || this.rankOf(a.key) - this.rankOf(b.key));
   }
   removeUser(u) {
     const K0 = K(), sess = this.state.session || {};
@@ -18646,6 +18757,27 @@ class Component extends DCLogic {
       this.toast(name + " matched \u00b7 " + MVRc(paid) + " to 1020");
     }
   }
+  /* A count as the OUTLET publishes it — `ing`, and the two stock LEVELS in
+     BASE units — in the shape this screen reads: a name, the stock unit, the
+     book and counted figures in that unit, the gap. Read raw, every line said
+     "40 undefined" against "5000 undefined" with a NaN percentage, because
+     the screen and the bootstrap had two vocabularies for one row. The outlet
+     keeps levels, not usage, so the usage columns say so rather than guess. */
+  countOf(c) {
+    if (!c || !Array.isArray(c.lines) || !c.lines.length || c.lines[0].name !== undefined) return c;
+    const who = (K().USERS || []).find((u) => u.id === c.by);
+    return Object.assign({}, c, {
+      by: who ? who.name : (c.by || "—"), varValue: +c.value || 0,
+      lines: c.lines.map((l) => {
+        const it = this.item(l.ing) || [], f = this.convFactor(it) || 1;
+        const book = r2((+l.theo || 0) / f), cnt = r2((+l.counted || 0) / f);
+        const d = r2((l.d != null ? +l.d : (+l.counted || 0) - (+l.theo || 0)) / f);
+        return { name: it[2] || l.ing, id: l.ing, counted: cnt, book: book, dQty: d, dVal: +l.dVal || 0,
+          theo: "—", actual: "—", unit: (it[8] || it[3] || "").toLowerCase(),
+          pct: book ? (d / book) * 100 : (Math.abs(d) > 0.0001 ? (d > 0 ? 100 : -100) : 0) };
+      })
+    });
+  }
   postCount(m, sheet) {
     const counted = m.counted || {};
     const lines = sheet.filter((it) => String(counted[String(it[0])] || "").trim() !== "");
@@ -18674,7 +18806,10 @@ class Component extends DCLogic {
         name: it[2], id: id,
         counted: cnt, book: r2(book), dQty: r2(dQty), dVal: dVal,
         theo: r2(theoStock), actual: r2(actual), unit: su,
-        pct: theoStock > 0 ? ((actual - theoStock) / theoStock) * 100 : 0
+        /* No usage expected and the shelf moved anyway is not "in tolerance":
+           a 0% there passed a six-figure swing as within 5%. */
+        pct: theoStock > 0 ? ((actual - theoStock) / theoStock) * 100
+          : (Math.abs(dQty) > 0.0001 ? (dQty > 0 ? 100 : -100) : 0)
       });
     });
     const worst = rows.slice().sort((a, b) => Math.abs(b.dVal) - Math.abs(a.dVal));
@@ -20943,7 +21078,7 @@ class Component extends DCLogic {
               date: when, vendor: vendor || null, person: person || null,
               docket: String(v.docket || "").trim() || null, cash: cash,
               notes: String(v.notes || "").trim() || null,
-              lines: lines.map((L) => ({ ing: L[0], qty: L[1], rate: mayPrice ? L[2] : 0 }))
+              lines: lines.map((L) => { const b = this.toBase(L[0], L[1], L[2]); return { ing: L[0], qty: b.qty, rate: mayPrice ? b.rate : 0 }; })
             });
             this.toast(mayPrice
               ? "Received \u00b7 " + lines.length + " line(s) MVR " + total.toFixed(2) + " \u2014 on the shelf now"
@@ -20969,7 +21104,7 @@ class Component extends DCLogic {
           if (zero) return this.toast(this.itemName(zero[0]) + " has no rate \u2014 price every line or the stock value is wrong", "warn");
           this.queue("door_priced", "Door delivery priced \u00b7 " + (r.no || v.no), "purchases", {
             no: String(r.no || v.no || "").trim(),
-            lines: lines.map((L) => ({ ing: L[0], rate: L[2] }))
+            lines: lines.map((L) => ({ ing: L[0], rate: this.toBase(L[0], 1, L[2]).rate }))
           });
           this.setState({ modal: null });
           this.toast((r.no || v.no) + " priced \u2014 the cost re-averages and the books pick it up");
@@ -21088,7 +21223,7 @@ class Component extends DCLogic {
           this.queue("dispatch", "Dispatched \u00b7 " + lines.length + " line" + (lines.length > 1 ? "s" : "")
             + " " + MVRc(total) + " \u2192 " + this.locName(to), "dispatches",
           { to: to, note: String(v.notes || "").trim() || null,
-            lines: lines.map((L) => ({ ing: L[0], qty: L[1], cost: L[2] })) });
+            lines: lines.map((L) => { const b = this.toBase(L[0], L[1], L[2]); return { ing: L[0], qty: b.qty, cost: b.rate }; }) });
           this.setState({ modal: null });
           this.toast("Dispatched \u00b7 " + MVRc(total) + " \u2014 this store's shelf is debited now");
         }
@@ -21117,7 +21252,7 @@ class Component extends DCLogic {
           (d.lines || []).forEach((L) => { sent[String(L[0])] = +L[1] || 0; });
           const short = lines.some((L) => (+L[1] || 0) < (sent[String(L[0])] || 0) - 0.0001);
           this.queue("dispatch_receive", d.no + " signed for" + (short ? " \u00b7 SHORT" : ""), "dispatches",
-            { no: d.no, lines: lines.map((L) => ({ ing: L[0], qty: L[1] })) });
+            { no: d.no, lines: lines.map((L) => ({ ing: L[0], qty: this.toBase(L[0], L[1], 0).qty })) });
           this.setState({ modal: null });
           this.toast(short
             ? d.no + " filed short \u2014 the lines that came up short are on the document"
@@ -21185,8 +21320,8 @@ class Component extends DCLogic {
           const cost = Math.round(lines.reduce((a, L) => a + L[1] * L[2], 0) * 100) / 100;
           this.queue("produce", "Batch posted \u00b7 " + this.itemName(item) + " \u00b7 " + qty
             + " at " + MVRc(Math.round((cost / qty) * 100) / 100) + " each", "production",
-          { ing: item, qty: qty, note: String(v.notes || "").trim() || null,
-            components: lines.map((L) => ({ ing: L[0], qty: L[1], cost: L[2], value: Math.round(L[1] * L[2] * 100) / 100 })) });
+          { ing: item, qty: this.toBase(item, qty, 0).qty, note: String(v.notes || "").trim() || null,
+            components: lines.map((L) => { const b = this.toBase(L[0], L[1], L[2]); return { ing: L[0], qty: b.qty, cost: b.rate, value: Math.round(L[1] * L[2] * 100) / 100 }; }) });
           this.setState({ modal: null });
           this.toast("Batch posted \u00b7 " + this.itemName(item) + " \u00b7 " + MVRc(cost) + " of inputs at "
             + MVRc(Math.round((cost / qty) * 100) / 100) + " each");
@@ -23796,9 +23931,9 @@ class Component extends DCLogic {
         ], "Every dish costs what its ingredients actually cost. Price a delivery and the dishes using it recost themselves — no one edits a margin by hand.", "recipes"),
         step(7, "Accounting posts", "Automatic, on settlement", String(queued), queued ? "waiting to replay" : "in step", queued ? "a" : "g", [
           ["Revenue", "Cr 4000"],
-          [(o.tax || "GST") + " payable", "Cr 2200"],
+          [this.taxRegistered(o) ? o.tax + " payable" : "No tax — not registered", this.taxRegistered(o) ? "Cr 2200" : "—"],
           ["Cost of sales", "Dr 5000 / Cr 1200"]
-        ], "Four lines, one transaction, posted by the sale itself. Offline they queue in Lamport order and replay exactly once — a reconnecting terminal cannot double-post a settlement.", "accounting"),
+        ], "One transaction, posted by the sale itself. Offline they queue in Lamport order and replay exactly once — a reconnecting terminal cannot double-post a settlement.", "accounting"),
         step(8, "The day reconciles", "Manager rank 3 and up", reg ? MVRc(this.cashTakings()) : "\u2014", reg ? "count at close" : "drawer closed", reg ? "a" : "n", [
           ["Drawer", "blind count first"],
           ["Bank", "matched line by line"],
