@@ -568,18 +568,25 @@ async function withOutletRead(ctx, fn) {
 /* The ONE cross-outlet read in the system: aggregates only, rank 5 only,
    through a dedicated read-only role that can execute the aggregate function
    and nothing else, and stamped in the audit trail as group scope. */
-let reportPool = null;
+/* Keyed by DATABASE, like every other pool here. It was one pool on the
+   process's own database, so an owner's estate read aggregated whichever
+   business DATABASE_URL named — on an install whose own database is a business
+   (an adopted one), another customer's takings. The estate is the owner's own
+   business: the database their outlet lives in. */
+const reportPools = new Map();
 async function withEstate(ctx, fn) {
   if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
-  if (!reportPool) {
-    reportPool = guarded(new Pool(Object.assign(baseConn(), {
+  const dbName = ctx.outletId ? await dbFor(ctx.outletId) : null;
+  const key = dbName || '';
+  if (!reportPools.has(key)) {
+    reportPools.set(key, guarded(new Pool(Object.assign(baseConn(), dbName ? { database: dbName } : {}, {
       user: 'kashikeyo_report',
       password: process.env.REPORT_ROLE_PASSWORD || outletPassword('report'),
       ssl, max: 2, connectionTimeoutMillis: CHECKOUT_MS,
-      application_name: 'kashikeyo-report'
-    })), 'report');
+      application_name: 'kashikeyo-report' + (dbName ? '-' + dbName : '')
+    })), 'report' + (dbName ? ':' + dbName : '')));
   }
-  const client = await checkout(reportPool);
+  const client = await checkout(reportPools.get(key));
   try {
     await client.query('BEGIN READ ONLY');
     await setContext(client, { outletId: ctx.outletId || 0, rank: 5, actor: ctx.actor, scope: 'group' });
@@ -611,9 +618,9 @@ async function shutdown() {
   // Every owner pool, not just the default one: a fleet migration opens one
   // per business database, and a pool nobody ends holds its backends open
   // until Postgres times them out.
-  const all = Array.from(pools.values()).concat(Array.from(ownerPools.values()));
-  if (reportPool) all.push(reportPool);
-  pools.clear(); ownerPools.clear(); reportPool = null;
+  const all = Array.from(pools.values()).concat(Array.from(ownerPools.values()),
+    Array.from(reportPools.values()));
+  pools.clear(); ownerPools.clear(); reportPools.clear();
   await Promise.all(all.map((p) => p.end().catch(() => {})));
 }
 

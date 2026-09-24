@@ -201,6 +201,19 @@ test('a handle is one name across every business', opts, async () => {
     /still points at it/, 'and a competitor cannot take it');
 });
 
+/* The estate read is the owner's OWN business. It used one pool on the
+   process's database, so an owner's aggregate read whichever business
+   DATABASE_URL named — on an adopted install, somebody else's takings. */
+test('an owner\'s estate read opens their own business', opts, async () => {
+  const { outletPassword } = require('../src/secrets');
+  const id = await BIZ.nextOutletId(other.id);
+  await db.ownerFor(other.db_name).query('SELECT chain.provision_outlet($1,$2,$3,$4)',
+    [id, 'KE' + id, 'Estate Store', outletPassword(id)]);
+  const where = await db.withEstate({ outletId: id, rank: 5, actor: null },
+    (c) => c.query('SELECT current_database() AS d').then((r) => r.rows[0].d));
+  assert.strictEqual(where, other.db_name, 'the report read the owner\'s business');
+});
+
 test('one business cannot reach another, and the outlet belt is unchanged',
   opts, async () => {
     /* THE GATE. Everything above is plumbing; this is the property the whole
