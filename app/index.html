@@ -47,11 +47,11 @@
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-muted)"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
         <input aria-label="Go anywhere, or say what you want to do…" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;border-radius:8px;padding:7px 9px;margin:-7px -9px"/>
-        <span style="flex-shrink:0;font-size:10px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
+        <span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
       </div>
       <sc-if value="{{ planOpen }}">
         <div style="padding:13px 16px 15px;border-bottom:1px solid var(--line)">
-          <div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright)">Confirm this change</div>
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright)">Confirm this change</div>
           <div style="font-size:14px;font-weight:700;margin-top:6px;text-wrap:pretty">{{ planLabel }}</div>
           <div style="font-size:11px;color:var(--text-dim);margin-top:4px;line-height:1.55;text-wrap:pretty">{{ planNote }}</div>
           <div class="krail" style="margin-top:11px;max-height:min(34dvh,260px);overflow-y:auto;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px">
@@ -77,14 +77,14 @@
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.7"><path d="{{ r.icon }}"></path></svg>
             <span style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;text-align:left">
               <span style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.label }}</span>
-              <span style="font-size:10.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sub }}</span>
+              <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sub }}</span>
             </span>
             <span style="{{ r.tagStyle }}">{{ r.tag }}</span>
           </button>
         </sc-for>
         <div style="{{ palNoneStyle }}">{{ palNone }}</div>
       </div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;padding:9px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--text-faint)">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;padding:9px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--text-faint)">
         <span>&#8593;&#8595; to move</span><span>Enter to open</span><span>Say it plainly: &#8220;86 the reef curry&#8221;, &#8220;drinks up 5%&#8221;, &#8220;par tuna 20&#8221;</span>
       </div>
     </div>
@@ -101,7 +101,7 @@
       </div>
       <div style="{{ brandTextStyle }}">
         <div style="font-size:13.5px;font-weight:800;letter-spacing:-0.03em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Kashikeyo<span style="color:var(--brand-olive-bright)">POS</span></div>
-        <div style="font-size:9px;color:var(--text-muted);letter-spacing:.09em;text-transform:uppercase;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brandLine }}</div>
+        <div style="font-size:11px;color:var(--text-muted);letter-spacing:.09em;text-transform:uppercase;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ brandLine }}</div>
       </div>
     </div>
 
@@ -143,7 +143,7 @@
         <span style="{{ identityPipStyle }}">{{ identityPip }}</span>
         <span style="{{ identityTextStyle }}">
           <span style="font-size:11px;font-weight:700;letter-spacing:-0.01em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ userName }}</span>
-          <span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ identityDeskSub }}</span>
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ identityDeskSub }}</span>
         </span>
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="{{ identityCaretStyle }}"><path d="M6 9l6 6 6-6"></path></svg>
       </button>
@@ -181,7 +181,7 @@
 
         <div style="{{ clockStyle }}">
           <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em;font-family:'JetBrains Mono',monospace;line-height:1.15">{{ clockTime }}</div>
-          <div style="font-size:9.5px;color:var(--text-dim);white-space:nowrap;line-height:1.25">{{ clockDate }}</div>
+          <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;line-height:1.25">{{ clockDate }}</div>
         </div>
       </div>
     </div>
@@ -191,7 +191,7 @@
         <div style="{{ miniRowStyle }}">
           <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
             <div style="{{ miniItemStyle }}" title="{{ s.sub }}">
-              <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.09em;font-weight:700">{{ s.label }}</span>
+              <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.09em;font-weight:700">{{ s.label }}</span>
               <span style="{{ s.miniValStyle }}">{{ s.value }}</span>
             </div>
           </sc-for>
@@ -202,7 +202,7 @@
         <div style="{{ statsStyle }}">
           <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
             <div style="{{ statCardStyle }}">
-              <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.09em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.label }}</div>
+              <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.09em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.label }}</div>
               <div style="{{ s.valStyle }}">{{ s.value }}</div>
               <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.sub }}</div>
             </div>
@@ -235,7 +235,7 @@
           </sc-if>
 
           <div style="{{ setupBarStyle }}">
-            <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright);flex-shrink:0">{{ setupBarLabel }}</span>
+            <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright);flex-shrink:0">{{ setupBarLabel }}</span>
             <span style="min-width:0;flex:1;font-size:11.5px;color:var(--text-dim)">Next · {{ setupBarNext }}</span>
             <button onClick="{{ setupBarGo }}" style="flex-shrink:0;font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;min-height:40px;background:var(--amber);color:var(--on-amber)">{{ setupBarAct }}</button>
             <button onClick="{{ setupBarHide }}" title="Hide the set-up list" style="flex-shrink:0;font-size:11px;color:var(--text-muted);padding:7px 8px;min-height:40px;min-width:40px">Hide</button>
@@ -257,7 +257,7 @@
                   <span style="{{ c.dotStyle }}"></span>
                   <span style="min-width:0;flex:1">
                     <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ c.title }}</span>
-                    <span style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:2px">{{ c.sub }}</span>
+                    <span style="display:block;font-size:11px;color:var(--text-dim);margin-top:2px">{{ c.sub }}</span>
                   </span>
                   <button onClick="{{ c.go }}" style="{{ c.goStyle }}">{{ c.goLabel }}</button>
                   <button onClick="{{ c.ack }}" style="{{ c.ackStyle }}">{{ c.ackLabel }}</button>
@@ -267,7 +267,7 @@
                 <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:var(--text-faint)"></span>
                 <span style="min-width:0;flex:1;text-align:left">
                   <span style="display:block;font-size:12px;font-weight:600;color:var(--text-dim)">{{ elsewhereRow.title }}</span>
-                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ elsewhereRow.sub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ elsewhereRow.sub }}</span>
                 </span>
               </button>
             </div>
@@ -276,15 +276,15 @@
           <sc-if value="{{ hasResReq }}">
             <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
               <div style="display:flex;align-items:baseline;gap:8px">
-                <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--blue)">The door</span>
-                <span style="font-size:10.5px;color:var(--text-dim)">Requests waiting on an answer, and guests standing here — tap a name for the whole booking</span>
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--blue)">The door</span>
+                <span style="font-size:11px;color:var(--text-dim)">Requests waiting on an answer, and guests standing here — tap a name for the whole booking</span>
               </div>
               <sc-for list="{{ resReqs }}" as="r" hint-placeholder-count="0">
                 <div style="{{ r.style }}">
                   <span style="{{ r.dotStyle }}"></span>
                   <button onClick="{{ r.open }}" title="Open the booking" style="min-width:0;flex:1;text-align:left;background:transparent">
                     <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ r.title }}</span>
-                    <span style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:2px;text-wrap:pretty">{{ r.sub }}</span>
+                    <span style="display:block;font-size:11px;color:var(--text-dim);margin-top:2px;text-wrap:pretty">{{ r.sub }}</span>
                   </button>
                   <button onClick="{{ r.no }}" style="{{ r.noStyle }}">{{ r.noText }}</button>
                   <button onClick="{{ r.ok }}" style="{{ r.okStyle }}">{{ r.okText }}</button>
@@ -296,7 +296,7 @@
           <sc-if value="{{ hasFloorState }}">
             <div class="krail" style="display:flex;gap:6px;margin-bottom:10px;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:4px">
               <sc-if value="{{ hasLow }}">
-                <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--red-bright);flex-shrink:0">86</span>
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--red-bright);flex-shrink:0">86</span>
               </sc-if>
               <sc-for list="{{ low }}" as="l" hint-placeholder-count="0">
                 <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:5px 11px;border-radius:20px;background:var(--bad-dim);border:1px solid var(--red-line);color:var(--red-bright);white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:var(--red)"></span>{{ l }}</span>
@@ -325,7 +325,7 @@
             <sc-if value="{{ showZoneRail }}">
               <div class="krail" style="{{ zoneRailStyle }}">
                 <sc-for list="{{ zones }}" as="z" hint-placeholder-count="3">
-                  <button onClick="{{ z.pick }}" style="{{ z.style }}">{{ z.name }}<span style="font-size:10px;opacity:.55;margin-left:5px;font-family:'JetBrains Mono',monospace">{{ z.count }}</span></button>
+                  <button onClick="{{ z.pick }}" style="{{ z.style }}">{{ z.name }}<span style="font-size:11px;opacity:.55;margin-left:5px;font-family:'JetBrains Mono',monospace">{{ z.count }}</span></button>
                 </sc-for>
               </div>
             </sc-if>
@@ -338,7 +338,7 @@
                   <span style="{{ ot.dot }}"></span>
                   <span style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0">
                     <span style="font-size:11.5px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1.1;white-space:nowrap">{{ ot.name }}</span>
-                    <span style="font-size:9.5px;opacity:.62;line-height:1.1;white-space:nowrap">{{ ot.meta }}</span>
+                    <span style="font-size:12px;opacity:.62;line-height:1.1;white-space:nowrap">{{ ot.meta }}</span>
                   </span>
                 </button>
               </sc-for>
@@ -359,7 +359,7 @@
                   <span style="{{ t.chip }}">{{ t.chipText }}</span>
                 </span>
                 <span style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;gap:6px;margin-top:14px">
-                  <span style="font-size:10px;color:var(--text-dim);line-height:1.3">{{ t.meta }}</span>
+                  <span style="font-size:12px;color:var(--text-dim);line-height:1.3">{{ t.meta }}</span>
                   <span style="{{ t.totalStyle }}">{{ t.total }}</span>
                 </span>
               </button>
@@ -391,7 +391,7 @@
               </div>
             </div>
             <div style="{{ qtyBarStyle }}">
-              <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);flex-shrink:0">Qty</span>
+              <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);flex-shrink:0">Qty</span>
               <sc-for list="{{ qtyKeys }}" as="q" hint-placeholder-count="6">
                 <button onClick="{{ q.pick }}" title="{{ q.hint }}" style="{{ q.style }}">{{ q.label }}</button>
               </sc-for>
@@ -433,11 +433,11 @@
                   </button>
                   <div style="padding:0 11px 9px;display:flex;align-items:center;gap:7px">
                     <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;font-family:'JetBrains Mono',monospace">{{ m.price }}</span>
-                    <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">{{ m.foot }}</span>
-                    <span style="margin-left:auto;display:flex;align-items:center;gap:4px">
-                      <button onClick="{{ m.dec }}" aria-label="One fewer {{ m.name }}" style="width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:16px;font-weight:700;line-height:1;cursor:pointer">−</button>
+                    <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">{{ m.foot }}</span>
+                    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+                      <button onClick="{{ m.dec }}" aria-label="One fewer {{ m.name }}" style="width:44px;height:44px;border-radius:11px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">−</button>
                       <span style="font-size:13.5px;font-weight:800;font-family:'JetBrains Mono',monospace;min-width:18px;text-align:center">{{ m.qty }}</span>
-                      <button onClick="{{ m.inc }}" aria-label="One more {{ m.name }}" style="width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:16px;font-weight:700;line-height:1;cursor:pointer">+</button>
+                      <button onClick="{{ m.inc }}" aria-label="One more {{ m.name }}" style="width:44px;height:44px;border-radius:11px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">+</button>
                     </span>
                   </div>
                 </div>
@@ -462,7 +462,7 @@
           <div style="{{ ticketHeadStyle }}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
               <div style="min-width:0">
-                <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;font-weight:700">{{ ticketLabel }}</div>
+                <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;font-weight:700">{{ ticketLabel }}</div>
                 <div style="{{ ticketNumStyle }}">{{ ticketNum }}</div>
               </div>
               <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
@@ -474,7 +474,7 @@
             </div>
             <div style="{{ resStripStyle }}">
               <span style="font-size:12px;font-weight:700;color:var(--text)">{{ resStripName }}</span>
-              <span style="font-size:10.5px;color:var(--text-dim)">{{ resStripSub }}</span>
+              <span style="font-size:11px;color:var(--text-dim)">{{ resStripSub }}</span>
               <span style="{{ resStripNoteStyle }}">{{ resStripNote }}</span>
             </div>
             <div style="{{ orderTypeRowStyle }}">
@@ -501,8 +501,8 @@
                 <sc-for list="{{ splits }}" as="sp" hint-placeholder-count="1">
                   <button onClick="{{ sp.pick }}" style="{{ sp.style }}"><span style="{{ sp.dotStyle }}"></span>{{ sp.label }}</button>
                 </sc-for>
-                <button onClick="{{ editGuest }}" title="Edit this guest" style="font-size:10.5px;color:var(--text-dim);padding:5px 9px;border-radius:16px;border:1px solid var(--line)">Edit</button>
-                <button onClick="{{ addSplit }}" style="font-size:10.5px;color:var(--text-dim);padding:5px 9px;border-radius:16px;border:1px dashed var(--line-2)">+ Guest</button>
+                <button onClick="{{ editGuest }}" title="Edit this guest" style="font-size:11px;color:var(--text-dim);padding:5px 9px;border-radius:16px;border:1px solid var(--line)">Edit</button>
+                <button onClick="{{ addSplit }}" style="font-size:11px;color:var(--text-dim);padding:5px 9px;border-radius:16px;border:1px dashed var(--line-2)">+ Guest</button>
               </div>
             </sc-if>
           </div>
@@ -524,8 +524,8 @@
                     <button onClick="{{ l.inc }}" style="width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);line-height:1">+</button>
                   </div>
                   <span style="{{ l.stateStyle }}">{{ l.stateText }}</span>
-                  <button onClick="{{ l.note }}" style="font-size:10.5px;color:var(--text-muted);padding:3px 7px;border-radius:999px;border:1px solid var(--line)">Note</button>
-                  <button onClick="{{ l.del }}" style="font-size:10.5px;color:var(--text);padding:3px 7px;border-radius:999px;border:1px solid var(--line-3)" style-hover="background:var(--bg-3);border-color:var(--text)">Void</button>
+                  <button onClick="{{ l.note }}" style="font-size:11px;color:var(--text-muted);padding:3px 7px;border-radius:999px;border:1px solid var(--line)">Note</button>
+                  <button onClick="{{ l.del }}" style="font-size:11px;color:var(--text);padding:3px 7px;border-radius:999px;border:1px solid var(--line-3)" style-hover="background:var(--bg-3);border-color:var(--text)">Void</button>
                 </div>
                 <div style="{{ l.noteStyle }}">{{ l.noteText }}</div>
               </div>
@@ -565,7 +565,7 @@
         </div>
 
         <div style="{{ kdsAllDayStyle }}">
-          <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);flex-shrink:0">All day</span>
+          <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);flex-shrink:0">All day</span>
           <sc-for list="{{ kdsAllDay }}" as="a" hint-placeholder-count="0">
             <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;font-size:11.5px;padding:5px 11px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);white-space:nowrap">
               <span style="font-family:'JetBrains Mono',monospace;font-weight:800;color:var(--warn-bright)">{{ a.n }}</span>{{ a.name }}
@@ -579,7 +579,7 @@
               <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line);{{ k.headBg }}">
                 <div>
                   <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;font-family:'JetBrains Mono',monospace">{{ k.table }}</div>
-                  <div style="font-size:10px;color:var(--text-dim);margin-top:2px">{{ k.meta }}</div>
+                  <div style="font-size:11px;color:var(--text-dim);margin-top:2px">{{ k.meta }}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
                   <div style="{{ k.timerStyle }}">{{ k.wait }}m</div>
@@ -617,27 +617,27 @@
         <div style="{{ ownHeroStyle }}">
           <div style="min-width:0;flex:1">
             <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px">
-              <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--warn-bright)">Owner briefing</span>
+              <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--warn-bright)">Owner briefing</span>
               <span style="{{ ownScopeChip }}">{{ ownScope }}</span>
-              <span style="font-size:9.5px;color:var(--text-faint)">{{ ownStamp }}</span>
+              <span style="font-size:11px;color:var(--text-faint)">{{ ownStamp }}</span>
             </div>
             <div style="font-size:16px;font-weight:700;letter-spacing:-0.02em;line-height:1.4;text-wrap:pretty">{{ ownHeadline }}</div>
             <div style="font-size:11.5px;color:var(--text-dim);margin-top:6px;line-height:1.6;text-wrap:pretty">{{ ownSub }}</div>
           </div>
           <div style="{{ ownScoreStyle }}">
             <div style="{{ ownScoreNum }}">{{ ownScore }}</div>
-            <div style="font-size:8px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:var(--text-muted);margin-top:2px">Health</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:var(--text-muted);margin-top:2px">Health</div>
           </div>
         </div>
 
         <div style="{{ ownKpiGrid }}">
           <sc-for list="{{ ownKpis }}" as="k" hint-placeholder-count="6">
             <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:13px 14px 14px">
-              <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint)">{{ k.label }}</div>
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint)">{{ k.label }}</div>
               <div style="{{ k.numStyle }}">{{ k.value }}</div>
               <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
                 <span style="{{ k.deltaStyle }}">{{ k.delta }}</span>
-                <span style="font-size:10px;color:var(--text-muted);min-width:0;line-height:1.4">{{ k.sub }}</span>
+                <span style="font-size:11px;color:var(--text-muted);min-width:0;line-height:1.4">{{ k.sub }}</span>
               </div>
             </div>
           </sc-for>
@@ -648,7 +648,7 @@
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
               <div style="min-width:0;flex:1">
                 <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Fourteen days of takings</div>
-                <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ ownTrendSub }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">{{ ownTrendSub }}</div>
               </div>
               <span style="{{ ownTrendChip }}">{{ ownTrendVal }}</span>
             </div>
@@ -662,7 +662,7 @@
                 <span style="{{ b.lab }}">{{ b.label }}</span>
               </sc-for>
             </div>
-            <div style="font-size:10.5px;color:var(--text-dim);line-height:1.55;padding-top:10px;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ ownTrendFoot }}</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.55;padding-top:10px;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ ownTrendFoot }}</div>
           </div>
 
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 6px;min-width:0">
@@ -691,14 +691,14 @@
                 </sc-for>
               </div>
             </div>
-            <div style="font-size:10.5px;color:var(--text-dim);line-height:1.55;padding:10px 0;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ ownEstFoot }}</div>
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.55;padding:10px 0;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ ownEstFoot }}</div>
           </div>
         </div>
 
         <div style="{{ ownMidGrid }}">
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">{{ ownPlTitle }}</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownPlSub }}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownPlSub }}</div>
             <sc-for list="{{ ownPl }}" as="p" hint-placeholder-count="8">
               <div style="{{ p.row }}">
                 <span style="min-width:0;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
@@ -714,19 +714,19 @@
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:11px;margin-top:9px">
               <sc-for list="{{ ownBarKeys }}" as="k" hint-placeholder-count="4">
-                <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-dim)"><span style="{{ k.sw }}"></span>{{ k.label }}</span>
+                <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim)"><span style="{{ k.sw }}"></span>{{ k.label }}</span>
               </sc-for>
             </div>
           </div>
 
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Where the money is</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownCashSub }}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownCashSub }}</div>
             <sc-for list="{{ ownCash }}" as="c" hint-placeholder-count="6">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line-soft)">
                 <span style="min-width:0">
                   <span style="display:block;font-size:11.5px;font-weight:600">{{ c.label }}</span>
-                  <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.45;text-wrap:pretty">{{ c.sub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45;text-wrap:pretty">{{ c.sub }}</span>
                 </span>
                 <span style="{{ c.amtStyle }}">{{ c.amt }}</span>
               </div>
@@ -740,13 +740,13 @@
               <div style="flex:1;min-width:0;font-size:12.5px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">Waiting on you</div>
               <span style="{{ ownDecChip }}">{{ ownDecCount }}</span>
             </div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:9px">Only what a rank 5 has to answer. Anything a manager can clear is not here.</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:9px">Only what a rank 5 has to answer. Anything a manager can clear is not here.</div>
             <sc-for list="{{ ownDecisions }}" as="d" hint-placeholder-count="4">
               <button onClick="{{ d.go }}" style="{{ ownDecRow }}">
                 <span style="{{ d.chip }}">{{ d.n }}</span>
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:11.5px;font-weight:600;line-height:1.35;text-wrap:pretty">{{ d.title }}</span>
-                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:3px;line-height:1.5;text-wrap:pretty">{{ d.body }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5;text-wrap:pretty">{{ d.body }}</span>
                 </span>
                 <span style="{{ d.valStyle }}">{{ d.val }}</span>
               </button>
@@ -758,13 +758,13 @@
 
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">The controls, checked not claimed</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Each one is computed from the ledger every time this screen opens.</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Each one is computed from the ledger every time this screen opens.</div>
             <sc-for list="{{ ownControls }}" as="c" hint-placeholder-count="7">
               <div style="display:grid;grid-template-columns:16px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft)">
                 <span style="{{ c.dot }}"></span>
                 <span style="min-width:0">
                   <span style="display:block;font-size:11.5px;font-weight:500">{{ c.label }}</span>
-                  <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.45">{{ c.sub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45">{{ c.sub }}</span>
                 </span>
                 <span style="{{ c.valStyle }}">{{ c.val }}</span>
               </div>
@@ -773,11 +773,11 @@
         </div>
 
         <div style="background:var(--bg-0);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
-          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--text-faint)">Deliberately not here</div>
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--text-faint)">Deliberately not here</div>
           <div style="font-size:11.5px;color:var(--text-dim);margin-top:7px;line-height:1.65;max-width:88ch;text-wrap:pretty">{{ ownBoundary }}</div>
           <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
             <sc-for list="{{ ownNotHere }}" as="n" hint-placeholder-count="5">
-              <span style="padding:5px 11px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);font-size:10.5px;color:var(--text-dim);white-space:nowrap">{{ n }}</span>
+              <span style="padding:5px 11px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);font-size:11px;color:var(--text-dim);white-space:nowrap">{{ n }}</span>
             </sc-for>
           </div>
         </div>
@@ -792,13 +792,13 @@
           <div style="{{ cfoHeadStyle }}">
             <div style="{{ cfoScoreStyle }}">
               <div style="{{ cfoScoreNumStyle }}">{{ cfoScore }}</div>
-              <div style="font-size:8px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:var(--text-muted);margin-top:2px">Health</div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:var(--text-muted);margin-top:2px">Health</div>
             </div>
             <div style="min-width:0;flex:1">
               <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px">
-                <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--warn-bright)">CFO briefing</span>
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--warn-bright)">CFO briefing</span>
                 <span style="{{ cfoTrendChip }}">{{ cfoTrend }}</span>
-                <span style="font-size:9.5px;color:var(--text-faint)">{{ cfoStamp }}</span>
+                <span style="font-size:11px;color:var(--text-faint)">{{ cfoStamp }}</span>
               </div>
               <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;line-height:1.45;text-wrap:pretty">{{ cfoHeadline }}</div>
               <div style="font-size:11.5px;color:var(--text-dim);margin-top:5px;line-height:1.6;text-wrap:pretty">{{ cfoSub }}</div>
@@ -810,7 +810,7 @@
               <div style="{{ g.style }}">
                 <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
                   <span style="{{ g.dot }}"></span>
-                  <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-dim)">{{ g.title }}</span>
+                  <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-dim)">{{ g.title }}</span>
                   <span style="{{ g.cntStyle }}">{{ g.count }}</span>
                 </div>
                 <sc-for list="{{ g.items }}" as="i" hint-placeholder-count="2">
@@ -844,7 +844,7 @@
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div style="min-width:0">
                   <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">{{ c.title }}</div>
-                  <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ c.sub }}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px">{{ c.sub }}</div>
                 </div>
                 <span style="{{ c.chipStyle }}">{{ c.chip }}</span>
               </div>
@@ -861,7 +861,7 @@
                   <span style="{{ b.lab }}">{{ b.label }}</span>
                 </sc-for>
               </div>
-              <div style="font-size:10.5px;color:var(--text-dim);line-height:1.55;padding-top:10px;margin-top:2px;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ c.foot }}</div>
+              <div style="font-size:11px;color:var(--text-dim);line-height:1.55;padding-top:10px;margin-top:2px;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ c.foot }}</div>
             </div>
           </sc-for>
         </div>
@@ -869,7 +869,7 @@
         <div style="{{ anaBottomGrid }}">
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Menu engineering</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:12px">Gross margin against volume · every dish with a live recipe</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:12px">Gross margin against volume · every dish with a live recipe</div>
             <div style="{{ quadGridStyle }}">
               <sc-for list="{{ quadrants }}" as="q" hint-placeholder-count="4">
                 <div style="{{ q.style }}">
@@ -877,13 +877,13 @@
                     <span style="{{ q.titleStyle }}">{{ q.title }}</span>
                     <span style="{{ q.cntStyle }}">{{ q.count }}</span>
                   </div>
-                  <div style="font-size:9.5px;color:var(--text-muted);margin-top:2px;line-height:1.45">{{ q.rule }}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45">{{ q.rule }}</div>
                   <div style="display:flex;flex-direction:column;gap:3px;margin-top:8px">
                     <sc-for list="{{ q.dishes }}" as="d" hint-placeholder-count="2">
-                      <span style="font-size:10.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d }}</span>
+                      <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d }}</span>
                     </sc-for>
                   </div>
-                  <div style="font-size:10px;color:var(--warn-bright);margin-top:9px;line-height:1.5;font-weight:600;text-wrap:pretty">{{ q.action }}</div>
+                  <div style="font-size:11px;color:var(--warn-bright);margin-top:9px;line-height:1.5;font-weight:600;text-wrap:pretty">{{ q.action }}</div>
                 </div>
               </sc-for>
             </div>
@@ -891,7 +891,7 @@
 
           <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Leakage & risk</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Where money leaves without a sale behind it</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Where money leaves without a sale behind it</div>
             <sc-for list="{{ risks }}" as="r" hint-placeholder-count="6">
               <div style="padding:10px 0;border-top:1px solid var(--line-soft)">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
@@ -902,7 +902,7 @@
                   <div style="{{ r.barWrap }}"><div style="{{ r.barFill }}"></div></div>
                   <span style="{{ r.chipStyle }}">{{ r.chip }}</span>
                 </div>
-                <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5;margin-top:5px;text-wrap:pretty">{{ r.note }}</div>
+                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:5px;text-wrap:pretty">{{ r.note }}</div>
               </div>
             </sc-for>
           </div>
@@ -943,8 +943,8 @@
         <sc-if value="{{ hasGuide }}">
           <div style="display:flex;align-items:stretch;gap:0;margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;background:var(--bg-2);border-right:1px solid var(--line);flex-shrink:0">
-              <span style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:var(--warn-dim);color:var(--warn-bright);font-size:10px;font-weight:800">i</span>
-              <span style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap">{{ guideTitle }}</span>
+              <span style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:var(--warn-dim);color:var(--warn-bright);font-size:11px;font-weight:800">i</span>
+              <span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap">{{ guideTitle }}</span>
             </div>
             <sc-for list="{{ guide }}" as="g" hint-placeholder-count="3">
               <div style="{{ g.style }}">
@@ -1002,7 +1002,7 @@
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                   <div style="min-width:0">
                     <div style="font-size:13px;font-weight:700;letter-spacing:-0.01em">{{ c.title }}</div>
-                    <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">{{ c.sub }}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:3px">{{ c.sub }}</div>
                   </div>
                   <span style="{{ c.chipStyle }}">{{ c.chip }}</span>
                 </div>
@@ -1076,7 +1076,7 @@
                 <span style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;width:100%;margin-top:10px">
                   <sc-for list="{{ r.pairs }}" as="p" hint-placeholder-count="4">
                     <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
-                      <span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.k }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.k }}</span>
                       <span style="{{ p.vs }}">{{ p.v }}</span>
                     </span>
                   </sc-for>
@@ -1110,7 +1110,7 @@
               <span style="width:9px;height:9px;border-radius:50%;background:var(--amber)"></span>
               <span style="width:9px;height:9px;border-radius:50%;background:var(--go)"></span>
               <span style="font-size:11px;color:var(--text-dim);margin-left:6px;font-family:'JetBrains Mono',monospace">{{ codeName }}</span>
-              <button onClick="{{ copyCode }}" style="margin-left:auto;font-size:10.5px;color:var(--text-dim);border:1px solid var(--line);border-radius:999px;padding:4px 10px">Copy</button>
+              <button onClick="{{ copyCode }}" style="margin-left:auto;font-size:11px;color:var(--text-dim);border:1px solid var(--line);border-radius:999px;padding:4px 10px">Copy</button>
             </div>
             <pre style="margin:0;padding:16px 18px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:var(--code-text);max-height:min(520px,52dvh)">{{ code }}</pre>
           </div>
@@ -1146,7 +1146,7 @@
             <div style="{{ payGridStyle }}">
               <div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-                  <span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700">{{ splitLabel }}</span>
+                  <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700">{{ splitLabel }}</span>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <sc-for list="{{ splitWays }}" as="w" hint-placeholder-count="6">
                       <button onClick="{{ w.pick }}" style="{{ w.style }}">{{ w.label }}</button>
@@ -1158,7 +1158,7 @@
                   <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="4">
                     <button onClick="{{ t.pick }}" style="{{ t.style }}">
                       <span style="font-size:13px;font-weight:700">{{ t.label }}</span>
-                      <span style="font-size:10.5px;opacity:.7;margin-top:3px">{{ t.sub }}</span>
+                      <span style="font-size:11px;opacity:.7;margin-top:3px">{{ t.sub }}</span>
                     </button>
                   </sc-for>
                 </div>
@@ -1167,7 +1167,7 @@
                     <sc-for list="{{ curs }}" as="c" hint-placeholder-count="4">
                       <button onClick="{{ c.pick }}" style="{{ c.style }}">
                         <span style="font-size:12px;font-weight:800;letter-spacing:.02em">{{ c.label }}</span>
-                        <span style="font-size:9px;opacity:.7;font-family:'JetBrains Mono',monospace">{{ c.sub }}</span>
+                        <span style="font-size:11px;opacity:.7;font-family:'JetBrains Mono',monospace">{{ c.sub }}</span>
                       </button>
                     </sc-for>
                   </div>
@@ -1179,7 +1179,7 @@
                     <sc-for list="{{ quickTender }}" as="q" hint-placeholder-count="0">
                       <button onClick="{{ q.pick }}" style="{{ q.style }}">
                         <span style="font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ q.label }}</span>
-                        <span style="font-size:9.5px;opacity:.75">{{ q.sub }}</span>
+                        <span style="font-size:11px;opacity:.75">{{ q.sub }}</span>
                       </button>
                     </sc-for>
                   </div>
@@ -1197,7 +1197,7 @@
                 </div>
                 <div style="{{ refWrap }}">
                   <label style="display:block">
-                    <span style="display:block;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
+                    <span style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
                     <input value="{{ refValue }}" onChange="{{ onRef }}" aria-label="Payment reference from the processor" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
                   </label>
                   <div style="{{ refNoteStyle }}">{{ refNote }}</div>
@@ -1215,7 +1215,7 @@
               </div>
 
               <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column">
-                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:10px">Bill</div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:10px">Bill</div>
                 <div style="max-height:min(170px,26dvh);overflow-y:auto;margin-bottom:9px">
                   <sc-for list="{{ billLines }}" as="b" hint-placeholder-count="3">
                     <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11.5px;color:var(--text);border-bottom:1px solid var(--bg-2)">
@@ -1254,11 +1254,11 @@
                 <button onClick="{{ pickMember }}" style="{{ memberStyle }}">Registered customer</button>
               </div>
               <div style="{{ nameWrapStyle }}">
-                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Name on the bill</div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Name on the bill</div>
                 <input aria-label="Guest 1" value="{{ guestNameVal }}" onChange="{{ onGuestName }}" placeholder="Guest 1" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               </div>
               <div style="{{ memberWrapStyle }}">
-                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Link a customer</div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">Link a customer</div>
                 <select value="{{ guestCust }}" onChange="{{ onGuestCust }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px;font-size:12.5px;color:var(--text);outline:none">
                   <option value="">Select customer…</option>
                   <sc-for list="{{ guestCustOpts }}" as="c" hint-placeholder-count="3">
@@ -1314,7 +1314,7 @@
                 <div style="display:flex;flex-direction:column;gap:13px">
                   <div style="display:flex;align-items:center;gap:16px;padding:13px 15px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
                     <span style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Food cost</span>
+                      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Food cost</span>
                       <span style="{{ rbPctStyle }}">{{ rbPct }}</span>
                     </span>
                     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
@@ -1332,7 +1332,7 @@
                       <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)">
                         <span style="flex:1;min-width:0">
                           <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.name }}</span>
-                          <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ l.sub }}</span>
+                          <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ l.sub }}</span>
                         </span>
                         <span style="display:flex;align-items:center;gap:2px;flex-shrink:0;border:1px solid var(--line-2);border-radius:999px;background:var(--bg-1);padding:2px">
                           <button onClick="{{ l.dec }}" style="width:26px;height:26px;border-radius:999px;font-size:15px;font-weight:700;color:var(--text-dim);display:grid;place-items:center" style-hover="background:var(--bg-3);color:var(--text)">−</button>
@@ -1353,7 +1353,7 @@
                         <button onClick="{{ r.add }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg-1)" style-hover="border-color:var(--text);background:var(--bg-2)">
                           <span style="flex:1;min-width:0">
                             <span style="display:block;font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
-                            <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ r.meta }}</span>
+                            <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ r.meta }}</span>
                           </span>
                           <span style="font-size:16px;color:var(--text-faint);flex-shrink:0">+</span>
                         </button>
@@ -1395,7 +1395,7 @@
                 <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
                   <input aria-label="Dish name" value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
                   <input aria-label="One line a guest reads — what it is, how it eats" value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
-                  <span style="display:flex;justify-content:space-between;gap:10px;font-size:10.5px;color:var(--text-muted);line-height:1.5">
+                  <span style="display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--text-muted);line-height:1.5">
                     <span style="min-width:0">{{ dbArtNote }}</span>
                     <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ dbDescCount }}</span>
                   </span>
@@ -1403,7 +1403,7 @@
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbCats }}" as="c" hint-placeholder-count="6">
                     <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</button>
@@ -1412,7 +1412,7 @@
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Photograph</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Photograph</span>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                   <label style="display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line-2);font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer" style-hover="background:var(--bg-3)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
@@ -1427,54 +1427,54 @@
 
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
                 <div style="width:150px;flex-shrink:0">
-                  <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Chain price MVR</span>
+                  <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Chain price MVR</span>
                   <input value="{{ dbPrice }}" onChange="{{ onDbPrice }}" aria-label="Menu price" inputMode="decimal" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                 </div>
                 <div style="flex:1;min-width:230px">
-                  <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Kitchen station</span>
+                  <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Kitchen station</span>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <sc-for list="{{ dbStations }}" as="st" hint-placeholder-count="5">
                       <button onClick="{{ st.go }}" style="{{ st.style }}">{{ st.label }}</button>
                     </sc-for>
                   </div>
-                  <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbStationNote }}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbStationNote }}</div>
                 </div>
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Where it comes from</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Where it comes from</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbBuyModes }}" as="bm" hint-placeholder-count="2">
                     <button onClick="{{ bm.go }}" style="{{ bm.style }}">{{ bm.label }}</button>
                   </sc-for>
                 </div>
-                <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbBuyNote }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbBuyNote }}</div>
                 <div style="{{ dbBuyStyle }}">
                   <div style="display:flex;gap:9px;flex-wrap:wrap">
                     <label style="flex:2;min-width:190px;display:flex;flex-direction:column;gap:5px">
-                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Stock item sold</span>
+                      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Stock item sold</span>
                       <select value="{{ dbBuyItem }}" onChange="{{ onDbBuyItem }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
                         <sc-for list="{{ dbBuyItemOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
                       </select>
                     </label>
                     <label style="flex:1.4;min-width:150px;display:flex;flex-direction:column;gap:5px">
-                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Supplier</span>
+                      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Supplier</span>
                       <select value="{{ dbBuyVendor }}" onChange="{{ onDbBuyVendor }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
                         <sc-for list="{{ dbBuyVendorOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
                       </select>
                     </label>
                     <label style="width:110px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
-                      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Units per pack</span>
+                      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Units per pack</span>
                       <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" placeholder="1" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                     </label>
                   </div>
                   <div style="{{ dbBuyLineStyle }}">{{ dbBuyLine }}</div>
-                  <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5">{{ dbBuyFoot }}</div>
+                  <div style="font-size:11px;color:var(--text-muted);line-height:1.5">{{ dbBuyFoot }}</div>
                 </div>
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Tags</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Tags</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbTags }}" as="t" hint-placeholder-count="7">
                     <button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -1483,7 +1483,7 @@
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Heat</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Heat</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbSpice }}" as="sp" hint-placeholder-count="4">
                     <button onClick="{{ sp.go }}" style="{{ sp.style }}">{{ sp.label }}</button>
@@ -1492,13 +1492,13 @@
               </div>
 
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Add-ons</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Add-ons</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ dbAddModes }}" as="a" hint-placeholder-count="2">
                     <button onClick="{{ a.go }}" style="{{ a.style }}">{{ a.label }}</button>
                   </sc-for>
                 </div>
-                <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbAddNote }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ dbAddNote }}</div>
                 <div style="{{ dbAddonsStyle }}">
                   <sc-for list="{{ dbAddons }}" as="a" hint-placeholder-count="6">
                     <button onClick="{{ a.go }}" style="{{ a.style }}">
@@ -1513,7 +1513,7 @@
               <button onClick="{{ dbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ dbHidLabel }}</span>
-                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbHidSub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbHidSub }}</span>
                 </span>
                 <span style="{{ dbHidTrack }}"><span style="{{ dbHidKnob }}"></span></span>
               </button>
@@ -1521,7 +1521,7 @@
               <button onClick="{{ dbQrGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ dbQrLabel }}</span>
-                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbQrSub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbQrSub }}</span>
                 </span>
                 <span style="{{ dbQrTrack }}"><span style="{{ dbQrKnob }}"></span></span>
               </button>
@@ -1539,13 +1539,13 @@
             <div style="display:flex;flex-direction:column;gap:13px">
               <button onClick="{{ coDoorGo }}" style="width:100%;padding:12px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center" style-hover="background:var(--amber-deep)">{{ coDoor }}</button>
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Sections on the QR menu</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Sections on the QR menu</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ coSecChips }}" as="c" hint-placeholder-count="6">
                     <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</button>
                   </sc-for>
                 </div>
-                <div style="font-size:10.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ coSecNote }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ coSecNote }}</div>
               </div>
               <input value="{{ coQ }}" onChange="{{ onCoQ }}" placeholder="Search every dish" aria-label="Search every dish" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               <div style="display:flex;flex-direction:column;gap:7px">
@@ -1553,7 +1553,7 @@
                   <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
                     <span style="flex:1;min-width:0">
                       <span style="display:block;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
-                      <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ r.sub }}</span>
+                      <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ r.sub }}</span>
                     </span>
                     <span style="{{ r.nStyle }}">{{ r.n }}</span>
                     <button onClick="{{ r.go86 }}" style="{{ r.s86 }}">{{ r.b86 }}</button>
@@ -1565,19 +1565,19 @@
                 </sc-if>
               </div>
               <div style="{{ coUnpricedStyle }}">
-                <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--warn-bright)">Signed in blind · waiting to be priced</span>
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--warn-bright)">Signed in blind · waiting to be priced</span>
                 <sc-for list="{{ coUnpriced }}" as="u" hint-placeholder-count="2">
                   <button onClick="{{ u.go }}" style="width:100%;text-align:left;padding:10px 13px;border-radius:10px;background:var(--warn-dim);border:1px solid var(--warn-line);color:var(--warn-bright);font-size:11.5px;font-weight:600">{{ u.label }}</button>
                 </sc-for>
               </div>
-              <div style="font-size:10.5px;color:var(--text-muted);line-height:1.6">{{ coFoot }}</div>
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.6">{{ coFoot }}</div>
             </div>
           </sc-if>
 
           <sc-if value="{{ mDishAdd }}">
             <div style="display:flex;flex-direction:column;gap:14px">
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Make it yours</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Make it yours</span>
                 <sc-for list="{{ daRows }}" as="a" hint-placeholder-count="4">
                   <div style="{{ a.rowStyle }}">
                     <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.name }}</span>
@@ -1591,11 +1591,11 @@
                 </sc-for>
               </div>
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
                 <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none"/>
               </div>
               <div style="display:flex;align-items:center;gap:12px">
-                <span style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Quantity</span>
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Quantity</span>
                 <span style="display:flex;align-items:center;gap:11px">
                   <button onClick="{{ daQtyDec }}" aria-label="One fewer" style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--text)">&#8722;</button>
                   <span style="font-size:15px;font-weight:700;min-width:18px;text-align:center;font-family:'JetBrains Mono',monospace">{{ daQty }}</span>
@@ -1609,20 +1609,20 @@
           <sc-if value="{{ mCatB }}">
             <div style="display:flex;flex-direction:column;gap:15px">
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section name</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section name</span>
                 <input aria-label="Starters, From the Grill, Cold drinks…" value="{{ cbName }}" onChange="{{ onCbName }}" placeholder="Starters, From the Grill, Cold drinks…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
               </div>
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Colour</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Colour</span>
                 <div style="display:flex;gap:9px;flex-wrap:wrap">
                   <sc-for list="{{ cbColors }}" as="c" hint-placeholder-count="8">
                     <button onClick="{{ c.go }}" style="{{ c.style }}"></button>
                   </sc-for>
                 </div>
-                <div style="font-size:10.5px;color:var(--text-muted);margin-top:8px;line-height:1.5">{{ cbColorNote }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5">{{ cbColorNote }}</div>
               </div>
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Till icon</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Till icon</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ cbIcons }}" as="i" hint-placeholder-count="6">
                     <button onClick="{{ i.go }}" style="{{ i.style }}">{{ i.label }}</button>
@@ -1630,7 +1630,7 @@
                 </div>
               </div>
               <div>
-                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Default station for its dishes</span>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Default station for its dishes</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ cbStations }}" as="st" hint-placeholder-count="5">
                     <button onClick="{{ st.go }}" style="{{ st.style }}">{{ st.label }}</button>
@@ -1640,7 +1640,7 @@
               <button onClick="{{ cbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ cbHidLabel }}</span>
-                  <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ cbHidSub }}</span>
+                  <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ cbHidSub }}</span>
                 </span>
                 <span style="{{ cbHidTrack }}"><span style="{{ cbHidKnob }}"></span></span>
               </button>
@@ -1658,7 +1658,7 @@
 
               <div style="{{ ioExportStyle }}">
                 <div style="font-size:11.5px;color:var(--text-dim);line-height:1.6">{{ ioCount }} — one row per dish, with its section, price, description, station, tags, heat, add-ons and visibility.</div>
-                <textarea value="{{ ioCsv }}" readOnly="{{ true }}" style="width:100%;height:190px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--text-dim);outline:none;white-space:pre"></textarea>
+                <textarea value="{{ ioCsv }}" readOnly="{{ true }}" style="width:100%;height:190px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.65;color:var(--text-dim);outline:none;white-space:pre"></textarea>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                   <button onClick="{{ ioDownload }}" style="padding:10px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Download CSV</button>
                   <button onClick="{{ ioCopy }}" style="padding:10px 16px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Copy</button>
@@ -1671,9 +1671,9 @@
                   <button onClick="{{ ioPick }}" style="padding:10px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Choose a CSV file…</button>
                   <span style="font-size:11.5px;color:var(--text-dim);line-height:1.6">{{ ioFileNote }}</span>
                 </div>
-                <textarea value="{{ ioText }}" onChange="{{ onIoText }}" placeholder="type,id,name,section,price,description,station,tags,spice,addons,visible,qr" style="width:100%;height:150px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--text);outline:none;white-space:pre"></textarea>
+                <textarea value="{{ ioText }}" onChange="{{ onIoText }}" placeholder="type,id,name,section,price,description,station,tags,spice,addons,visible,qr" style="width:100%;height:150px;resize:vertical;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.65;color:var(--text);outline:none;white-space:pre"></textarea>
                 <div style="display:flex;flex-direction:column;gap:7px">
-                  <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)">What happens to a dish already on this menu</div>
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)">What happens to a dish already on this menu</div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <sc-for list="{{ ioModes }}" as="x" hint-placeholder-count="3">
                       <button onClick="{{ x.go }}" style="{{ x.style }}">{{ x.label }}</button>
@@ -1734,7 +1734,7 @@
                   </sc-for>
                 </div>
                 <div style="{{ lockNoneStyle }}">{{ lockNone }}</div>
-                <div style="font-size:10.5px;color:var(--text-faint);line-height:1.65;margin-top:5px">{{ lockHint }}</div>
+                <div style="font-size:11px;color:var(--text-faint);line-height:1.65;margin-top:5px">{{ lockHint }}</div>
                 <div style="{{ lockSignOutNoteStyle }}">{{ lockSignOutNote }}</div>
                 <button onClick="{{ lockSignOutGo }}" style="{{ lockSignOutStyle }}">{{ lockSignOutLabel }}</button>
               </div>
@@ -1745,7 +1745,7 @@
                   <span style="{{ lockWhoAv }}">{{ lockWhoIni }}</span>
                   <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
                     <span style="font-size:13px;font-weight:700">{{ lockWhoName }}</span>
-                    <span style="font-size:10.5px;color:var(--text-dim)">{{ lockWhoRole }}</span>
+                    <span style="font-size:11px;color:var(--text-dim)">{{ lockWhoRole }}</span>
                   </span>
                   <button onClick="{{ lockBack }}" style="margin-left:auto;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text-dim);padding:7px 11px;border-radius:999px;border:1px solid var(--line)">Not you?</button>
                 </div>
@@ -1778,8 +1778,8 @@
                 </div>
                 <div style="text-align:center;line-height:1.35">
                   <div style="font-size:13px;font-weight:800;color:#1f1c17;letter-spacing:-0.01em">{{ qrTable }}</div>
-                  <div style="font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px">Scan to order</div>
-                  <div style="font-size:8.5px;color:#a89f92;margin-top:4px">{{ qrOutlet }}</div>
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px">Scan to order</div>
+                  <div style="font-size:11px;color:#6b6358;margin-top:4px">{{ qrOutlet }}</div>
                   <div style="{{ qrPoweredStyle }}">Powered by KashikeyoPOS™</div>
                 </div>
               </div>
@@ -1832,7 +1832,7 @@
               <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px">
                 <sc-for list="{{ tkMeta }}" as="r" hint-placeholder-count="4">
                   <div style="min-width:0">
-                    <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">{{ r.k }}</div>
+                    <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">{{ r.k }}</div>
                     <div style="font-size:12px;font-weight:650;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.v }}</div>
                   </div>
                 </sc-for>
@@ -1857,7 +1857,7 @@
                 </div>
               </div>
               <div>
-                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:7px">Status</div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:7px">Status</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <sc-for list="{{ tkFlows }}" as="x" hint-placeholder-count="4">
                     <button onClick="{{ x.go }}" style="{{ x.style }}">{{ x.label }}</button>
@@ -1877,7 +1877,7 @@
               <div style="text-align:center;border-bottom:2px solid var(--paper-ink);padding-bottom:10px">
                 <div role="img" aria-label="{{ brandName }}" style="{{ brandMarkKotStyle }}"></div>
                 <div style="font-size:13px;font-weight:800;letter-spacing:.12em">{{ brandName }}</div>
-                <div style="font-size:10px;margin-top:2px">{{ kotOutlet }}</div>
+                <div style="font-size:11px;margin-top:2px">{{ kotOutlet }}</div>
                 <div style="font-size:20px;font-weight:800;letter-spacing:.16em;margin-top:8px">{{ kotStation }}</div>
               </div>
               <div style="display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:800;padding:11px 0;border-bottom:1px dashed var(--paper-ink)">
@@ -1898,7 +1898,7 @@
                   </div>
                 </div>
               </sc-for>
-              <div style="border-top:2px solid var(--paper-ink);margin-top:12px;padding-top:10px;text-align:center;font-size:10px;letter-spacing:.05em">{{ kotFoot }}</div>
+              <div style="border-top:2px solid var(--paper-ink);margin-top:12px;padding-top:10px;text-align:center;font-size:11px;letter-spacing:.05em">{{ kotFoot }}</div>
               <div style="{{ poweredStyle }}">Powered by KashikeyoPOS™</div>
             </div>
             <button onClick="{{ kotDone }}" style="margin-top:13px;width:100%;padding:12px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">{{ kotDoneLabel }}</button>
@@ -1910,14 +1910,14 @@
                 <div role="img" aria-label="{{ brandName }}" style="{{ brandMarkStyle }}"></div>
                 <div style="font-size:15px;font-weight:700;letter-spacing:.1em">{{ brandName }}</div>
                 <div style="{{ brandTagStyle }}">{{ brandTagline }}</div>
-                <div style="font-size:10px;margin-top:5px">{{ rcpOutlet }}</div>
-                <div style="font-size:10px">{{ rcpAddr }}</div>
+                <div style="font-size:11px;margin-top:5px">{{ rcpOutlet }}</div>
+                <div style="font-size:11px">{{ rcpAddr }}</div>
                 <div style="{{ rcpLegalStyle }}">{{ rcpLegal }}</div>
                 <sc-if value="{{ rcpHasTin }}">
-                  <div style="font-size:10px;margin-top:3px">TIN {{ rcpTin }}</div>
+                  <div style="font-size:11px;margin-top:3px">TIN {{ rcpTin }}</div>
                 </sc-if>
               </div>
-              <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:7px 0;display:flex;justify-content:space-between;font-size:10.5px">
+              <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:7px 0;display:flex;justify-content:space-between;font-size:11px">
                 <span>{{ rcpNo }}</span><span>{{ rcpTime }}</span>
               </div>
               <div style="{{ rcpTitleStyle }}">{{ rcpTitle }}</div>
@@ -1931,7 +1931,7 @@
                   <div style="{{ t.style }}"><span>{{ t.n }}</span><span>{{ t.v }}</span></div>
                 </sc-for>
               </div>
-              <div style="text-align:center;margin-top:14px;font-size:10px;border-top:1px dashed #999;padding-top:10px">{{ rcpFoot }}</div>
+              <div style="text-align:center;margin-top:14px;font-size:11px;border-top:1px dashed #999;padding-top:10px">{{ rcpFoot }}</div>
               <div style="{{ poweredStyle }}">Powered by KashikeyoPOS™</div>
             </div>
           </sc-if>
@@ -1943,7 +1943,7 @@
                 <sc-for list="{{ countCats }}" as="c" hint-placeholder-count="4">
                   <button onClick="{{ c.pick }}" style="{{ c.style }}">
                     <span style="font-size:12.5px;font-weight:600">{{ c.name }}</span>
-                    <span style="font-size:10.5px;color:var(--text-muted);margin-top:3px">{{ c.sub }}</span>
+                    <span style="font-size:11px;color:var(--text-muted);margin-top:3px">{{ c.sub }}</span>
                   </button>
                 </sc-for>
               </div>
@@ -1952,10 +1952,10 @@
                   <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line)">
                     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
                       <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
-                      <span style="font-size:10px;color:var(--text-muted)">{{ c.sub }}</span>
+                      <span style="font-size:11px;color:var(--text-muted)">{{ c.sub }}</span>
                     </span>
                     <input aria-label="0" value="{{ c.val }}" onChange="{{ c.set }}" placeholder="0" inputMode="decimal" style="width:86px;flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;text-align:right;min-height:42px"/>
-                    <span style="flex-shrink:0;font-size:10.5px;color:var(--text-muted);width:30px">{{ c.unit }}</span>
+                    <span style="flex-shrink:0;font-size:11px;color:var(--text-muted);width:30px">{{ c.unit }}</span>
                   </div>
                 </sc-for>
               </div>
@@ -1968,7 +1968,7 @@
             <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px">
               <sc-for list="{{ formFields }}" as="f" hint-placeholder-count="6">
                 <div style="{{ f.wrap }}">
-                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">{{ f.label }}</div>
+                  <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">{{ f.label }}</div>
                   <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
                     <input value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
@@ -1989,7 +1989,7 @@
                       <input type="file" accept="image/*" onChange="{{ f.onPick }}" aria-label="{{ f.label }}" title="{{ f.label }}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer"/>
                     </div>
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px">
-                      <span style="font-size:10.5px;color:var(--text-muted);min-width:0;line-height:1.5">{{ f.imgHint }}</span>
+                      <span style="font-size:11px;color:var(--text-muted);min-width:0;line-height:1.5">{{ f.imgHint }}</span>
                       <button onClick="{{ f.imgRemove }}" style="{{ f.imgRemoveStyle }}">Remove</button>
                     </div>
                   </sc-if>
@@ -2004,7 +2004,7 @@
                             </sc-for>
                           </select>
                           <input value="{{ r.qty }}" onChange="{{ r.onQty }}" aria-label="Quantity" title="Quantity" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
-                          <span style="font-size:10.5px;color:var(--text-muted);align-self:center;white-space:nowrap">{{ r.unit }}</span>
+                          <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">{{ r.unit }}</span>
                           <sc-if value="{{ f.costed }}" hint-placeholder-val="{{ false }}">
                             <input value="{{ r.rate }}" onChange="{{ r.onRate }}" aria-label="Unit rate" title="Rate per unit" style="min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace"/>
                           </sc-if>
@@ -3801,9 +3801,9 @@ class Component extends DCLogic {
       + ".brand{font-size:12px;font-weight:800;letter-spacing:.11em;color:#1f1c17;text-transform:uppercase}"
       + ".qr{margin:10px auto 8px;max-width:180px}.qr svg{width:100%;height:auto;display:block}"
       + ".tbl{font-size:16px;font-weight:800;color:#1f1c17;letter-spacing:-.01em}"
-      + ".scan{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px}"
-      + ".out{font-size:9px;color:#a89f92;margin-top:4px}"
-      + ".pow{font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px}"
+      + ".scan{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px}"
+      + ".out{font-size:11px;color:#6b6358;margin-top:4px}"
+      + ".pow{font-size:11px;letter-spacing:.07em;color:#7d7569;margin-top:6px}"
       + "@media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #eee}}"
       + "</style></head><body><div class=\"sheet\">" + cards + "</div>"
       + "</body></html>";
@@ -4343,7 +4343,7 @@ class Component extends DCLogic {
         if (it[0] === "kds") { const n = this.kdsTickets().length; if (n) { badge = String(n); bg = "var(--warn-dim)"; fg = "var(--warn-bright)"; } }
         // An exception nobody is told about is an exception nobody clears.
         if (it[0] === "branches") { const n = this.openFlags().length; if (n) { badge = String(n); bg = "var(--bad-dim)"; fg = "var(--red-bright)"; } }
-        const badgeStyle = badge ? "font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;background:" + bg + ";color:" + fg + ";font-family:'JetBrains Mono',monospace" : "display:none";
+        const badgeStyle = badge ? "font-size:11px;font-weight:700;padding:2px 6px;border-radius:10px;background:" + bg + ";color:" + fg + ";font-family:'JetBrains Mono',monospace" : "display:none";
         const railMode = rail && !s.drawer;
         const label = it[0] === "pos" ? this.siteFloorLabel() : it[1];
         // A warehouse has no front of house. The group that holds the floor is
@@ -4358,7 +4358,7 @@ class Component extends DCLogic {
           on: on, off: !on,
           wrap: "display:contents",
           headStyle: railMode ? (i === 0 ? "height:1px;background:var(--line-soft);margin:9px 6px 7px;font-size:0;line-height:0;overflow:hidden;color:transparent" : "display:none")
-            : (i === 0 ? "font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;font-weight:700;padding:12px 8px 5px" : "display:none"),
+            : (i === 0 ? "font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;font-weight:700;padding:12px 8px 5px" : "display:none"),
           btnStyle: "width:100%;display:flex;align-items:center;position:relative;gap:9px;border-radius:8px;font-size:12px;font-weight:" + (on ? "600" : "500") + ";color:" + (on ? "var(--on-amber)" : "var(--text-dim)") + ";background:" + (on ? "var(--amber)" : "transparent") + ";transition:" + (on ? "none" : "background .1s ease-out,color .1s ease-out") + ";"
             // 44px on the short axis, always. A rail whose whole justification
             // is touch cannot ship a 36px target, and `padding` alone does not
@@ -4374,7 +4374,7 @@ class Component extends DCLogic {
           labelStyle: railMode ? "display:none" : "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
           badge: badge,
           badgeStyle: !badge ? "display:none" : (railMode
-            ? "position:absolute;top:2px;right:4px;min-width:15px;height:15px;display:grid;place-items:center;font-size:8.5px;font-weight:700;border-radius:8px;font-family:'JetBrains Mono',monospace;background:" + bg + ";color:" + fg
+            ? "position:absolute;top:1px;right:3px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;font-size:11px;font-weight:700;border-radius:9px;font-family:'JetBrains Mono',monospace;background:" + bg + ";color:" + fg
             : badgeStyle),
           go: () => this.setState({ view: it[0], sel: null, search: "", drawer: false, cart: false })
         });
@@ -4437,7 +4437,7 @@ class Component extends DCLogic {
       palBtnStyle: "display:flex;align-items:center;justify-content:center;gap:8px;flex-shrink:0;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:0 " + (isM ? "8px" : "11px")
         + ";border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-family:inherit;font-size:11.5px;font-weight:600",
       palBtnTextStyle: isM ? "display:none" : "white-space:nowrap",
-      palBtnKeyStyle: (isM || rail) ? "display:none" : "font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-faint);border:1px solid var(--line);border-radius:4px;padding:2px 5px",
+      palBtnKeyStyle: (isM || rail) ? "display:none" : "font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-faint);border:1px solid var(--line);border-radius:4px;padding:2px 5px",
       // The nav highlights the family; this strip says which member you are on.
       // It only appears where there is a sibling to reach, so a single-screen
       // module carries no chrome it does not need.
@@ -4461,7 +4461,7 @@ class Component extends DCLogic {
       askAnswer: s.askAnswer || "",
       askAnswerStyle: "padding:13px 15px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.75;color:var(--text-dim);white-space:pre-wrap;background:var(--bg-2)",
       askSrc: s.askSrc || "",
-      askSrcStyle: s.askSrc ? "padding:8px 15px 11px;background:var(--bg-2);font-size:10.5px;color:var(--text-faint)" : "display:none",
+      askSrcStyle: s.askSrc ? "padding:8px 15px 11px;background:var(--bg-2);font-size:11px;color:var(--text-faint)" : "display:none",
       sibRailStyle: "display:flex;gap:6px;margin-bottom:13px;overflow-x:auto;overflow-y:hidden;"
         + (isM ? "margin-left:-14px;margin-right:-14px;padding:0 14px 3px;" : "padding-bottom:3px;"),
       hasSibs: (function (self) {
@@ -4514,7 +4514,7 @@ class Component extends DCLogic {
           + (i === palSel ? "var(--line-3)" : "transparent") + ";background:" + (i === palSel ? "var(--bg-2)" : "transparent")
           + ";color:var(--text)",
         tag: r.kind === "act" ? "Act" : r.kind === "do" ? "Do" : "Go",
-        tagStyle: "flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:"
+        tagStyle: "flex-shrink:0;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:"
           + (r.kind === "act" ? "var(--amber-dim);color:var(--amber-bright)" : r.kind === "do" ? "var(--warn-dim);color:var(--warn-bright)" : "var(--bg-3);color:var(--text-muted)")
       })),
       palNone: this.canApprove()
@@ -4573,7 +4573,7 @@ class Component extends DCLogic {
       // next tap is allowed — and on a locked terminal it reads as a lock.
       identityPip: s.session ? String(this.rank()) : "",
       identityPipStyle: narrowId
-        ? "position:absolute;right:-2px;bottom:-2px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;display:grid;place-items:center;font-size:8.5px;font-weight:800;font-family:'JetBrains Mono',monospace;background:" + (s.session ? "var(--amber)" : "var(--red-bright)") + ";color:" + (s.session ? "var(--on-amber)" : "var(--bg)") + ";border:1.5px solid var(--bg-1)"
+        ? "position:absolute;right:-3px;bottom:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;display:grid;place-items:center;font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;background:" + (s.session ? "var(--amber)" : "var(--red-bright)") + ";color:" + (s.session ? "var(--on-amber)" : "var(--bg)") + ";border:1.5px solid var(--bg-1)"
         : "display:none",
       identityOutlet: (this.outlet().name || "").replace("Kashikeyo ", ""),
       // Under the name: the rank that decides what the next tap may do, and the
@@ -4604,7 +4604,7 @@ class Component extends DCLogic {
       linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
       searchStyle: isM ? "display:none" : "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;flex-shrink:0;color:var(--text-dim);height:32px;" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
       _searchStyleOld: isM ? "display:none" : "display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);color:var(--text-muted)",
-      shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:20px;font-size:10px;font-weight:700;background:var(--warn-dim);color:var(--warn-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
+      shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;background:var(--warn-dim);color:var(--warn-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
       clockStyle: isM ? "display:none" : "text-align:right;font-variant-numeric:tabular-nums;min-width:78px;flex-shrink:0",
 
       statsWrapStyle: "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
@@ -4654,7 +4654,7 @@ class Component extends DCLogic {
         return {
           label: t[1], badge: t[2] ? String(t[2]) : "",
           badgeStyle: t[2]
-            ? "margin-left:7px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:"
+            ? "margin-left:7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:20px;background:"
               + (on ? "rgba(0,0,0,.16)" : "var(--bg-3)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)")
             : "display:none",
           go: () => {
@@ -5225,7 +5225,7 @@ class Component extends DCLogic {
     const tmpl = cols.map((c, j) => "minmax(" + mins[j] + "px," + (c.w || "1fr") + ")").join(" ");
     const tableMin = mins.reduce((a, b) => a + b, 0) + Math.max(0, cols.length - 1) * 12 + 32;
     const minW = isM ? "" : "min-width:" + tableMin + "px;";
-    const headStyle = "display:grid;grid-template-columns:" + tmpl + ";gap:12px;padding:10px 16px;background:var(--bg-0);border-bottom:1px solid var(--line);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);" + minW;
+    const headStyle = "display:grid;grid-template-columns:" + tmpl + ";gap:12px;padding:10px 16px;background:var(--bg-0);border-bottom:1px solid var(--line);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);" + minW;
     // ── Sub-tabs ─────────────────────────────────────────────────────────────
     // Nine chips in a wrapping row is a wall: on a phone the accounting screen
     // spent four lines on navigation before showing a figure, and every tap
@@ -5376,7 +5376,7 @@ class Component extends DCLogic {
       cards: (g.cards || []).map((c) => ({
         title: c.title, sub: c.sub || "", chip: c.chip || "", big: c.big || "", foot: c.foot || "",
         style: "background:var(--bg-1);border:1px solid " + (c.accent ? c.accent : "var(--line)") + ";border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:4px;" + (c.go ? "cursor:pointer;" : "") + (c.style || ""),
-        chipStyle: c.chip ? "font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;background:" + (c.chipBg || "var(--warn-dim)") + ";color:" + (c.chipFg || "var(--warn-bright)") : "display:none",
+        chipStyle: c.chip ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;background:" + (c.chipBg || "var(--warn-dim)") + ";color:" + (c.chipFg || "var(--warn-bright)") : "display:none",
         bigStyle: c.big ? "font-size:" + (c.bigSize || 24) + "px;font-weight:800;letter-spacing:-0.03em;font-family:'JetBrains Mono',monospace;margin:8px 0 2px;color:" + (c.bigColor || "var(--text)") : "display:none",
         barWrap: c.pct === undefined ? "display:none" : "height:5px;border-radius:3px;background:var(--line-soft);overflow:hidden;margin:8px 0 4px",
         barFill: c.pct === undefined ? "" : "height:100%;width:" + Math.max(2, Math.min(100, c.pct)) + "%;background:" + (c.barColor || "var(--warn)") + ";border-radius:3px",
@@ -5402,7 +5402,7 @@ class Component extends DCLogic {
         }),
         toggles: (c.toggles || []).map((t) => ({
           label: t.label, sub: t.sub || "", go: t.go,
-          subStyle: t.sub ? "display:block;font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.45" : "display:none",
+          subStyle: t.sub ? "display:block;font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45" : "display:none",
           trackStyle: "width:34px;height:19px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (t.on ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (t.on ? "var(--text)" : "var(--line)") + ";justify-content:" + (t.on ? "flex-end" : "flex-start"),
           knobStyle: "width:15px;height:15px;border-radius:50%;background:" + (t.on ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s"
         })),
@@ -5410,10 +5410,10 @@ class Component extends DCLogic {
           label: p.label,
           opts: (p.opts || []).map((o) => ({
             label: o.label, go: o.go,
-            style: "padding:5px 10px;border-radius:7px;font-size:10.5px;font-weight:600;white-space:nowrap;border:1px solid " + (o.on ? "var(--text)" : "var(--line)") + ";background:" + (o.on ? "var(--text)" : "var(--bg-2)") + ";color:" + (o.on ? "var(--bg)" : "var(--text-dim)")
+            style: "padding:5px 10px;border-radius:7px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid " + (o.on ? "var(--text)" : "var(--line)") + ";background:" + (o.on ? "var(--text)" : "var(--bg-2)") + ";color:" + (o.on ? "var(--bg)" : "var(--text-dim)")
           }))
         })),
-        footStyle: c.foot ? "font-size:10.5px;color:var(--text-muted);margin-top:8px;line-height:1.5" : "display:none",
+        footStyle: c.foot ? "font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5" : "display:none",
         // A card that only sets cursor:pointer is a lie — the wrapper is a div
         // and never fires. Cards carrying toggles or picks already own their
         // clicks, so the opener is its own row rather than the whole surface.
@@ -5442,7 +5442,7 @@ class Component extends DCLogic {
           title: head.cc.t,
           titleStyle: "font-size:13.5px;font-weight:700;letter-spacing:-0.01em;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" + (head.mono ? ";font-family:'JetBrains Mono',monospace" : ""),
           chip: badge ? badge.cc.t : "",
-          chipStyle: badge ? "flex-shrink:0;padding:3px 8px;border-radius:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + badge.cc.chip[0] + ";color:" + badge.cc.chip[1] : "display:none",
+          chipStyle: badge ? "flex-shrink:0;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + badge.cc.chip[0] + ";color:" + badge.cc.chip[1] : "display:none",
           pairs: cs.filter((c) => c.cc.t !== "" && c.cc.t !== undefined).map((c) => ({
             k: c.label,
             v: c.cc.t,
@@ -5472,8 +5472,8 @@ class Component extends DCLogic {
             // artifact for a dish with no photograph, and the colour chip for a
             // menu section. Inline-grid so it rides inside the ellipsised cell.
             dotText: cc.dot ? (cc.dot[2] || "") : "",
-            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:6px;margin-right:9px;vertical-align:-6px;font-size:8.5px;font-weight:800;font-family:'Manrope',sans-serif;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
-            style: "text-align:" + (col.a || "left") + ";font-size:" + (cc.size || 12) + "px;font-weight:" + (cc.w || (j === 0 ? 600 : 400)) + ";color:" + (cc.c || (j === 0 ? "var(--text)" : "var(--text-dim)")) + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (cc.mono || col.mono ? "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;" : "") + (cc.chip ? "display:inline-block;justify-self:" + (col.a === "right" ? "end" : "start") + ";padding:3px 8px;border-radius:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + cc.chip[0] + ";color:" + cc.chip[1] : "")
+            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:6px;margin-right:9px;vertical-align:-6px;font-size:11px;font-weight:800;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
+            style: "text-align:" + (col.a || "left") + ";font-size:" + (cc.size || 12) + "px;font-weight:" + (cc.w || (j === 0 ? 600 : 400)) + ";color:" + (cc.c || (j === 0 ? "var(--text)" : "var(--text-dim)")) + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (cc.mono || col.mono ? "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;" : "") + (cc.chip ? "display:inline-block;justify-self:" + (col.a === "right" ? "end" : "start") + ";padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + cc.chip[0] + ";color:" + cc.chip[1] : "")
           };
         })
       })),
@@ -5486,7 +5486,7 @@ class Component extends DCLogic {
       guide: (g.guide || []).map((t, i) => ({
         n: String(i + 1), text: t,
         style: "flex:1 1 190px;min-width:170px;display:flex;align-items:flex-start;gap:8px;padding:11px 14px;border-right:1px solid var(--line-soft)",
-        numStyle: "width:17px;height:17px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted);font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:1px"
+        numStyle: "width:17px;height:17px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted);font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:1px"
       })),
       hasNotes: !!(g.notes && g.notes.length),
       notesGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:11px;margin-top:" + (cols.length || (g.cards || []).length ? "16px" : "0"),
@@ -6125,7 +6125,7 @@ class Component extends DCLogic {
           hint: k === "expo"
             ? "Every ticket, grouped by station — the expeditor's board"
             : "Only " + st[1].toLowerCase() + " work, with a target of " + this.stationTarget(k)[0] + " minutes",
-          countStyle: n ? "margin-left:6px;font-size:10px;font-family:'JetBrains Mono',monospace;opacity:.6" : "display:none",
+          countStyle: n ? "margin-left:6px;font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6" : "display:none",
           style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:11.5px;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:36px;"
             + (on ? "background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "background:var(--bg-2);color:var(--text-dim);border:1px solid var(--line)"),
           // Persisted as a preference: a screen bolted above the grill must come
@@ -6174,7 +6174,7 @@ class Component extends DCLogic {
           headBg: late ? "background:var(--bad-dim)" : warn ? "background:var(--warn-dim)" : "",
           timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
           target: "target " + tgt[0] + "m",
-          targetStyle: "font-size:9.5px;color:var(--text-faint);margin-top:1px;white-space:nowrap",
+          targetStyle: "font-size:11px;color:var(--text-faint);margin-top:1px;white-space:nowrap",
           cross: (() => {
             if (isExpo) {
               const by = {};
@@ -6194,7 +6194,7 @@ class Component extends DCLogic {
               ? tk.t.lines.filter((l) => l.fired).length
               : tk.items.filter((l) => stnKey(l) !== scope).length;
             return txt
-              ? "padding:7px 13px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--bg-2);border-bottom:1px solid var(--line);letter-spacing:.02em"
+              ? "padding:7px 13px;font-size:11px;font-weight:600;color:var(--text-muted);background:var(--bg-2);border-bottom:1px solid var(--line);letter-spacing:.02em"
               : "display:none";
           })(),
           items: mine.map((l) => {
@@ -6204,10 +6204,10 @@ class Component extends DCLogic {
               name: m.name, q: "×" + l.qty, note: l.note || "",
               // Which pass owns this line, as set on the dish in Menu Master.
               stn: m.id ? this.stationName(this.dishStation(m)) : "",
-              stnStyle: m.id ? "display:inline-block;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:4px;background:color-mix(in oklab, " + this.catMeta(m.cat).color + " 14%, transparent);color:" + this.catMeta(m.cat).color : "display:none",
+              stnStyle: m.id ? "display:inline-block;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:4px;background:color-mix(in oklab, " + this.catMeta(m.cat).color + " 14%, transparent);color:" + this.catMeta(m.cat).color : "display:none",
               style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px;transition:.1s",
               qty: "font-size:13px;font-weight:800;color:var(--text);font-family:'JetBrains Mono',monospace;min-width:24px;flex-shrink:0;padding-top:1px",
-              noteStyle: l.note ? "display:block;font-size:10.5px;font-weight:500;color:var(--text-muted);margin-top:3px" : "display:none",
+              noteStyle: l.note ? "display:block;font-size:11px;font-weight:500;color:var(--text-muted);margin-top:3px" : "display:none",
               check: "font-size:13px;color:var(--line-3);flex-shrink:0",
               bump: () => {
                 const t = Object.assign({}, this.state.tickets);
@@ -6333,7 +6333,7 @@ class Component extends DCLogic {
             + ";border-left:3px solid " + accent
             + ";box-shadow:" + (on && !edit ? "inset 0 0 0 1px var(--text-dim)" : "none") + ";transition:.12s";
         })(),
-        chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (edit ? "var(--mute-dim);color:var(--text-dim)" : rw ? rw[2] : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
+        chip: "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (edit ? "var(--mute-dim);color:var(--text-dim)" : rw ? rw[2] : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
         chipText: edit ? tb.seats + " seats" : rw ? rw[0] : st === "reserved" ? "Res" : "Free",
         meta: edit ? tb.zone
           : st === "reserved" ? t.resName + " · " + t.resAt
@@ -6478,7 +6478,7 @@ class Component extends DCLogic {
              speaks only below six portions. */
           stock: showN ? (soldOut ? "SOLD OUT" : n + " LEFT") : "",
           stockStyle: showN
-            ? "font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;"
+            ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;"
               + (soldOut ? "background:var(--red);color:#fff"
                 : n < 6 ? "background:var(--warn-dim);color:var(--warn-bright)"
                 : "background:var(--bg-2);color:var(--text-muted)")
@@ -6494,12 +6494,12 @@ class Component extends DCLogic {
             + "opacity:" + (off ? ".62" : "1"),
           hover: off ? "" : "transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.26),0 14px 30px rgba(0,0,0,.20)",
           station: this.stationName(this.dishStation(m)),
-          stationStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:5px;background:"
+          stationStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:5px;background:"
             + "color-mix(in oklab, " + stHue + " 16%, transparent);color:" + stHue,
           // A tray at zero already wears SOLD OUT on its stock badge; doubling
           // it with an 86 tag would say the same thing twice in two colours.
           tag: off && !soldOut ? "86'd" : "",
-          tagStyle: off ? "font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--red);color:#fff" : "display:none",
+          tagStyle: off ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--red);color:#fff" : "display:none",
           vegStyle: m.veg ? "width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2px var(--bg-1),inset 0 0 0 4px var(--go)" : "display:none",
           // Colour and shape alone do not survive a screen reader, a
           // colour-blind eye or a grayscale print of the menu.
@@ -6560,12 +6560,12 @@ class Component extends DCLogic {
               reason: l.fired ? "Voided after firing · " + this.me() : "Voided before firing" });
         },
         note: () => this.setState({ modal: { kind: "note", idx: i, val: l.note || "" } }),
-        stateStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:var(--ok-dim);color:var(--green)" : "background:var(--warn-dim);color:var(--warn-bright)"),
+        stateStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:var(--ok-dim);color:var(--green)" : "background:var(--warn-dim);color:var(--warn-bright)"),
         stateText: l.fired ? "Fired · " + this.lineAge(l) + "m" : "Not sent",
         // A modifier is not a warning, so it loses the amber it used to borrow.
         // It recedes on size and weight and keeps its 7:1 — a kitchen note that
         // cannot be read at a glance is how allergies get missed.
-        noteStyle: l.note ? "margin-top:5px;font-size:10.5px;font-weight:500;color:var(--text-muted);letter-spacing:.005em;padding:0 0 0 9px;border-left:2px solid var(--line-3)" : "display:none",
+        noteStyle: l.note ? "margin-top:5px;font-size:12px;font-weight:500;color:var(--text-muted);letter-spacing:.005em;padding:0 0 0 9px;border-left:2px solid var(--line-3)" : "display:none",
         noteText: l.note || ""
       };
     }) : [];
@@ -6582,7 +6582,7 @@ class Component extends DCLogic {
       ? [{
         label: "Sub " + MVR(T.sub).replace("MVR ", "") + (T.disc ? "  \u00b7  less " + MVR(T.disc).replace("MVR ", "") : "") + (o.sc ? "  \u00b7  Svc " + MVR(T.svc).replace("MVR ", "") : "") + (this.taxRegistered(o) ? "  \u00b7  " + o.tax + " " + MVR(T.tax).replace("MVR ", "") : ""),
         value: "Show working",
-        style: "display:flex;justify-content:space-between;gap:8px;font-size:10.5px;font-weight:500;color:var(--text-muted);padding:2px 0;cursor:pointer",
+        style: "display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:500;color:var(--text-muted);padding:2px 0;cursor:pointer",
         go: () => this.setState({ showWorking: true })
       }]
       : [
@@ -6591,7 +6591,7 @@ class Component extends DCLogic {
         { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: (o.sc ? rowS : "display:none") },
         { label: this.taxLine(o), value: MVR(T.tax),
           style: this.taxRegistered(o) ? rowS : "display:none" }
-      ].concat(tight ? [{ label: "", value: "Hide working", style: "display:flex;justify-content:flex-end;font-size:10px;font-weight:600;color:var(--text-muted);padding:1px 0;cursor:pointer", go: () => this.setState({ showWorking: false }) }] : [])
+      ].concat(tight ? [{ label: "", value: "Hide working", style: "display:flex;justify-content:flex-end;font-size:11px;font-weight:600;color:var(--text-muted);padding:1px 0;cursor:pointer", go: () => this.setState({ showWorking: false }) }] : [])
     ).concat([
       // Nothing on this screen is allowed to be bigger. The operator and the
       // guest read this figure from opposite sides of the counter, and it is the
@@ -6932,14 +6932,14 @@ class Component extends DCLogic {
           label: "\u00d7" + n,
           hint: on ? "Armed — the next dish you tap is added " + n + " times" : "Add the next dish " + n + " times",
           pick: () => this.setState({ qtyMult: on ? 0 : n }),
-          style: "flex-shrink:0;min-width:46px;min-height:38px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace;border:1px solid "
+          style: "flex-shrink:0;min-width:52px;min-height:48px;padding:0 12px;border-radius:10px;font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace;border:1px solid "
             + (on ? "var(--warn-line)" : "var(--line)") + ";background:" + (on ? "var(--warn)" : "var(--bg-1)")
             + ";color:" + (on ? "var(--on-warn)" : "var(--text-dim)")
         };
       }),
       repeatRound: () => this.repeatRound(),
       repeatHint: "Add the last fired round again — the commonest order in the room",
-      repeatStyle: "margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:7px;min-height:38px;padding:0 14px;border-radius:9px;font-size:11.5px;font-weight:700;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)",
+      repeatStyle: "margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:7px;min-height:48px;padding:0 16px;border-radius:10px;font-size:11.5px;font-weight:700;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)",
       // A trained cashier types three letters faster than they can find a card in a
       // grid, so Enter adds the top match and clears the field for the next item.
       // This is the fastest path through the whole app and it costs one handler.
@@ -6976,10 +6976,10 @@ class Component extends DCLogic {
       // Search sits at the head of the section rail rather than owning a band of
       // its own. It is narrow until it is being used, then takes the room it
       // needs — the rail scrolls out of the way underneath.
-      menuSearchStyle: "width:100%;min-height:" + (isPhone ? 42 : 0) + "px;max-width:" + (isPhone ? "100%" : "132px") + ";background:var(--bg-1);border:1px solid var(--line);border-radius:999px;color:var(--text);font-size:12.5px;padding:10px 30px 10px 34px;outline:none;min-height:40px;transition:width .18s cubic-bezier(.2,.7,.3,1),border-color .14s",
+      menuSearchStyle: "width:100%;min-height:" + (isPhone ? 42 : 0) + "px;max-width:" + (isPhone ? "100%" : "132px") + ";background:var(--bg-1);border:1px solid var(--line);border-radius:999px;color:var(--text);font-size:" + (isPhone ? 16 : 13) + "px;padding:10px 44px 10px 34px;outline:none;min-height:44px;transition:width .18s cubic-bezier(.2,.7,.3,1),border-color .14s",
       menuSearchFocus: (isPhone ? "" : "max-width:min(300px,52vw);") + "border-color:var(--warn-line)",
       menuClearStyle: s.search
-        ? "position:absolute;right:5px;top:50%;margin-top:-11px;width:22px;height:22px;border-radius:50%;font-size:14px;line-height:1;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)"
+        ? "position:absolute;right:2px;top:50%;margin-top:-20px;width:40px;height:40px;border-radius:50%;font-size:16px;line-height:1;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)"
         : "display:none",
       clearMenuSearch: () => this.setState({ search: "" }),
       menuMore: !s.catBusy && capped,
@@ -7014,7 +7014,7 @@ class Component extends DCLogic {
       // pane scrolls as the backstop, and Fire/Pay still cannot be pushed out
       // because the foot is a fixed sibling, not part of this scroller.
       ticketLinesStyle: "flex:1 1 0%;overflow-y:auto;min-height:" + (tight ? 96 : 110) + "px",
-      moreBtnStyle: ((tight || isPhone) && s.activeTable) ? "width:30px;height:30px;border-radius:7px;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);flex-shrink:0" : "display:none",
+      moreBtnStyle: ((tight || isPhone) && s.activeTable) ? "width:44px;height:44px;border-radius:10px;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);flex-shrink:0" : "display:none",
       openMore: () => this.setState({ modal: { kind: "actions" } }),
       ticketHeadStyle: "padding:" + (tight ? "9px 16px" : "13px 16px") + ";border-bottom:1px solid var(--line);flex-shrink:0",
       ticketNumStyle: "font-size:" + (tight ? 17 : 21) + "px;font-weight:700;letter-spacing:-0.03em;margin-top:2px;font-family:'JetBrains Mono',monospace",
@@ -7052,9 +7052,9 @@ class Component extends DCLogic {
         ? [(tk.resAt ? "booked " + tk.resAt : ""), tk.resPhone, tk.resSource ? "via " + String(tk.resSource).toLowerCase() : ""].filter(Boolean).join(" · ")
         : "",
       resStripNote: (tk && tk.resNote) ? tk.resNote : "",
-      resStripNoteStyle: (tk && tk.resNote) ? "font-size:10.5px;font-weight:700;color:var(--warn-bright);margin-top:3px" : "display:none",
+      resStripNoteStyle: (tk && tk.resNote) ? "font-size:11px;font-weight:700;color:var(--warn-bright);margin-top:3px" : "display:none",
       ticketNum: s.activeTable ? this.slotName(s.activeTable) + " / " + o.code : "—",
-      ticketChip: s.activeTable ? "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:var(--warn-dim);color:var(--warn-bright);white-space:nowrap" : "display:none",
+      ticketChip: s.activeTable ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:var(--warn-dim);color:var(--warn-bright);white-space:nowrap" : "display:none",
       ticketChipText: tk ? this.tkAge(tk) + "m open" : "",
       hasTicket: !!s.activeTable,
       ticketEmpty: !s.activeTable || !lines.length,
@@ -7114,7 +7114,7 @@ class Component extends DCLogic {
             this.toast("Pick a table for a " + c.label.toLowerCase() + " bill");
           },
           style: "flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;padding:" + (tight ? "6px 2px" : "7px 3px")
-            + ";border-radius:7px;font-size:10px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (isPhone ? 40 : tight ? 34 : 36) + "px;"
+            + ";border-radius:7px;font-size:11px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (isPhone ? 40 : tight ? 34 : 36) + "px;"
             + (on ? "background:var(--warn-dim);color:var(--warn-bright);box-shadow:inset 0 0 0 1px var(--warn-line)" : "background:transparent;color:var(--text-dim)")
         };
       }),
@@ -7126,7 +7126,7 @@ class Component extends DCLogic {
           member: g.type === "member",
           pick: () => this.setState({ activeSplit: i }),
           edit: () => this.setState({ modal: { kind: "guest", idx: i } }),
-          style: "display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;padding:5px 10px;border-radius:16px;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)"),
+          style: "display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:16px;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)"),
           dotStyle: g.type === "member" ? "width:5px;height:5px;border-radius:50%;flex-shrink:0;background:" + (on ? "var(--bg)" : "var(--violet-bright)") : "display:none"
         };
       }) : [],
@@ -7508,7 +7508,7 @@ class Component extends DCLogic {
       const rowS = "display:flex;justify-content:space-between;font-size:11.5px;font-weight:500;color:var(--text-dim);padding:3px 0";
       const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map((k) => ({
         label: k,
-        style: "padding:13px 0;border-radius:8px;text-align:center;font-size:15px;font-weight:600;font-family:'JetBrains Mono',monospace;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
+        style: "min-height:52px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px;font-weight:600;font-family:'JetBrains Mono',monospace;touch-action:manipulation;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
         press: () => this.payType(k === "⌫" ? "back" : k)
       }));
       const canConfirm = m.tender === "cash" ? given >= due : (m.tender === "credit" ? !!cust && (cust.credit - cust.used) >= gross : true);
@@ -7553,7 +7553,7 @@ class Component extends DCLogic {
           + (this.taxRegistered(o) ? " · " + this.taxLine(o) : "") + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
-          return { n: l.qty + "× " + mi.name, v: MVRc(this.linePrice(l) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
+          return { n: l.qty + "× " + mi.name, v: MVRc(this.linePrice(l) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:11px;color:var(--warn-bright);margin-top:2px" : "display:none" };
         }),
         splitLabel: evenN > 1 ? "Split evenly · " + evenN + " ways" : "Split evenly",
         splitWays: [1, 2, 3, 4, 5, 6].map((n) => {
@@ -7628,7 +7628,7 @@ class Component extends DCLogic {
         refNote: payProc
           ? "Type it off the slip " + payProc.name + " issued. Without it this sale cannot be matched against their statement — it still settles, the guest has paid, and it surfaces at close as one to chase."
           : "",
-        refNoteStyle: payProc ? "margin-top:7px;font-size:10.5px;color:var(--text-muted);line-height:1.55" : "display:none",
+        refNoteStyle: payProc ? "margin-top:7px;font-size:11px;color:var(--text-muted);line-height:1.55" : "display:none",
         /* One control steps a block on and wraps back to none, so the same
            button spends and cancels. A member with nothing to spend, or a bill
            too small to absorb a block, gets a control that says so rather than
@@ -7659,7 +7659,7 @@ class Component extends DCLogic {
           : payMember && maxBlocks
             ? "Up to " + maxBlocks + " block" + (maxBlocks === 1 ? "" : "s") + " on this bill. Taken off the goods, so service and tax follow."
             : "",
-        ptsNoteStyle: payMember && (blocks || maxBlocks) ? "margin-top:7px;font-size:10.5px;color:var(--text-muted);line-height:1.55" : "display:none",
+        ptsNoteStyle: payMember && (blocks || maxBlocks) ? "margin-top:7px;font-size:11px;color:var(--text-muted);line-height:1.55" : "display:none",
         curWrap: m.tender === "cash" ? "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" : "display:none",
         curs: this.CURRENCIES().map((c) => {
           const on = payCur === c.code;
@@ -8140,7 +8140,7 @@ class Component extends DCLogic {
         moreActions: acts.map((a) => ({
           label: a.label, sub: a.sub, style: a.style, go: a.go,
           head: a.head || "",
-          headStyle: a.head ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
+          headStyle: a.head ? "display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
         }))
       };
     }
@@ -8194,7 +8194,7 @@ class Component extends DCLogic {
           + (live.note ? " · " + live.note : ""),
         moreActions: acts.map((a) => ({
           label: a.label, sub: a.sub, style: a.style, go: a.go, head: a.head || "",
-          headStyle: a.head ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
+          headStyle: a.head ? "display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
         }))
       };
     }
@@ -8315,7 +8315,7 @@ class Component extends DCLogic {
           + " · " + (this.registerOpen() ? "register open" : "register closed"),
         moreActions: acts.map((a) => Object.assign({}, a, {
           head: a.head || "",
-          headStyle: a.head ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
+          headStyle: a.head ? "display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
         }))
       };
     }
@@ -8442,7 +8442,7 @@ class Component extends DCLogic {
           note: l.note ? "** " + String(l.note).toUpperCase() + " **" : "",
           noteStyle: l.note ? "font-size:13px;font-weight:800;margin-top:3px;letter-spacing:.02em" : "display:none",
           stn: split ? stnOf(l).toUpperCase() : "",
-          stnStyle: split ? "font-size:10px;font-weight:800;letter-spacing:.1em;margin-top:4px;padding:2px 6px;border:1px solid var(--paper-ink);border-radius:3px;display:inline-block" : "display:none"
+          stnStyle: split ? "font-size:11px;font-weight:800;letter-spacing:.1em;margin-top:4px;padding:2px 6px;border:1px solid var(--paper-ink);border-radius:3px;display:inline-block" : "display:none"
         })),
         kotFoot: lines.reduce((a, l) => a + l.qty, 0) + " items · fired " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
         kotDoneLabel: "Done — back to the floor",
@@ -8485,12 +8485,12 @@ class Component extends DCLogic {
         modalTitle: "Table QR · T" + pad(s.activeTable || 1), modalSub: o.name + " · scan-to-order session",
         qrGrid: qBg
           ? "width:100%;aspect-ratio:1;background-image:url(" + qBg + ");background-size:contain;background-repeat:no-repeat;background-position:center"
-          : "width:100%;aspect-ratio:1;display:grid;place-items:center;border:1px dashed var(--line);border-radius:8px;font-size:9px;color:var(--text-dim);text-align:center;padding:8px",
+          : "width:100%;aspect-ratio:1;display:grid;place-items:center;border:1px dashed var(--line);border-radius:8px;font-size:11px;color:var(--text-dim);text-align:center;padding:8px",
         qrCells: [],
         qrTable: "Table " + pad(s.activeTable || 1),
         qrOutlet: o.name,
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
-          : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
+          : "font-size:11px;letter-spacing:.07em;color:#7d7569;margin-top:6px",
         qrUrl: this.tableUrl(s.activeTable || 1)
           || "This outlet has no store address yet — set one in Settings",
         qrPrint: () => this.printQrCards([s.activeTable || 1]),
@@ -8654,7 +8654,7 @@ class Component extends DCLogic {
           return {
             label: a.name, price: a.price ? "+" + MVR(a.price) : "free",
             style: "display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:9px;text-align:left;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--bg-3)" : "var(--bg-2)"),
-            box: "width:15px;height:15px;border-radius:4px;flex-shrink:0;display:grid;place-items:center;font-size:9px;font-weight:800;border:1px solid " + (on ? "var(--text)" : "var(--line-3)") + ";background:" + (on ? "var(--text)" : "transparent") + ";color:var(--bg)",
+            box: "width:20px;height:20px;border-radius:5px;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;border:1px solid " + (on ? "var(--text)" : "var(--line-3)") + ";background:" + (on ? "var(--text)" : "transparent") + ";color:var(--bg)",
             tick: on ? "\u2713" : "",
             go: () => put({ addons: on ? (d.addons || []).filter((x) => x !== a.id) : (d.addons || []).concat([a.id]) })
           };
@@ -9563,15 +9563,15 @@ class Component extends DCLogic {
     return {
       rcpTitle: "", rcpTitleStyle: "display:none",
       rcpLegal: legal,
-      rcpLegalStyle: legal ? "font-size:9.5px;margin-top:4px;opacity:.85" : "display:none",
+      rcpLegalStyle: legal ? "font-size:11px;margin-top:4px;opacity:.85" : "display:none",
       brandMarkStyle: plate(46) + ";margin:0 auto 6px",
       brandMarkQrStyle: plate(44),
       brandMarkKotStyle: plate(34) + ";margin:0 auto 6px",
       brandName: b.name || "KASHIKEYO",
       brandTagline: b.tagline || "",
-      brandTagStyle: b.tagline ? "font-size:9px;letter-spacing:.06em;margin-top:2px;opacity:.75" : "display:none",
+      brandTagStyle: b.tagline ? "font-size:11px;letter-spacing:.06em;margin-top:2px;opacity:.75" : "display:none",
       poweredStyle: b.poweredBy === false ? "display:none"
-        : "text-align:center;margin-top:9px;font-size:8.5px;letter-spacing:.08em;opacity:.5"
+        : "text-align:center;margin-top:9px;font-size:11px;letter-spacing:.08em;opacity:.5"
     };
   }
   receiptVals(m) {
@@ -9766,7 +9766,7 @@ class Component extends DCLogic {
         rcpLines: rows.map((r) => ({ n: r[0], v: r[1] })),
         rcpTotals: [
           { n: "NET SALES", v: MVRc(net - refunded), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
-          { n: "Of which not yet money", v: MVRc(byTender("card") + byTender("wallet") + byTender("credit")), style: "display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0" }
+          { n: "Of which not yet money", v: MVRc(byTender("card") + byTender("wallet") + byTender("credit")), style: "display:flex;justify-content:space-between;font-size:11px;padding:2px 0" }
         ],
         rcpFoot: (this.prefs().device || "unpaired terminal") + " · " + this.me() + " · " + this.rankName() + " rank"
           + (reg.openedAt ? "\nRegister opened " + pad(new Date(reg.openedAt).getHours()) + ":" + pad(new Date(reg.openedAt).getMinutes()) + " by " + (reg.openedBy || "—") : "\nNo register was opened for this shift")
@@ -12146,7 +12146,7 @@ class Component extends DCLogic {
       + "font-family:'JetBrains Mono',monospace;line-height:1;color:" + toneCol(tone);
     V.ownHeroStyle = "background:var(--bg-1);border:1px solid var(--line);border-radius:13px;display:flex;"
       + "align-items:flex-start;gap:" + (isM ? "12px" : "16px") + ";padding:" + (isM ? "14px" : "16px 18px");
-    V.ownScopeChip = "font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;min-width:0;"
+    V.ownScopeChip = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;min-width:0;"
       + "padding:3px 8px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);"
       + (isM ? "line-height:1.45" : "white-space:nowrap");
     V.ownScope = onToday
@@ -12171,7 +12171,7 @@ class Component extends DCLogic {
       + (isM ? "repeat(2,minmax(0,1fr))" : "repeat(auto-fit,minmax(" + (isT ? "150px" : "168px") + ",1fr))");
     const numS = (c) => "font-size:" + (isM ? "19px" : "22px") + ";font-weight:700;letter-spacing:-0.03em;"
       + "font-family:'JetBrains Mono',monospace;line-height:1.1;margin-top:8px;color:" + (c || "var(--text)");
-    const dStyle = (good) => "font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:"
+    const dStyle = (good) => "font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:"
       + (good ? "var(--go-bright)" : "var(--red-bright)");
     const sign = (n) => (n > 0 ? "+" : "") + n.toFixed(1) + "%";
 
@@ -12189,7 +12189,7 @@ class Component extends DCLogic {
       { label: "Labour", value: d.tot ? d.labour.toFixed(1) + "%" : "—",
         numStyle: numS(overLab ? "var(--red-bright)" : "var(--go-bright)"),
         delta: d.tot && d.labourHours ? Math.round(d.labourHours) + "h" : "",
-        deltaStyle: d.tot ? "font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-muted)" : "display:none",
+        deltaStyle: d.tot ? "font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-muted)" : "display:none",
         sub: d.labourHeads + " on the clock" },
       { label: "Prime cost", value: d.tot ? d.prime.toFixed(1) + "%" : "—",
         numStyle: numS(overPrime ? "var(--red-bright)" : "var(--go-bright)"),
@@ -12210,7 +12210,7 @@ class Component extends DCLogic {
       fill: "width:100%;max-width:22px;border-radius:4px 4px 2px 2px;height:"
         + Math.max(3, (x.v / max) * 100).toFixed(1) + "%;background:"
         + (i === d.days.length - 1 ? "var(--amber)" : "var(--bg-3)"),
-      lab: "flex:1;min-width:0;text-align:center;font-size:8.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden",
+      lab: "flex:1;min-width:0;text-align:center;font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden",
       label: i % 3 === 0 || i === d.days.length - 1 ? String(x.d.getDate()) : "",
       tip: x.d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + " · " + MVRc(x.v)
     }));
@@ -12221,7 +12221,7 @@ class Component extends DCLogic {
     V.ownTrendSub = onToday ? "Last bar is today, still running" : "Last bar is " + (isM ? shortDay : shown);
     V.ownTrendVal = comparable ? (d.growth >= 0 ? "+" : "") + d.growth.toFixed(1) + "% week on week" : "";
     V.ownTrendChip = comparable
-      ? "font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;"
+      ? "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;"
         + "border-radius:20px;white-space:nowrap;flex-shrink:0;background:var(--bg-2);border:1px solid var(--line);color:"
         + (d.growth >= 0 ? "var(--go-bright)" : "var(--red-bright)")
       : "display:none";
@@ -12230,14 +12230,14 @@ class Component extends DCLogic {
       : "Only " + traded + " of the last fourteen days has trading recorded, so there is nothing yet to compare a week against. The chart fills itself as days close.";
 
     // ── estate ──────────────────────────────────────────────────────────
-    const hS = "font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint)";
+    const hS = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint)";
     V.ownEstCols = [
       { t: "Outlet", style: hS }, { t: "Sales", style: hS + ";text-align:right" },
       { t: "Share", style: isM ? "display:none" : hS + ";text-align:right" },
       { t: isM ? "Cov" : "Covers", style: hS + ";text-align:right" },
       { t: "Food", style: hS + ";text-align:right" }
     ];
-    V.ownEstNote = isM ? "display:none" : "font-size:9.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace";
+    V.ownEstNote = isM ? "display:none" : "font-size:11px;color:var(--text-faint);font-family:'JetBrains Mono',monospace";
     const cols = "grid-template-columns:" + (isM
       ? "minmax(84px,1.5fr) minmax(70px,1fr) 42px 46px"
       : "minmax(96px,1.7fr) minmax(62px,1fr) 46px 52px 52px");
@@ -12269,7 +12269,7 @@ class Component extends DCLogic {
     const cogs = d.tot * (d.fc / 100), gp = d.tot - cogs;
     const rowS = "display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:11.5px;color:var(--text-dim);white-space:nowrap";
     const subS = "display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:12.5px;font-weight:700;color:var(--text);border-top:1px solid var(--line-soft);white-space:nowrap";
-    const pctS = "font-size:9.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace;white-space:nowrap";
+    const pctS = "font-size:11px;color:var(--text-faint);font-family:'JetBrains Mono',monospace;white-space:nowrap";
     const pOf = (n) => d.tot ? ((n / d.tot) * 100).toFixed(1) + "%" : "";
     V.ownPlTitle = "Profit and loss · " + (onToday ? "today" : shown);
     V.ownPlSub = d.tot ? "Net margin " + ((d.profit / d.tot) * 100).toFixed(1) + "% · standing costs accrued for the day"
@@ -12354,7 +12354,7 @@ class Component extends DCLogic {
     V.ownDecEmpty = !dec.length;
     V.ownDecEmptyText = "Every approval, price and variance today sat inside the limits your managers already hold. Nothing has been escalated.";
     V.ownDecCount = dec.length ? String(dec.length) : "clear";
-    V.ownDecChip = "font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;"
+    V.ownDecChip = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;"
       + (dec.length ? "background:var(--bad-dim);color:var(--red-bright);border:1px solid var(--red-line)"
         : "background:var(--ok-dim);color:var(--green);border:1px solid var(--go-line)");
     V.ownDecRow = "display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 0;border-top:1px solid var(--line-soft);min-height:44px";
@@ -12393,7 +12393,7 @@ class Component extends DCLogic {
   analyticsVals() {
     const s = this.state, isM = this.effBp() === "m", rail = this.effBp() === "t";
     const d = this.analyticsData(), f = this.cfoFindings(d);
-    const chip = (t) => "font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;" +
+    const chip = (t) => "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;" +
       (t === "g" ? "background:var(--ok-dim);color:var(--green);border:1px solid var(--go-line)"
         : t === "r" ? "background:var(--bad-dim);color:var(--red-bright);border:1px solid var(--red-line)"
           : t === "a" ? "background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)"
@@ -12412,7 +12412,7 @@ class Component extends DCLogic {
         bars: list.map((x) => ({
           col: "flex:1;min-width:0;display:flex;align-items:flex-end;justify-content:center;height:100%",
           fill: "width:100%;max-width:24px;border-radius:4px 4px 2px 2px;background:" + (typeof tone === "function" ? tone(x) : tone) + ";height:" + Math.max(2, (x[key] / max) * 100).toFixed(1) + "%",
-          lab: "flex:1;min-width:0;text-align:center;font-size:8.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden",
+          lab: "flex:1;min-width:0;text-align:center;font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden",
           label: x[labelKey], tip: x.tip || ""
         }))
       };
@@ -15042,7 +15042,7 @@ class Component extends DCLogic {
       tkLines: (tk.lines || []).map((l) => ({
         qty: l.qty + "×", name: nameOf(l),
         amt: MVRc(this.menuPrice((K0.MENU || []).find((x) => x.id === l.id) || {}) * l.qty),
-        noteStyle: l.note ? "display:block;font-size:10px;color:var(--text-muted);margin-top:2px" : "display:none",
+        noteStyle: l.note ? "display:block;font-size:11px;color:var(--text-muted);margin-top:2px" : "display:none",
         note: l.note || ""
       })),
       // What is owed. Cash rounding is NOT shown here, because it is a property
@@ -17137,7 +17137,7 @@ class Component extends DCLogic {
       name: st.name,
       meta: st.job + " · " + this.locName(st.outlet) + " · " + a.sexLabel,
       type: t[0],
-      typeStyle: "margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:4px 9px;border-radius:20px;background:" + t[2] + ";color:" + t[1]
+      typeStyle: "margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;background:" + t[2] + ";color:" + t[1]
     });
   }
   // header + body rows, so a caller never has to remember to prepend the header
