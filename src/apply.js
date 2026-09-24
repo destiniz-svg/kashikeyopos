@@ -1042,6 +1042,20 @@ H.refund = async (c, p, ctx) => {
     { acct: tenderAcct, cr: amount, memo: 'Refund paid' }
   ], 'refund', cn.id, p.bizDate || today(ctx), 'Credit note ' + no.no);
 
+  /* A refund to a house account is money the customer no longer owes. The
+     journal above releases 1040; the balance the limit is enforced against has
+     to fall with it, floored at zero exactly as a settlement is — the till's
+     separate `credit_reverse` op carried no amount and only ever logged. */
+  let creditReleased = null;
+  if (p.method === 'credit' && p.saleId && amount > 0) {
+    const s = await one(c, 'SELECT member_id FROM sale WHERE id = $1', [p.saleId]);
+    if (s && s.member_id) {
+      await c.query('UPDATE chain.member SET credit_used = greatest(0, credit_used - $2)'
+        + ' WHERE id = $1', [s.member_id, amount]);
+      creditReleased = amount;
+    }
+  }
+
   /* Stock only comes back if it was actually returned to the kitchen — that is
      the operator's call, and the refund form asks it plainly ("Untouched —
      return to stock" against "Consumed or discarded"). What was missing was
@@ -1072,7 +1086,8 @@ H.refund = async (c, p, ctx) => {
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'CN',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
     [no.no, p.bizDate || today(ctx), amount, cn.id, ctx.actor]);
-  await log(c, 'refund', 'credit_note', cn.id, null, { no: no.no, amount });
+  await log(c, 'refund', 'credit_note', cn.id, null, { no: no.no, amount,
+    creditReleased: creditReleased || undefined });
   return { creditNoteId: cn.id, no: no.no, amount };
 };
 H.credit_note = H.refund;

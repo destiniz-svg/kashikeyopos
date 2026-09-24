@@ -50,8 +50,9 @@
   var buildSaid = false;
 
   /* ── 2 · masters and state, from this outlet's own database ───────────── */
-  function hydrate(boot) {
+  function hydrate(boot, cached) {
     if (!boot) return false;
+    cached = cached || boot.cached === true;
     var K = root.KPOS || {};
     var live = boot.kpos || {};
 
@@ -73,10 +74,15 @@
 
        So: the first BUILD seen is ours, for ever; every later one is a
        comparison. What is reported on a push is OUR stamp, never the live
-       one, or the measurement is a tautology again. */
-    if (live.BUILD && !api.build) api.build = live.BUILD;
+       one, or the measurement is a tautology again.
+
+       A CACHED bootstrap is neither. It was served to an EARLIER page, so
+       capturing its stamp made every freshly reloaded terminal call itself
+       stale the first time the live answer arrived — after every deploy, with
+       the Reload button it offered unable to clear it. */
+    if (!cached && live.BUILD && !api.build) api.build = live.BUILD;
     api.appVersion = api.build || live.APPVER || api.appVersion || null;
-    if (live.BUILD && api.build && live.BUILD !== api.build && !buildSaid) {
+    if (!cached && live.BUILD && api.build && live.BUILD !== api.build && !buildSaid) {
       /* Once per page. A terminal mid-service is told, not interrupted: the
          event carries both stamps and the till draws a standing card with a
          Reload control. Nothing reloads on its own — a page that reloaded
@@ -146,7 +152,7 @@
     // that refuses to open because the link is down is the failure the whole
     // design exists to prevent.
     if (!install && api.signedIn()) {
-      hydrate(api.local("bootstrap"));
+      hydrate(api.local("bootstrap"), true);
       start();
       return;
     }
@@ -156,7 +162,7 @@
        it a store; the session is shorn for the reason above. */
     if (!install) {
       var cold = api.local("bootstrap");
-      if (cold) hydrate(Object.assign({}, cold, { session: null }));
+      if (cold) hydrate(Object.assign({}, cold, { session: null }), true);
       try { root.dispatchEvent(new CustomEvent("kpos-signin", { detail: null })); } catch (e) {}
       repaint({ outletId: api.outletHint() });
       return;
@@ -207,7 +213,7 @@
          Masters are the store's and survive; an identity is a credential and
          must not come back from a cache. */
       var cached = api.local("bootstrap");
-      if (cached) hydrate(Object.assign({}, cached, { session: null }));
+      if (cached) hydrate(Object.assign({}, cached, { session: null }), true);
       // The lock screen shows faces, so the roster has to be readable before
       // anyone is signed in. It carries a name, a role label and an initial —
       // no id that grants anything, and never a PIN.

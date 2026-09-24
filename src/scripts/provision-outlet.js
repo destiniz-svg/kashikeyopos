@@ -34,7 +34,7 @@
    trail with a person's name on it.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const { owner, ownerFor, control, CONTROL_DB, shutdown } = require('../db');
+const { owner, ownerFor, control, CONTROL_DB, shutdown, withRoleLock } = require('../db');
 const { outletPassword } = require('../secrets');
 
 async function run(say) {
@@ -89,8 +89,10 @@ async function run(say) {
     found += rows.length;
     for (const o of rows) {
       try {
-        await t.pool.query('SELECT chain.provision_outlet($1,$2,$3,$4)',
-          [o.id, o.code, o.name, outletPassword(o.id)]);
+        // A login role is a cluster object: the same lock the restore and the
+        // fleet migration take, or this races them on "tuple concurrently updated".
+        await withRoleLock(() => t.pool.query('SELECT chain.provision_outlet($1,$2,$3,$4)',
+          [o.id, o.code, o.name, outletPassword(o.id)]), { retry: true });
         log('[provision] ' + t.label + ' · outlet_' + o.id + ' (' + o.code
           + ') — role password set, grants re-applied');
         done.push(o.id);

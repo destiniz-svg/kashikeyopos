@@ -1418,12 +1418,11 @@ r.post('/invoice/scan', sameOutlet, atLeast('manager'),
       /* THE TRAIL RECORDS THAT A SCAN HAPPENED AND HOW MUCH OF IT LANDED, and
          nothing else — not the image, not the supplier's line items. What was
          actually received is the delivery, which has its own row. */
-      await withOutlet(req.ctx, (c) => applyOp(c, req.ctx, {
-        opId: require('crypto').randomUUID(),
+      await withOutlet(req.ctx, (c) => applyOp(c, {
         kind: 'invoice_scanned',
-        entity: 'purchases',
-        payload: { lines: lines.length, matched: scan.matched, model: answer.model }
-      })).catch(() => {});
+        payload: { entity: 'purchases', lines: lines.length, matched: scan.matched,
+          model: answer.model }
+      }, req.ctx)).catch(() => {});
 
       res.json(scan);
     } catch (e) { next(e); }

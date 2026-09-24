@@ -4487,6 +4487,13 @@ test('the provision lock wraps the transaction, not the statement', () => {
   const mig = fs.readFileSync(path.join(__dirname, '..', 'src', 'scripts', 'migrate.js'), 'utf8');
   assert.match(mig, /return withRoleLock\(\(\) => ensureReportRoleUnlocked\(db, say, opts\)\);/,
     'the report-role writer holds it too');
+  // And so does every script that re-applies a login role: the restore and
+  // `npm run provision:outlet`, which is the remedy /readyz itself prints.
+  for (const f of [['src', 'backup.js'], ['src', 'scripts', 'provision-outlet.js']]) {
+    const s = fs.readFileSync(path.join(__dirname, '..', ...f), 'utf8');
+    assert.match(s, /withRoleLock\(\(\) => [\w.]+\.query\('SELECT chain\.provision_outlet\(/,
+      f.join('/') + ' provisions inside the cluster-wide lock');
+  }
 });
 
 /* ═══ THE PHONE QUOTES THE MERCHANT'S RATE, WITH OR WITHOUT A ROSTER ════════
@@ -4881,7 +4888,7 @@ test('the cached bootstrap outlives the credential, and its session does not', (
 
   const bridge = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
   const out = bridge.slice(bridge.indexOf('if (!api.signedIn()) {'));
-  assert.match(out.slice(0, 1400), /var cached = api\.local\("bootstrap"\);\s*\n\s*if \(cached\) hydrate\(Object\.assign\(\{\}, cached, \{ session: null \}\)\);/,
+  assert.match(out.slice(0, 1400), /var cached = api\.local\("bootstrap"\);\s*\n\s*if \(cached\) hydrate\(Object\.assign\(\{\}, cached, \{ session: null \}\), true\);/,
     'the signed-out path serves this outlet’s own records');
   /* THE SESSION IS SHORN OFF, and that is the load-bearing half: hydrate()
      publishes boot.session as KPOS_REAL.session, which is exactly what
@@ -8533,8 +8540,20 @@ test('the build a page is running is its own, and it is measured', () => {
      but the bootstrap that delivered it can only have come from the server as
      it was then — so capturing it once is exactly this page's build, and every
      later one is a comparison. */
-  assert.match(bridge, /if \(live\.BUILD && !api\.build\) api\.build = live\.BUILD;/,
-    'captured once, from the first bootstrap');
+  assert.match(bridge, /if \(!cached && live\.BUILD && !api\.build\) api\.build = live\.BUILD;/,
+    'captured once, from the first LIVE bootstrap');
+  /* And never from the cache: a cached bootstrap was served to an EARLIER
+     page, so capturing it made every freshly reloaded terminal call itself
+     stale after each deploy, with Reload unable to clear it. */
+  assert.match(bridge, /cached = cached \|\| boot\.cached === true;/, 'a cached answer is known as one');
+  (bridge.match(/hydrate\([^;]*local\("bootstrap"\)[^;]*\);|hydrate\(Object\.assign\(\{\}, (cold|cached)[^;]*\);/g) || [])
+    .forEach((call) => assert.match(call, /, true\);$/, 'a cache hydrate says so: ' + call));
+  const api = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  assert.ok(!/return this\.local\("bootstrap"\);/.test(api),
+    'and bootstrap() never hands back the cache unmarked');
+  // The stamp covers what a design-only deploy changes as well.
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'src', 'build.js'), 'utf8'),
+    /\\\.\(html\|js\|css\)\$/, 'stylesheets move the stamp');
   assert.match(bridge, /api\.appVersion = api\.build \|\| live\.APPVER/,
     'and OUR stamp is what is reported on a push, never the live one');
   assert.ok(!/api\.appVersion = live\.APPVER;/.test(bridge),
