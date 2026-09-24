@@ -6814,7 +6814,7 @@ class Component extends DCLogic {
       // also the only place a manager thinks to look for it.
       floorEditLabel: edit ? "Done" : "Edit floor",
       floorEditStyle: (this.canApprove() && s.pane !== "menu")
-        ? "flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:" + (isPhone ? "9px 16px" : "7px 13px") + ";border-radius:" + (isPhone ? 10 : 8) + "px;min-height:" + (isPhone ? 40 : 34) + "px;font-family:inherit;font-size:" + (isPhone ? 12.5 : 11.5) + "px;font-weight:600;white-space:nowrap;"
+        ? "flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:" + (isPhone ? "9px 16px" : "7px 13px") + ";border-radius:999px;min-height:" + (isPhone ? 40 : 34) + "px;font-family:inherit;font-size:" + (isPhone ? 12.5 : 11.5) + "px;font-weight:600;white-space:nowrap;"
           + (edit ? "background:var(--text);color:var(--bg);border:1px solid transparent" : "background:var(--bg-2);color:var(--text-dim);border:1px solid var(--line)")
         : "display:none",
       floorEditGo: () => this.canApprove() && this.setState({ pane: edit ? "floor" : "layout" }),
@@ -6825,7 +6825,7 @@ class Component extends DCLogic {
         ? "Add the tables guests sit at, so orders can be opened against them and the QR cards know where they are."
         : "A manager adds the tables. Until then, orders can still be rung as takeaway from the menu.",
       floorEmptyBtnStyle: this.canApprove()
-        ? "min-height:44px;padding:0 18px;border-radius:10px;background:var(--amber);color:var(--on-amber);font-family:inherit;font-size:13px;font-weight:700;border:0"
+        ? "min-height:44px;padding:0 20px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-family:inherit;font-size:13px;font-weight:700;border:0"
         : "display:none",
       addTable: () => this.openForm("tableEdit"),
       // A zone rail only earns its row when the floor actually has zones.
@@ -23113,11 +23113,11 @@ class Component extends DCLogic {
     const cat = this.state.tab.set || "company";
     const CATOF = { "Theme": "brand", "Merchant branding": "brand", "Software branding": "brand", "Chain": "company", "Tax profile": "tax", "Receipt & printing": "tax", "Loyalty & credit": "service", "Service targets": "service", "Security": "security", "Service": "service", "Terminal": "device" };
     const all = [
-        { title: "Registered company", sub: CH.name, chip: "Onboarding", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)", cat: "company",
+        { title: "Registered company", sub: CH.name, chip: "Onboarding", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "company",
           rows: [["Legal name", CH.name], ["Registration", CH.regNo], ["TIN", CH.tin], ["Registered address", CH.hq]],
           foot: "Captured at onboarding and editable from here. This is the entity that holds the TIN and files the return — the name a guest sees is set separately under Branding.",
           go: gate(() => this.openForm("chain")) },
-        { title: "Company contact", sub: P0.email, chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)", cat: "company",
+        { title: "Company contact", sub: P0.email, chip: "Editable", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "company",
           rows: [["Email", P0.email], ["Phone", P0.phone], ["Alternate", P0.altPhone || "—"], ["Website", P0.website || "—"], ["Billing address", P0.billing]],
           foot: "Prints on the invoice and shows in the QR portal footer, so a guest querying a charge reaches the company rather than a waiter's phone.",
           go: gate(() => this.openForm("company")) },
@@ -23346,7 +23346,7 @@ class Component extends DCLogic {
           ],
           rows: [["Tokens", "38 CSS custom properties"], ["Applied at", ":root — no reload"]],
           foot: "Ink is the shared palette: a near-black fill, a pure-white card and a true-grey page, so colour is left to mean go, warn and danger. The whole app reads these tokens, so an accent change re-skins every screen at once." },
-        { title: "Merchant branding", sub: "What the guest sees", chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)",
+        { title: "Merchant branding", sub: "What the guest sees", chip: "Editable", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
           rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden" : "shown"]],
           foot: "The trading name a guest sees on receipts, the KOT and the QR portal. Separate from the registered company under Company — an outlet may override this while the legal entity stays the same.",
           go: gate(() => this.openForm("brand")) },
@@ -23409,7 +23409,7 @@ class Component extends DCLogic {
             .concat([["Change given in", "rufiyaa only"]]),
           foot: "A tender is recorded in the currency the note was handed over in, at the rate in force at that moment, and posts to the ledger in MVR. The rate travels on the ticket — so a receipt reprinted next year still shows the rate the guest was actually given, and a rate move between the sale and the bank deposit lands in 7100 FX gain / loss rather than in a cashier's variance.",
           goLabel: "Set rates", go: gate(() => this.openForm("fxrates")) },
-        { title: "Terminal", sub: P.device || "not paired to this outlet", chip: "Editable", chipBg: "var(--brand-dim)", chipFg: "var(--brand-red-bright)",
+        { title: "Terminal", sub: P.device || "not paired to this outlet", chip: "Editable", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
           // The version was "4.2.1", a literal on a build numbered otherwise —
           // and it is the figure somebody rings support quoting. The cache was
           // a cache size in megabytes, never measured. Both come from somewhere real, and

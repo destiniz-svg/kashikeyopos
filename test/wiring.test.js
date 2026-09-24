@@ -4516,6 +4516,20 @@ test('the till never fabricates an approval code', () => {
   assert.ok(!/Math\.random/.test(payZone), 'nothing random inside the settle path');
 });
 
+/* THE LAST OF THE RE-RUN CRITIQUE. Menu Master's and Inventory's fields were
+   12.5-13px on a phone (iOS zooms the page into them), the dark account tabs
+   hid their own selection (--bg-1 is darker than the track in dark), neutral
+   Settings states wore the brand's red, and the floor's two buttons were
+   rectangles beside pill-shaped actions. */
+test('touch fields are 16px, the dark tab shows its selection, and neutral states are neutral', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
+  assert.match(css, /@media \(pointer:coarse\)\{[\s\S]*?input,select,textarea\{font-size:16px!important\}[\s\S]*?\.otp input\{font-size:22px!important\}/);
+  const acct = fs.readFileSync(path.join(__dirname, '..', 'app', 'account.html'), 'utf8');
+  assert.match(acct, /\.seg button\[aria-selected="true"\]\{background:var\(--bg-3\)/, 'the selected tab is raised in dark');
+  assert.match(acct, /\[data-theme="light"\] \.seg button\[aria-selected="true"\]\{background:var\(--bg-1\)\}/, 'and white in light');
+  assert.ok(!/chip: "(Onboarding|Editable)", chipBg: "var\(--brand-dim\)"/.test(SRC), 'a neutral state does not wear the brand red');
+});
+
 /* A GUIDE IS READ ONCE. Every back-office screen led with a numbered "how
    this works" band that could not be put away, so on the fifth visit it was
    prose above the work. Hidden per terminal, like the pinned rail, and one

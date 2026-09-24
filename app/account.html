@@ -72,11 +72,14 @@ h1{font-size:clamp(26px,4.2vw,34px);font-weight:800;letter-spacing:-.042em;
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:0 0 24px;
   background:var(--bg-2);border:1px solid var(--line);border-radius:13px}
 .seg button{appearance:none;border:0;background:transparent;color:var(--text-muted);
-  font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:42px;
+  font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:44px;
   border-radius:9px;cursor:pointer;transition:background .16s,color .16s}
 .seg button:hover{color:var(--text-dim)}
-.seg button[aria-selected="true"]{background:var(--bg-1);color:var(--text);
-  box-shadow:0 1px 2px rgba(0,0,0,.14);font-weight:700}
+.seg button[aria-selected="true"]{background:var(--bg-3);color:var(--text);
+  box-shadow:0 1px 2px rgba(0,0,0,.14),inset 0 0 0 1px var(--line-2);font-weight:700}
+/* Light mode's raised surface is white; dark mode's is the lighter --bg-3.
+   --bg-1 in dark is DARKER than the track, which made the selected tab vanish. */
+[data-theme="light"] .seg button[aria-selected="true"]{background:var(--bg-1)}
 .seg button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* ── fields ─────────────────────────────────────────────────────────────── */

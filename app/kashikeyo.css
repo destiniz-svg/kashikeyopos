@@ -188,6 +188,11 @@ button:active:not(:disabled){transform:translateY(1px)}
    layout. `!important` because the sizes it corrects are inline declarations. */
 @media (pointer:coarse){
   button,[role="button"]{min-height:44px!important;min-width:44px!important}
+  /* And a field is 16px: iOS zooms the whole page into any field smaller than
+     that the moment it takes focus, iPad included. The six code boxes on
+     /account are larger on purpose and keep their size. */
+  input,select,textarea{font-size:16px!important}
+  .otp input{font-size:22px!important}
 }
 /* Keyboard focus only. A till is driven by touch and the ring would otherwise
    sit under every finger; :focus-visible keeps it for the people who need it. */
