@@ -180,6 +180,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
    response. It is deliberately not a bounce: this is a cash register, and a
    button that springs reads as unserious next to a total. */
 button:active:not(:disabled){transform:translateY(1px)}
+/* A FINGER IS 44 PIXELS, WHATEVER THE INLINE STYLE SAYS. Controls here are
+   styled one by one — 30, 34, 36, 38px — which a mouse forgives and a cashier
+   with wet fingers mid-service does not: a mis-tap lands on a guest's bill.
+   On a touch screen every button is at least 44×44; a mouse keeps the dense
+   layout. `!important` because the sizes it corrects are inline declarations. */
+@media (pointer:coarse){
+  button,[role="button"]{min-height:44px!important;min-width:44px!important}
+}
 /* Keyboard focus only. A till is driven by touch and the ring would otherwise
    sit under every finger; :focus-visible keeps it for the people who need it. */
 button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--fwd);outline-offset:2px;border-radius:inherit}

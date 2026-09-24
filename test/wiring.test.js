@@ -8644,3 +8644,19 @@ test('a refund queues one money op, and a split share cannot be banked twice', (
   assert.ok(/if \(\(\(this\.state\.modal \|\| \{\}\)\.paidN \|\| 0\) !== paidN\) return;\s*this\.queue\("split_payment"/.test(SRC),
     'a split share re-reads the state before it banks');
 });
+
+
+/* THE TILL IS READ ACROSS A COUNTER AND TAPPED WITH A WET FINGER. The design
+   review counted 194 font sizes under 11px in the terminal (table meta and the
+   86 flag at 9.5px, KDS stations at 9.5px, badges at 8.5px) and till controls
+   at 30px. Text now has an 11px floor; on a touch screen every button is 44px. */
+test('the till reads at 11px and taps at 44px', () => {
+  const small = SRC.match(/font-size\s*:\s*(?:[0-9]|10)(?:\.\d+)?px/g) || [];
+  assert.deepStrictEqual(small, [], 'no font-size under 11px in the terminal');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
+  assert.match(css, /@media \(pointer:coarse\)\{\s*button,\[role="button"\]\{min-height:44px!important;min-width:44px!important\}/,
+    'a touch screen gets 44px buttons whatever the inline style says');
+  assert.match(SRC, /aria-label="One fewer \{\{ m\.name \}\}" style="width:44px;height:44px;/, 'the dish stepper is 44px');
+  assert.match(SRC, /min-height:52px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px/,
+    'the tender keypad is 52px');
+});
