@@ -2957,6 +2957,23 @@ test('an account code that could not be sent is where the screen says it is', ()
     'the sign-in screen still points at the trail — which is now true');
 });
 
+/* ONE RADIUS SCALE, AND AN EMPTY FLOOR THAT SAYS WHAT TO DO. The critique
+   counted nineteen corner radii in the terminal (chips alone at 4, 5 and 20),
+   a floor plan with no tables that showed a heading over nothing, and the
+   phone portals' steppers at 26-27px with coral glows under them. */
+test('the terminal keeps one radius scale and the floor says what to do when empty', () => {
+  const radii = new Set((SRC.match(/border-radius\s*:\s*([0-9.]+)px/g) || []).map((x) => x.replace(/\D+$/, '').replace(/.*:\s*/, '')));
+  const allowed = new Set(['4', '8', '10', '14', '16', '999']);
+  [...radii].forEach((r) => assert.ok(allowed.has(r), 'radius ' + r + 'px is off the scale (4 8 10 14 16 999)'));
+  assert.match(SRC, /floorEmpty: !edit && s\.pane !== "menu" && !plan\.length,/, 'the empty floor is the whole plan, not one zone');
+  assert.match(SRC, /<sc-if value="\{\{ floorEmpty \}\}">[\s\S]{0,600}Set up the floor/);
+  for (const f of ['app/guest.html', 'app/member.html']) {
+    const s = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.match(s, /@media \(pointer:coarse\)\{button,\[role="button"\]\{min-width:44px!important;min-height:44px!important\}\}/, f + ' taps at 44px');
+    assert.ok(!/box-shadow:[^;"]*rgba\(244,\s*85,\s*60/.test(s), f + ' draws no coral glow');
+  }
+});
+
 /* A social sign-in's state is signed, so it is good in ANY browser: finish a
    Google sign-in as yourself, hand somebody the callback link, and they landed
    signed in to your account — and onboarded their business into it. The page
@@ -8242,7 +8259,7 @@ test('the find box is a sibling of the tab rail, and there is one of it', () => 
 
   /* THE RAIL TAKES ITS OWN LINE where both are present. Three things cannot
      share one line when only one of them can shrink. */
-  assert.match(src, /subBarStyle: \(bp === "m" \|\| \(tabList\.length && g\.find && g\.find\.set\)\)/,
+  assert.match(src, /subBarStyle: \(bp === "m" \|\| \(tabList\.length && g\.find && g\.find\.set\) \|\| tabList\.length > 4\)/,
     'a screen with tabs AND a find box stacks at every width');
   // It grows into what the buttons leave, and stops at a floor.
   assert.match(src, /"1 1 240px"/, 'the box grows');
