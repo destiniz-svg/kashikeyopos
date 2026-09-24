@@ -56,6 +56,12 @@ a:hover{color:#d63f27}
   @keyframes qsheet{from{opacity:0}to{opacity:1}}
   @keyframes qtoast{from{opacity:0;transform:translate(-50%,0)}to{opacity:1;transform:translate(-50%,0)}}
 }
+
+/* A THUMB IS 44 PIXELS. The cart steppers were 26-27px circles, the split
+   and quantity controls 30-34px: a guest at the table, phone in one hand,
+   taps the neighbour. On a touch screen every button is at least 44x44;
+   !important because the sizes it corrects are inline. */
+@media (pointer:coarse){button,[role="button"]{min-width:44px!important;min-height:44px!important}}
 </style>
 </helmet>
 
@@ -87,7 +93,7 @@ a:hover{color:#d63f27}
       <sc-if value="{{ sSignIn }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 26px 24px;display:flex;flex-direction:column;animation:qup .2s">
           <div style="padding-top:16px">
-            <span style="width:54px;height:54px;border-radius:16px;background:#f4553c;display:grid;place-items:center;box-shadow:0 8px 20px rgba(244,85,60,.32)">
+            <span style="width:54px;height:54px;border-radius:16px;background:#f4553c;display:grid;place-items:center;box-shadow:0 8px 20px rgba(20,20,24,.16)">
               <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
             </span>
             <div style="font-size:26px;font-weight:700;color:#111;letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
@@ -349,11 +355,11 @@ a:hover{color:#d63f27}
                     <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:4px">{{ l.priceLabel }}</span>
                   </span>
                   <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-                    <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+                    <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                     </button>
                     <span style="font-size:14.5px;font-weight:600;color:#1a1a1a;min-width:9px;text-align:center">{{ l.qty }}</span>
-                    <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+                    <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                     </button>
                   </span>
@@ -730,7 +736,7 @@ a:hover{color:#d63f27}
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-              <button onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+              <button onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </div>
@@ -1967,7 +1973,7 @@ class Component extends DCLogic {
          field to fill is a dead end wearing a label. */
       V.signInBtn = onOtp ? "Verify & sign in" : jn ? "Send my code" : "Get my code";
       V.signInDisabled = onOtp ? s.otp.length < 4 : jn ? false : !this.idOk();
-      V.signInBtnStyle = "flex:1.4;min-height:52px;padding:15px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";opacity:.45" : "");
+      V.signInBtnStyle = "flex:1.4;min-height:52px;padding:15px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";background:#e4e4e8;color:#55555d;box-shadow:none;cursor:not-allowed" : "");
       V.signInBackLabel = jn ? "Not you?" : "Back";
       V.signInBackStyle = "flex:1;min-height:52px;padding:15px 8px;border-radius:999px;border:1.4px solid #ececef;color:#62626a;font-size:14.5px;font-weight:600;background:#fff";
       V.chromeStyle = "display:none";
@@ -2183,7 +2189,7 @@ class Component extends DCLogic {
         imgStyle: this.plate(d, "36%") + "display:block;width:100%;height:118px;border-radius:12px" + (sold ? ";filter:grayscale(1)" : ""),
         badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#f4553c;color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
         offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
-        plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60," + (sold ? "0" : ".35") + ")"
+        plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24," + (sold ? "0" : ".16") + ")"
       };
     });
 
@@ -2294,7 +2300,7 @@ class Component extends DCLogic {
       const done = i < stageNow, on = i === stageNow;
       return {
         label: st.label, sub: st.sub,
-        dotStyle: "width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:" + (done || on ? "#f4553c" : "#fff") + ";border:2.5px solid " + (done || on ? "#f4553c" : "#dcdce0") + (on ? ";box-shadow:0 0 0 4px rgba(244,85,60,.16);animation:qpulse 1.8s ease-in-out infinite" : ""),
+        dotStyle: "width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:" + (done || on ? "#f4553c" : "#fff") + ";border:2.5px solid " + (done || on ? "#f4553c" : "#dcdce0") + (on ? ";box-shadow:0 0 0 4px rgba(20,20,24,.16);animation:qpulse 1.8s ease-in-out infinite" : ""),
         barStyle: i === 4 ? "display:none" : "flex:1;width:2.5px;min-height:26px;margin:3px 0;border-radius:2px;display:block;background:" + (done ? "#f4553c" : "#ececef"),
         labelStyle: "display:block;font-size:14px;font-weight:" + (on ? "700" : "600") + ";color:" + (done || on ? "#1a1a1a" : "#6a6a72"),
         subStyle: "display:block;font-size:12px;color:" + (on ? "#f4553c" : "#6a6a72") + ";margin-top:3px;line-height:1.45"
@@ -2352,7 +2358,7 @@ class Component extends DCLogic {
         costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#6a6a72" : "#f4553c") + ";margin-top:5px;font-family:'JetBrains Mono',monospace",
         btn: tierLocked ? "Locked" : poor ? (r.cost - pts) + " pts" : "Redeem",
         btnStyle: "flex-shrink:0;padding:10px 15px;border-radius:22px;font-size:13px;font-weight:600;white-space:nowrap;"
-          + (locked ? "background:#f4f4f6;color:#6a6a72" : "background:#f4553c;color:#fff;box-shadow:0 3px 10px rgba(244,85,60,.32)")
+          + (locked ? "background:#f4f4f6;color:#6a6a72" : "background:#f4553c;color:#fff;box-shadow:0 3px 10px rgba(20,20,24,.16)")
       };
     });
     V.vouchHeadStyle = s.redeemed.length ? "margin-top:26px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
@@ -2488,7 +2494,7 @@ class Component extends DCLogic {
       label: mm.label, sub: mm.sub,
       style: "padding:13px 14px;border-radius:14px;min-height:60px;text-align:left;"
         + ((s.split || "all") === mm.k
-          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(244,85,60,.26)"
+          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(20,20,24,.16)"
           : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
       tap: () => this.setState({ split: mm.k })
     }));
@@ -2610,7 +2616,7 @@ class Component extends DCLogic {
     const barHot = (a) => {
       V.actionBarStyle = "width:100%;height:56px;border-radius:28px;display:flex;"
         + "align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;color:#fff;"
-        + (a ? "background:#f4553c;box-shadow:0 8px 22px rgba(244,85,60,.4)"
+        + (a ? "background:#f4553c;box-shadow:0 8px 22px rgba(20,20,24,.16)"
              : "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)");
     };
     if (nCart) {

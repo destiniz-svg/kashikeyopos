@@ -135,7 +135,7 @@ test('the till tile is a record: a plate, a body and a foot bar', () => {
   const F = till();
   const m = F.posVals().dishes[0];
   assert.match(m.plateStyle, /width:74px;height:74px/, 'the plate leads at 74px');
-  assert.match(m.plateStyle, /border-radius:12px/);
+  assert.match(m.plateStyle, /border-radius:14px/);
   assert.match(m.glyphStyle, /mask:url/, 'and carries the section glyph');
   assert.strictEqual(m.photoStyle, 'display:none', 'with no photo layer until there is one');
   assert.ok(m.station, 'the station is named on the chip: ' + m.station);
@@ -210,7 +210,7 @@ test('the back-office strip is a track, and the native picker is gone', () => {
     : null;
   // The track's own shape, read off the source: it is built in one place.
   assert.match(TILL, /tabRailStyle: !tabList\.length \? "display:none"/);
-  assert.match(TILL, /background:var\(--bg-2\);border:1px solid var\(--line\);"\s*\n\s*\+ "border-radius:12px;padding:3px 4px;flex:1 1 auto;min-width:0;/,
+  assert.match(TILL, /background:var\(--bg-2\);border:1px solid var\(--line\);"\s*\n\s*\+ "border-radius:14px;padding:3px 4px;flex:1 1 auto;min-width:0;/,
     'a recessed groove that is the thing that yields');
   assert.match(TILL, /flex:0 0 auto;min-width:max-content/,
     'while the actions do NOT shrink — letting them overflow leftwards put'

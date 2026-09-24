@@ -93,8 +93,6 @@ body{
 .step:hover:not(:disabled){background:var(--bg-2)}
 .step:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .step[aria-current="true"]{background:var(--bg-2)}
-.step[aria-current="true"]:after{content:"";position:absolute;left:0;top:6px;bottom:6px;
-  width:3px;border-radius:0 3px 3px 0;background:var(--amber)}
 .step .no{flex-shrink:0;width:26px;height:26px;border-radius:9px;display:grid;
   place-items:center;font-size:11px;font-weight:800;
   font-family:'JetBrains Mono',monospace;position:relative;z-index:1;
@@ -128,7 +126,7 @@ body{
     border-radius:20px;padding:4px 10px}
   .mobar .mbar{height:3px;background:var(--bg-3);border-radius:3px;overflow:hidden;
     margin-top:10px}
-  .mobar .mbar i{display:block;height:100%;background:var(--amber);transition:width .3s}
+  .mobar .mbar i{display:block;height:100%;width:100%;background:var(--amber);transform-origin:left center;transition:transform .3s cubic-bezier(.2,.7,.3,1)}
 }
 
 /* ── the stage ─────────────────────────────────────────────────────────── */
@@ -187,7 +185,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 button.go{flex:0 0 auto;padding:13px 22px;min-height:48px;border-radius:12px;border:0;
   background:var(--amber);color:var(--on-amber);font-size:13.5px;font-weight:700;
   letter-spacing:-.01em;transition:transform .12s,filter .14s;
-  box-shadow:0 1px 2px rgba(0,0,0,.16),0 8px 22px var(--amber-dim)}
+  box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 16px rgba(0,0,0,.14)}
 button.go:hover:not(:disabled){filter:brightness(1.06)}
 button.go:active:not(:disabled){transform:translateY(1px)}
 button.go:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
@@ -216,7 +214,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 .kv b{font-weight:600;color:var(--text-dim)}
 .kv span{font-family:'JetBrains Mono',monospace;color:var(--text);text-align:right}
 .bar{height:3px;background:var(--bg-3);border-radius:3px;overflow:hidden;margin-top:22px}
-.bar i{display:block;height:100%;background:var(--amber);transition:width .3s}
+.bar i{display:block;height:100%;width:100%;background:var(--amber);transform-origin:left center;transition:transform .3s cubic-bezier(.2,.7,.3,1)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
   background:var(--bg-1);border:1px solid var(--line-2);border-radius:12px;
   padding:13px 19px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
@@ -354,7 +352,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
     <div class="mt"><b id="moTitle">Setting up</b><small id="moSub">KashikeyoPOS</small></div>
     <span class="mn" id="moNo"></span>
   </div>
-  <div class="mbar"><i id="moBar" style="width:0%"></i></div>
+  <div class="mbar"><i id="moBar" style="transform:scaleX(0)"></i></div>
 </div>
 <div class="wrap">
   <aside class="rail">
@@ -1290,7 +1288,7 @@ button.go.ok{background:var(--go);color:var(--on-go);
     h.appendChild(el("p", { class: "sub" }, view.lede));
     if (view.why) h.appendChild(el("p", { class: "why" }, view.why));
     var bar = el("div", { class: "bar" });
-    bar.appendChild(el("i", { style: "width:" + Math.round((doneN / STEPS.length) * 100) + "%" }));
+    bar.appendChild(el("i", { style: "transform:scaleX(" + (doneN / STEPS.length) + ")" }));
     h.appendChild(bar);
     stage.appendChild(h);
     // The three application steps get the stepper the form is shaped around;
@@ -1371,8 +1369,8 @@ button.go.ok{background:var(--go);color:var(--on-go);
     document.getElementById("moTitle").textContent = step.label;
     document.getElementById("moSub").textContent = step.sub;
     document.getElementById("moNo").textContent = step.n + " / " + STEPS.length;
-    document.getElementById("moBar").style.width =
-      Math.round((doneN / STEPS.length) * 100) + "%";
+    document.getElementById("moBar").style.transform =
+      "scaleX(" + (doneN / STEPS.length) + ")";
 
     window.scrollTo(0, 0);
   }

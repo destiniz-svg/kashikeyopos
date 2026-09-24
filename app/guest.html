@@ -56,6 +56,12 @@ a:hover{color:#d33d26}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;transition-duration:.01ms !important}
 }
+
+/* A THUMB IS 44 PIXELS. The cart steppers were 26-27px circles, the split
+   and quantity controls 30-34px: a guest at the table, phone in one hand,
+   taps the neighbour. On a touch screen every button is at least 44x44;
+   !important because the sizes it corrects are inline. */
+@media (pointer:coarse){button,[role="button"]{min-width:44px!important;min-height:44px!important}}
 </style>
 </helmet>
 
@@ -86,7 +92,7 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ needTable }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:22px 22px 30px;animation:qfade .2s">
-          <div style="width:52px;height:52px;border-radius:17px;background:linear-gradient(150deg,#f4553c,#c2321c);display:grid;place-items:center;box-shadow:0 8px 22px rgba(244,85,60,.32)">
+          <div style="width:52px;height:52px;border-radius:17px;background:linear-gradient(150deg,#f4553c,#c2321c);display:grid;place-items:center;box-shadow:0 8px 22px rgba(20,20,24,.16)">
             <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
           </div>
           <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ welcomeTitle }}</div>
@@ -434,12 +440,12 @@ a:hover{color:#d33d26}
               <span style="font-size:14.5px;color:#6a6a72;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
               <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" aria-label="Your mobile number" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:16px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
             </div>
-            <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.3)">{{ saveIdentLabel }}</button>
+            <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ saveIdentLabel }}</button>
             <div style="margin-top:12px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
           </div>
 
           <div style="{{ identCardStyle }}">
-            <div style="margin-top:18px;border-radius:20px;padding:20px;background:linear-gradient(145deg,#f4553c,#b8341f);box-shadow:0 12px 30px rgba(244,85,60,.3)">
+            <div style="margin-top:18px;border-radius:20px;padding:20px;background:linear-gradient(145deg,#f4553c,#b8341f);box-shadow:0 12px 30px rgba(20,20,24,.16)">
               <div style="font-size:11px;font-weight:700;letter-spacing:.09em;color:rgba(255,255,255,.65)">{{ cardKicker }}</div>
               <div style="margin-top:6px;font-size:22px;font-weight:700;color:#fff;letter-spacing:-.03em">{{ identName }}</div>
               <div style="margin-top:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
@@ -539,7 +545,7 @@ a:hover{color:#d33d26}
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </span>
-            <button onClick="{{ addToCart }}" style="flex:1;min-width:0;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.32)">{{ addLabel }}</button>
+            <button onClick="{{ addToCart }}" style="flex:1;min-width:0;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ addLabel }}</button>
           </div>
         </div>
       </sc-if>
@@ -586,7 +592,7 @@ a:hover{color:#d33d26}
               <span style="font-size:19px;font-weight:800;color:#111;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
             </div>
             <div style="margin-top:6px;font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
-            <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(244,85,60,.32)">Send to the kitchen</button>
+            <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(20,20,24,.16)">Send to the kitchen</button>
           </div>
         </div>
       </sc-if>
@@ -596,7 +602,7 @@ a:hover{color:#d33d26}
       <sc-if value="{{ showBar }}">
         <div style="{{ barStyle }}">
           <sc-if value="{{ cartBadgeOn }}">
-            <button onClick="{{ openCart }}" style="margin:0 12px 8px;padding:13px 16px;border-radius:16px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 22px rgba(244,85,60,.34);min-height:52px">
+            <button onClick="{{ openCart }}" style="margin:0 12px 8px;padding:13px 16px;border-radius:16px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 22px rgba(20,20,24,.16);min-height:52px">
               <span style="display:flex;align-items:center;gap:10px;min-width:0">
                 <span style="width:26px;height:26px;border-radius:9px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:12.5px;font-weight:800;flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ cartCount }}</span>
                 <span style="font-size:14px;font-weight:700;letter-spacing:-.01em">Review this round</span>
@@ -2040,7 +2046,7 @@ class Component extends DCLogic {
           ? "position:absolute;left:7px;top:7px;font-size:11px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
           : "display:none",
         plusStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + (dead ? "background:#e8e8ea;color:#6e6e77" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(244,85,60,.34)"),
+          + (dead ? "background:#e8e8ea;color:#6e6e77" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(20,20,24,.16)"),
         cardStyle: "background:#fff;border:1px solid #efeff1;border-radius:18px;padding:8px 8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.045);display:block;"
           + (dead ? "opacity:.72" : ""),
         tap: () => dead
@@ -2209,7 +2215,7 @@ class Component extends DCLogic {
               : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
                 : (at >= 3 ? "On your table — enjoy" : "Brought to table " + tno),
         dot: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(244,85,60,.15)" : "background:#f0f0f2;color:#f0f0f2"),
+          + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(20,20,24,.16)" : "background:#f0f0f2;color:#f0f0f2"),
         tickStyle: done || on ? "display:block" : "display:none",
         rail: "width:2px;flex:1;min-height:14px;background:" + (done ? "#2ea44f" : "#eeeef0") + ";display:" + (i === STAGES.length - 1 ? "none" : "block")
       };
@@ -2348,7 +2354,7 @@ class Component extends DCLogic {
       label: m.label, sub: m.sub,
       style: "padding:13px 14px;border-radius:15px;min-height:60px;"
         + (s.split === m.k
-          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(244,85,60,.28)"
+          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(20,20,24,.16)"
           : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
       tap: () => self.setState({ split: m.k })
     }));
@@ -2417,7 +2423,7 @@ class Component extends DCLogic {
       : "I\u2019m ready to pay \u00b7 " + this.money(this.payDue());
     V.askPayStyle = "margin-top:14px;width:100%;min-height:52px;padding:15px 8px;border-radius:999px;font-size:14.5px;font-weight:700;text-align:center;color:#fff;"
       + (asked ? "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)"
-        : "background:#f4553c;box-shadow:0 6px 20px rgba(244,85,60,.32)");
+        : "background:#f4553c;box-shadow:0 6px 20px rgba(20,20,24,.16)");
     V.askedNote = asked
       ? "Your choice of tender and tip went with the call, so the till has it ready."
       : "Nothing is charged from this phone \u2014 your server brings the machine.";

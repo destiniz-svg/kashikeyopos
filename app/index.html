@@ -47,14 +47,14 @@
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-muted)"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
         <input aria-label="Go anywhere, or say what you want to do…" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ palKey }}" ref="{{ palRef }}" placeholder="Go anywhere, or say what you want to do…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;border-radius:8px;padding:7px 9px;margin:-7px -9px"/>
-        <span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
+        <span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-faint);border:1px solid var(--line);border-radius:4px;padding:3px 6px;font-family:'JetBrains Mono',monospace">ESC</span>
       </div>
       <sc-if value="{{ planOpen }}">
         <div style="padding:13px 16px 15px;border-bottom:1px solid var(--line)">
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright)">Confirm this change</div>
           <div style="font-size:14px;font-weight:700;margin-top:6px;text-wrap:pretty">{{ planLabel }}</div>
           <div style="font-size:11px;color:var(--text-dim);margin-top:4px;line-height:1.55;text-wrap:pretty">{{ planNote }}</div>
-          <div class="krail" style="margin-top:11px;max-height:min(34dvh,260px);overflow-y:auto;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px">
+          <div class="krail" style="margin-top:11px;max-height:min(34dvh,260px);overflow-y:auto;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px">
             <sc-for list="{{ planDiff }}" as="d" hint-placeholder-count="2">
               <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--bg-1)">
                 <span style="min-width:0;flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.name }}</span>
@@ -65,8 +65,8 @@
             </sc-for>
           </div>
           <div style="display:flex;gap:8px;margin-top:12px">
-            <button onClick="{{ planCancel }}" style="flex:0 0 auto;padding:11px 15px;border-radius:9px;min-height:44px;font-family:inherit;font-size:12.5px;font-weight:600;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)">Cancel</button>
-            <button onClick="{{ planRun }}" style="flex:1;padding:11px 15px;border-radius:9px;min-height:44px;font-family:inherit;font-size:12.5px;font-weight:700;background:var(--amber);color:var(--on-amber)">{{ planConfirm }}</button>
+            <button onClick="{{ planCancel }}" style="flex:0 0 auto;padding:11px 15px;border-radius:10px;min-height:44px;font-family:inherit;font-size:12.5px;font-weight:600;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)">Cancel</button>
+            <button onClick="{{ planRun }}" style="flex:1;padding:11px 15px;border-radius:10px;min-height:44px;font-family:inherit;font-size:12.5px;font-weight:700;background:var(--amber);color:var(--on-amber)">{{ planConfirm }}</button>
           </div>
         </div>
       </sc-if>
@@ -96,7 +96,7 @@
 
   <aside style="{{ asideStyle }}">
     <div style="{{ brandStyle }}">
-      <div style="width:38px;height:38px;border-radius:12px;flex-shrink:0;background:var(--brand-plate);border:1px solid var(--brand-plate-line);display:grid;place-items:center;overflow:hidden">
+      <div style="width:38px;height:38px;border-radius:14px;flex-shrink:0;background:var(--brand-plate);border:1px solid var(--brand-plate-line);display:grid;place-items:center;overflow:hidden">
         <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" width="32" height="32" style="width:32px;height:32px;object-fit:contain;display:block;margin:0 auto;mix-blend-mode:{{ markBlend }}"/>
       </div>
       <div style="{{ brandTextStyle }}">
@@ -299,7 +299,7 @@
                 <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--red-bright);flex-shrink:0">86</span>
               </sc-if>
               <sc-for list="{{ low }}" as="l" hint-placeholder-count="0">
-                <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:5px 11px;border-radius:20px;background:var(--bad-dim);border:1px solid var(--red-line);color:var(--red-bright);white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:var(--red)"></span>{{ l }}</span>
+                <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:5px 11px;border-radius:999px;background:var(--bad-dim);border:1px solid var(--red-line);color:var(--red-bright);white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:var(--red)"></span>{{ l }}</span>
               </sc-for>
             </div>
           </sc-if>
@@ -370,6 +370,13 @@
                 Add table
               </button>
             </sc-if>
+            <sc-if value="{{ floorEmpty }}">
+              <div style="grid-column:1/-1;display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:22px;border:1px dashed var(--line-2);border-radius:14px;background:var(--bg-1)">
+                <span style="font-size:15px;font-weight:700">No tables yet</span>
+                <span style="font-size:13px;color:var(--text-muted);line-height:1.5;max-width:52ch">{{ floorEmptyText }}</span>
+                <button onClick="{{ floorEditGo }}" style="{{ floorEmptyBtnStyle }}">Set up the floor</button>
+              </div>
+            </sc-if>
           </div>
           </sc-if>
 
@@ -435,15 +442,15 @@
                     <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;font-family:'JetBrains Mono',monospace">{{ m.price }}</span>
                     <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">{{ m.foot }}</span>
                     <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
-                      <button onClick="{{ m.dec }}" aria-label="One fewer {{ m.name }}" style="width:44px;height:44px;border-radius:11px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">−</button>
+                      <button onClick="{{ m.dec }}" aria-label="One fewer {{ m.name }}" style="width:44px;height:44px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">−</button>
                       <span style="font-size:13.5px;font-weight:800;font-family:'JetBrains Mono',monospace;min-width:18px;text-align:center">{{ m.qty }}</span>
-                      <button onClick="{{ m.inc }}" aria-label="One more {{ m.name }}" style="width:44px;height:44px;border-radius:11px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">+</button>
+                      <button onClick="{{ m.inc }}" aria-label="One more {{ m.name }}" style="width:44px;height:44px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:inherit;font-size:18px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation">+</button>
                     </span>
                   </div>
                 </div>
               </sc-for>
               <sc-if value="{{ menuMore }}">
-                <button onClick="{{ menuMoreGo }}" style="grid-column:1/-1;padding:13px;border-radius:13px;border:1px dashed var(--line-2);background:var(--bg-1);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ menuMoreText }}</button>
+                <button onClick="{{ menuMoreGo }}" style="grid-column:1/-1;padding:13px;border-radius:14px;border:1px dashed var(--line-2);background:var(--bg-1);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ menuMoreText }}</button>
               </sc-if>
               <sc-if value="{{ menuEmpty }}">
                 <div style="grid-column:1/-1;padding:52px 20px;text-align:center;color:var(--text-faint);font-size:12.5px">{{ menuEmptyText }}</div>
@@ -458,7 +465,7 @@
         </sc-if>
 
         <div style="{{ ticketPaneStyle }}">
-          <button onClick="{{ closeCart }}" style="{{ grabberStyle }}"><span style="display:block;width:38px;height:4px;border-radius:3px;background:var(--line-3);margin:0 auto"></span></button>
+          <button onClick="{{ closeCart }}" style="{{ grabberStyle }}"><span style="display:block;width:38px;height:4px;border-radius:4px;background:var(--line-3);margin:0 auto"></span></button>
           <div style="{{ ticketHeadStyle }}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
               <div style="min-width:0">
@@ -490,7 +497,7 @@
             </sc-if>
             <sc-if value="{{ hasTicket }}">
               <div style="{{ ticketMetaStyle }}">
-                <select value="{{ waiter }}" onChange="{{ onWaiter }}" style="flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:6px 7px;font-size:11px;color:var(--text);outline:none">
+                <select value="{{ waiter }}" onChange="{{ onWaiter }}" style="flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:6px 7px;font-size:11px;color:var(--text);outline:none">
                   <option value="">Assign server…</option>
                   <sc-for list="{{ servers }}" as="sv" hint-placeholder-count="3">
                     <option value="{{ sv }}" label="{{ sv }}"></option>
@@ -518,7 +525,7 @@
                   <span style="font-size:13.5px;font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;color:var(--text)">{{ l.amount }}</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px;gap:8px">
-                  <div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;overflow:hidden;flex-shrink:0">
+                  <div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-shrink:0">
                     <button onClick="{{ l.dec }}" style="width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);line-height:1">−</button>
                     <span style="min-width:22px;text-align:center;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
                     <button onClick="{{ l.inc }}" style="width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);line-height:1">+</button>
@@ -567,7 +574,7 @@
         <div style="{{ kdsAllDayStyle }}">
           <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);flex-shrink:0">All day</span>
           <sc-for list="{{ kdsAllDay }}" as="a" hint-placeholder-count="0">
-            <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;font-size:11.5px;padding:5px 11px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);white-space:nowrap">
+            <span style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;font-size:11.5px;padding:5px 11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);white-space:nowrap">
               <span style="font-family:'JetBrains Mono',monospace;font-weight:800;color:var(--warn-bright)">{{ a.n }}</span>{{ a.name }}
             </span>
           </sc-for>
@@ -632,7 +639,7 @@
 
         <div style="{{ ownKpiGrid }}">
           <sc-for list="{{ ownKpis }}" as="k" hint-placeholder-count="6">
-            <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:13px 14px 14px">
+            <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:13px 14px 14px">
               <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint)">{{ k.label }}</div>
               <div style="{{ k.numStyle }}">{{ k.value }}</div>
               <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
@@ -644,7 +651,7 @@
         </div>
 
         <div style="{{ ownTopGrid }}">
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 13px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 13px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
               <div style="min-width:0;flex:1">
                 <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Fourteen days of takings</div>
@@ -665,7 +672,7 @@
             <div style="font-size:11px;color:var(--text-dim);line-height:1.55;padding-top:10px;border-top:1px solid var(--line-soft);text-wrap:pretty">{{ ownTrendFoot }}</div>
           </div>
 
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 6px;min-width:0">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 6px;min-width:0">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
               <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">{{ ownEstTitle }}</div>
               <span style="{{ ownEstNote }}">aggregates only</span>
@@ -696,7 +703,7 @@
         </div>
 
         <div style="{{ ownMidGrid }}">
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">{{ ownPlTitle }}</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownPlSub }}</div>
             <sc-for list="{{ ownPl }}" as="p" hint-placeholder-count="8">
@@ -707,7 +714,7 @@
                 <span style="font-family:'JetBrains Mono',monospace;white-space:nowrap">{{ p.amt }}</span>
               </div>
             </sc-for>
-            <div style="margin-top:13px;height:8px;border-radius:99px;overflow:hidden;display:flex;background:var(--bg-2)">
+            <div style="margin-top:13px;height:8px;border-radius:999px;overflow:hidden;display:flex;background:var(--bg-2)">
               <sc-for list="{{ ownBar }}" as="b" hint-placeholder-count="4">
                 <div style="{{ b.style }}" title="{{ b.title }}"></div>
               </sc-for>
@@ -719,7 +726,7 @@
             </div>
           </div>
 
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Where the money is</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:11px">{{ ownCashSub }}</div>
             <sc-for list="{{ ownCash }}" as="c" hint-placeholder-count="6">
@@ -735,7 +742,7 @@
         </div>
 
         <div style="{{ ownMidGrid }}">
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 16px">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
               <div style="flex:1;min-width:0;font-size:12.5px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">Waiting on you</div>
               <span style="{{ ownDecChip }}">{{ ownDecCount }}</span>
@@ -756,7 +763,7 @@
             </sc-if>
           </div>
 
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 16px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">The controls, checked not claimed</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Each one is computed from the ledger every time this screen opens.</div>
             <sc-for list="{{ ownControls }}" as="c" hint-placeholder-count="7">
@@ -772,12 +779,12 @@
           </div>
         </div>
 
-        <div style="background:var(--bg-0);border:1px solid var(--line);border-radius:13px;padding:15px 17px 16px">
+        <div style="background:var(--bg-0);border:1px solid var(--line);border-radius:14px;padding:15px 17px 16px">
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--text-faint)">Deliberately not here</div>
           <div style="font-size:11.5px;color:var(--text-dim);margin-top:7px;line-height:1.65;max-width:88ch;text-wrap:pretty">{{ ownBoundary }}</div>
           <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
             <sc-for list="{{ ownNotHere }}" as="n" hint-placeholder-count="5">
-              <span style="padding:5px 11px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);font-size:11px;color:var(--text-dim);white-space:nowrap">{{ n }}</span>
+              <span style="padding:5px 11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);font-size:11px;color:var(--text-dim);white-space:nowrap">{{ n }}</span>
             </sc-for>
           </div>
         </div>
@@ -788,7 +795,7 @@
     <sc-if value="{{ vAnalytics }}">
       <div style="{{ anaPadStyle }}">
 
-        <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-bottom:13px">
+        <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:13px">
           <div style="{{ cfoHeadStyle }}">
             <div style="{{ cfoScoreStyle }}">
               <div style="{{ cfoScoreNumStyle }}">{{ cfoScore }}</div>
@@ -830,7 +837,7 @@
           </div>
 
           <div style="{{ cfoAskStyle }}">
-            <input aria-label="Ask the CFO — where is my margin going?" value="{{ cfoQ }}" onChange="{{ onCfoQ }}" onKeyDown="{{ cfoKey }}" placeholder="Ask the CFO — where is my margin going?" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;color:var(--text);font-size:12px;outline:none;min-height:44px"/>
+            <input aria-label="Ask the CFO — where is my margin going?" value="{{ cfoQ }}" onChange="{{ onCfoQ }}" onKeyDown="{{ cfoKey }}" placeholder="Ask the CFO — where is my margin going?" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;color:var(--text);font-size:12px;outline:none;min-height:44px"/>
             <button onClick="{{ runCfo }}" style="{{ cfoBtnStyle }}">{{ cfoBtnLabel }}</button>
           </div>
           <sc-if value="{{ hasCfoAnswer }}">
@@ -840,7 +847,7 @@
 
         <div style="{{ anaChartGrid }}">
           <sc-for list="{{ charts }}" as="c" hint-placeholder-count="4">
-            <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px 12px">
+            <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px 12px">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div style="min-width:0">
                   <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">{{ c.title }}</div>
@@ -867,7 +874,7 @@
         </div>
 
         <div style="{{ anaBottomGrid }}">
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Menu engineering</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:12px">Gross margin against volume · every dish with a live recipe</div>
             <div style="{{ quadGridStyle }}">
@@ -889,7 +896,7 @@
             </div>
           </div>
 
-          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px 17px">
+          <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:15px 17px">
             <div style="font-size:12.5px;font-weight:700;letter-spacing:-0.01em">Leakage & risk</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:6px">Where money leaves without a sale behind it</div>
             <sc-for list="{{ risks }}" as="r" hint-placeholder-count="6">
@@ -923,7 +930,7 @@
         </sc-if>
 
         <sc-if value="{{ askOn }}">
-          <div style="margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden">
+          <div style="margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden">
             <div style="display:flex;gap:9px;padding:12px 14px;flex-wrap:wrap;align-items:center">
               <input value="{{ askQ }}" onChange="{{ onAskQ }}" aria-label="Ask a question about the business" onKeyDown="{{ askKey }}" placeholder="{{ askPlaceholder }}" style="flex:1;min-width:160px;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 15px;font-size:12.5px;color:var(--text);outline:none;font-family:inherit"/>
               <button onClick="{{ askRun }}" style="{{ askBtnStyle }}">{{ askBtnLabel }}</button>
@@ -941,9 +948,9 @@
         </sc-if>
 
         <sc-if value="{{ hasGuide }}">
-          <div style="display:flex;align-items:stretch;gap:0;margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden;flex-wrap:wrap">
+          <div style="display:flex;align-items:stretch;gap:0;margin-bottom:14px;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;background:var(--bg-2);border-right:1px solid var(--line);flex-shrink:0">
-              <span style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:var(--warn-dim);color:var(--warn-bright);font-size:11px;font-weight:800">i</span>
+              <span style="width:18px;height:18px;border-radius:4px;display:grid;place-items:center;background:var(--warn-dim);color:var(--warn-bright);font-size:11px;font-weight:800">i</span>
               <span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap">{{ guideTitle }}</span>
             </div>
             <sc-for list="{{ guide }}" as="g" hint-placeholder-count="3">
@@ -992,7 +999,7 @@
              empty it: a blank page under a box somebody just typed into reads
              as a broken app. -->
         <sc-if value="{{ cardsEmpty }}">
-          <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px">{{ emptyText }}</div>
+          <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:10px">{{ emptyText }}</div>
         </sc-if>
 
         <sc-if value="{{ hasCards }}">
@@ -1057,7 +1064,7 @@
               </button>
             </sc-for>
             <sc-if value="{{ rowsMore }}">
-              <button onClick="{{ rowsMoreGo }}" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
+              <button onClick="{{ rowsMoreGo }}" style="width:100%;margin-top:10px;padding:12px;border-radius:14px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
             </sc-if>
             <sc-if value="{{ rowsEmpty }}">
               <div style="padding:44px;text-align:center;color:var(--text-faint);font-size:12.5px">{{ emptyText }}</div>
@@ -1084,10 +1091,10 @@
               </button>
             </sc-for>
             <sc-if value="{{ rowsMore }}">
-              <button onClick="{{ rowsMoreGo }}" style="width:100%;padding:12px;border-radius:12px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
+              <button onClick="{{ rowsMoreGo }}" style="width:100%;padding:12px;border-radius:14px;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center;cursor:pointer" style-hover="border-color:var(--line-3);color:var(--text)">{{ rowsMoreText }}</button>
             </sc-if>
             <sc-if value="{{ rowsEmpty }}">
-              <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px">{{ emptyText }}</div>
+              <div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:10px">{{ emptyText }}</div>
             </sc-if>
           </div>
         </sc-if>
@@ -1104,7 +1111,7 @@
         </sc-if>
 
         <sc-if value="{{ hasCode }}">
-          <div style="margin-top:16px;background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden">
+          <div style="margin-top:16px;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden">
             <div style="display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg-0)">
               <span style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span>
               <span style="width:9px;height:9px;border-radius:50%;background:var(--amber)"></span>
@@ -1171,7 +1178,7 @@
                       </button>
                     </sc-for>
                   </div>
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:9px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px">
                     <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Tendered</span>
                     <span style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--warn-bright)">{{ tenderedDisp }}</span>
                   </div>
@@ -1198,7 +1205,7 @@
                 <div style="{{ refWrap }}">
                   <label style="display:block">
                     <span style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
-                    <input value="{{ refValue }}" onChange="{{ onRef }}" aria-label="Payment reference from the processor" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
+                    <input value="{{ refValue }}" onChange="{{ onRef }}" aria-label="Payment reference from the processor" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
                   </label>
                   <div style="{{ refNoteStyle }}">{{ refNote }}</div>
                 </div>
@@ -1281,7 +1288,7 @@
                     <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px">{{ h.meta }}</span>
                   </span>
                   <span style="font-size:14px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;flex-shrink:0">{{ h.total }}</span>
-                  <span style="font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:6px 11px;border-radius:7px;flex-shrink:0">Resume</span>
+                  <span style="font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:6px 11px;border-radius:8px;flex-shrink:0">Resume</span>
                 </button>
               </sc-for>
               <sc-if value="{{ heldEmpty }}">
@@ -1297,7 +1304,7 @@
                   <input value="{{ rbQ }}" onChange="{{ onRbQ }}" aria-label="{{ rbPlaceholder }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:11px 16px;font-size:12.5px;color:var(--text);outline:none"/>
                   <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px;min-width:0;max-height:min(430px,52dvh);overflow-y:auto;overflow-x:hidden">
                     <sc-for list="{{ rbDishes }}" as="d" hint-placeholder-count="6">
-                      <button onClick="{{ d.go }}" style="display:flex;align-items:center;gap:12px;width:100%;min-width:0;text-align:left;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:var(--bg-2)" style-hover="border-color:var(--text);background:var(--bg-3)">
+                      <button onClick="{{ d.go }}" style="display:flex;align-items:center;gap:12px;width:100%;min-width:0;text-align:left;padding:11px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2)" style-hover="border-color:var(--text);background:var(--bg-3)">
                         <span style="flex:1;min-width:0">
                           <span style="display:block;font-size:13px;font-weight:700;color:var(--text);letter-spacing:-0.01em">{{ d.name }}</span>
                           <span style="{{ d.metaStyle }}">{{ d.meta }}</span>
@@ -1312,7 +1319,7 @@
 
               <sc-if value="{{ rbBuilding }}">
                 <div style="display:flex;flex-direction:column;gap:13px">
-                  <div style="display:flex;align-items:center;gap:16px;padding:13px 15px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+                  <div style="display:flex;align-items:center;gap:16px;padding:13px 15px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                     <span style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
                       <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Food cost</span>
                       <span style="{{ rbPctStyle }}">{{ rbPct }}</span>
@@ -1350,7 +1357,7 @@
                     <input value="{{ rbQ }}" onChange="{{ onRbQ }}" aria-label="{{ rbPlaceholder }}" placeholder="{{ rbPlaceholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:12.5px;color:var(--text);outline:none"/>
                     <div style="{{ rbResultsStyle }}">
                       <sc-for list="{{ rbResults }}" as="r" hint-placeholder-count="4">
-                        <button onClick="{{ r.add }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg-1)" style-hover="border-color:var(--text);background:var(--bg-2)">
+                        <button onClick="{{ r.add }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg-1)" style-hover="border-color:var(--text);background:var(--bg-2)">
                           <span style="flex:1;min-width:0">
                             <span style="display:block;font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
                             <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ r.meta }}</span>
@@ -1393,8 +1400,8 @@
                   <span style="{{ dbArtGlyph }}"></span>
                 </span>
                 <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
-                  <input aria-label="Dish name" value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
-                  <input aria-label="One line a guest reads — what it is, how it eats" value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
+                  <input aria-label="Dish name" value="{{ dbName }}" onChange="{{ onDbName }}" placeholder="Dish name" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
+                  <input aria-label="One line a guest reads — what it is, how it eats" value="{{ dbDesc }}" onChange="{{ onDbDesc }}" placeholder="One line a guest reads — what it is, how it eats" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-size:12px"/>
                   <span style="display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--text-muted);line-height:1.5">
                     <span style="min-width:0">{{ dbArtNote }}</span>
                     <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ dbDescCount }}</span>
@@ -1419,7 +1426,7 @@
                     Upload image
                     <input type="file" accept="image/*" aria-label="Upload a photograph of this dish" onChange="{{ dbUpload }}" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"/>
                   </label>
-                  <input value="{{ dbImgUrl }}" onChange="{{ onDbImgUrl }}" placeholder="{{ dbImgPlaceholder }}" aria-label="Image URL" style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-size:12.5px;color:var(--text);outline:none"/>
+                  <input value="{{ dbImgUrl }}" onChange="{{ onDbImgUrl }}" placeholder="{{ dbImgPlaceholder }}" aria-label="Image URL" style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:9px 13px;font-size:12.5px;color:var(--text);outline:none"/>
                   <button onClick="{{ dbImgRemove }}" style="{{ dbImgRemoveStyle }}">Remove</button>
                 </div>
                 <div style="font-size:11.5px;color:var(--text-muted);margin-top:7px;line-height:1.5">Held with the dish, downscaled to 720px on this device, and it travels to the till, the QR menu and the printed list on save. Leave it empty and the artifact stands in — no dish is ever a blank tile.</div>
@@ -1428,7 +1435,7 @@
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
                 <div style="width:150px;flex-shrink:0">
                   <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Chain price MVR</span>
-                  <input value="{{ dbPrice }}" onChange="{{ onDbPrice }}" aria-label="Menu price" inputMode="decimal" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+                  <input value="{{ dbPrice }}" onChange="{{ onDbPrice }}" aria-label="Menu price" inputMode="decimal" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                 </div>
                 <div style="flex:1;min-width:230px">
                   <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Kitchen station</span>
@@ -1453,19 +1460,19 @@
                   <div style="display:flex;gap:9px;flex-wrap:wrap">
                     <label style="flex:2;min-width:190px;display:flex;flex-direction:column;gap:5px">
                       <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Stock item sold</span>
-                      <select value="{{ dbBuyItem }}" onChange="{{ onDbBuyItem }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
+                      <select value="{{ dbBuyItem }}" onChange="{{ onDbBuyItem }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
                         <sc-for list="{{ dbBuyItemOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
                       </select>
                     </label>
                     <label style="flex:1.4;min-width:150px;display:flex;flex-direction:column;gap:5px">
                       <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Supplier</span>
-                      <select value="{{ dbBuyVendor }}" onChange="{{ onDbBuyVendor }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
+                      <select value="{{ dbBuyVendor }}" onChange="{{ onDbBuyVendor }}" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none">
                         <sc-for list="{{ dbBuyVendorOpts }}" as="o"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
                       </select>
                     </label>
                     <label style="width:110px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
                       <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Units per pack</span>
-                      <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" placeholder="1" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+                      <input value="{{ dbBuyPack }}" onChange="{{ onDbBuyPack }}" inputMode="numeric" placeholder="1" aria-label="Units per pack" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:12.5px;color:var(--text);outline:none;font-family:'JetBrains Mono',monospace;font-weight:700"/>
                     </label>
                   </div>
                   <div style="{{ dbBuyLineStyle }}">{{ dbBuyLine }}</div>
@@ -1510,7 +1517,7 @@
                 </div>
               </div>
 
-              <button onClick="{{ dbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+              <button onClick="{{ dbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ dbHidLabel }}</span>
                   <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbHidSub }}</span>
@@ -1518,7 +1525,7 @@
                 <span style="{{ dbHidTrack }}"><span style="{{ dbHidKnob }}"></span></span>
               </button>
 
-              <button onClick="{{ dbQrGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+              <button onClick="{{ dbQrGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ dbQrLabel }}</span>
                   <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ dbQrSub }}</span>
@@ -1547,10 +1554,10 @@
                 </div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:7px;line-height:1.5">{{ coSecNote }}</div>
               </div>
-              <input value="{{ coQ }}" onChange="{{ onCoQ }}" placeholder="Search every dish" aria-label="Search every dish" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
+              <input value="{{ coQ }}" onChange="{{ onCoQ }}" placeholder="Search every dish" aria-label="Search every dish" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               <div style="display:flex;flex-direction:column;gap:7px">
                 <sc-for list="{{ coRows }}" as="r" hint-placeholder-count="6">
-                  <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+                  <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                     <span style="flex:1;min-width:0">
                       <span style="display:block;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
                       <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:2px">{{ r.sub }}</span>
@@ -1592,7 +1599,7 @@
               </div>
               <div>
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
-                <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none"/>
+                <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none"/>
               </div>
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Quantity</span>
@@ -1610,7 +1617,7 @@
             <div style="display:flex;flex-direction:column;gap:15px">
               <div>
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Section name</span>
-                <input aria-label="Starters, From the Grill, Cold drinks…" value="{{ cbName }}" onChange="{{ onCbName }}" placeholder="Starters, From the Grill, Cold drinks…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
+                <input aria-label="Starters, From the Grill, Cold drinks…" value="{{ cbName }}" onChange="{{ onCbName }}" placeholder="Starters, From the Grill, Cold drinks…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none;font-weight:700"/>
               </div>
               <div>
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Colour</span>
@@ -1637,7 +1644,7 @@
                   </sc-for>
                 </div>
               </div>
-              <button onClick="{{ cbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+              <button onClick="{{ cbHidGo }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                 <span style="flex:1;min-width:0">
                   <span style="display:block;font-size:12.5px;font-weight:700;color:var(--text)">{{ cbHidLabel }}</span>
                   <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.5">{{ cbHidSub }}</span>
@@ -1708,7 +1715,7 @@
             <div>
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
                 <sc-for list="{{ quickNotes }}" as="q" hint-placeholder-count="6">
-                  <button onClick="{{ q.pick }}" style="font-size:11.5px;padding:6px 12px;border-radius:20px;border:1px solid var(--line);background:var(--bg);color:var(--text-dim)">{{ q.label }}</button>
+                  <button onClick="{{ q.pick }}" style="font-size:11.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--text-dim)">{{ q.label }}</button>
                 </sc-for>
               </div>
               <input aria-label="Allergy, doneness, course order…" value="{{ noteVal }}" onChange="{{ onNoteChange }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
@@ -1741,7 +1748,7 @@
             </sc-if>
             <sc-if value="{{ lockPin }}">
               <div style="display:flex;flex-direction:column;align-items:center;gap:11px">
-                <div style="display:flex;align-items:center;gap:11px;align-self:stretch;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line)">
+                <div style="display:flex;align-items:center;gap:11px;align-self:stretch;padding:11px 13px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
                   <span style="{{ lockWhoAv }}">{{ lockWhoIni }}</span>
                   <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
                     <span style="font-size:13px;font-weight:700">{{ lockWhoName }}</span>
@@ -1785,7 +1792,7 @@
               </div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12.5px;color:var(--text-dim);line-height:1.7">Guests scan this to open the table's own ordering session in their browser. No app, no login — the scan mints a short-lived anonymous token scoped to this one table, at this one outlet.</div>
-                <div style="margin-top:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn-bright);overflow-x:auto;white-space:nowrap">{{ qrUrl }}</div>
+                <div style="margin-top:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--warn-bright);overflow-x:auto;white-space:nowrap">{{ qrUrl }}</div>
                 <div style="display:flex;gap:8px;margin-top:12px">
                   <button onClick="{{ qrPrint }}" style="padding:9px 16px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Print this card</button>
                   <button onClick="{{ qrPrintAll }}" style="padding:9px 16px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Print every table</button>
@@ -1837,7 +1844,7 @@
                   </div>
                 </sc-for>
               </div>
-              <div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">
+              <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
                 <sc-for list="{{ tkLines }}" as="l" hint-placeholder-count="3">
                   <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line-soft)">
                     <span style="font-size:12px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--text-dim);min-width:26px">{{ l.qty }}</span>
@@ -1949,12 +1956,12 @@
               </div>
               <div style="{{ countSheetStyle }}">
                 <sc-for list="{{ countSheet }}" as="c" hint-placeholder-count="6">
-                  <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line)">
+                  <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)">
                     <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
                       <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
                       <span style="font-size:11px;color:var(--text-muted)">{{ c.sub }}</span>
                     </span>
-                    <input aria-label="0" value="{{ c.val }}" onChange="{{ c.set }}" placeholder="0" inputMode="decimal" style="width:86px;flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;text-align:right;min-height:42px"/>
+                    <input aria-label="0" value="{{ c.val }}" onChange="{{ c.set }}" placeholder="0" inputMode="decimal" style="width:86px;flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;text-align:right;min-height:42px"/>
                     <span style="flex-shrink:0;font-size:11px;color:var(--text-muted);width:30px">{{ c.unit }}</span>
                   </div>
                 </sc-for>
@@ -2011,7 +2018,7 @@
                           <sc-if value="{{ f.costed }}" hint-placeholder-val="{{ false }}">
                             <span style="font-size:12px;font-weight:700;text-align:right;align-self:center;white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ r.amount }}</span>
                           </sc-if>
-                          <button onClick="{{ r.remove }}" title="Remove this line" style="width:28px;height:28px;align-self:center;border-radius:7px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted);display:grid;place-items:center;cursor:pointer;font-family:inherit">
+                          <button onClick="{{ r.remove }}" title="Remove this line" style="width:28px;height:28px;align-self:center;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted);display:grid;place-items:center;cursor:pointer;font-family:inherit">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"></path></svg>
                           </button>
                         </div>
@@ -4374,7 +4381,7 @@ class Component extends DCLogic {
           labelStyle: railMode ? "display:none" : "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
           badge: badge,
           badgeStyle: !badge ? "display:none" : (railMode
-            ? "position:absolute;top:1px;right:3px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;font-size:11px;font-weight:700;border-radius:9px;font-family:'JetBrains Mono',monospace;background:" + bg + ";color:" + fg
+            ? "position:absolute;top:1px;right:3px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;font-size:11px;font-weight:700;border-radius:10px;font-family:'JetBrains Mono',monospace;background:" + bg + ";color:" + fg
             : badgeStyle),
           go: () => this.setState({ view: it[0], sel: null, search: "", drawer: false, cart: false })
         });
@@ -4478,7 +4485,7 @@ class Component extends DCLogic {
           return {
             label: x[1],
             go: () => self.setState({ view: x[0], sel: null, search: "" }),
-            style: "flex-shrink:0;padding:" + (isM ? "9px 15px" : "8px 14px") + ";border-radius:20px;min-height:" + (isM ? 40 : 36) + "px;font-family:inherit;font-size:" + (isM ? 12.5 : 11.5) + "px;font-weight:"
+            style: "flex-shrink:0;padding:" + (isM ? "9px 15px" : "8px 14px") + ";border-radius:999px;min-height:" + (isM ? 40 : 36) + "px;font-family:inherit;font-size:" + (isM ? 12.5 : 11.5) + "px;font-weight:"
               + (on ? 700 : 600) + ";white-space:nowrap;border:1px solid " + (on ? "var(--text)" : "var(--line)")
               + ";background:" + (on ? "var(--text)" : "var(--bg-1)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)")
           };
@@ -4510,11 +4517,11 @@ class Component extends DCLogic {
       palRows: palRows.map((r, i) => Object.assign({}, r, {
         go: () => this.palRun(r),
         hover: () => { if (s.palSel !== i) this.setState({ palSel: i }); },
-        style: "width:100%;display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;min-height:46px;font-family:inherit;text-align:left;border:1px solid "
+        style: "width:100%;display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;min-height:46px;font-family:inherit;text-align:left;border:1px solid "
           + (i === palSel ? "var(--line-3)" : "transparent") + ";background:" + (i === palSel ? "var(--bg-2)" : "transparent")
           + ";color:var(--text)",
         tag: r.kind === "act" ? "Act" : r.kind === "do" ? "Do" : "Go",
-        tagStyle: "flex-shrink:0;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:"
+        tagStyle: "flex-shrink:0;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:"
           + (r.kind === "act" ? "var(--amber-dim);color:var(--amber-bright)" : r.kind === "do" ? "var(--warn-dim);color:var(--warn-bright)" : "var(--bg-3);color:var(--text-muted)")
       })),
       palNone: this.canApprove()
@@ -4601,10 +4608,10 @@ class Component extends DCLogic {
       searchIconStyle: "position:absolute;top:50%;transform:translateY(-50%);pointer-events:none;left:" + (s.searchOpen ? "10px" : "8px"),
       netTitle: s.online ? "Online — tap to simulate a network drop" : "Offline — tap to restore the link",
       netDotBtnStyle: "display:flex;align-items:center;justify-content:center;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 8px 0 10px" : "7px 10px 7px 12px") + ";flex-shrink:0",
-      linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
+      linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:999px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
       searchStyle: isM ? "display:none" : "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;flex-shrink:0;color:var(--text-dim);height:32px;" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
       _searchStyleOld: isM ? "display:none" : "display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);color:var(--text-muted)",
-      shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;background:var(--warn-dim);color:var(--warn-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
+      shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:999px;font-size:11px;font-weight:700;background:var(--warn-dim);color:var(--warn-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
       clockStyle: isM ? "display:none" : "text-align:right;font-variant-numeric:tabular-nums;min-width:78px;flex-shrink:0",
 
       statsWrapStyle: "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
@@ -4654,7 +4661,7 @@ class Component extends DCLogic {
         return {
           label: t[1], badge: t[2] ? String(t[2]) : "",
           badgeStyle: t[2]
-            ? "margin-left:7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:20px;background:"
+            ? "margin-left:7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:999px;background:"
               + (on ? "rgba(0,0,0,.16)" : "var(--bg-3)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)")
             : "display:none",
           go: () => {
@@ -4674,7 +4681,7 @@ class Component extends DCLogic {
       // overflow-x is now unconditional: the table decides whether it needs to
       // scroll by whether its own min-width exceeds this box, which is the only
       // thing that actually knows. A wide screen never sees a scrollbar.
-      tableWrapStyle: "background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden;overflow-x:auto",
+      tableWrapStyle: "background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;overflow-x:auto",
       gridPadStyle: "flex:1;overflow-y:auto;min-height:0;background:var(--bg);padding:" + (isM ? "14px 14px 28px" : "16px 20px 28px"),
       kdsPadStyle: "flex:1;overflow-y:auto;min-height:0;background:var(--bg);padding:" + (isM ? "14px 14px 28px" : "18px 20px"),
       payGridStyle: (isM || this.shortVp()) ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
@@ -4697,7 +4704,7 @@ class Component extends DCLogic {
         if (on) this.flush(); else this.toast("Terminal offline — orders will queue locally", "warn");
       },
       netLabel: s.online ? "Online" : "Offline",
-      netStyle: "display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid " + (s.online ? "var(--green-line)" : "var(--red-line)") + ";background:" + (s.online ? "var(--ok-dim)" : "var(--bad-dim)") + ";color:" + (s.online ? "var(--green)" : "var(--red-bright)"),
+      netStyle: "display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid " + (s.online ? "var(--green-line)" : "var(--red-line)") + ";background:" + (s.online ? "var(--ok-dim)" : "var(--bad-dim)") + ";color:" + (s.online ? "var(--green)" : "var(--red-bright)"),
       netDot: "width:6px;height:6px;border-radius:50%;background:" + (s.online ? "var(--go)" : "var(--red)") + (s.online ? ";box-shadow:0 0 8px var(--go)" : ";animation:kpulse 1.4s infinite"),
       toggleTheme: () => { const next = this.themeMode() === "light" ? "dark" : "light"; this.setState({ theme: next }); this.toast(next === "light" ? "Light theme — daylight service" : "Dark theme — as the reference"); },
       themeTitle: this.themeMode() === "light" ? "Switch to dark" : "Switch to light",
@@ -4722,7 +4729,7 @@ class Component extends DCLogic {
       goSync: () => this.setState({ view: "sync" }),
       outboxLabel: queued ? (isM ? String(queued) : queued + " queued") : (s.syncing ? (isM ? "" : "Syncing") : (s.online ? (isM ? "" : "Synced") : "Offline")),
       outboxStyle: "display:flex;align-items:center;justify-content:center;gap:6px;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 9px 0 7px" : "7px 12px 7px 8px") + ";font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--warn-bright)" : "var(--text-dim)"),
-      _outboxStyleOld: "display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid " + (queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (queued ? "var(--warn-dim)" : "var(--bg-2)") + ";color:" + (queued ? "var(--warn-bright)" : "var(--text-dim)"),
+      _outboxStyleOld: "display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid " + (queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (queued ? "var(--warn-dim)" : "var(--bg-2)") + ";color:" + (queued ? "var(--warn-bright)" : "var(--text-dim)"),
       spinStyle: s.syncing ? "animation:kspin 1s linear infinite" : "",
       shift: this.shiftLabel(),
       regOpen: this.registerOpen(),
@@ -4734,7 +4741,7 @@ class Component extends DCLogic {
       regBtnLabel: this.registerOpen() ? "Close register" : "Open register",
       regGo: () => this.openForm(this.registerOpen() ? "regclose" : "regopen"),
       regBarStyle: this.registerOpen() ? "display:none"
-        : "display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;margin-bottom:13px;border-radius:11px;background:var(--bad-dim);border:1px solid var(--red-line)",
+        : "display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;margin-bottom:13px;border-radius:10px;background:var(--bad-dim);border:1px solid var(--red-line)",
       regBtnStyle: "padding:9px 15px;border-radius:999px;font-size:12px;font-weight:700;background:var(--amber);color:var(--on-amber);white-space:nowrap;min-height:40px",
       sessionName: s.session
         ? s.session.name + " · " + (((K0.ROLES || []).find((r) => r.key === s.session.role) || {}).label || s.session.role)
@@ -5248,7 +5255,7 @@ class Component extends DCLogic {
            outlined ones reads as a button that does something, not as where you
            are. */
         style: "display:inline-flex;align-items:center;gap:7px;flex-shrink:0;scroll-snap-align:start;padding:0 "
-          + (bp === "m" ? 14 : 12) + "px;border-radius:9px;min-height:" + (bp === "m" ? 38 : 30)
+          + (bp === "m" ? 14 : 12) + "px;border-radius:10px;min-height:" + (bp === "m" ? 38 : 30)
           + "px;font-family:inherit;font-size:" + (bp === "m" ? 12.5 : 12) + "px;white-space:nowrap;"
           + "transition:background .12s ease-out, color .12s ease-out, box-shadow .12s ease-out;"
           + (t.on
@@ -5256,7 +5263,7 @@ class Component extends DCLogic {
             : "background:transparent;border:1px solid transparent;color:var(--text-muted);font-weight:600"),
         // Menu Master passes each section's hue; every other module passes none.
         dotStyle: t.hue
-          ? "width:8px;height:8px;border-radius:3px;flex-shrink:0;display:block;background:" + t.hue
+          ? "width:8px;height:8px;border-radius:4px;flex-shrink:0;display:block;background:" + t.hue
             + ";opacity:" + (t.on ? "1" : ".75")
           : "display:none",
         cntStyle: t.count === undefined ? "display:none"
@@ -5271,8 +5278,10 @@ class Component extends DCLogic {
          screen, under a search box nobody had asked to be that wide.
 
          So where both are present the rail takes its own line at every width,
-         exactly as the actions already do on a phone. */
-      subBarStyle: (bp === "m" || (tabList.length && g.find && g.find.set))
+         exactly as the actions already do on a phone. And so does a rail of
+         more than four tabs: Accounting's eight shared a line with three
+         action buttons, and the last tab was faded to "Do…" at every width. */
+      subBarStyle: (bp === "m" || (tabList.length && g.find && g.find.set) || tabList.length > 4)
         ? "display:flex;flex-direction:column;align-items:stretch;gap:9px;margin-bottom:13px"
         : "display:flex;align-items:center;gap:8px;margin-bottom:14px;min-width:0",
       /* THE TRACK IS WHAT YIELDS. `flex:1 1 auto; min-width:0` on the track and
@@ -5283,7 +5292,7 @@ class Component extends DCLogic {
       tabRailStyle: !tabList.length ? "display:none"
         : "display:flex;align-items:center;gap:3px;overflow-x:auto;overflow-y:hidden;"
           + "scroll-snap-type:x proximity;background:var(--bg-2);border:1px solid var(--line);"
-          + "border-radius:12px;padding:3px 4px;flex:1 1 auto;min-width:0;"
+          + "border-radius:14px;padding:3px 4px;flex:1 1 auto;min-width:0;"
           + "mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%);"
           + "-webkit-mask:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%)",
       /* THE FIND BOX AND THE ACTIONS SHARE A LINE; the rail is above them.
@@ -5330,7 +5339,7 @@ class Component extends DCLogic {
       findStyle: (g.find && g.find.set)
         ? "position:relative;display:flex;align-items:stretch;background:var(--bg-2);border:1px solid "
           + (g.find.value ? "var(--warn-line)" : "var(--line)")
-          + ";border-radius:9px;min-height:" + (bp === "m" ? 44 : 34)
+          + ";border-radius:10px;min-height:" + (bp === "m" ? 44 : 34)
           + "px;flex:" + (bp === "m" ? "1 1 100%" : "1 1 240px")
           + ";min-width:" + (bp === "m" ? "0" : "150px") + ";color:var(--text-dim)"
         : "display:none",
@@ -5375,11 +5384,11 @@ class Component extends DCLogic {
       cardGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (bp === "m" ? "min(100%," + (g.cardMin || 260) + "px)" : (g.cardMin || 260) + "px") + ",1fr));gap:11px;margin-bottom:" + (g.cols && g.cols.length ? "16px" : "0"),
       cards: (g.cards || []).map((c) => ({
         title: c.title, sub: c.sub || "", chip: c.chip || "", big: c.big || "", foot: c.foot || "",
-        style: "background:var(--bg-1);border:1px solid " + (c.accent ? c.accent : "var(--line)") + ";border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:4px;" + (c.go ? "cursor:pointer;" : "") + (c.style || ""),
-        chipStyle: c.chip ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;background:" + (c.chipBg || "var(--warn-dim)") + ";color:" + (c.chipFg || "var(--warn-bright)") : "display:none",
+        style: "background:var(--bg-1);border:1px solid " + (c.accent ? c.accent : "var(--line)") + ";border-radius:10px;padding:14px 15px;display:flex;flex-direction:column;gap:4px;" + (c.go ? "cursor:pointer;" : "") + (c.style || ""),
+        chipStyle: c.chip ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:999px;white-space:nowrap;background:" + (c.chipBg || "var(--warn-dim)") + ";color:" + (c.chipFg || "var(--warn-bright)") : "display:none",
         bigStyle: c.big ? "font-size:" + (c.bigSize || 24) + "px;font-weight:800;letter-spacing:-0.03em;font-family:'JetBrains Mono',monospace;margin:8px 0 2px;color:" + (c.bigColor || "var(--text)") : "display:none",
-        barWrap: c.pct === undefined ? "display:none" : "height:5px;border-radius:3px;background:var(--line-soft);overflow:hidden;margin:8px 0 4px",
-        barFill: c.pct === undefined ? "" : "height:100%;width:" + Math.max(2, Math.min(100, c.pct)) + "%;background:" + (c.barColor || "var(--warn)") + ";border-radius:3px",
+        barWrap: c.pct === undefined ? "display:none" : "height:5px;border-radius:4px;background:var(--line-soft);overflow:hidden;margin:8px 0 4px",
+        barFill: c.pct === undefined ? "" : "height:100%;width:" + Math.max(2, Math.min(100, c.pct)) + "%;background:" + (c.barColor || "var(--warn)") + ";border-radius:4px",
         // A key-value row assumes the value is short — a figure, a code, a date.
         // A registered address is none of those, and nowrap sent it straight out
         // of the card. Past ~26 characters the row stops being two columns and
@@ -5403,14 +5412,14 @@ class Component extends DCLogic {
         toggles: (c.toggles || []).map((t) => ({
           label: t.label, sub: t.sub || "", go: t.go,
           subStyle: t.sub ? "display:block;font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.45" : "display:none",
-          trackStyle: "width:34px;height:19px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (t.on ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (t.on ? "var(--text)" : "var(--line)") + ";justify-content:" + (t.on ? "flex-end" : "flex-start"),
+          trackStyle: "width:34px;height:19px;flex-shrink:0;border-radius:999px;padding:2px;display:flex;transition:.15s;background:" + (t.on ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (t.on ? "var(--text)" : "var(--line)") + ";justify-content:" + (t.on ? "flex-end" : "flex-start"),
           knobStyle: "width:15px;height:15px;border-radius:50%;background:" + (t.on ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s"
         })),
         picks: (c.picks || []).map((p) => ({
           label: p.label,
           opts: (p.opts || []).map((o) => ({
             label: o.label, go: o.go,
-            style: "padding:5px 10px;border-radius:7px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid " + (o.on ? "var(--text)" : "var(--line)") + ";background:" + (o.on ? "var(--text)" : "var(--bg-2)") + ";color:" + (o.on ? "var(--bg)" : "var(--text-dim)")
+            style: "padding:5px 10px;border-radius:8px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid " + (o.on ? "var(--text)" : "var(--line)") + ";background:" + (o.on ? "var(--text)" : "var(--bg-2)") + ";color:" + (o.on ? "var(--bg)" : "var(--text-dim)")
           }))
         })),
         footStyle: c.foot ? "font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5" : "display:none",
@@ -5438,11 +5447,11 @@ class Component extends DCLogic {
         const head = cs.shift() || { cc: { t: "" } };
         return {
           go: r.go || (() => {}),
-          style: "display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:" + (r.on ? "var(--warn-dim)" : "var(--bg-1)") + ";border:1px solid " + (r.on ? "var(--warn-line)" : "var(--line)") + ";min-height:44px",
+          style: "display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:10px;background:" + (r.on ? "var(--warn-dim)" : "var(--bg-1)") + ";border:1px solid " + (r.on ? "var(--warn-line)" : "var(--line)") + ";min-height:44px",
           title: head.cc.t,
           titleStyle: "font-size:13.5px;font-weight:700;letter-spacing:-0.01em;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" + (head.mono ? ";font-family:'JetBrains Mono',monospace" : ""),
           chip: badge ? badge.cc.t : "",
-          chipStyle: badge ? "flex-shrink:0;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + badge.cc.chip[0] + ";color:" + badge.cc.chip[1] : "display:none",
+          chipStyle: badge ? "flex-shrink:0;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + badge.cc.chip[0] + ";color:" + badge.cc.chip[1] : "display:none",
           pairs: cs.filter((c) => c.cc.t !== "" && c.cc.t !== undefined).map((c) => ({
             k: c.label,
             v: c.cc.t,
@@ -5472,8 +5481,8 @@ class Component extends DCLogic {
             // artifact for a dish with no photograph, and the colour chip for a
             // menu section. Inline-grid so it rides inside the ellipsised cell.
             dotText: cc.dot ? (cc.dot[2] || "") : "",
-            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:6px;margin-right:9px;vertical-align:-6px;font-size:11px;font-weight:800;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
-            style: "text-align:" + (col.a || "left") + ";font-size:" + (cc.size || 12) + "px;font-weight:" + (cc.w || (j === 0 ? 600 : 400)) + ";color:" + (cc.c || (j === 0 ? "var(--text)" : "var(--text-dim)")) + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (cc.mono || col.mono ? "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;" : "") + (cc.chip ? "display:inline-block;justify-self:" + (col.a === "right" ? "end" : "start") + ";padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + cc.chip[0] + ";color:" + cc.chip[1] : "")
+            dotStyle: cc.dot ? "display:inline-grid;place-items:center;width:21px;height:21px;border-radius:8px;margin-right:9px;vertical-align:-6px;font-size:11px;font-weight:800;letter-spacing:.02em;flex-shrink:0;background:" + cc.dot[0] + ";color:" + cc.dot[1] : "display:none",
+            style: "text-align:" + (col.a || "left") + ";font-size:" + (cc.size || 12) + "px;font-weight:" + (cc.w || (j === 0 ? 600 : 400)) + ";color:" + (cc.c || (j === 0 ? "var(--text)" : "var(--text-dim)")) + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (cc.mono || col.mono ? "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;" : "") + (cc.chip ? "display:inline-block;justify-self:" + (col.a === "right" ? "end" : "start") + ";padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:" + cc.chip[0] + ";color:" + cc.chip[1] : "")
           };
         })
       })),
@@ -5490,7 +5499,7 @@ class Component extends DCLogic {
       })),
       hasNotes: !!(g.notes && g.notes.length),
       notesGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:11px;margin-top:" + (cols.length || (g.cards || []).length ? "16px" : "0"),
-      notes: (g.notes || []).map((n) => ({ title: n[0], body: n[1], style: "background:var(--bg-1);border:1px solid var(--line);border-radius:11px;padding:14px 15px" })),
+      notes: (g.notes || []).map((n) => ({ title: n[0], body: n[1], style: "background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:14px 15px" })),
       hasCode: !!g.code, code: g.code || "", codeName: g.codeName || "",
       copyCode: () => { try { navigator.clipboard.writeText(g.code); this.toast("Copied to clipboard"); } catch (e) { this.toast("Select and copy manually", "warn"); } }
     };
@@ -6126,7 +6135,7 @@ class Component extends DCLogic {
             ? "Every ticket, grouped by station — the expeditor's board"
             : "Only " + st[1].toLowerCase() + " work, with a target of " + this.stationTarget(k)[0] + " minutes",
           countStyle: n ? "margin-left:6px;font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6" : "display:none",
-          style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:11.5px;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:36px;"
+          style: "flex-shrink:0;padding:8px 14px;border-radius:999px;font-size:11.5px;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:36px;"
             + (on ? "background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "background:var(--bg-2);color:var(--text-dim);border:1px solid var(--line)"),
           // Persisted as a preference: a screen bolted above the grill must come
           // back to the grill after a power cut, not to whatever was last tapped.
@@ -6144,8 +6153,8 @@ class Component extends DCLogic {
       // hands on a hot line. Without recall the only fix is walking to the till.
       kdsRecallLabel: rec ? "Recall " + rec.name : "Nothing to recall",
       kdsRecallHint: rec ? "Puts " + rec.name + " back on " + rec.table + " — bumped " + Math.max(1, Math.round((Date.now() - rec.at) / 1000)) + "s ago" : "The last bump can always be undone",
-      kdsRecallStyle: "flex-shrink:0;display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:20px;font-size:11.5px;font-weight:600;font-family:inherit;min-height:36px;white-space:nowrap;"
-        + (rec ? "background:var(--bg-2);color:var(--text);border:1px solid var(--line-3)" : "background:transparent;color:var(--text-faint);border:1px solid var(--line)"),
+      kdsRecallStyle: "flex-shrink:0;display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;font-size:11.5px;font-weight:600;font-family:inherit;min-height:44px;white-space:nowrap;"
+        + (rec ? "background:var(--bg-2);color:var(--text);border:1px solid var(--line-3)" : "background:transparent;color:var(--text-faint);border:1px dashed var(--line-2);cursor:default"),
       kdsRecall: () => {
         if (!rec) return this.toast("Nothing has been bumped on this screen yet");
         const t = Object.assign({}, this.state.tickets);
@@ -6170,7 +6179,7 @@ class Component extends DCLogic {
           table: this.slotName(tk.num),
           meta: (tk.t.waiter || "Unassigned") + " · " + tk.t.party + " covers" + (tk.t.resNote ? " · " + tk.t.resNote : ""),
           wait: tk.wait,
-          style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--warn-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
+          style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--warn-line)" : "var(--line)") + ";border-radius:10px;overflow:hidden;display:flex;flex-direction:column",
           headBg: late ? "background:var(--bad-dim)" : warn ? "background:var(--warn-dim)" : "",
           timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
           target: "target " + tgt[0] + "m",
@@ -6381,14 +6390,14 @@ class Component extends DCLogic {
          hue readable across the whole rail at a glance rather than only on
          whichever one is current. */
       dot: on ? "display:none"
-        : "width:8px;height:8px;border-radius:3px;flex-shrink:0;display:block;background:"
+        : "width:8px;height:8px;border-radius:4px;flex-shrink:0;display:block;background:"
           + (c.id === "top" || c.id === "counter" ? "var(--warn)" : this.catHue(c.id)),
       /* A BARE NUMERAL. It read "19 dishes" on every tab, so the word said
          nothing on any of them and cost the rail the width it needed to show
          the next section. */
       cntStyle: "font-family:'JetBrains Mono',monospace;font-size:11px;flex-shrink:0;opacity:"
         + (on ? ".62" : ".48"),
-      style: "display:inline-flex;align-items:center;gap:8px;flex-shrink:0;scroll-snap-align:start;padding:0 14px;border-radius:11px;min-height:"
+      style: "display:inline-flex;align-items:center;gap:8px;flex-shrink:0;scroll-snap-align:start;padding:0 14px;border-radius:10px;min-height:"
         + (isPhone ? 44 : 40) + "px;font-size:13px;white-space:nowrap;font-weight:" + (on ? 700 : 600)
         + ";transition:background .12s ease-out, color .12s ease-out, border-color .12s ease-out"
         + ";border:1px solid " + (on ? (c.id === "top" || c.id === "counter" ? "var(--warn)" : "transparent") : "var(--line)")
@@ -6445,7 +6454,7 @@ class Component extends DCLogic {
              grid holds three times as many of them. What stood here was a
              media band across the top and the dish's initials in it, which
              cost every card its height and told a cashier nothing. */
-          plateStyle: "position:relative;width:74px;height:74px;border-radius:12px;flex-shrink:0;overflow:hidden;"
+          plateStyle: "position:relative;width:74px;height:74px;border-radius:14px;flex-shrink:0;overflow:hidden;"
             + (photo ? "background:var(--bg-2)" : art.plate) + (off ? ";opacity:.5" : ""),
           // A blob: URL, never the data URL — see photoUrl().
           photoStyle: photo
@@ -6478,7 +6487,7 @@ class Component extends DCLogic {
              speaks only below six portions. */
           stock: showN ? (soldOut ? "SOLD OUT" : n + " LEFT") : "",
           stockStyle: showN
-            ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;"
+            ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;"
               + (soldOut ? "background:var(--red);color:#fff"
                 : n < 6 ? "background:var(--warn-dim);color:var(--warn-bright)"
                 : "background:var(--bg-2);color:var(--text-muted)")
@@ -6486,7 +6495,7 @@ class Component extends DCLogic {
           /* A BUTTON CANNOT CONTAIN A BUTTON. The card is a container, the
              face is the +1 target, and the stepper sits outside it — nesting
              them makes the markup invalid and the inner taps unreliable. */
-          style: "display:flex;flex-direction:column;border-radius:13px;overflow:hidden;background:var(--bg-1);color:var(--text);"
+          style: "display:flex;flex-direction:column;border-radius:14px;overflow:hidden;background:var(--bg-1);color:var(--text);"
             + "border-top:1px solid transparent;border-right:1px solid var(--line);border-bottom:1px solid var(--line);"
             + "border-left:3px solid " + this.catHue(m.cat) + ";"
             + "content-visibility:auto;contain-intrinsic-size:auto 132px;"
@@ -6494,13 +6503,13 @@ class Component extends DCLogic {
             + "opacity:" + (off ? ".62" : "1"),
           hover: off ? "" : "transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.26),0 14px 30px rgba(0,0,0,.20)",
           station: this.stationName(this.dishStation(m)),
-          stationStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:5px;background:"
+          stationStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;padding:2px 6px;border-radius:4px;background:"
             + "color-mix(in oklab, " + stHue + " 16%, transparent);color:" + stHue,
           // A tray at zero already wears SOLD OUT on its stock badge; doubling
           // it with an 86 tag would say the same thing twice in two colours.
           tag: off && !soldOut ? "86'd" : "",
-          tagStyle: off ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:5px;background:var(--red);color:#fff" : "display:none",
-          vegStyle: m.veg ? "width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2px var(--bg-1),inset 0 0 0 4px var(--go)" : "display:none",
+          tagStyle: off ? "font-size:12px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
+          vegStyle: m.veg ? "width:11px;height:11px;border-radius:4px;flex-shrink:0;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2px var(--bg-1),inset 0 0 0 4px var(--go)" : "display:none",
           // Colour and shape alone do not survive a screen reader, a
           // colour-blind eye or a grayscale print of the menu.
           vegLabel: m.veg ? "Vegetarian" : "",
@@ -6649,7 +6658,7 @@ class Component extends DCLogic {
             sub: isCode
               ? "Code " + ((code && code[2]) || "\u2014") + " \u00b7 " + (mins ? mins + " min ago" : "just now") + " \u00b7 read it out, then tap Done"
               : (mins ? mins + " min ago" : "just now") + (x.detail ? " \u00b7 " + x.detail : ""),
-            style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
+            style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:10px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
             /* AN ORDER IS ACCEPTED; A CALL IS ANSWERED. They are different
                acts and they had one pair of buttons: "Open table" and "On my
@@ -6699,7 +6708,7 @@ class Component extends DCLogic {
           rows.push({
             title: extra + " more waiting",
             sub: "Longest-waiting are shown first — the full list is on Requests",
-            style: "display:flex;align-items:center;gap:11px;padding:9px 13px;border-radius:11px;background:var(--bg-2);border:1px dashed var(--line)",
+            style: "display:flex;align-items:center;gap:11px;padding:9px 13px;border-radius:10px;background:var(--bg-2);border:1px dashed var(--line)",
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:var(--text-faint)",
             go: () => this.setState({ view: "requests" }),
             goLabel: "Open Requests", goStyle: GOS,
@@ -6753,7 +6762,7 @@ class Component extends DCLogic {
         const first = e[0], name = (self.outlet(first.outlet) || {}).name || "another outlet";
         const canGo = self.scopedOutlets().some((o) => o.id === first.outlet);
         return {
-          style: "display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:11px;background:var(--bg);border:1px dashed var(--line)" + (canGo ? "" : ";cursor:default"),
+          style: "display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:10px;background:var(--bg);border:1px dashed var(--line)" + (canGo ? "" : ";cursor:default"),
           title: e.length + (e.length > 1 ? " calls" : " call") + " at " + (e.length > 1 ? "other outlets" : name.replace("Kashikeyo ", "")),
           sub: canGo ? "Not yours to answer — switch outlet to see " + (e.length > 1 ? "them" : "it")
             : "Being handled by that outlet's own floor",
@@ -6775,6 +6784,14 @@ class Component extends DCLogic {
         : "display:none",
       floorEditGo: () => this.canApprove() && this.setState({ pane: edit ? "floor" : "layout" }),
       showAddTable: edit,
+      // An empty floor says what to do next, rather than a heading over nothing.
+      floorEmpty: !edit && s.pane !== "menu" && !plan.length,
+      floorEmptyText: this.canApprove()
+        ? "Add the tables guests sit at, so orders can be opened against them and the QR cards know where they are."
+        : "A manager adds the tables. Until then, orders can still be rung as takeaway from the menu.",
+      floorEmptyBtnStyle: this.canApprove()
+        ? "min-height:44px;padding:0 18px;border-radius:10px;background:var(--amber);color:var(--on-amber);font-family:inherit;font-size:13px;font-weight:700;border:0"
+        : "display:none",
       addTable: () => this.openForm("tableEdit"),
       // A zone rail only earns its row when the floor actually has zones.
       hasZones: zoneList.length > 1 || edit,
@@ -6784,7 +6801,7 @@ class Component extends DCLogic {
           const on = s.zone === z.k;
           return {
             name: z.name, count: z.count, pick: () => this.setState({ zone: z.k }),
-            style: "display:inline-flex;align-items:center;flex-shrink:0;padding:7px 13px;border-radius:20px;font-size:11.5px;font-weight:" + (on ? 700 : 600) + ";white-space:nowrap;min-height:36px;font-family:inherit;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-1)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)")
+            style: "display:inline-flex;align-items:center;flex-shrink:0;padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:" + (on ? 700 : 600) + ";white-space:nowrap;min-height:36px;font-family:inherit;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-1)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)")
           };
         })
         // On the layout pane the rail is also where zones are managed — the one
@@ -6793,7 +6810,7 @@ class Component extends DCLogic {
         .concat(edit ? [{
           name: "Manage zones", count: "",
           pick: () => this.setState({ modal: { kind: "zones" } }),
-          style: "display:inline-flex;align-items:center;flex-shrink:0;padding:7px 13px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;min-height:36px;font-family:inherit;border:1px dashed var(--line-3);background:transparent;color:var(--text-dim)"
+          style: "display:inline-flex;align-items:center;flex-shrink:0;padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;min-height:36px;font-family:inherit;border:1px dashed var(--line-3);background:transparent;color:var(--text-dim)"
         }] : []),
 
       /* Floor · Menu · Bill: three tabs, one pane. Seating a table hands you
@@ -6878,7 +6895,7 @@ class Component extends DCLogic {
             ? t.name + " has been open since a previous day — settle or void it"
             : on ? "This is the bill you are adding to" : "Switch to " + t.name + " without leaving the menu",
           dot: "width:6px;height:6px;border-radius:50%;flex-shrink:0;background:" + (stale ? "var(--text-faint)" : late ? "var(--red)" : on ? "var(--on-amber)" : "var(--warn)"),
-          style: "flex-shrink:0;display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:22px;min-height:42px;font-family:inherit;text-align:left;"
+          style: "flex-shrink:0;display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;min-height:42px;font-family:inherit;text-align:left;"
             + (on
               ? "background:var(--amber);color:var(--on-amber);border:1px solid transparent"
               : "background:var(--bg-1);color:var(--text);border:1px solid " + (late ? "var(--red-line)" : "var(--line)")),
@@ -6887,7 +6904,7 @@ class Component extends DCLogic {
       }),
       hasOpenStrip: Object.keys(s.tickets || {}).some((k) => k.indexOf(s.outletId + ":") === 0 && (s.tickets[k].lines || []).length),
       openStripStyle: "display:flex;gap:7px;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:5px;margin-bottom:" + (tight ? 8 : 11) + "px",
-      newTabStyle: "flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:22px;min-height:42px;font-family:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
+      newTabStyle: "flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;min-height:42px;font-family:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
       newTabGo: () => this.setState({ pane: "floor", cart: false }),
       menuWrapStyle: "display:flex;flex-direction:column",
       // A phone cannot run a search field and a scrolling section rail on one
@@ -6961,7 +6978,7 @@ class Component extends DCLogic {
       // sitting on the counter in front of you.
       showResume: !s.activeTable && heldN > 0,
       resumeLabel: "Resume a parked bill · " + heldN,
-      resumeStyle: "width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:8px;padding:11px 14px;border-radius:9px;min-height:44px;font-size:12px;font-weight:700;font-family:inherit;background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)",
+      resumeStyle: "width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:8px;padding:11px 14px;border-radius:10px;min-height:44px;font-size:12px;font-weight:700;font-family:inherit;background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)",
       hasFloorState: out86.length > 0,
       tableGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px;animation:"
         + (String(s.zone || "").length % 2 ? "krise" : "kriseb") + " .26s cubic-bezier(.2,.7,.3,1)",
@@ -6998,7 +7015,7 @@ class Component extends DCLogic {
           : "font-family:'JetBrains Mono',monospace"
       })),
       dishSkel: s.catBusy ? [0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
-        const sh = "background:linear-gradient(100deg,var(--bg-2) 18%,var(--bg-3) 38%,var(--bg-2) 58%);background-size:240% 100%;animation:kshimmer 1.05s linear infinite;animation-delay:" + (i % 4) * 60 + "ms;border-radius:5px";
+        const sh = "background:linear-gradient(100deg,var(--bg-2) 18%,var(--bg-3) 38%,var(--bg-2) 58%);background-size:240% 100%;animation:kshimmer 1.05s linear infinite;animation-delay:" + (i % 4) * 60 + "ms;border-radius:4px";
         return {
           style: "display:flex;flex-direction:column;background:var(--bg-1);border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:10px;overflow:hidden",
           img: sh + ";width:100%;aspect-ratio:1.55;border-radius:0",
@@ -7045,7 +7062,7 @@ class Component extends DCLogic {
       // the kitchen must honour and the phone the receipt can go to sit on the
       // ticket from the moment it opens, so nothing is asked twice.
       resStripStyle: (tk && tk.resName)
-        ? "margin-top:9px;padding:8px 11px;border-radius:9px;background:var(--info-dim);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px"
+        ? "margin-top:9px;padding:8px 11px;border-radius:10px;background:var(--info-dim);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px"
         : "display:none",
       resStripName: (tk && tk.resName) ? tk.resName + " · " + (tk.party || 2) + " covers" : "",
       resStripSub: (tk && tk.resName)
@@ -7054,7 +7071,7 @@ class Component extends DCLogic {
       resStripNote: (tk && tk.resNote) ? tk.resNote : "",
       resStripNoteStyle: (tk && tk.resNote) ? "font-size:11px;font-weight:700;color:var(--warn-bright);margin-top:3px" : "display:none",
       ticketNum: s.activeTable ? this.slotName(s.activeTable) + " / " + o.code : "—",
-      ticketChip: s.activeTable ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:var(--warn-dim);color:var(--warn-bright);white-space:nowrap" : "display:none",
+      ticketChip: s.activeTable ? "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:4px;background:var(--warn-dim);color:var(--warn-bright);white-space:nowrap" : "display:none",
       ticketChipText: tk ? this.tkAge(tk) + "m open" : "",
       hasTicket: !!s.activeTable,
       ticketEmpty: !s.activeTable || !lines.length,
@@ -7077,7 +7094,7 @@ class Component extends DCLogic {
       // prints on the receipt. So it lives on the bill, as one segmented
       // control, always visible: pick Takeaway with nothing open and a takeaway
       // ticket opens; pick it on a live dine-in bill and the bill converts.
-      orderTypeRowStyle: "display:flex;gap:3px;padding:3px;margin-top:" + (tight ? 6 : 10) + "px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);min-height:" + (isPhone ? 46 : 40) + "px",
+      orderTypeRowStyle: "display:flex;gap:3px;padding:3px;margin-top:" + (tight ? 6 : 10) + "px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);min-height:" + (isPhone ? 46 : 40) + "px",
       orderTypes: [
         { k: "dine_in", label: "Dine-in", icon: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12" },
         { k: "qr", label: "QR", icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 15h5v5h-5z" },
@@ -7114,7 +7131,7 @@ class Component extends DCLogic {
             this.toast("Pick a table for a " + c.label.toLowerCase() + " bill");
           },
           style: "flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;padding:" + (tight ? "6px 2px" : "7px 3px")
-            + ";border-radius:7px;font-size:11px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (isPhone ? 40 : tight ? 34 : 36) + "px;"
+            + ";border-radius:8px;font-size:11px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (isPhone ? 40 : tight ? 34 : 36) + "px;"
             + (on ? "background:var(--warn-dim);color:var(--warn-bright);box-shadow:inset 0 0 0 1px var(--warn-line)" : "background:transparent;color:var(--text-dim)")
         };
       }),
@@ -7152,7 +7169,7 @@ class Component extends DCLogic {
       },
       openHeld: () => this.setState({ modal: { kind: "held" } }),
       heldBtnLabel: heldN ? "Parked bills · " + heldN : "Parked bills · 0",
-      heldBtnStyle: "padding:6px 13px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--warn-line)" : "var(--line)") + ";background:" + (heldN ? "var(--warn-dim)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--warn-bright)" : "var(--text-dim)"),
+      heldBtnStyle: "padding:6px 13px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--warn-line)" : "var(--line)") + ";background:" + (heldN ? "var(--warn-dim)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--warn-bright)" : "var(--text-dim)"),
       fire: () => {
         if (!unfired) { this.toast("Nothing new to fire", "warn"); return; }
         const t0 = this.ticket() || {};
@@ -7363,7 +7380,7 @@ class Component extends DCLogic {
       toastMsg: s.toast ? s.toast.msg : "",
       // A toast is centred on the viewport, so a long message has to be told it
       // cannot grow past it — otherwise both ends run off screen on a phone.
-      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:24px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
+      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
       hasModal: !!s.modal,
       // A lock is not a modal: it has no close, no scrim dismissal and no
       // escape. Anything else makes the PIN decorative.
@@ -7584,7 +7601,7 @@ class Component extends DCLogic {
           { k: "credit", label: "Customer credit", sub: "Registered accounts" }
         ].filter((t) => this.tenderLive(t.k)).map((t) => ({
           label: t.label, sub: t.sub, pick: () => this.setState({ modal: Object.assign({}, m, { tender: t.k }) }),
-          style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:9px;border:1px solid " + (m.tender === t.k ? "var(--text)" : "var(--line)") + ";background:" + (m.tender === t.k ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (m.tender === t.k ? "var(--text)" : "var(--text-dim)")
+          style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:10px;border:1px solid " + (m.tender === t.k ? "var(--text)" : "var(--line)") + ";background:" + (m.tender === t.k ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (m.tender === t.k ? "var(--text)" : "var(--text-dim)")
         })),
         /* ── the evidence ────────────────────────────────────────────────
            The reference the PROCESSOR issues, named the way that processor
@@ -7601,7 +7618,7 @@ class Component extends DCLogic {
            Where the guest's quoted figure exceeds the bill actually being
            settled — a split — it says so: two money figures that disagree
            without explanation is exactly what this build avoids elsewhere. */
-        askedStyle: (tk && tk.payIntent) ? "margin-bottom:12px;padding:10px 12px;border-radius:9px;background:var(--info-dim);border:1px solid var(--line);font-size:11.5px;line-height:1.55;color:var(--blue-bright)" : "display:none",
+        askedStyle: (tk && tk.payIntent) ? "margin-bottom:12px;padding:10px 12px;border-radius:10px;background:var(--info-dim);border:1px solid var(--line);font-size:11.5px;line-height:1.55;color:var(--blue-bright)" : "display:none",
         asked: (() => {
           const pi = (tk || {}).payIntent;
           if (!pi) return "";
@@ -7641,7 +7658,7 @@ class Component extends DCLogic {
               ? payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + blockPts + " = " + MVRc(blockVal)
               : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 not enough for a block")
           : "",
-        ptsStyle: "width:100%;padding:11px 13px;border-radius:9px;font-size:12px;font-weight:700;text-align:left;font-family:inherit;border:1px solid "
+        ptsStyle: "width:100%;padding:11px 13px;border-radius:10px;font-size:12px;font-weight:700;text-align:left;font-family:inherit;border:1px solid "
           + (blocks ? "var(--violet-bright)" : "var(--line)") + ";background:"
           + (blocks ? "var(--violet-dim)" : "var(--bg-2)") + ";color:"
           + (blocks ? "var(--violet-bright)" : maxBlocks ? "var(--text)" : "var(--text-faint)"),
@@ -7695,7 +7712,7 @@ class Component extends DCLogic {
             label: x.label,
             sub: x.v > due ? "change " + MVRc(x.v - due) : "no change",
             pick: () => self.setState({ modal: Object.assign({}, m, { given: String(Math.round(x.v * 100) / 100) }) }),
-            style: "display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 13px;border-radius:9px;min-height:44px;justify-content:center;font-family:inherit;flex:1 0 auto;border:1px solid "
+            style: "display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 13px;border-radius:10px;min-height:44px;justify-content:center;font-family:inherit;flex:1 0 auto;border:1px solid "
               + (Math.abs((+m.given || 0) - x.v) < 0.005 ? "var(--text);background:var(--bg-3);color:var(--text)" : "var(--line);background:var(--bg-2);color:var(--text-dim)")
           }));
         })(this),
@@ -7971,7 +7988,7 @@ class Component extends DCLogic {
     // attributable to a person rather than to "the terminal".
     if (m.kind === "lock") {
       const PINS = K().ROLE_PINS || {};
-      const av = (c) => "width:34px;height:34px;flex-shrink:0;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:800;letter-spacing:.02em;background:var(--bg-3);color:" + (c || "var(--warn-bright)");
+      const av = (c) => "width:34px;height:34px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;font-size:11px;font-weight:800;letter-spacing:.02em;background:var(--bg-3);color:" + (c || "var(--warn-bright)");
       const ini = (n) => n.split(" ").map((x) => x[0]).slice(0, 2).join("");
       if (!m.who) {
         const users = (K().USERS || []).filter((u) => u.status === "Active" && (!u.outlet || u.outlet === s.outletId || this.roleIsChainWide()));
@@ -8014,7 +8031,7 @@ class Component extends DCLogic {
              their shift. It carries the COUNT, so the screen states the size of
              the roll without an element of its own. */
           lockFindStyle: users.length > 8
-            ? "width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 13px;font-size:13px;color:var(--text);outline:none;min-height:44px"
+            ? "width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 13px;font-size:13px;color:var(--text);outline:none;min-height:44px"
             : "display:none",
           lockFindHint: "Find your name — " + users.length + " on this roll",
           lockFindVal: m.find || "",
@@ -8027,14 +8044,14 @@ class Component extends DCLogic {
               + users.length + "."
             : (!users.length ? "Nobody is on this outlet's roll yet — a manager adds people under Users & Roles." : ""),
           lockNoneStyle: (find && !shown.length) || !users.length
-            ? "font-size:11.5px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:9px;padding:10px 12px;line-height:1.6"
+            ? "font-size:11.5px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:10px;padding:10px 12px;line-height:1.6"
             : "display:none",
           lockStaff: shown.map((u) => ({
             name: u.name, role: roleOf(u).label || u.role, ini: ini(u.name),
             av: av(this.tone(roleOf(u).color)),
             pin: "PIN " + (u.pin || "----"),
-            pinStyle: "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--warn-bright);background:var(--warn-dim);padding:5px 9px;border-radius:7px",
-            style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
+            pinStyle: "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--warn-bright);background:var(--warn-dim);padding:5px 9px;border-radius:8px",
+            style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
             /* THE ID, NEVER `user`. `userOf()` derives `user` from the LAST
                WORD of the name, so every Ibrahim on the floor shares one — and
                the PIN pad, which looks the row up by it, drew the FIRST match.
@@ -8054,7 +8071,7 @@ class Component extends DCLogic {
             ? "Now tap an admin or owner's name and key their PIN. This ends the session on the outlet, clears this terminal and returns to the sign-in page. Undelivered work is kept and goes when somebody signs in again."
             : (m.refused || ""),
           lockSignOutNoteStyle: (s.signOutIntent || m.refused)
-            ? "font-size:11px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:9px;padding:9px 11px;line-height:1.6;margin-top:8px"
+            ? "font-size:11px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:10px;padding:9px 11px;line-height:1.6;margin-top:8px"
             : "display:none",
           lockSignOutLabel: s.signOutIntent ? "Cancel \u2014 keep this terminal signed in" : "Sign out of this terminal\u2026",
           lockSignOutStyle: "width:100%;margin-top:8px;padding:10px 13px;border-radius:10px;min-height:44px;font-size:11.5px;font-weight:600;text-align:center;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
@@ -8068,7 +8085,7 @@ class Component extends DCLogic {
       const held = this.lockoutLeft();
       const entered = held ? "" : (m.pin || "");
       const key = (d) => ({
-        label: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
+        label: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
           + (held ? ";opacity:.35" : ""),
         go: () => held ? this.toast("Held for " + held + " more minute" + (held === 1 ? "" : "s"), "warn") : this.pinType(d)
       });
@@ -8092,7 +8109,7 @@ class Component extends DCLogic {
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
           { label: "", style: "visibility:hidden", go: () => {} },
           key("0"),
-          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:11px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
+          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
         ])
       };
     }
@@ -8398,8 +8415,8 @@ class Component extends DCLogic {
       const K0 = K(), mod = (K0.MODULES || []).find((x) => x.key === m.mod) || { key: m.mod, label: m.mod };
       const lvlOf = (p) => !p || !p.v ? "\u2014" : (p.a && p.e && p.d) ? "CRUD" : (p.a || p.e) ? "RW" : "R";
       const words = { "\u2014": "Never appears", "R": "Read only", "RW": "Read, add and edit", "CRUD": "Full, including delete" };
-      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
-      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
+      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
       return {
         modalTitle: mod.label, modalSub: "What each rank reaches here \u00b7 read-only",
         moreActions: (K0.ROLES || []).map((r) => {
@@ -8442,7 +8459,7 @@ class Component extends DCLogic {
           note: l.note ? "** " + String(l.note).toUpperCase() + " **" : "",
           noteStyle: l.note ? "font-size:13px;font-weight:800;margin-top:3px;letter-spacing:.02em" : "display:none",
           stn: split ? stnOf(l).toUpperCase() : "",
-          stnStyle: split ? "font-size:11px;font-weight:800;letter-spacing:.1em;margin-top:4px;padding:2px 6px;border:1px solid var(--paper-ink);border-radius:3px;display:inline-block" : "display:none"
+          stnStyle: split ? "font-size:11px;font-weight:800;letter-spacing:.1em;margin-top:4px;padding:2px 6px;border:1px solid var(--paper-ink);border-radius:4px;display:inline-block" : "display:none"
         })),
         kotFoot: lines.reduce((a, l) => a + l.qty, 0) + " items · fired " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
         kotDoneLabel: "Done — back to the floor",
@@ -8520,7 +8537,7 @@ class Component extends DCLogic {
         countCats: m.stage === 2 ? [] : (raw.cats || []).slice(0, 8).map((c) => ({
           name: c.name, sub: (c.items || 0) + " item" + (c.items === 1 ? "" : "s") + " \u00b7 counted " + (c.freq || "weekly"),
           pick: () => { const n = sel.indexOf(c.id) >= 0 ? sel.filter((x) => x !== c.id) : sel.concat([c.id]); this.setState({ modal: Object.assign({}, m, { cats: n }) }); },
-          style: "display:flex;flex-direction:column;align-items:flex-start;padding:11px 13px;border-radius:9px;border:1px solid " + (sel.indexOf(c.id) >= 0 ? "var(--text)" : "var(--line)") + ";background:" + (sel.indexOf(c.id) >= 0 ? "var(--bg-3)" : "var(--bg-2)")
+          style: "display:flex;flex-direction:column;align-items:flex-start;padding:11px 13px;border-radius:10px;border:1px solid " + (sel.indexOf(c.id) >= 0 ? "var(--text)" : "var(--line)") + ";background:" + (sel.indexOf(c.id) >= 0 ? "var(--bg-3)" : "var(--bg-2)")
         })),
         countCatsStyle: m.stage === 2 ? "display:none" : "display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px",
         countSheetStyle: m.stage === 2 ? "display:flex;flex-direction:column;gap:7px;max-height:min(46dvh,380px);overflow-y:auto" : "display:none",
@@ -8576,7 +8593,7 @@ class Component extends DCLogic {
            truncates at its own semicolon and paints nothing. */
         dbArt: this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }),
         dbPhoto: this.photoUrl(d.img),
-        dbArtStyle: "position:relative;width:74px;height:74px;border-radius:13px;flex-shrink:0;overflow:hidden;border:1px solid var(--line);"
+        dbArtStyle: "position:relative;width:74px;height:74px;border-radius:14px;flex-shrink:0;overflow:hidden;border:1px solid var(--line);"
           + (d.img ? "background:var(--bg-2)" : this.artifact({ id: m.id || d.name || "new", cat: d.cat, name: d.name }, { rich: 1 }).plate),
         dbArtPhoto: d.img
           ? "position:absolute;inset:0;background-image:url(" + this.photoUrl(d.img) + ");background-size:cover;background-position:center"
@@ -8653,8 +8670,8 @@ class Component extends DCLogic {
           const on = custom && d.addons.indexOf(a.id) >= 0;
           return {
             label: a.name, price: a.price ? "+" + MVR(a.price) : "free",
-            style: "display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:9px;text-align:left;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--bg-3)" : "var(--bg-2)"),
-            box: "width:20px;height:20px;border-radius:5px;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;border:1px solid " + (on ? "var(--text)" : "var(--line-3)") + ";background:" + (on ? "var(--text)" : "transparent") + ";color:var(--bg)",
+            style: "display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;text-align:left;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--bg-3)" : "var(--bg-2)"),
+            box: "width:20px;height:20px;border-radius:4px;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;border:1px solid " + (on ? "var(--text)" : "var(--line-3)") + ";background:" + (on ? "var(--text)" : "transparent") + ";color:var(--bg)",
             tick: on ? "\u2713" : "",
             go: () => put({ addons: on ? (d.addons || []).filter((x) => x !== a.id) : (d.addons || []).concat([a.id]) })
           };
@@ -8671,7 +8688,7 @@ class Component extends DCLogic {
         dbBuyNote: d.buy
           ? "Hedhika, pastries, bottled drinks \u2014 anything that arrives ready to sell. One sale takes one unit off the count below, and the dish costs what the supplier charged."
           : "Its ingredients leave the shelf through its recipe, and its food cost is built from them.",
-        dbBuyStyle: d.buy ? "display:flex;flex-direction:column;gap:9px;margin-top:9px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
+        dbBuyStyle: d.buy ? "display:flex;flex-direction:column;gap:9px;margin-top:9px;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)" : "display:none",
         dbBuyItem: String((d.buy || {}).item || ""),
         /* THE WAY THROUGH IS IN THE LIST. Offered always, not only on an empty
            store: a new tray from a new supplier is the ordinary case too, and
@@ -8749,13 +8766,13 @@ class Component extends DCLogic {
         dbQrLabel: d.qrOff ? "Off the QR menu" : "On the QR menu",
         dbQrSub: d.qrOff ? "The counter can still ring it \u2014 guests scanning the code are not offered it."
           : "Guests can order it from the table QR menu and the member portal.",
-        dbQrTrack: "width:38px;height:21px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (!d.qrOff ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.qrOff ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.qrOff ? "flex-end" : "flex-start"),
+        dbQrTrack: "width:38px;height:21px;flex-shrink:0;border-radius:999px;padding:2px;display:flex;transition:.15s;background:" + (!d.qrOff ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.qrOff ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.qrOff ? "flex-end" : "flex-start"),
         dbQrKnob: "width:17px;height:17px;border-radius:50%;background:" + (!d.qrOff ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s",
         dbQrGo: () => put({ qrOff: !d.qrOff }),
         dbHidLabel: d.hidden ? "Hidden from every channel" : "Live on the menu",
         dbHidSub: d.hidden ? "Nobody sees it \u2014 till, QR menu and printed list alike. Use 86 on the floor for tonight's stock instead."
           : "Showing at the till, in the QR menu and on the printed list.",
-        dbHidTrack: "width:38px;height:21px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (!d.hidden ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.hidden ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.hidden ? "flex-end" : "flex-start"),
+        dbHidTrack: "width:38px;height:21px;flex-shrink:0;border-radius:999px;padding:2px;display:flex;transition:.15s;background:" + (!d.hidden ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!d.hidden ? "var(--text)" : "var(--line)") + ";justify-content:" + (!d.hidden ? "flex-end" : "flex-start"),
         dbHidKnob: "width:17px;height:17px;border-radius:50%;background:" + (!d.hidden ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s",
         dbHidGo: () => put({ hidden: !d.hidden }),
         dbCostNote: d.buy && String((d.buy || {}).item || "")
@@ -8886,7 +8903,7 @@ class Component extends DCLogic {
         cbName: c.name || "", onCbName: (e) => put({ name: e.target.value }),
         cbColors: swatches.map((hex) => ({
           go: () => put({ color: hex }),
-          style: "width:30px;height:30px;border-radius:9px;flex-shrink:0;background:" + hex + ";box-shadow:0 0 0 " + (curColor === hex ? "2px var(--bg-1), 0 0 0 4px var(--text)" : "1px rgba(0,0,0,.14)")
+          style: "width:30px;height:30px;border-radius:10px;flex-shrink:0;background:" + hex + ";box-shadow:0 0 0 " + (curColor === hex ? "2px var(--bg-1), 0 0 0 4px var(--text)" : "1px rgba(0,0,0,.14)")
         })),
         cbColorNote: (c.color || c.icon ? "" : "Matched to the section's type from its name \u2014 pick a swatch or glyph only to override it. ")
           + "This hue bands the till grid, tints the artifact on dishes with no photograph, and colours the KDS rail.",
@@ -8894,7 +8911,7 @@ class Component extends DCLogic {
         cbStations: this.STATIONS().map((st) => ({ label: st[1], style: pill(c.station === st[0]), go: () => put({ station: st[0] }) })),
         cbHidLabel: c.hidden ? "Hidden section" : "Shown on the menu",
         cbHidSub: c.hidden ? "Its dishes disappear from the till, the QR menu and the printed list." : "Guests and cashiers both see this section.",
-        cbHidTrack: "width:38px;height:21px;flex-shrink:0;border-radius:20px;padding:2px;display:flex;transition:.15s;background:" + (!c.hidden ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!c.hidden ? "var(--text)" : "var(--line)") + ";justify-content:" + (!c.hidden ? "flex-end" : "flex-start"),
+        cbHidTrack: "width:38px;height:21px;flex-shrink:0;border-radius:999px;padding:2px;display:flex;transition:.15s;background:" + (!c.hidden ? "var(--text)" : "var(--bg-2)") + ";border:1px solid " + (!c.hidden ? "var(--text)" : "var(--line)") + ";justify-content:" + (!c.hidden ? "flex-end" : "flex-start"),
         cbHidKnob: "width:17px;height:17px;border-radius:50%;background:" + (!c.hidden ? "var(--bg)" : "var(--text-faint)") + ";transition:.15s",
         cbHidGo: () => put({ hidden: !c.hidden }),
         cbSaveLabel: m.id ? "Save section" : "Create section",
@@ -9070,7 +9087,7 @@ class Component extends DCLogic {
         })(),
         ioModeStyle: "font-size:11.5px;line-height:1.55;color:var(--text-dim)"
           + (md === "replace" ? ";color:var(--warn-bright);font-weight:600" : ""),
-        ioPlanStyle: (m.text || "").trim() ? "display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:11px;background:var(--bg);border:1px solid var(--line)" : "display:none",
+        ioPlanStyle: (m.text || "").trim() ? "display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)" : "display:none",
         ioPlanRows: plan ? (() => {
           const mono = (c) => "font-weight:700;font-family:'JetBrains Mono',monospace;color:" + c;
           const nSec = plan.secAdd.length + plan.secUpd.length;
@@ -9186,7 +9203,7 @@ class Component extends DCLogic {
             del: () => set({ lines: lines.filter((x, j) => j !== i) })
           };
         }),
-        rbEmptyStyle: lines.length ? "display:none" : "padding:22px 16px;text-align:center;color:var(--text-faint);font-size:12px;line-height:1.6;border:1px dashed var(--line-2);border-radius:11px",
+        rbEmptyStyle: lines.length ? "display:none" : "padding:22px 16px;text-align:center;color:var(--text-faint);font-size:12px;line-height:1.6;border:1px dashed var(--line-2);border-radius:10px",
         rbEmpty: "Search below and tap an item to add it as the first line.",
         rbResults: pool.slice(0, 7).map((it) => ({
           name: it[2],
@@ -9203,7 +9220,7 @@ class Component extends DCLogic {
            nothing makes the dish look free and quietly poisons every food-cost
            figure that reads it. */
         rbNewStyle: (m.q || "").trim().length >= 2 && !pool.length
-          ? "margin-top:9px;padding:12px;border:1px dashed var(--line-2);border-radius:11px"
+          ? "margin-top:9px;padding:12px;border:1px dashed var(--line-2);border-radius:10px"
           : "display:none",
         rbNewSay: "Nothing in the item master matches \u201c" + (m.q || "").trim()
           + "\u201d. Create it without losing this recipe \u2014 what does it cost, and what is it bought by?",
@@ -9320,7 +9337,7 @@ class Component extends DCLogic {
               label: f.label, wrap: "grid-column:1/-1",
               isImage: true, isText: false, isSelect: false, isLines: false,
               value: "", options: [],
-              imgHolderStyle: "position:relative;border:2px dashed var(--line-3);border-radius:12px;background:var(--bg-2);overflow:hidden;display:grid;place-items:center;min-height:" + (f.tall || 120) + "px",
+              imgHolderStyle: "position:relative;border:2px dashed var(--line-3);border-radius:14px;background:var(--bg-2);overflow:hidden;display:grid;place-items:center;min-height:" + (f.tall || 120) + "px",
               imgPreview: cur ? this.photoUrl(cur) : "",
               imgPreviewStyle: cur ? "position:absolute;inset:0;width:100%;height:100%;object-fit:" + (f.fit || "cover") : "display:none",
               imgEmptyStyle: cur ? "display:none" : "text-align:center;padding:18px 14px",
@@ -9354,7 +9371,7 @@ class Component extends DCLogic {
         // size somebody can actually proofread at, so a spec can ask for that.
         formFoot: typeof spec.foot === "function" ? spec.foot() : spec.foot,
         formFootStyle: spec.footPre
-          ? "margin-top:12px;padding:12px 13px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);font-size:11.5px;color:var(--text-dim);line-height:1.65;white-space:pre-wrap;max-height:280px;overflow:auto"
+          ? "margin-top:12px;padding:12px 13px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:11.5px;color:var(--text-dim);line-height:1.65;white-space:pre-wrap;max-height:280px;overflow:auto"
           : "margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6",
         // A restore overwrites the chain. It cannot look like Save chain.
         formSaveStyle: "margin-top:14px;" + this.btn(spec.danger ? "tonal-danger" : "solid-brand", { size: "md", full: 1, fs: 12.5 }),
@@ -9376,8 +9393,8 @@ class Component extends DCLogic {
         onGuestName: (e) => { const v = e.target.value; this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { name: v }); }); },
         pickWalkin: () => this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { type: "walkin", custId: null }); }),
         pickMember: () => this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { type: "member" }); }),
-        walkinStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "walkin" ? "var(--text)" : "var(--line)") + ";background:" + (g.type === "walkin" ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (g.type === "walkin" ? "var(--text)" : "var(--text-dim)"),
-        memberStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "member" ? "var(--text)" : "var(--line)") + ";background:" + (g.type === "member" ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (g.type === "member" ? "var(--text)" : "var(--text-dim)"),
+        walkinStyle: "flex:1;padding:11px;border-radius:10px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "walkin" ? "var(--text)" : "var(--line)") + ";background:" + (g.type === "walkin" ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (g.type === "walkin" ? "var(--text)" : "var(--text-dim)"),
+        memberStyle: "flex:1;padding:11px;border-radius:10px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "member" ? "var(--text)" : "var(--line)") + ";background:" + (g.type === "member" ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (g.type === "member" ? "var(--text)" : "var(--text-dim)"),
         nameWrapStyle: g.type === "walkin" ? "margin-top:14px" : "display:none",
         memberWrapStyle: g.type === "member" ? "margin-top:14px" : "display:none",
         guestCust: g.custId || "",
@@ -9415,8 +9432,8 @@ class Component extends DCLogic {
     // ticket on it is not offered — merging two live bills is a different
     // decision, and quietly stacking them would lose one.
     if (m.kind === "periodPick") {
-      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
-      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
+      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+      const on = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--text);background:var(--bg-3);color:var(--text);width:100%;text-align:left";
       const closed = this.closedPeriods();
       return {
         modalTitle: "Accounting period", modalSub: "Which month the books are being read for",
@@ -9436,8 +9453,8 @@ class Component extends DCLogic {
     }
     if (m.kind === "zones") {
       const plan = this.floorTables(), zones = this.floorZones();
-      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
-      const add = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px dashed var(--line-3);background:transparent;color:var(--text-dim);width:100%;text-align:left";
+      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+      const add = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px dashed var(--line-3);background:transparent;color:var(--text-dim);width:100%;text-align:left";
       return {
         modalTitle: "Zones", modalSub: zones.length + " zone" + (zones.length === 1 ? "" : "s") + " · " + plan.length + " tables between them",
         moreActions: zones.map((z) => {
@@ -9456,7 +9473,7 @@ class Component extends DCLogic {
     if (m.kind === "move") {
       const from = m.from, plan = this.floorTables();
       const free = plan.filter((tb) => tb.n !== from && !s.tickets[s.outletId + ":" + tb.n]);
-      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+      const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
       return {
         modalTitle: "Move " + this.slotName(from), modalSub: free.length ? "Pick the table it is moving to" : "Every other table is in use",
         moreActions: free.map((tb) => ({
@@ -9869,7 +9886,7 @@ class Component extends DCLogic {
         modalTitle: m.title, modalSub: m.sub,
         detailRows: (m.rows || []).map((r) => (r[2] === "t" ? Rt(r[0], r[1]) : R(r[0], r[1], r[2]))),
         detailNote: m.note || "",
-        detailNoteStyle: m.note ? "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" : "display:none",
+        detailNoteStyle: m.note ? "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px" : "display:none",
         hasAvatar: !!m.avatar,
         avPhotoStyle: m.avatar ? m.avatar.photoStyle : "display:none",
         avFallbackStyle: m.avatar ? m.avatar.fallbackStyle : "display:none",
@@ -9915,7 +9932,7 @@ class Component extends DCLogic {
         modalTitle: o.name, modalSub: o.code + " · " + (o.region || ""),
         detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Store address", url || "Not set"), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", this.taxLine(o) || "Not registered", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
         detailNote: "This outlet and its stock sub-locations are " + [o.id].concat(kids.map((k) => k.id)).join(", ") + ". A staff token names ONE outlet and the request is refused if the path names another; reaching a sub-location is a separate sign-in, not a wider claim.",
-        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
+        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px"
       };
     }
     if (m.kind === "user") {
@@ -9947,7 +9964,7 @@ class Component extends DCLogic {
         modalTitle: u.name, modalSub: "@" + u.user + " · " + (r.label || ""),
         detailRows: [Rt("Role", r.label || "", this.tone(r.color)), Rt("Scope", r.scope || ""), Rt("Home outlet", o ? o.name : "Chain-wide"), Rt("Status", u.status), Rt("Last seen", u.last), R("Modules visible", mods + " / " + (K0.MODULES || []).length), Rt("Can write money", ((r.perms || {}).pos || {}).a ? "Yes" : "No", ((r.perms || {}).pos || {}).a ? "var(--warn-bright)" : "var(--green)"), Rt("Sees cost price", u.role === "Cashier" ? "No — column masked" : "Yes")],
         detailNote: r.blurb || "",
-        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
+        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px"
       };
     }
     if (m.kind === "customer") {
@@ -10026,7 +10043,7 @@ class Component extends DCLogic {
           c.email ? "var(--text)" : "var(--text-muted)"),
           R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", this.inviteState(c), this.inviteTone(c)), Rt("Signed in", c.seen ? c.seen : "Never")],
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
-        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
+        detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px"
       };
     }
     if (m.kind === "dish") {
@@ -10041,7 +10058,7 @@ class Component extends DCLogic {
           style: "flex:1 1 170px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:600;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid " + (this.priceOv(d.id) === undefined ? "var(--line)" : "var(--warn-line)") + ";color:" + (this.priceOv(d.id) === undefined ? "var(--text)" : "var(--warn-bright)"),
           go: () => this.openForm("outletPrice", d)
         }] : [],
-        modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against this outlet's own ingredient and item rows, so a vendor price change on the next priced delivery re-averages the cost and recosts this dish.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
+        modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against this outlet's own ingredient and item rows, so a vendor price change on the next priced delivery re-averages the cost and recosts this dish.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px" };
     }
     const it = this.item(m.id) || [];
     const raw = window.KPOS_RAW || {};
@@ -10051,7 +10068,7 @@ class Component extends DCLogic {
       modalTitle: this.itemName(m.id), modalSub: (it[6] || "") + " · " + (it[5] || ""),
       detailRows: [Rt("Item code", it[6] || "—"), Rt("Base unit", it[7] || "—"), Rt("Stock unit", it[8] || "—"), R("Unit cost", MVR(it[4] || 0) + " / " + (it[8] || ""), "var(--warn-bright)"), Rt("Storage", it[9] || "—"), R("Shelf life", (it[10] || 0) + " days"), Rt("Sellable", it[11] ? "Yes" : "No"), Rt("Recipe item", it[12] ? "Yes" : "No")].concat(rowsAt.map((r) => R("· " + this.locName(r[0]), (Math.round(this.stockQty(it, r[2]) * 100) / 100) + " " + (it[8] || ""), "var(--text-dim)"))),
       detailNote: "Cost is a moving average, recalculated on every GRN line. Consumption deducts against it at the moment a ticket closes.",
-      detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
+      detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:10px"
     };
   }
   // ── Chain ────────────────────────────────────────────────────────────────
@@ -10224,7 +10241,7 @@ class Component extends DCLogic {
       cols: [{ label: "Queue", w: ".8fr" }, { label: "Waiting", w: "1fr" }, { label: "What it is", w: "2.6fr" }, { label: "References", w: "1.4fr", mono: 1 }, { label: "", w: ".6fr", a: "right" }],
       rows: work.map((w) => ({
         go: w.go,
-        cells: [w.t, { t: w.ref, chip: w.tone === "a" ? ["var(--warn-dim)", "var(--warn-bright)"] : w.tone === "b" ? ["var(--info-dim)", "var(--blue-bright)"] : ["var(--ok-dim)", "var(--green)"] }, w.what, { t: w.who, mono: 1, c: "var(--text-dim)" }, { t: "Open", c: "var(--text-dim)" }]
+        cells: [w.t, { t: w.ref, chip: w.tone === "a" ? ["var(--warn-dim)", "var(--warn-bright)"] : w.tone === "b" ? ["var(--info-dim)", "var(--blue-bright)"] : ["var(--ok-dim)", "var(--green)"] }, w.what, { t: w.who, mono: 1, c: "var(--text-dim)" }, { t: "Open ›", c: "var(--blue-bright)", w: 700 }]
       })),
       notes: [
         [kind === "store" ? "This location does not sell" : "This kitchen does not sell",
@@ -12141,13 +12158,13 @@ class Component extends DCLogic {
 
     V.ownScore = scored ? String(score) : "\u2014";
     V.ownScoreStyle = "flex-shrink:0;width:" + (isM ? "62px" : "74px") + ";text-align:center;padding:"
-      + (isM ? "9px 6px" : "12px 8px") + ";border-radius:12px;background:var(--bg-2);border:1px solid var(--line)";
+      + (isM ? "9px 6px" : "12px 8px") + ";border-radius:14px;background:var(--bg-2);border:1px solid var(--line)";
     V.ownScoreNum = "font-size:" + (isM ? "23px" : "27px") + ";font-weight:800;letter-spacing:-0.04em;"
       + "font-family:'JetBrains Mono',monospace;line-height:1;color:" + toneCol(tone);
-    V.ownHeroStyle = "background:var(--bg-1);border:1px solid var(--line);border-radius:13px;display:flex;"
+    V.ownHeroStyle = "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;display:flex;"
       + "align-items:flex-start;gap:" + (isM ? "12px" : "16px") + ";padding:" + (isM ? "14px" : "16px 18px");
     V.ownScopeChip = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;min-width:0;"
-      + "padding:3px 8px;border-radius:20px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);"
+      + "padding:3px 8px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);"
       + (isM ? "line-height:1.45" : "white-space:nowrap");
     V.ownScope = onToday
       ? (isM ? "Rank 5 · read only" : "Rank 5 · group scope · read only")
@@ -12222,7 +12239,7 @@ class Component extends DCLogic {
     V.ownTrendVal = comparable ? (d.growth >= 0 ? "+" : "") + d.growth.toFixed(1) + "% week on week" : "";
     V.ownTrendChip = comparable
       ? "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;"
-        + "border-radius:20px;white-space:nowrap;flex-shrink:0;background:var(--bg-2);border:1px solid var(--line);color:"
+        + "border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--bg-2);border:1px solid var(--line);color:"
         + (d.growth >= 0 ? "var(--go-bright)" : "var(--red-bright)")
       : "display:none";
     V.ownTrendFoot = traded > 1
@@ -12291,7 +12308,7 @@ class Component extends DCLogic {
       ["Overheads", d.opexDay, "var(--line-3)"], ["Profit", Math.max(0, d.profit), "var(--go)"]];
     const segT = seg.reduce((a, x) => a + x[1], 0) || 1;
     V.ownBar = seg.map((x) => ({ style: "width:" + ((x[1] / segT) * 100) + "%;background:" + x[2], title: x[0] + " " + MVRc(x[1]) }));
-    V.ownBarKeys = seg.map((x) => ({ label: x[0], sw: "width:8px;height:8px;border-radius:2px;background:" + x[2] }));
+    V.ownBarKeys = seg.map((x) => ({ label: x[0], sw: "width:8px;height:8px;border-radius:4px;background:" + x[2] }));
 
     // ── money position ──────────────────────────────────────────────────
     const todays = (s.settled || []).filter((r) => (r.bizDate || r.date || this.today()) === dayKey);
@@ -12354,7 +12371,7 @@ class Component extends DCLogic {
     V.ownDecEmpty = !dec.length;
     V.ownDecEmptyText = "Every approval, price and variance today sat inside the limits your managers already hold. Nothing has been escalated.";
     V.ownDecCount = dec.length ? String(dec.length) : "clear";
-    V.ownDecChip = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;"
+    V.ownDecChip = "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:999px;"
       + (dec.length ? "background:var(--bad-dim);color:var(--red-bright);border:1px solid var(--red-line)"
         : "background:var(--ok-dim);color:var(--green);border:1px solid var(--go-line)");
     V.ownDecRow = "display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 0;border-top:1px solid var(--line-soft);min-height:44px";
@@ -12393,7 +12410,7 @@ class Component extends DCLogic {
   analyticsVals() {
     const s = this.state, isM = this.effBp() === "m", rail = this.effBp() === "t";
     const d = this.analyticsData(), f = this.cfoFindings(d);
-    const chip = (t) => "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;" +
+    const chip = (t) => "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:999px;white-space:nowrap;flex-shrink:0;" +
       (t === "g" ? "background:var(--ok-dim);color:var(--green);border:1px solid var(--go-line)"
         : t === "r" ? "background:var(--bad-dim);color:var(--red-bright);border:1px solid var(--red-line)"
           : t === "a" ? "background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)"
@@ -12486,7 +12503,7 @@ class Component extends DCLogic {
     return {
       anaPadStyle: "flex:1;overflow-y:auto;min-height:0;background:var(--bg);padding:" + (isM ? "13px 13px 28px" : "16px 20px 28px"),
       cfoHeadStyle: "display:flex;align-items:flex-start;gap:" + (isM ? "13px" : "17px") + ";padding:" + (isM ? "14px 15px" : "17px 19px") + ";border-bottom:1px solid var(--line);background:linear-gradient(100deg,var(--warn-dim),transparent 62%)",
-      cfoScoreStyle: "flex-shrink:0;width:" + (isM ? "62px" : "74px") + ";text-align:center;padding:" + (isM ? "8px 0" : "11px 0") + ";border-radius:12px;background:var(--bg);border:1px solid " + (f.score >= 85 ? "var(--ok-dim)" : f.score >= 70 ? "var(--warn-line)" : "var(--red-line)"),
+      cfoScoreStyle: "flex-shrink:0;width:" + (isM ? "62px" : "74px") + ";text-align:center;padding:" + (isM ? "8px 0" : "11px 0") + ";border-radius:14px;background:var(--bg);border:1px solid " + (f.score >= 85 ? "var(--ok-dim)" : f.score >= 70 ? "var(--warn-line)" : "var(--red-line)"),
       cfoScoreNumStyle: "font-size:" + (isM ? "23px" : "27px") + ";font-weight:800;font-family:'JetBrains Mono',monospace;letter-spacing:-0.045em;line-height:1;color:" + (f.score >= 85 ? "var(--green)" : f.score >= 70 ? "var(--warn-bright)" : "var(--red-bright)"),
       cfoScore: String(f.score),
       cfoTrend: (d.growth >= 0 ? "▲ " : "▼ ") + Math.abs(d.growth).toFixed(1) + "% week on week",
@@ -12542,8 +12559,8 @@ class Component extends DCLogic {
       ],
       risks: riskItems.map((r) => ({
         label: r.label, v: r.v, vs: valStyle(r.tone), chip: r.chip, chipStyle: chip(r.tone), note: r.note,
-        barWrap: "flex:1;min-width:0;height:4px;border-radius:3px;background:var(--bg-2);overflow:hidden",
-        barFill: "height:100%;border-radius:3px;width:" + Math.max(2, Math.min(100, r.pct)).toFixed(0) + "%;background:" + (r.tone === "g" ? "var(--go)" : r.tone === "r" ? "var(--red)" : "var(--warn)")
+        barWrap: "flex:1;min-width:0;height:4px;border-radius:4px;background:var(--bg-2);overflow:hidden",
+        barFill: "height:100%;border-radius:4px;width:" + Math.max(2, Math.min(100, r.pct)).toFixed(0) + "%;background:" + (r.tone === "g" ? "var(--go)" : r.tone === "r" ? "var(--red)" : "var(--warn)")
       }))
     };
   }
@@ -17137,7 +17154,7 @@ class Component extends DCLogic {
       name: st.name,
       meta: st.job + " · " + this.locName(st.outlet) + " · " + a.sexLabel,
       type: t[0],
-      typeStyle: "margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;background:" + t[2] + ";color:" + t[1]
+      typeStyle: "margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;background:" + t[2] + ";color:" + t[1]
     });
   }
   // header + body rows, so a caller never has to remember to prepend the header
@@ -18407,7 +18424,7 @@ class Component extends DCLogic {
   // record). Nothing here edits the amount the bank reported.
   bankAct(l) {
     const acts = [];
-    const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
+    const btn = "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);width:100%;text-align:left";
     const put = (patch, line) => this.setBank(this.bankLines().map((x) => x.id === l.id ? Object.assign({}, x, patch) : x), line);
     // A proposal is a question, so the first two buttons are its answers.
     if (l.state === "proposed" && l.book) acts.push({
