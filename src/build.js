@@ -45,7 +45,10 @@ function stamp() {
   if (stamped && Date.now() - stampedAt < ttl) return stamped;
   const h = crypto.createHash('sha256');
   try {
-    const names = fs.readdirSync(DIR).filter((f) => /\.(html|js)$/.test(f)).sort();
+    // The stylesheets too: every page links kashikeyo.css and fonts.css, and a
+    // design-only deploy that the stamp could not see was one no terminal was
+    // ever told to reload for.
+    const names = fs.readdirSync(DIR).filter((f) => /\.(html|js|css)$/.test(f)).sort();
     for (const f of names) {
       const src = fs.readFileSync(path.join(DIR, f));
       // The NAME rides with the bytes: a file renamed is a different build,

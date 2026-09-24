@@ -19360,7 +19360,10 @@ class Component extends DCLogic {
           // A credit refund is not a payout: it has to reduce what the customer
           // still owes, or they stay billed for food they were refunded for and
           // the limit enforcement is working off a balance that is too high.
-          if (tk === "credit") this.queue("credit_reverse", "Refund " + ord.no + " · " + MVRc(amt) + " off the customer's drawn balance", "credit_ledger");
+          // The refund op itself lowers the balance at the outlet; this is the
+          // record of it, and it names the sale and the reason it is about.
+          if (tk === "credit") this.queue("credit_reverse", "Refund " + ord.no + " · " + MVRc(amt) + " off the customer's drawn balance", "credit_ledger",
+            { id: ord.id || null, no: ord.no, amt: amt, reason: v.reason + (v.note ? " · " + v.note : "") });
           // The document is the deliverable, not the journal line. Showing it at
           // once means the guest can be handed it before they leave the counter.
           const cn = this.issueCreditNote(ord, amt, v.reason, v.note);

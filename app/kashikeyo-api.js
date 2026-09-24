@@ -272,7 +272,13 @@
     /* ── everything the terminal needs to come up ───────────────────────── */
     async bootstrap(days) {
       if (!this.outletId || !this.token) return null;
-      if (!this._online) return this.local("bootstrap");
+      // A cached answer says so: it was served to an earlier page, and its
+      // build stamp is not this page's (see hydrate() in kpos-bridge.js).
+      var cachedBoot = () => {
+        var c = this.local("bootstrap");
+        return c ? Object.assign({}, c, { cached: true }) : c;
+      };
+      if (!this._online) return cachedBoot();
       try {
         var b = await this._fetch("/api/outlet/" + this.outletId + "/bootstrap"
           + (days ? "?days=" + days : ""));
@@ -300,7 +306,7 @@
       } catch (e) {
         // A failed boot is not an error condition when a cache exists: it is
         // Tuesday. Serve the cache and let the floor carry on.
-        return this.local("bootstrap");
+        return cachedBoot();
       }
     }
 

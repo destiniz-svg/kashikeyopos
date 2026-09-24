@@ -5895,6 +5895,52 @@ test('a stranger cannot walk phone numbers and harvest the customer roster',
     }
   });
 
+// A refund to a house account lowers what the customer owes. The journal
+// released 1040 while credit_used stayed where the sale put it.
+test('a credit refund lowers the customer\'s drawn balance', opts, async () => {
+  const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Refund Customer', phone: '9994466', credit: 500 } }]);
+  const mid = made.body.results[0].result.memberId;
+  const used = () => one('SELECT credit_used FROM chain.member WHERE id = $1', [mid])
+    .then((r) => Number(r.credit_used));
+  const start = await used();
+  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 200, disc: 0, net: 200, svc: 0,
+    tax: 0, round: 0, total: 200, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    member: mid, customer: 'Refund Customer',
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 2, price: 100, amount: 200 }],
+    payments: [{ method: 'credit', amt: 200 }], stockMoves: []
+  } }]);
+  const saleId = sold.body.results[0].result.saleId;
+  assert.strictEqual(await used(), start + 200);
+
+  const rf = await push([{ opId: uuid(), kind: 'refund', payload: {
+    saleId: saleId, bizDate: today(), net: 60, tax: 0, svc: 0, amt: 60,
+    method: 'credit', reason: 'Cold water' } }]);
+  assert.ok(!rf.body.results[0].error, JSON.stringify(rf.body.results[0]));
+  assert.strictEqual(await used(), start + 140, 'the refunded 60 is no longer owed');
+});
+
+// One bill paid two ways is one visit at its own total. The history joined
+// payments bare, so a split counted twice and spent double.
+test('a split bill is one visit at its total, not one per tender', opts, async () => {
+  const phone = '9994455';
+  const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Split Customer', phone: phone, credit: 500 } }]);
+  const mid = made.body.results[0].result.memberId;
+  await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    member: mid, customer: 'Split Customer',
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 40 }, { method: 'credit', amt: 60 }], stockMoves: []
+  } }]);
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const c = (b.body.kpos.CUSTOMERS || []).find((x) => x.phone === phone);
+  assert.strictEqual(c.visits, 1, 'one bill, one visit');
+  assert.strictEqual(c.spent, 100, 'at its own total');
+});
+
 /* ═══ A VOID HAS TO UNDO SOMETHING ═══════════════════════════════════════════
    sale.voided_at existed from the first migration and five readers trusted it;
    nothing ever wrote it, so voiding a settled sale was a line in the trail and
@@ -7019,6 +7065,15 @@ test('an invoice scan resolves against the outlet, and posts nothing', opts, asy
     assert.strictEqual(moved.n, 0, 'a scan moves no stock');
     const doc = await one("SELECT count(*)::int AS n FROM document WHERE no LIKE '%INV-9001%'");
     assert.strictEqual(doc.n, 0, 'and draws no document number');
+
+    // What IS written is the one trail row saying a scan happened and how much
+    // of it resolved. The call had its arguments swapped and wrote nothing.
+    const scanned = await db.owner().query(
+      "SELECT after FROM chain.audit WHERE action = 'invoice_scanned'"
+      + ' ORDER BY at DESC LIMIT 1');
+    assert.strictEqual(scanned.rows.length, 1, 'the scan is on the trail');
+    assert.strictEqual(scanned.rows[0].after.lines, 5);
+    assert.strictEqual(scanned.rows[0].after.matched, 2);
 
     // A FIGURE OFF THE SCALE IS CLAMPED, never stored as the model sent it.
     ai.ask = async () => ({ ok: true, model: 'stub', data: {

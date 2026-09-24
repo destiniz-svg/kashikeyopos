@@ -101,10 +101,13 @@ async function buildBootstrap(ctx) {
       // A member's history is DERIVED from this outlet's own receipts. It was
       // once three zeroes on the card, which made every regular look like a
       // first-timer and made the credit limit unenforceable.
+      // Payments are summed PER SALE first: joined bare, a bill split over two
+      // tenders was two rows, so it counted as two visits and twice its total.
       memberHistory: ['SELECT s.member_id, count(*)::int AS visits,'
         + ' sum(s.total)::numeric AS spent, max(s.business_date) AS last_visit,'
-        + " sum(p.amount) FILTER (WHERE p.method = 'credit')::numeric AS on_account"
-        + ' FROM sale s LEFT JOIN payment p ON p.sale_id = s.id'
+        + ' sum(p.on_account)::numeric AS on_account'
+        + " FROM sale s LEFT JOIN LATERAL (SELECT sum(amount) FILTER (WHERE method = 'credit')"
+        + ' AS on_account FROM payment WHERE sale_id = s.id) p ON true'
         + ' WHERE s.member_id IS NOT NULL AND s.voided_at IS NULL'
         + ' GROUP BY s.member_id'],
       sections: ['SELECT * FROM menu_section WHERE active ORDER BY pos, name'],
