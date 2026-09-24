@@ -187,7 +187,7 @@ a:hover{color:#d63f27}
               <span style="display:flex;align-items:center;gap:10px;min-width:0">
                 <img src="{{ storeLogo }}" alt="" style="{{ storeLogoStyle }}"/>
                 <span style="display:block;min-width:0">
-                  <span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
+                  <span style="display:block;font-size:11px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
                   <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
                 </span>
               </span>
@@ -308,7 +308,7 @@ a:hover{color:#d63f27}
 
             <div style="margin-top:18px;height:48px;border:1px solid #ececec;border-radius:16px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.03)">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#c2c2c6" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input placeholder="Search the menu..." aria-label="Search the menu" value="{{ q }}" onChange="{{ setQ }}" style="min-height:44px;font-size:15px;color:#1a1a1a"/>
+              <input placeholder="Search the menu..." aria-label="Search the menu" value="{{ q }}" onChange="{{ setQ }}" style="min-height:44px;font-size:16px;color:#1a1a1a"/>
             </div>
 
             <div style="{{ catRowStyle }}">
@@ -2070,7 +2070,7 @@ class Component extends DCLogic {
       : "display:none";
     V.offers = promos.map((b) => ({
       title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
-      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
+      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
       /* No image is a TINTED CARD, never a path to a file that is not there —
          the dark card ground carries the white copy either way. */
@@ -2182,7 +2182,7 @@ class Component extends DCLogic {
         cardStyle: "text-align:left;background:#fff;border:1px solid " + (n ? "#f7c8bd" : "#efefef") + ";border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:" + (sold ? ".55" : "1"),
         imgStyle: this.plate(d, "36%") + "display:block;width:100%;height:118px;border-radius:12px" + (sold ? ";filter:grayscale(1)" : ""),
         badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#f4553c;color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
-        offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
+        offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
         plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60," + (sold ? "0" : ".35") + ")"
       };
     });
