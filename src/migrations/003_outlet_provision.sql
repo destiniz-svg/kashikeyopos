@@ -90,12 +90,13 @@ BEGIN
       -- served table that has not paid is the row a manager is looking for.
       stage       smallint NOT NULL DEFAULT 0,
       stage_at    timestamptz, stage_by uuid,
-      -- The LAMPORT of whichever scalar edit last won this ticket (covers,
-      -- table, note) — not a row counter. See migration 058: a scalar edit
-      -- applies only when its own lamport beats this, which is what makes
-      -- "later Lamport wins" true regardless of which push reaches the
-      -- outlet first.
-      version     bigint NOT NULL DEFAULT 0,
+      -- The LAMPORT of the edit that last won each scalar field — one stamp
+      -- per field, not per ticket (see migration 058): an edit applies only
+      -- when its own lamport beats its field's, so the later edit wins
+      -- whichever push reaches the outlet first.
+      party_lamport bigint NOT NULL DEFAULT 0,
+      table_lamport bigint NOT NULL DEFAULT 0,
+      note_lamport  bigint NOT NULL DEFAULT 0,
       CONSTRAINT ticket_stage_rung CHECK (stage BETWEEN 0 AND 3),
       CONSTRAINT closed_has_time CHECK (status <> 'closed' OR closed_at IS NOT NULL)
     );

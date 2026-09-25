@@ -985,8 +985,11 @@ async function ticketRef(c, p) {
 
 /* Scalar edits (covers, table, note) are last-write-wins UNLESS the op
    carries a lamport, in which case it is last-write-wins BY LAMPORT:
-   `ticket.version` (migration 058) holds the lamport of whichever such edit
-   last won, and this one only applies when its own lamport beats it — which
+   Each field keeps its OWN stamp (`party_lamport`, `table_lamport`,
+   `note_lamport`, migration 058) holding the lamport of the edit that last
+   won THAT field, and this one only applies when its own lamport beats it.
+   One stamp for the whole ticket would make a covers change refuse a table
+   move nobody else made — a false conflict that drops a real edit — which
    is what makes the winner the causally later edit rather than whichever
    push happened to reach the outlet first. An op with no lamport (an old
    client, before this shipped) gets the old behaviour exactly: applied
@@ -1000,8 +1003,8 @@ H.move_table = async (c, p, ctx, lamport) => {
   if (!id) return { skipped: 'no open ticket' };
   const lam = Number(lamport) || 0;
   if (lam) {
-    const q = await c.query("UPDATE ticket SET table_no = $2, version = $3 WHERE id = $1"
-      + " AND status = 'open' AND version < $3 RETURNING id", [id, String(p.to), lam]);
+    const q = await c.query("UPDATE ticket SET table_no = $2, table_lamport = $3 WHERE id = $1"
+      + " AND status = 'open' AND table_lamport < $3 RETURNING id", [id, String(p.to), lam]);
     if (!q.rows.length) {
       const cur = await one(c, "SELECT table_no, status FROM ticket WHERE id = $1", [id]);
       if (!cur || cur.status !== 'open') return { skipped: 'ticket closed' };
@@ -1044,8 +1047,8 @@ H.ticket_status = async (c, p, ctx, lamport) => {
   if (!id) return { skipped: 'no open ticket' };
   const lam = Number(lamport) || 0;
   if (lam) {
-    const q = await c.query('UPDATE ticket SET note = coalesce($2, note), version = $3'
-      + ' WHERE id = $1 AND version < $3 RETURNING id', [id, p.note || null, lam]);
+    const q = await c.query('UPDATE ticket SET note = coalesce($2, note), note_lamport = $3'
+      + ' WHERE id = $1 AND note_lamport < $3 RETURNING id', [id, p.note || null, lam]);
     if (q.rows.length) return { ok: true };
     const cur = await one(c, 'SELECT note FROM ticket WHERE id = $1', [id]);
     return { ok: false, conflict: { ticketId: id, field: 'note', value: cur ? cur.note : null } };
@@ -1088,7 +1091,7 @@ H.covers_update = async (c, p, ctx, lamport) => {
   const lam = Number(lamport) || 0;
   if (lam) {
     const q = await c.query('UPDATE ticket SET party = $2, covers = greatest($2, covers),'
-      + ' version = $3 WHERE id = $1 AND version < $3 RETURNING id', [id, party, lam]);
+      + ' party_lamport = $3 WHERE id = $1 AND party_lamport < $3 RETURNING id', [id, party, lam]);
     if (q.rows.length) return { ok: true };
     const cur = await one(c, 'SELECT party FROM ticket WHERE id = $1', [id]);
     return { ok: false, conflict: { ticketId: id, field: 'covers', value: cur ? cur.party : null } };

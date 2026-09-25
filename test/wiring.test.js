@@ -2480,7 +2480,7 @@ test('a scalar ticket edit is guarded by lamport, not by arrival order', () => {
     const i = APPLY.indexOf('H.' + kind + ' = async (c, p, ctx, lamport) =>');
     assert.ok(i >= 0, kind + ' reads the lamport it was handed');
     const body = APPLY.slice(i, APPLY.indexOf('\n};', i));
-    assert.match(body, /version < \$\d/, kind + ' only applies when its lamport beats the stored one');
+    assert.match(body, /_lamport < \$\d/, kind + ' only applies when its lamport beats its own field\'s stamp');
     assert.match(body, /conflict: \{ ticketId: id, field: /,
       kind + ' answers a lost race with the field and the value that won, not an error');
     // An op naming no lamport at all (`Number(lamport) || 0` is falsy) skips
@@ -2494,13 +2494,16 @@ test('a scalar ticket edit is guarded by lamport, not by arrival order', () => {
   // two-places pattern 041/054 already used for an outlet-schema column.
   const MIG = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'migrations', '058_a_later_covers_wins.sql'), 'utf8');
-  assert.match(MIG, /ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 0/,
-    'an existing outlet schema gets the column added');
+  for (const col of ['party_lamport', 'table_lamport', 'note_lamport']) {
+    assert.match(MIG, new RegExp('ADD COLUMN IF NOT EXISTS ' + col + ' bigint NOT NULL DEFAULT 0'),
+      'an existing outlet schema gets ' + col + ' — one stamp per field, so a covers'
+      + ' change can never refuse a table move nobody else made');
+  }
   assert.match(MIG, /pg_namespace WHERE nspname LIKE 'outlet\\_%'/,
     'over every outlet schema, the same loop 041\\054 used');
   const PROVISION = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'migrations', '003_outlet_provision.sql'), 'utf8');
-  assert.match(PROVISION, /version     bigint NOT NULL DEFAULT 0,/,
+  assert.match(PROVISION, /party_lamport bigint NOT NULL DEFAULT 0,\s*table_lamport bigint NOT NULL DEFAULT 0,\s*note_lamport  bigint NOT NULL DEFAULT 0,/,
     'and a brand-new outlet is provisioned with the column from birth');
 
   // The loser is told once, on the ticket panel's own notice component —
