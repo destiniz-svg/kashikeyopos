@@ -413,7 +413,7 @@
               </button>
             </div>
             <sc-if value="{{ showOptionsPanel }}">
-            <div style="border-radius:14px;border:1px solid var(--line);background:var(--bg-1);padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+            <div style="border-radius:14px;border:1px solid var(--line);background:var(--bg-1);padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-height:0">
               <div style="display:flex;align-items:flex-start;gap:10px">
                 <button onClick="{{ opClose }}" aria-label="Back to the menu" style="width:44px;height:44px;flex-shrink:0;border-radius:10px;border:1px solid var(--line-2);background:var(--bg-2);color:var(--text);display:grid;place-items:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
                 <div style="min-width:0">
@@ -449,7 +449,7 @@
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
                 <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:13.5px;color:var(--text);outline:none"/>
               </div>
-              <div style="position:sticky;bottom:-16px;margin:0 -18px -16px;padding:12px 18px 16px;background:var(--bg-1);border-top:1px solid var(--line)"><button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button></div>
+              <div style="position:sticky;bottom:0;z-index:2;margin:0 -18px -16px;padding:12px 18px 16px;border-radius:0 0 14px 14px;box-shadow:0 28px 0 var(--bg-1);background:var(--bg-1);border-top:1px solid var(--line)"><button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button></div>
             </div>
             </sc-if>
             <sc-if value="{{ showDishGrid }}">
