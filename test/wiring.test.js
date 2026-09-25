@@ -2373,6 +2373,90 @@ test('a table settled elsewhere leaves this floor, and an un-pushed one stays', 
     'a slice that could not be read leaves the floor exactly as it was');
 });
 
+/* ═══ DRAFT LINES + HANDOFF (slice 2.1) ═════════════════════════════════════
+   Measured before building: `add_line` has always queued at the moment a
+   line is added — the test above (grab('add_line')) finds the op in the
+   outbox right after `addLine()`, with no Send in between, so gap (a) was
+   never the story. `ticketOf()` has always sent every line, fired or not
+   (the only filter is `void_at`), and `seed()` has always unioned both
+   sides' lines by `lid` (see the test above), so gap (c) — "other devices
+   drop unfired lines on merge" — was never the story either.
+
+   What was missing: `ticket_line.by_staff` and `device_id` are written by
+   `add_line` and were read back by nobody, the same shape of gap as the dish
+   editor's tags — collected, stored, published never. No screen could say
+   whose line it was or where it came from. That is the whole change here:
+   `ticketOf()` now publishes `by`/`device`, and the till resolves them
+   against STAFF and DEVICES, which it already holds from the bootstrap. */
+test('ticketOf publishes who added a line and from where', () => {
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  const fn = BOOT.slice(BOOT.indexOf('function ticketOf('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /by:\s*l\.by_staff \|\| null/,
+    'the author reaches the client — written since the first migration, read by nobody');
+  assert.match(body, /device:\s*l\.device_id \|\| null/,
+    'and the device with it, which is what "Picked up from Aisha\'s phone" needs');
+});
+
+test('draftOf names another device\'s unsent line, and says nothing about this one\'s own', () => {
+  // The fixture registers one device, 'd1' ("POS-1"). This TILL is 'd1'; the
+  // draft line comes from a device the outlet has never published a label
+  // for, which is the ordinary case for a brand-new phone — the id is real,
+  // the name is not in yet, and the fallback has to say something sane.
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.setState({ prefs: Object.assign({}, F.prefs(), { device: 'd1' }) });
+  const staffId = FX.kpos().STAFF[0].id;
+  const mine = { fired: false, device: 'd1', by: staffId };
+  const theirs = { fired: false, device: 'd9', by: staffId };
+  const fired = { fired: true, device: 'd9', by: staffId };
+  const noAttr = { fired: false, device: null, by: null };
+  assert.strictEqual(F.draftOf(mine), null,
+    'a line this device added needs no label for the person adding it');
+  assert.strictEqual(F.draftOf(fired), null,
+    'and a line already sent is not a draft any more — nothing to say');
+  assert.strictEqual(F.draftOf(noAttr), null,
+    'a line with no attribution (an older build, a guest round) says nothing rather than "undefined\'s"');
+  assert.match(F.draftOf(theirs), /Test’s another device/,
+    'an unsent line from another device names who, and falls back cleanly when the'
+    + ' device has no published label yet: ' + F.draftOf(theirs));
+});
+
+test('an unfired line from another device survives seed() with its attribution, and the panel shows it', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.setState({ prefs: Object.assign({}, F.prefs(), { device: 'd9' }) });
+  const staffId = FX.kpos().STAFF[0].id;
+  // 'd1' is the fixture's registered device ("POS-1") — this terminal is a
+  // DIFFERENT one ('d9'), so the line the outlet says came from 'd1' is a
+  // draft picked up from a device this screen can actually name.
+  F.__win.KPOS_REAL = { session: null, at: Date.now(), state: { tickets: {
+    'T01:0': { id: 'srv-1', table: 'T01', split: 0, status: 'open', stage: 0,
+      guests: [], lines: [{ lid: 'p1', id: 'm1', qty: 1, price: 185, split: 0,
+        fired: false, by: staffId, device: 'd1' }] }
+  } } };
+  F.seed();
+  const key = Object.keys(F.state.tickets).find((k) => /:1$/.test(k));
+  assert.ok(key, 'the phone\'s table reached this floor');
+  const line = F.state.tickets[key].lines[0];
+  assert.strictEqual(line.device, 'd1',
+    'seed() carries the attribution through the merge untouched — it is a whole-object union, not a field list');
+
+  F.setState({ activeTable: Number(key.split(':')[1]) });
+  const v = F.posVals();
+  assert.match(v.pickedUpFrom, /Picked up from Test’s POS-1/,
+    'the ticket panel names it once, persistently — a waiter mid-service reads a strip,'
+    + ' not a toast that already faded: ' + v.pickedUpFrom);
+  assert.match(v.lines[0].stateText, /Not sent.*Test’s POS-1/,
+    'and the line itself carries the same tag: ' + v.lines[0].stateText);
+
+  // Send it, and both the banner and the per-line tag retire — a draft is
+  // only ever a description of "not sent yet".
+  F.setState({ tickets: Object.assign({}, F.state.tickets, { [key]:
+    Object.assign({}, F.state.tickets[key], { lines: [Object.assign({},
+      line, { fired: true })] }) }) });
+  const v2 = F.posVals();
+  assert.strictEqual(v2.pickedUpFrom, '', 'sent — nothing left to pick up');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

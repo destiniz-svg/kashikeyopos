@@ -2875,6 +2875,143 @@ test('the five-second poll carries the floor, today\'s takings and the drawer', 
     'while the floor is still whole, because that is what the poll is for');
 });
 
+/* ═══ DRAFT LINES + HANDOFF (slice 2.1) ═════════════════════════════════════
+   Measured before writing anything: `add_line` has always queued the moment
+   a line is added (test/wiring.test.js grabs the op right after `addLine()`,
+   with no Send in between), and `buildLive()`/`ticketOf()` have always sent
+   EVERY line — fired or not, the only filter is `void_at` — so an unsent
+   line was never stuck in an outbox and never dropped by another device's
+   merge. What was missing is narrower and matches the shape of the tags bug
+   two sections up: `ticket_line.by_staff` and `device_id` are written by
+   `add_line` and were read back by nobody, so no screen could ever say
+   "Picked up from Aisha's phone" — the id never left the row. */
+test('a line names who added it and from where, before anyone presses Send', opts, async () => {
+  // Device A: the owner, on the token every other test uses.
+  const table = 'T31';
+  const lidA = uuid();
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185,
+    lid: lidA, split: 0
+  } }]);
+
+  const pull1 = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  const key = Object.keys(pull1.body.state.tickets || {})
+    .find((k) => k.indexOf(table) === 0);
+  assert.ok(key, 'the ticket is on the floor');
+  const line = (pull1.body.state.tickets[key].lines || [])
+    .find((l) => l.lid === lidA);
+  assert.ok(line, 'and the line is on it');
+  assert.strictEqual(line.fired, false, 'unfired — nobody has pressed Send');
+  assert.ok(line.by, 'the author reaches the client: ' + JSON.stringify(line));
+  assert.ok(line.device, 'and the device with it: ' + JSON.stringify(line));
+
+  const who = await one('SELECT id FROM chain.staff WHERE name = $1', ['Test Owner']);
+  assert.strictEqual(line.by, who.id, 'named by the id the row actually carries');
+
+  // Device B: the cashier, on a terminal the owner has never touched.
+  const devB = uuid();
+  const cashier = await post('/api/auth/pin', { outletId, pin: '6520', deviceId: devB });
+  assert.strictEqual(cashier.status, 200, JSON.stringify(cashier.body));
+  const lidB = uuid();
+  const pushB = await post('/api/outlet/' + outletId + '/sync/push', { ops: [
+    { opId: uuid(), kind: 'add_line', payload: {
+      table: table, item: 'm2', name: 'Garlic Rice', qty: 1, price: 45,
+      lid: lidB, split: 0 } }
+  ] }, cashier.body.token);
+  assert.strictEqual(pushB.status, 200, JSON.stringify(pushB.body));
+
+  const pull2 = await get('/api/outlet/' + outletId + '/sync/pull?since=0', token);
+  const lineB = (pull2.body.state.tickets[key].lines || []).find((l) => l.lid === lidB);
+  assert.strictEqual(lineB.device, devB,
+    'the SAME ticket now carries a line stamped with a DIFFERENT device —'
+    + ' the "picked up from" the owner\'s own screen needs to name');
+  assert.notStrictEqual(lineB.by, line.by, 'and a different author');
+
+  // Neither line is fired: a draft is not printed, fired to the KDS or
+  // charged until someone actually sends it.
+  assert.ok((pull2.body.state.tickets[key].lines || []).every((l) => !l.fired),
+    'both lines sit as drafts until Send is pressed');
+});
+
+/* `fire_course` fires each line once however many devices press Send: the
+   guard is `UPDATE ticket_line SET sent_at = now() WHERE sent_at IS NULL`,
+   which was already there for a single Send and is exactly what makes a
+   second, overlapping Send from another device a no-op rather than a
+   double-fire. This is the race made concrete: two devices both hold the
+   ticket's current lines (including one line each added itself), and both
+   press Send before either has seen the other's poll. */
+test('two devices pressing Send on the same ticket fire every line once', opts, async () => {
+  const table = 'T32';
+  const lid1 = uuid(), lid2 = uuid();
+  await push([
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0,
+      lid: lid1, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185 } },
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0,
+      lid: lid2, item: 'm2', name: 'Garlic Rice', qty: 1, price: 45 } }
+  ]);
+
+  const devB = uuid();
+  const cashier = await post('/api/auth/pin', { outletId, pin: '6520', deviceId: devB });
+  assert.strictEqual(cashier.status, 200);
+
+  // Both devices believe BOTH lines are unfired — neither has polled since
+  // the other's add_line — so both name both lids when they press Send.
+  const [a, b] = await Promise.all([
+    push([{ opId: uuid(), kind: 'fire_course',
+      payload: { table: table, split: 0, lids: [lid1, lid2], station: 'hot' } }]),
+    post('/api/outlet/' + outletId + '/sync/push', { ops: [
+      { opId: uuid(), kind: 'fire_course',
+        payload: { table: table, split: 0, lids: [lid1, lid2], station: 'hot' } }
+    ] }, cashier.body.token)
+  ]);
+  assert.ok(!a.body.results[0].error, JSON.stringify(a.body));
+  assert.ok(!b.body.results[0].error, JSON.stringify(b.body));
+
+  const rows = await all2('SELECT id, sent_at FROM ticket_line l JOIN ticket t'
+    + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
+  assert.strictEqual(rows.length, 2, 'still exactly the two lines — nothing duplicated');
+  assert.ok(rows.every((r) => r.sent_at), 'both fired');
+
+  // Fired once each: `sent_at` is a timestamp set the first time and left
+  // alone the second, whichever op got there first.
+  const kds = await one('SELECT count(*)::int AS n FROM kds_ticket WHERE ticket_id = ('
+    + "SELECT id FROM ticket WHERE table_no = $1 AND status = 'open')", [table]);
+  assert.ok(kds.n >= 1, 'the pass was told at least once');
+});
+
+/* A replayed `add_line` is idempotent — the outbox's own reason to exist.
+   The unique index is `(ticket_id, client_id)` and the conflict clause
+   updates the quantity rather than erroring, which is what makes a retried
+   push, or a phone's outbox replaying after an outage, land as ONE line. */
+test('a replayed add_line updates the line it already made, not a second one', opts, async () => {
+  const table = 'T33';
+  const lid = uuid();
+  const add = { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0,
+    lid: lid, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185 } };
+  await push([add]);
+  // The exact same op, replayed — a retried request, or a phone's outbox
+  // catching up after being offline. Same opId AND same lid.
+  const replay = await push([add]);
+  assert.ok(replay.body.results[0].replay, 'the server recognises its own op back');
+
+  const rows = await all2('SELECT id, qty FROM ticket_line l JOIN ticket t'
+    + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
+  assert.strictEqual(rows.length, 1, 'one line, not two');
+
+  // A genuinely new op naming the SAME lid (the till's own retry logic,
+  // not a raw opId replay) still lands on the one line — it updates the
+  // quantity rather than ordering the dish again.
+  const again = await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, split: 0, lid: lid, item: 'm1', name: 'Grilled Reef Fish',
+    qty: 3, price: 185 } }]);
+  assert.ok(!again.body.results[0].error, JSON.stringify(again.body));
+  const rows2 = await all2('SELECT id, qty FROM ticket_line l JOIN ticket t'
+    + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
+  assert.strictEqual(rows2.length, 1, 'still one line');
+  assert.strictEqual(Number(rows2[0].qty), 3,
+    'a line replayed under its own id updates the quantity, never orders twice');
+});
+
 /* ═══ A SETTING IS THE OUTLET'S, SO IT REACHES EVERY TERMINAL ═══════════════
    An owner sitting at home changes a policy — how long until a till locks,
    whether a void needs a PIN, what the acquirer charges, what a dollar is

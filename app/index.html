@@ -561,6 +561,9 @@
             </sc-if>
           </div>
 
+          <sc-if value="{{ pickedUpFrom }}">
+            <div style="{{ pickedUpStyle }}">{{ pickedUpFrom }}</div>
+          </sc-if>
           <div style="{{ ticketLinesStyle }}">
             <sc-if value="{{ ticketEmpty }}">
               <div style="padding:44px 24px;text-align:center;color:var(--text-faint);font-size:12.5px;line-height:1.6">{{ emptyMsg }}</div>
@@ -7133,7 +7136,8 @@ class Component extends DCLogic {
         },
         note: () => this.setState({ modal: { kind: "note", idx: i, val: l.note || "" } }),
         stateStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:var(--ok-dim);color:var(--green)" : "background:var(--warn-dim);color:var(--warn-bright)"),
-        stateText: l.fired ? (l.done ? "Ready" : "Fired · " + this.lineAge(l) + "m") : "Not sent",
+        stateText: l.fired ? (l.done ? "Ready" : "Fired · " + this.lineAge(l) + "m")
+          : (this.draftOf(l) ? "Not sent · " + this.draftOf(l) : "Not sent"),
         // A modifier is not a warning, so it loses the amber it used to borrow.
         // It recedes on size and weight and keeps its 7:1 — a kitchen note that
         // cannot be read at a glance is how allergies get missed.
@@ -7171,6 +7175,14 @@ class Component extends DCLogic {
       { label: "Total", value: MVR(T.total), style: "display:flex;justify-content:space-between;align-items:baseline;font-size:" + (tight ? 22 : 30) + "px;font-weight:800;padding:" + (tight ? "5px 0 2px" : "11px 0 3px") + ";margin-top:" + (tight ? 4 : 8) + "px;border-top:1px solid var(--line-2);color:var(--text);letter-spacing:-0.035em;line-height:1.05" }
     ]);
 
+    // ONE line is enough to say the bill was picked up elsewhere — a waiter
+    // three metres away, mid-service, reads a persistent strip above the
+    // order, not a toast that already faded by the time they looked up.
+    // ponytail: names the first draft author found, not every one of them —
+    // add a "+2 more" tail if a table with three phones adding at once turns
+    // out to be common.
+    const draftFrom = tk ? (tk.lines.map((l) => this.draftOf(l)).find(Boolean) || null) : null;
+
     const unfired = tk ? tk.lines.filter((l) => !l.fired).length : 0;
     // Once the pass has finished every fired line, the bill says so — "in the
     // kitchen" over food that is ready sent a cashier to another screen to ask.
@@ -7185,6 +7197,10 @@ class Component extends DCLogic {
          (real steps beat a rehearsal), the first settled sale retires it for
          good (a till that has taken money no longer needs telling how), and
          Dismiss actually sticks. */
+      pickedUpFrom: draftFrom ? "Picked up from " + draftFrom : "",
+      pickedUpStyle: "display:" + (draftFrom ? "block" : "none")
+        + ";margin:0 16px 8px;padding:8px 12px;border-radius:8px;font-size:12.5px;"
+        + "font-weight:700;background:var(--warn-dim);color:var(--warn-bright)",
       tip: s.tip && !this.setupOn()
         && !(s.settled || []).some((x) => x.outletId === s.outletId),
       dismissTip: () => this.setState({ tip: false, tipHidden: true }),
@@ -11113,6 +11129,18 @@ class Component extends DCLogic {
   // ── People: time clock, labour cost, payroll ─────────────────────────────
   staffAll() { return (K().STAFF || []); }
   staffFor(id) { return this.staffAll().find((x) => x.id === id) || {}; }
+  /* WHO ADDED A LINE NOBODY HAS SENT YET, AND FROM WHERE — "Picked up from
+     Aisha's phone". Only meaningful for another device: a line THIS device
+     just added needs no label for the person adding it, and `by`/`device`
+     land as `null` on any line laid down before this build shipped, which is
+     exactly when nothing should be said. */
+  draftOf(l) {
+    if (!l || l.fired || !l.device || l.device === this.prefs().device) return null;
+    const dev = (K().DEVICES || []).find((d) => d.id === l.device);
+    const who = l.by ? (this.staffFor(l.by).name || "").split(" ")[0] : "";
+    const label = (dev && dev.label) || "another device";
+    return (who ? who + "’s " : "") + label;
+  }
   /* ── ONE STATUTORY VOCABULARY, AND THE OUTLET LAYERS OVER THE SHIPPED ONE ─
      This returned `K().PAYROLL_RULES` raw, and there were TWO KEY SETS for the
      same facts — the allergen-table defect one module over. Migration 006 seeds

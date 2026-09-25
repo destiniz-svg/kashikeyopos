@@ -1430,7 +1430,14 @@ function ticketOf(t, lines) {
       // Finished at the pass. Without it a refresh put every bumped plate back
       // on the kitchen screen and the table cooked twice.
       done: !!l.ready_at, doneAt: ms(l.ready_at),
-      sent: !!l.sent_at, at: ms(l.at)
+      sent: !!l.sent_at, at: ms(l.at),
+      // WHO ADDED THIS LINE AND FROM WHERE. Written by add_line since the
+      // first migration (`by_staff`, `device_id`) and published never — the
+      // columns existed, the handler filled them, and no screen anywhere
+      // could say "Aisha's phone" because the id never left the row. Both are
+      // uuids; the till resolves them against STAFF and DEVICES, which it
+      // already holds.
+      by: l.by_staff || null, device: l.device_id || null
     }))
   };
 }
