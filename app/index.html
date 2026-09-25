@@ -20607,7 +20607,7 @@ class Component extends DCLogic {
         ],
         onSave: async (v) => {
           if (this.rank() < 5) return this.toast("Clearing a store's trading is the owner's decision", "err");
-          if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("The second box needs the word RESET, in capitals — not the reason", "warn");
+          if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("The second box needs the word RESET, not the reason", "warn");
           const B = window.KPOS_BRIDGE;
           if (!B || !B.resetTrade) return this.toast("This needs the outlet \u2014 the terminal is not connected to one", "warn");
           this.setState({ modal: null });
