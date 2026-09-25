@@ -354,3 +354,31 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M0 8V4Q15 0 30 4T60 4T90 4T120 4V8Z'/%3E%3C/svg%3E") 0 0/100% 100% no-repeat}
 [data-look="standard"] .water{top:auto;height:3px;background:var(--wl-bar,transparent);transform:translateX(calc(var(--fill,0%) - 100%))}
 @media (prefers-reduced-motion:reduce){.water{transition:none}}
+
+/* ═══ THE CHROME (the new layout) ═════════════════════════════════════════
+   The frame of the till — the nav rail, the top bar, the Now column and the
+   ticket beside the menu — is deep sea in the Lagoon look, day and night,
+   while the working surface stays light by day. It is done by re-scoping the
+   same token names inside `.chrome`, so everything drawn in the frame
+   (buttons, chips, cards, text) takes the sea without being restyled, and
+   the status families switch to the ramps that read on a dark ground.
+   Standard defines no chrome, so its frame is its page. */
+[data-look="lagoon"] .chrome{
+  --bg:#062a3a; --bg-0:#05202c; --bg-1:#0c3a4e; --bg-2:#0c3a4e; --bg-3:#124a61;
+  --line-soft:#0c3a4e; --line:#124a61; --line-2:#1a5a74; --line-3:#2a6f8a; --mute-dim:#124a61;
+  --text:#e9f7f9; --text-dim:#cfe3e8; --text-muted:#bfd6dd; --text-faint:#b2ccd4; --code-text:#cfe3e8;
+  --amber:#35e4f2; --amber-bright:#7defff; --amber-dim:#073545; --amber-line:#0f5566; --amber-deep:#22b8c6; --on-amber:#021a22;
+  --warn:#f2a43a; --warn-bright:#ffc14a; --warn-dim:rgba(242,164,58,.16); --warn-line:#6b4a1f; --on-warn:#1a0f00;
+  --ok-dim:#12281d; --bad-dim:#301218; --info-dim:#171c33; --violet-dim:#221a30;
+  --go:#34c77b; --go-bright:#5fe09a; --go-dim:#12281d; --go-line:#256b47; --on-go:#04180d;
+  --fwd:#7c92f5; --fwd-bright:#a3b3fa; --fwd-dim:#171c33; --fwd-line:#3a4a9c; --on-fwd:#060c26;
+  --danger:#f2445e; --danger-bright:#ff7b8e; --danger-dim:#301218; --danger-line:#7d2231; --on-danger:#fff2f4;
+  --green:#5fe09a; --green-bright:#5fe09a; --green-line:#256b47;
+  --red:#f2607a; --red-bright:#ff8ba0; --red-line:#6b2a38;
+  --blue:#8ba0f7; --blue-bright:#adbaf9; --violet:#a88ad9; --violet-bright:#c3aae6;
+  color:var(--text);
+}
+[data-look="lagoon"]:not([data-theme="light"]) .chrome{
+  --bg:#010c12; --bg-0:#03131b; --bg-1:#05202c; --bg-2:#05202c; --bg-3:#0a2e3e;
+  --line-soft:#05202c; --line:#0a2e3e; --line-2:#11394a; --line-3:#1a4a5e; --mute-dim:#0a2e3e;
+}

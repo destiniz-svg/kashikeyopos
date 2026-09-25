@@ -95,7 +95,7 @@
     <div onClick="{{ closeDrawer }}" style="position:fixed;inset:0;background:var(--scrim);z-index:65;animation:kfade .14s"></div>
   </sc-if>
 
-  <aside style="{{ asideStyle }}">
+  <aside class="chrome" style="{{ asideStyle }}">
     <div style="{{ brandStyle }}">
       <div style="width:38px;height:38px;border-radius:14px;flex-shrink:0;background:var(--brand-plate);border:1px solid var(--brand-plate-line);display:grid;place-items:center;overflow:hidden">
         <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" width="32" height="32" style="width:32px;height:32px;object-fit:contain;display:block;margin:0 auto;mix-blend-mode:{{ markBlend }}"/>
@@ -133,7 +133,7 @@
 
   <div style="{{ contentStyle }}">
 
-    <div style="{{ barStyle }}">
+    <div class="chrome" style="{{ barStyle }}">
       <sc-if value="{{ showMenuBtn }}">
         <button onClick="{{ openDrawer }}" title="Menu" style="{{ menuBtnStyle }}">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
@@ -226,6 +226,7 @@
           </div>
         </sc-if>
 
+        <div style="{{ posRowStyle }}">
         <div style="{{ floorPaneStyle }}">
           <sc-if value="{{ tip }}">
             <div style="margin-bottom:14px;padding:10px 14px;background:linear-gradient(90deg,var(--warn-dim),transparent 65%);border:1px solid var(--warn-line);border-radius:10px;display:flex;align-items:center;gap:10px;font-size:12px">
@@ -251,7 +252,7 @@
             <button onClick="{{ regGo }}" style="{{ regBtnStyle }}">{{ regBtnLabel }}</button>
           </div>
 
-          <sc-if value="{{ hasCalls }}">
+          <sc-if value="{{ hasCallsInline }}">
             <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
               <sc-for list="{{ calls }}" as="c" hint-placeholder-count="0">
                 <div style="{{ c.style }}">
@@ -274,7 +275,7 @@
             </div>
           </sc-if>
 
-          <sc-if value="{{ hasResReq }}">
+          <sc-if value="{{ hasResReqInline }}">
             <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
               <div style="display:flex;align-items:baseline;gap:8px">
                 <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--blue)">The door</span>
@@ -466,7 +467,7 @@
           <div onClick="{{ closeCart }}" style="position:fixed;inset:0;background:var(--scrim);z-index:58;animation:kfade .14s"></div>
         </sc-if>
 
-        <div style="{{ ticketPaneStyle }}">
+        <div class="chrome" style="{{ ticketPaneStyle }}">
           <button onClick="{{ closeCart }}" style="{{ grabberStyle }}"><span style="display:block;width:38px;height:4px;border-radius:4px;background:var(--line-3);margin:0 auto"></span></button>
           <div style="{{ ticketHeadStyle }}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -556,6 +557,46 @@
               <button onClick="{{ clearT }}" title="Clear this ticket" style="{{ clearBtnStyle }}" style-hover="{{ clearBtnHover }}">Clear</button>
             </div>
           </div>
+        </div>
+
+        <sc-if value="{{ nowRail }}">
+          <aside class="chrome" aria-label="Needs you now" style="{{ nowRailStyle }}">
+            <div style="display:flex;align-items:center;gap:10px;padding:18px 18px 12px">
+              <span class="disp" style="font-size:28px;font-weight:700;line-height:1;letter-spacing:-.02em">Now</span>
+              <span style="{{ nowCountStyle }}">{{ nowCount }}</span>
+            </div>
+            <div style="flex:1;min-height:0;overflow-y:auto;padding:0 12px 16px;display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ calls }}" as="c" hint-placeholder-count="0">
+                <div style="{{ c.nowStyle }}">
+                  <span style="display:flex;align-items:center;gap:8px">
+                    <span style="{{ c.dotStyle }}"></span>
+                    <span style="font-size:14px;font-weight:700;color:var(--text);min-width:0;flex:1">{{ c.title }}</span>
+                  </span>
+                  <span style="font-size:12.5px;color:var(--text-dim);line-height:1.45">{{ c.sub }}</span>
+                  <span style="display:flex;gap:8px">
+                    <button onClick="{{ c.go }}" style="{{ c.goStyle }}">{{ c.goLabel }}</button>
+                    <button onClick="{{ c.ack }}" style="{{ c.ackStyle }}">{{ c.ackLabel }}</button>
+                  </span>
+                </div>
+              </sc-for>
+              <sc-for list="{{ resReqs }}" as="r" hint-placeholder-count="0">
+                <div style="{{ r.nowStyle }}">
+                  <button onClick="{{ r.open }}" title="Open the booking" style="text-align:left;background:transparent;padding:0">
+                    <span style="display:block;font-size:14px;font-weight:700;color:var(--text)">{{ r.title }}</span>
+                    <span style="display:block;font-size:12.5px;color:var(--text-dim);margin-top:3px;line-height:1.45">{{ r.sub }}</span>
+                  </button>
+                  <span style="display:flex;gap:8px">
+                    <button onClick="{{ r.no }}" style="{{ r.noStyle }}">{{ r.noText }}</button>
+                    <button onClick="{{ r.ok }}" style="{{ r.okStyle }}">{{ r.okText }}</button>
+                  </span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ nowEmpty }}">
+                <div style="padding:14px;border-radius:14px;border:1px dashed var(--line-2);font-size:12.5px;color:var(--text-dim);line-height:1.5">Nothing needs you right now. Bills asked, guest calls, QR rounds and bookings at the door appear here, oldest first.</div>
+              </sc-if>
+            </div>
+          </aside>
+        </sc-if>
         </div>
       </div>
     </sc-if>
@@ -4756,7 +4797,11 @@ class Component extends DCLogic {
         ? "position:fixed;left:0;right:0;bottom:0;z-index:60;height:min(88dvh,680px);background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -12px 44px rgba(0,0,0,.55);transition:transform .22s cubic-bezier(.32,.72,0,1);transform:translateY(" + (s.cart ? "0" : "101%") + ")"
         : (s.pane === "bill"
             ? "flex:1;background:var(--bg-1);display:flex;flex-direction:column;min-height:0;overflow-y:auto;width:100%;max-width:560px;margin:0 auto;border-left:1px solid var(--line);border-right:1px solid var(--line)"
-            : "display:none"),
+            // THE TICKET STAYS BESIDE THE MENU (the new layout): ringing a dish
+            // and seeing it land are one glance, not a tab apart.
+            : s.pane === "menu" && s.activeTable
+              ? "width:" + (this.effBp() === "d" ? 392 : 340) + "px;flex:none;background:var(--bg);display:flex;flex-direction:column;min-height:0;overflow-y:auto;border-left:1px solid var(--line)"
+              : "display:none"),
       // The sheet grabber. It is a drag handle, so it is thin by design — but
       // it is also a tap target that opens the sheet, and the layout law does
       // not have an exception for "it looks like a line".
@@ -6855,6 +6900,9 @@ class Component extends DCLogic {
               ? "Code " + ((code && code[2]) || "\u2014") + " \u00b7 " + (mins ? mins + " min ago" : "just now") + " \u00b7 read it out, then tap Done"
               : (mins ? mins + " min ago" : "just now") + (x.detail ? " \u00b7 " + x.detail : ""),
             style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:10px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--warn-line)"),
+            // The same call as a card in the Now column: the title reads first,
+            // the answer sits under it at a thumb's width.
+            nowStyle: "display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:16px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--line)"),
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--warn-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
             /* AN ORDER IS ACCEPTED; A CALL IS ANSWERED. They are different
                acts and they had one pair of buttons: "Open table" and "On my
@@ -6906,6 +6954,7 @@ class Component extends DCLogic {
             title: extra + " more waiting",
             sub: "Longest-waiting are shown first — the full list is on Requests",
             style: "display:flex;align-items:center;gap:11px;padding:9px 13px;border-radius:10px;background:var(--bg-2);border:1px dashed var(--line)",
+            nowStyle: "display:flex;flex-direction:column;gap:9px;padding:12px 14px;border-radius:16px;border:1px dashed var(--line-2)",
             dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:var(--text-faint)",
             go: () => this.setState({ view: "requests" }),
             goLabel: "Open Requests", goStyle: GOS,
@@ -6916,6 +6965,18 @@ class Component extends DCLogic {
         return rows;
       })(),
       hasCalls: this.signals().length > 0 || this.elsewhere().length > 0,
+      /* THE NOW COLUMN (the new layout). Beside the floor on a tablet or a
+         desk, what needs somebody sits in its own column instead of pushing
+         the tables down; a phone keeps it inline above the floor. */
+      nowRail: !isPhone && s.pane === "floor",
+      hasCallsInline: (isPhone || s.pane !== "floor") && (this.signals().length > 0 || this.elsewhere().length > 0),
+      hasResReqInline: (isPhone || s.pane !== "floor") && this.resDoor().length > 0,
+      nowCount: String(this.signals().length + this.resDoor().length),
+      nowCountStyle: "min-width:24px;height:24px;padding:0 8px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;font-weight:800;"
+        + (this.signals().length + this.resDoor().length ? "background:var(--danger);color:var(--on-danger)" : "background:var(--bg-3);color:var(--text-dim)"),
+      nowEmpty: !this.signals().length && !this.resDoor().length,
+      nowRailStyle: "width:" + (this.effBp() === "d" ? 340 : 300) + "px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--bg);border-left:1px solid var(--line)",
+      posRowStyle: "flex:1;display:flex;min-height:0;overflow:hidden",
 
       // ── Unanswered bookings ────────────────────────────────────────────────
       // Adopted from the deployed build, where a reservation carries a source
@@ -6947,6 +7008,7 @@ class Component extends DCLogic {
         dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (r.status === "arrived" ? "var(--warn)" : "var(--blue)"),
         okStyle: "flex-shrink:0;font-size:11px;font-weight:700;padding:8px 13px;border-radius:999px;min-height:36px;background:var(--text);color:var(--bg)",
         noStyle: "flex-shrink:0;font-size:11px;font-weight:700;padding:8px 12px;border-radius:999px;min-height:36px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-dim)",
+        nowStyle: "display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:16px;background:var(--bg-1);border:1px solid " + (r.status === "arrived" ? "var(--warn-line)" : "var(--line)"),
         okText: r.status === "arrived" ? "Seat" : "Confirm",
         noText: r.status === "arrived" ? "No-show" : "Decline",
         ok: () => r.status === "arrived" ? this.seatRes(r) : this.resAct(r, "confirmed", r.name + " confirmed for " + r.t + " · " + r.party + " covers"),
