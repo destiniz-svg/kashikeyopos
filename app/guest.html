@@ -153,7 +153,7 @@ a:hover{color:var(--amber-deep)}
             <sc-for list="{{ bannersV }}" as="bn" hint-placeholder-count="1">
               <button onClick="{{ bn.tap }}" style="{{ bn.style }}">
                 <span style="{{ bn.imgStyle }}"></span>
-                <span style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(24,17,14,.55) 0%,rgba(24,17,14,.72) 100%)"></span>
+                <span style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(7,31,43,.55) 0%,rgba(7,31,43,.72) 100%)"></span>
                 <span style="{{ bn.tagStyle }}">{{ bn.tag }}</span>
                 <span style="position:relative;min-width:0;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.015em">{{ bn.title }}</span>
               </button>
@@ -528,15 +528,15 @@ a:hover{color:var(--amber-deep)}
               <div style="margin-top:20px;font-size:15.5px;font-weight:700;color:var(--text);letter-spacing:-.02em">Make it yours</div>
               <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
                 <sc-for list="{{ addons }}" as="a" hint-placeholder-count="3">
-                  <div style="height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <div style="min-height:58px;padding:5px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
                     <span style="min-width:0;font-size:14px;color:var(--text)">{{ a.name }}</span>
-                    <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
+                    <span style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                       <span style="font-size:13px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
                       <button aria-label="{{ a.decLabel }}" onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                       </button>
                       <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-                      <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:var(--amber);color:var(--on-amber);display:grid;place-items:center;flex-shrink:0">
+                      <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:48px;height:48px;border-radius:50%;background:var(--amber);color:var(--on-amber);display:grid;place-items:center;flex-shrink:0">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                       </button>
                     </span>
@@ -556,7 +556,7 @@ a:hover{color:var(--amber-deep)}
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="font-size:16px;font-weight:700;color:var(--text);min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
-              <button aria-label="One more" onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
+              <button aria-label="One more" onClick="{{ qtyInc }}" style="width:48px;height:48px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </span>
@@ -694,6 +694,12 @@ const QKEY = "kashikeyo.guest.v1";
 const POSKEY = "kashikeyo.session.v3";
 const BRIDGE = "kashikeyo.bridge.v1";
 const FKEY = "kashikeyo.fulfil.v1";
+// A fixed dark surface for the photo-style chrome (the offer strip, the
+// dish hero) that must read as dark whatever the device's light/dark
+// setting is — the same reason --ink-on-dark is a fixed white rather than
+// a token. Lagoon's own deep-sea navy (kashikeyo.css's lagoon-dark --bg-1),
+// not the coffee-brown #241a16/#241f1c this page used to carry.
+const DEEP = "#071f2b";
 
 class Component extends DCLogic {
   state = {
@@ -1067,16 +1073,33 @@ class Component extends DCLogic {
   }
   // base/ink/tint let the dish hero be a dark field while every other surface
   // is a translucent wash on white.
+  //
+  // The wash used to be the section's own hue at 12% — a brick-orange
+  // section read as a pale coral tile, a purple one as pale lilac, all of
+  // it inherited from the till's warm/standard palette. On the guest look,
+  // which is Lagoon (deep-sea navy, one teal accent), that confetti of
+  // section colours reads as a different, older product. The GLYPH still
+  // carries the section's hue at its own low opacity — the icon stays
+  // informative — but the tile it sits on is the same neutral surface
+  // every other card here uses, so a menu of forty sections reads as one
+  // page rather than a rainbow of pale washes.
   artifact(catId, glyphSize, base, ink, tintAlpha) {
     const hue = this.artHue(catId);
     const url = this.artGlyphUrl(catId, ink);
-    const tint = hue + (tintAlpha || "");
+    // The dish-hero wash used the SECTION's hue — a curry-red or a
+    // drinks-purple bled through the same "6b" opacity, so a dark hero on
+    // the CSV import's default (brick) section rendered as brown rather
+    // than the neutral navy `base` it was actually given. The wash is
+    // `base` itself now when one is supplied — a hero is one fixed dark
+    // field regardless of which section its dish sits in, same as the
+    // grid tiles are now one fixed neutral regardless of section.
+    const tint = (base || hue) + (tintAlpha || "");
     return "background-image:url(\"" + url + "\")"
       + (base ? ",linear-gradient(0deg," + tint + "," + tint + ")" : "")
       + ";background-size:" + glyphSize + " auto" + (base ? ",cover" : "")
       + ";background-position:center" + (base ? ",center" : "")
       + ";background-repeat:no-repeat" + (base ? ",no-repeat" : "")
-      + ";background-color:" + (base || (hue + "12"));
+      + ";background-color:" + (base || "var(--bg-2)");
   }
   hueOf(name) {
     let h = 0;
@@ -1959,9 +1982,16 @@ class Component extends DCLogic {
       },
       tag: b.code ? "OFFER · " + b.code : "WHAT'S ON",
       tagStyle: "position:relative;flex-shrink:0;display:inline-block;padding:3px 7px;border-radius:6px;background:var(--amber);color:var(--on-amber);font-size:11px;font-weight:700;letter-spacing:.06em;white-space:nowrap",
-      style: "position:relative;min-height:48px;border-radius:12px;overflow:hidden;background:#241a16;padding:0 12px;display:flex;align-items:center;gap:9px",
+      // A fixed dark surface, not a theme token — the tag and title are
+      // white on it whatever the device's light/dark setting, the same way
+      // the dish hero is. It used to be #241a16, a warm coffee-brown with
+      // no relation to any colour else on this page; DEEP is the guest
+      // look's own Lagoon navy (kashikeyo.css's lagoon-dark --bg-1), so an
+      // uncoded banner reads as this product's own chrome rather than a
+      // leftover from a different palette.
+      style: "position:relative;min-height:48px;border-radius:12px;overflow:hidden;background:" + DEEP + ";padding:0 12px;display:flex;align-items:center;gap:9px",
       imgStyle: b.img
-        ? "position:absolute;inset:0;background:#241a16 center/cover url('" + this.photoUrl(b.img) + "')"
+        ? "position:absolute;inset:0;background:" + DEEP + " center/cover url('" + this.photoUrl(b.img) + "')"
         : "display:none"
     }));
     V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
@@ -2128,7 +2158,7 @@ class Component extends DCLogic {
           ? "background:var(--bg-2) center/cover url('" + this.photoUrl(d.img) + "')"
           // A dark field, not a light one: the phone's own white status bar and
           // the back button sit on top of this. White ink on it, 6b of tint.
-          : this.artifact(d.cat, "26%", "#241f1c", "#ffffff", "6b"));
+          : this.artifact(d.cat, "26%", DEEP, "#ffffff", "6b"));
       V.dishAllergens = al;
       V.dishAllergenStyle = al.length ? "margin-top:15px;padding:13px 14px;border-radius:15px;background:#fff9f0;border:1px solid #f3e3cc" : "display:none";
       V.allergenFoot = "Worked out from this dish's recipe. Tell your server about any allergy — a shared fryer or grill will not show up in an ingredient list.";
@@ -2139,8 +2169,14 @@ class Component extends DCLogic {
         return {
           name: a.name, price: +a.price ? "+" + this.fmt(a.price) : "Free", qty: String(n),
           qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "var(--text)" : "var(--text-muted)"),
-          decStyle: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-            + (n ? "background:var(--bg-2);color:var(--amber)" : "background:var(--bg-2);color:#dcdce0"),
+          // Same shape as the dish-quantity stepper below: both discs the
+          // same amber fill, "−" only switching to the neutral disabled
+          // disc at zero (an add-on cannot go negative), and both at the
+          // 48px hit area every tap target here needs — the visual was
+          // 26px, well under it, and "−" carried a near-white #dcdce0
+          // glyph that read as broken rather than as zero.
+          decStyle: "width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+            + (n ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-faint)"),
           decLabel: "Remove " + a.name, incLabel: "Add " + a.name,
           inc: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: n + 1 }) }),
           dec: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: Math.max(0, n - 1) }) })
@@ -2151,18 +2187,20 @@ class Component extends DCLogic {
       V.dishQty = String(s.dishQty);
       V.qtyInc = () => self.setState({ dishQty: s.dishQty + 1 });
       V.qtyDec = () => self.setState({ dishQty: Math.max(1, s.dishQty - 1) });
-      // The "−" used to be an outline (bg-2 fill, amber glyph) beside a solid
-      // filled "+" (amber fill, on-amber glyph) — and on the guest theme
-      // --amber IS a bright accent, so an amber GLYPH on a near-white fill
-      // reads faint next to a dark glyph on a solid amber fill: the same
-      // control, two different weights, one looking disabled when it never
-      // was. Both are solid circles now, at the SAME weight, so only the
-      // direction differs. It dims for real only at qty 1, where another
-      // press does nothing — and var(--text-faint) still holds its own
-      // against var(--bg-2) (measured AA-large in every theme), so even the
-      // dimmed glyph is never below the 3:1 floor a control needs.
-      V.qtyDecStyle = "width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:"
-        + (s.dishQty <= 1 ? "var(--text-faint)" : "var(--text)");
+      // The "−" used to be an outline (bg-2 fill, amber glyph) beside a
+      // solid filled "+" (amber fill, on-amber glyph) at 34px — below the
+      // 48px touch floor on top of reading two different weights. On the
+      // guest theme --amber IS a bright accent, so an amber GLYPH on a
+      // near-white fill read faint next to a dark glyph on a solid amber
+      // disc: the same control, one looking disabled when it never was.
+      // Both are the SAME solid amber disc now, at the SAME 48px hit area
+      // as "+" — only the direction differs. "−" dims for real only at
+      // qty 1, where another press does nothing, and it dims by SWITCHING
+      // to the neutral disabled disc rather than staying amber-but-faded,
+      // so "disabled" reads as a state change and not a rendering glitch.
+      const atMin = s.dishQty <= 1;
+      V.qtyDecStyle = "width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:"
+        + (atMin ? "var(--bg-2)" : "var(--amber)") + ";color:" + (atMin ? "var(--text-faint)" : "var(--on-amber)");
       const extra = mods.reduce((a, m2) => a + (s.addons[m2.id] || 0) * m2.price, 0);
       V.addLabel = "Add · " + this.fmt((this.price(d) + extra) * s.dishQty);
       V.closeDish = () => self.setState({ dish: null });
