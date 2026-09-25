@@ -516,7 +516,7 @@ a:hover{color:var(--amber-deep)}
               <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
                 <sc-for list="{{ dishAllergens }}" as="a" hint-placeholder-count="2">
                   <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#8a5320;background:var(--bg-1);border:1px solid #f0d9bc;border-radius:9px;padding:5px 9px">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ a.icon }}')"></path></svg>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
                     {{ a.label }}
                   </span>
                 </sc-for>
@@ -628,7 +628,7 @@ a:hover{color:var(--amber-deep)}
           <div style="display:flex;align-items:stretch;gap:2px;padding:4px 8px calc(4px + env(safe-area-inset-bottom));border-top:1px solid #ededef;background:var(--bg-1)">
             <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
               <button onClick="{{ t.tap }}" style="{{ t.style }}">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="" style="d:path('{{ t.icon }}')"></path></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="{{ t.icon }}"></path></svg>
                 <span style="font-size:11px;font-weight:700;letter-spacing:.005em">{{ t.label }}</span>
                 <span style="{{ t.dotStyle }}"></span>
               </button>
@@ -649,7 +649,7 @@ a:hover{color:var(--amber-deep)}
       <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
         <div style="display:flex;gap:13px;align-items:flex-start">
           <span style="width:30px;height:30px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex-shrink:0;color:#ffb3a4">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ r.icon }}')"></path></svg>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
           </span>
           <span style="display:block;min-width:0">
             <span style="display:block;font-size:14px;font-weight:600;color:var(--ink-on-dark)">{{ r.title }}</span>

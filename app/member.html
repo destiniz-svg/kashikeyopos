@@ -188,7 +188,7 @@ a:hover{color:var(--amber-deep)}
           <div style="{{ chipRowStyle }}">
             <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
               <button onClick="{{ c.pick }}" style="{{ c.style }}">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ c.icon }}')"></path></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
                 {{ c.label }}
               </button>
             </sc-for>
@@ -628,7 +628,7 @@ a:hover{color:var(--amber-deep)}
             <sc-for list="{{ activity }}" as="a" hint-placeholder-count="4">
               <div style="display:flex;align-items:center;gap:13px">
                 <span style="{{ a.iconWrapStyle }}">
-                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ a.icon }}')"></path></svg>
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
                 </span>
                 <span style="flex:1;min-width:0;display:block">
                   <span style="display:block;font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.01em">{{ a.title }}</span>
@@ -803,7 +803,7 @@ a:hover{color:var(--amber-deep)}
           <sc-for list="{{ sheetRows }}" as="r" hint-placeholder-count="3">
             <button onClick="{{ r.tap }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);text-align:left">
               <span style="width:34px;height:34px;border-radius:50%;background:#fff2ef;display:grid;place-items:center;flex-shrink:0">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ r.icon }}')"></path></svg>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
               </span>
               <span style="flex:1;display:block">
                 <span style="display:block;font-size:14.5px;font-weight:600;color:var(--text)">{{ r.label }}</span>
@@ -836,7 +836,7 @@ a:hover{color:var(--amber-deep)}
       <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
         <div style="display:flex;gap:13px;align-items:flex-start">
           <span style="width:30px;height:30px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex-shrink:0;color:#ffb3a4">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="" style="d:path('{{ r.icon }}')"></path></svg>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
           </span>
           <span style="display:block;min-width:0">
             <span style="display:block;font-size:14px;font-weight:600;color:var(--ink-on-dark)">{{ r.title }}</span>
