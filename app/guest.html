@@ -10,6 +10,14 @@
 <link rel="apple-touch-icon" href="/brand/kashikeyo-mark.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- V2 Lagoon: same token set the terminal reads (kashikeyo.css). Look/theme
+     are applied by the logic class below (paintBackdrop -> applyLook), same
+     as index.html's applyTheme(), not by a markup attribute here — the DC
+     runtime restructures <html>/<head> after first paint, so a static
+     attribute does not survive it. This portal has no session yet, so it
+     cannot ask the outlet for a look preference: it defaults to Lagoon (the
+     new-store default, PRODUCT.md) and follows the device's day/night. -->
+<link rel="stylesheet" href="kashikeyo.css">
 <script src="./support.js"></script>
 </head>
 <body>
@@ -26,7 +34,7 @@
 <script src="./guest-bridge.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+body{background:var(--bg);font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;text-align:left;transition:transform .1s cubic-bezier(.2,.8,.3,1),opacity .12s,background .14s}
 button:active:not(:disabled){transform:scale(.975)}
 input,textarea,select{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
@@ -39,10 +47,10 @@ textarea{resize:none}
    sees a ring and a guest tabbing always does. The accent is the app's own,
    at 2px with an offset, and it clears 3:1 on both the white sheets and the
    dark backdrop. */
-:focus-visible{outline:2px solid #f4553c;outline-offset:2px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:-2px}
-a{color:#f4553c;text-decoration:none}
-a:hover{color:#d33d26}
+a{color:var(--amber);text-decoration:none}
+a:hover{color:var(--amber-deep)}
 .qs::-webkit-scrollbar{height:0;width:0}
 .qs{scrollbar-width:none}
 /* The chip rows hide their scrollbar, so the RIGHT EDGE has to say
@@ -62,7 +70,7 @@ a:hover{color:#d33d26}
    and quantity controls 30-34px: a guest at the table, phone in one hand,
    taps the neighbour. On a touch screen every button is at least 44x44;
    !important because the sizes it corrects are inline. */
-@media (pointer:coarse){button,[role="button"]{min-width:44px!important;min-height:44px!important}}
+@media (pointer:coarse){button,[role="button"]{min-width:48px!important;min-height:48px!important}}
 </style>
 </helmet>
 
@@ -81,13 +89,13 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ linkDead }}">
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:22px 26px 40px;animation:qfade .2s">
-          <div style="width:52px;height:52px;border-radius:17px;background:#f4f4f5;display:grid;place-items:center">
+          <div style="width:52px;height:52px;border-radius:17px;background:var(--bg-2);display:grid;place-items:center">
             <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#62626a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3zM12 9v4M12 16h.01"></path></svg>
           </div>
-          <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">This code does not open a menu</div>
-          <div style="margin-top:9px;font-size:14px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
-          <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:#f7f7f8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#6a6a70;overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
-          <div style="margin-top:18px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">Ask a member of staff for the card on your table — they can also take the order at the counter.</div>
+          <div style="margin-top:18px;font-size:25px;font-weight:700;color:var(--text);letter-spacing:-.035em;line-height:1.15">This code does not open a menu</div>
+          <div style="margin-top:9px;font-size:14px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
+          <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:var(--bg-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-muted);overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
+          <div style="margin-top:18px;font-size:12px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">Ask a member of staff for the card on your table — they can also take the order at the counter.</div>
         </div>
       </sc-if>
 
@@ -96,16 +104,16 @@ a:hover{color:#d33d26}
           <div style="width:52px;height:52px;border-radius:17px;background:linear-gradient(150deg,#f4553c,#c2321c);display:grid;place-items:center;box-shadow:0 8px 22px rgba(20,20,24,.16)">
             <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
           </div>
-          <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ welcomeTitle }}</div>
-          <div style="margin-top:9px;font-size:14px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ welcomeSub }}</div>
+          <div style="margin-top:18px;font-size:25px;font-weight:700;color:var(--text);letter-spacing:-.035em;line-height:1.15">{{ welcomeTitle }}</div>
+          <div style="margin-top:9px;font-size:14px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ welcomeSub }}</div>
 
-          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">YOUR TABLE</div>
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">YOUR TABLE</div>
           <div style="margin-top:11px;display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:9px">
             <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="12">
               <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
             </sc-for>
           </div>
-          <div style="margin-top:18px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">{{ welcomeFoot }}</div>
+          <div style="margin-top:18px;font-size:12px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ welcomeFoot }}</div>
         </div>
       </sc-if>
 
@@ -116,15 +124,15 @@ a:hover{color:#d33d26}
               <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,14,0) 34%,rgba(20,16,14,.72) 100%)"></div>
               <div style="position:absolute;left:14px;right:14px;bottom:11px;display:flex;align-items:center;gap:9px">
                 <img src="{{ coverLogo }}" alt="" style="{{ coverLogoStyle }}"/>
-                <span style="font-size:17px;font-weight:700;color:#fff;letter-spacing:-.025em;text-shadow:0 1px 8px rgba(0,0,0,.45)">{{ coverName }}</span>
+                <span style="font-size:17px;font-weight:700;color:var(--on-amber);letter-spacing:-.025em;text-shadow:0 1px 8px rgba(0,0,0,.45)">{{ coverName }}</span>
               </div>
             </div>
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
               <div style="min-width:0;display:flex;align-items:center;gap:10px">
                 <img src="{{ brandLogo }}" alt="" style="{{ brandLogoStyle }}"/>
                 <div style="min-width:0">
-                <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ outletName }}</div>
-                <div style="margin-top:5px;display:flex;align-items:center;gap:6px;font-size:13.5px;color:#f4553c;font-weight:600">
+                <div style="font-size:23px;font-weight:700;color:var(--text);letter-spacing:-.035em;line-height:1.15">{{ outletName }}</div>
+                <div style="margin-top:5px;display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--amber);font-weight:600">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
                   {{ tableLabel }}
                 </div>
@@ -133,9 +141,9 @@ a:hover{color:#d33d26}
               <button onClick="{{ goYou }}" aria-label="Your orders and card" style="{{ avatarStyle }}">{{ avatarText }}</button>
             </div>
 
-            <div style="margin-top:16px;height:46px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#f5f5f6">
+            <div style="margin-top:16px;height:46px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--bg-2)">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#b4b4b9" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input value="{{ q }}" onChange="{{ setQ }}" aria-label="Search the menu" placeholder="Search the menu" style="min-height:44px;font-size:16px;color:#1a1a1a"/>
+              <input value="{{ q }}" onChange="{{ setQ }}" aria-label="Search the menu" placeholder="Search the menu" style="min-height:44px;font-size:16px;color:var(--text)"/>
               <button onClick="{{ clearQ }}" aria-label="Clear the search" style="{{ clearQStyle }}">&#215;</button>
             </div>
           </div>
@@ -147,7 +155,7 @@ a:hover{color:#d33d26}
                 <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(24,17,14,.12) 0%,rgba(24,17,14,.78) 100%)"></span>
                 <span style="position:relative;display:block;text-align:left;min-width:0">
                   <span style="{{ bn.tagStyle }}">{{ bn.tag }}</span>
-                  <span style="display:block;margin-top:7px;font-size:15.5px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.25">{{ bn.title }}</span>
+                  <span style="display:block;margin-top:7px;font-size:15.5px;font-weight:700;color:var(--on-amber);letter-spacing:-.02em;line-height:1.25">{{ bn.title }}</span>
                   <span style="{{ bn.subStyle }}">{{ bn.sub }}</span>
                 </span>
               </button>
@@ -175,11 +183,11 @@ a:hover{color:#d33d26}
                   <span style="{{ it.imgStyle }}">{{ it.initial }}</span>
                   <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
                 </span>
-                <span style="display:block;margin-top:9px;font-size:13.5px;font-weight:600;color:#1a1a1a;line-height:1.3;letter-spacing:-.015em">{{ it.name }}</span>
+                <span style="display:block;margin-top:9px;font-size:13.5px;font-weight:600;color:var(--text);line-height:1.3;letter-spacing:-.015em">{{ it.name }}</span>
                 <span style="{{ it.descStyle }}">{{ it.desc }}</span>
                 <span style="{{ it.tagStyle }}">{{ it.tags }}</span>
                 <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
-                  <span style="font-size:14px;font-weight:700;color:#f4553c;letter-spacing:-.02em">{{ it.price }}</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--amber);letter-spacing:-.02em">{{ it.price }}</span>
                   <span style="{{ it.plusStyle }}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </span>
@@ -194,8 +202,8 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ onTrack }}">
         <div style="{{ tabScrollStyle }}" class="qs">
-          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#62626a">{{ trackSub }}</div>
+          <div style="font-size:23px;font-weight:700;color:var(--text);letter-spacing:-.035em">Your order</div>
+          <div style="margin-top:5px;font-size:13.5px;color:var(--text-muted)">{{ trackSub }}</div>
 
           <div style="{{ trackWrapStyle }}">
             <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
@@ -208,7 +216,7 @@ a:hover{color:#d33d26}
                 </span>
                 <span style="display:block;padding-bottom:16px;min-width:0;flex:1">
                   <span style="{{ st.labelStyle }}">{{ st.label }}</span>
-                  <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px;line-height:1.5;text-wrap:pretty">{{ st.sub }}</span>
+                  <span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.5;text-wrap:pretty">{{ st.sub }}</span>
                 </span>
               </div>
             </sc-for>
@@ -217,16 +225,16 @@ a:hover{color:#d33d26}
           <!-- ONE OPEN ORDER, not a card per round. It stays until the bill
                is settled and everything the guest adds joins it. -->
           <div style="{{ ooWrapStyle }}">
-            <div style="margin-top:11px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:15px 16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+            <div style="margin-top:11px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);padding:15px 16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
 
               <!-- What the counter accepted. A refused line is not here by
                    construction: it never reached the ticket. -->
               <div style="{{ ooOnStyle }}">
-                <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">WITH THE KITCHEN</div>
+                <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">WITH THE KITCHEN</div>
                 <sc-for list="{{ ooOn }}" as="l" hint-placeholder-count="2">
-                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--text-muted)">
                     <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span><span style="{{ l.readyStyle }}"> · ready</span></span>
-                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ l.amt }}</span>
                   </div>
                 </sc-for>
               </div>
@@ -235,11 +243,11 @@ a:hover{color:#d33d26}
                    this, so a round from another phone at this table is here
                    too and one this phone sent twice is not. -->
               <div style="{{ ooWaitingStyle }}">
-                <div style="font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">WITH THE COUNTER</div>
+                <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">WITH THE COUNTER</div>
                 <sc-for list="{{ ooWaiting }}" as="l" hint-placeholder-count="1">
-                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--text-muted)">
                     <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span></span>
-                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ l.amt }}</span>
                   </div>
                 </sc-for>
               </div>
@@ -250,9 +258,9 @@ a:hover{color:#d33d26}
               <div style="{{ ooHeldStyle }}">
                 <div style="font-size:12px;font-weight:700;color:#b5651d;letter-spacing:.08em">NOT SENT YET</div>
                 <sc-for list="{{ ooHeld }}" as="l" hint-placeholder-count="1">
-                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:#4a4a4f">
+                  <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--text-muted)">
                     <span style="min-width:0">{{ l.name }}<span style="{{ l.qtyStyle }}"> ×{{ l.qty }}</span></span>
-                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ l.amt }}</span>
                   </div>
                 </sc-for>
                 <div style="margin-top:7px;font-size:12.5px;color:#7a4a12;line-height:1.5;text-wrap:pretty">This phone is holding it — it goes on its own as soon as you are back online.</div>
@@ -287,8 +295,8 @@ a:hover{color:#d33d26}
               </div>
 
               <div style="{{ ooTotalStyle }}">
-                <span style="font-size:12.5px;color:#6a6a72;line-height:1.45;text-wrap:pretty;min-width:0">{{ ooTotalNote }}</span>
-                <span style="flex-shrink:0;font-size:15px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace">{{ ooTotal }}</span>
+                <span style="font-size:12.5px;color:var(--text-muted);line-height:1.45;text-wrap:pretty;min-width:0">{{ ooTotalNote }}</span>
+                <span style="flex-shrink:0;font-size:15px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace">{{ ooTotal }}</span>
               </div>
             </div>
           </div>
@@ -302,18 +310,18 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ onBill }}">
         <div style="{{ tabScrollStyle }}" class="qs">
-          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">The bill</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
+          <div style="font-size:23px;font-weight:700;color:var(--text);letter-spacing:-.035em">The bill</div>
+          <div style="margin-top:5px;font-size:13.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
 
           <div style="{{ billBodyStyle }}">
-            <div style="margin-top:18px;border:1px solid #efefef;border-radius:18px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+            <div style="margin-top:18px;border:1px solid var(--line);border-radius:18px;background:var(--bg-1);padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
               <sc-for list="{{ billLines }}" as="l" hint-placeholder-count="3">
-                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:var(--text-muted)">
                   <span style="min-width:0">{{ l.name }}</span>
-                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ l.amt }}</span>
+                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text);font-weight:500">{{ l.amt }}</span>
                 </div>
               </sc-for>
-              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:7px">
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px">
                 <sc-for list="{{ billTotals }}" as="t" hint-placeholder-count="4">
                   <div style="{{ t.style }}"><span>{{ t.label }}</span><span style="font-family:'JetBrains Mono',monospace">{{ t.amt }}</span></div>
                 </sc-for>
@@ -322,7 +330,7 @@ a:hover{color:#d33d26}
 
             <button onClick="{{ addMore }}" style="{{ addMoreBillStyle }}">Add more items</button>
 
-            <div style="margin-top:20px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
+            <div style="margin-top:20px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <sc-for list="{{ splitModes }}" as="m" hint-placeholder-count="4">
                 <button onClick="{{ m.tap }}" style="{{ m.style }}">
@@ -334,52 +342,52 @@ a:hover{color:#d33d26}
 
             <div style="{{ splitEvenStyle }}">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
+                <span style="font-size:13.5px;color:var(--text-muted)">Between how many?</span>
                 <span style="display:flex;align-items:center;gap:12px">
-                  <button onClick="{{ splitLess }}" aria-label="Fewer people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                  <button onClick="{{ splitLess }}" aria-label="Fewer people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:var(--amber)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
-                  <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
-                  <button onClick="{{ splitMore }}" aria-label="More people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <span style="font-size:17px;font-weight:700;color:var(--text);min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
+                  <button onClick="{{ splitMore }}" aria-label="More people sharing the bill" style="width:32px;height:32px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
               </div>
-              <div style="margin-top:11px;font-size:13.5px;color:#f4553c;font-weight:700">{{ splitEach }}</div>
+              <div style="margin-top:11px;font-size:13.5px;color:var(--amber);font-weight:700">{{ splitEach }}</div>
             </div>
 
             <div style="{{ splitItemStyle }}">
-              <div style="font-size:12.5px;color:#62626a;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table's bill for whoever is paying it.</div>
+              <div style="font-size:12.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table's bill for whoever is paying it.</div>
               <sc-for list="{{ pickLines }}" as="l" hint-placeholder-count="3">
                 <button onClick="{{ l.tap }}" style="{{ l.style }}">
                   <span style="{{ l.box }}">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="{{ l.tick }}"><path d="m5 13 4.5 4.5L19 7"></path></svg>
                   </span>
-                  <span style="flex:1;min-width:0;font-size:13.5px;color:#1a1a1a">{{ l.name }}</span>
-                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:#4a4a4f">{{ l.amt }}</span>
+                  <span style="flex:1;min-width:0;font-size:13.5px;color:var(--text)">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:var(--text-muted)">{{ l.amt }}</span>
                 </button>
               </sc-for>
-              <div style="margin-top:12px;font-size:13.5px;color:#f4553c;font-weight:700">{{ pickTotal }}</div>
+              <div style="margin-top:12px;font-size:13.5px;color:var(--amber);font-weight:700">{{ pickTotal }}</div>
             </div>
 
             <div style="{{ splitCustomStyle }}">
-              <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
-              <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
-                <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
-                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" aria-label="Amount to pay" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+              <div style="font-size:13.5px;color:var(--text-muted)">What are you putting in?</div>
+              <div style="margin-top:10px;height:52px;border:1.4px solid var(--amber);border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:var(--bg-1)">
+                <span style="font-size:14px;font-weight:700;color:var(--amber);flex-shrink:0">MVR</span>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" aria-label="Amount to pay" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace"/>
               </div>
               <div style="{{ customWarnStyle }}">{{ customWarn }}</div>
             </div>
 
-            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">ADD A TIP FOR THE TEAM</div>
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">ADD A TIP FOR THE TEAM</div>
             <div style="margin-top:10px;display:flex;gap:8px">
               <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
               </sc-for>
             </div>
-            <div style="margin-top:9px;font-size:12px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+            <div style="margin-top:9px;font-size:12px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
 
-            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">PAYING WITH</div>
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">PAYING WITH</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="3">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -389,7 +397,7 @@ a:hover{color:#d33d26}
             <div style="margin-top:20px;border-radius:18px;background:#fff8f6;border:1px solid #ffd9d1;padding:16px">
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
                 <span style="font-size:14px;font-weight:700;color:#c2452f">You are paying</span>
-                <span style="font-size:23px;font-weight:800;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
+                <span style="font-size:23px;font-weight:800;color:var(--amber);letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
               </div>
               <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
             </div>
@@ -404,29 +412,29 @@ a:hover{color:#d33d26}
                that were delivered, because a declined one never reached the
                ticket and so was never on the bill. -->
           <div style="{{ paidWrapStyle }}">
-            <div style="margin-top:18px;border:1px solid #d8ecdd;border-radius:18px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
-              <div style="font-size:12px;font-weight:700;color:#1f7a3d;letter-spacing:.08em">{{ paidHead }}</div>
+            <div style="margin-top:18px;border:1px solid #d8ecdd;border-radius:18px;background:var(--bg-1);padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+              <div style="font-size:12px;font-weight:700;color:var(--go-bright);letter-spacing:.08em">{{ paidHead }}</div>
               <div style="margin-top:12px">
                 <sc-for list="{{ paidLines }}" as="l" hint-placeholder-count="3">
-                  <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:var(--text-muted)">
                     <span style="min-width:0">{{ l.name }}</span>
-                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ l.amt }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text);font-weight:500">{{ l.amt }}</span>
                   </div>
                 </sc-for>
               </div>
               <div style="{{ paidRowsStyle }}">
                 <sc-for list="{{ paidRows }}" as="r" hint-placeholder-count="2">
-                  <div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13.5px;color:#4a4a4f">
+                  <div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13.5px;color:var(--text-muted)">
                     <span>{{ r.k }}</span>
-                    <span style="font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ r.v }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;color:var(--text);font-weight:500">{{ r.v }}</span>
                   </div>
                 </sc-for>
               </div>
-              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111">
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:var(--text)">
                 <span>{{ paidTotalLabel }}</span>
                 <span style="font-family:'JetBrains Mono',monospace">{{ paidTotal }}</span>
               </div>
-              <div style="margin-top:10px;font-size:12.5px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ paidFoot }}</div>
+              <div style="margin-top:10px;font-size:12.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ paidFoot }}</div>
             </div>
           </div>
 
@@ -436,37 +444,37 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ onYou }}">
         <div style="{{ tabScrollStyle }}" class="qs">
-          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">{{ youTitle }}</div>
-          <div style="margin-top:5px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
+          <div style="font-size:23px;font-weight:700;color:var(--text);letter-spacing:-.035em">{{ youTitle }}</div>
+          <div style="margin-top:5px;font-size:13.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
 
           <div style="{{ identFormStyle }}">
-            <div style="margin-top:18px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">YOUR NAME</div>
-            <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;background:#fff">
-              <input value="{{ identName }}" onChange="{{ setIdentName }}" aria-label="Your name" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:16px;color:#1a1a1a"/>
+            <div style="margin-top:18px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">YOUR NAME</div>
+            <div style="margin-top:9px;height:50px;border:1px solid var(--line);border-radius:15px;display:flex;align-items:center;padding:0 15px;background:var(--bg-1)">
+              <input value="{{ identName }}" onChange="{{ setIdentName }}" aria-label="Your name" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:16px;color:var(--text)"/>
             </div>
-            <div style="margin-top:14px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">MOBILE</div>
-            <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
-              <span style="font-size:14.5px;color:#6a6a72;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
-              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" aria-label="Your mobile number" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:16px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
+            <div style="margin-top:14px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">MOBILE</div>
+            <div style="margin-top:9px;height:50px;border:1px solid var(--line);border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:var(--bg-1)">
+              <span style="font-size:14.5px;color:var(--text-muted);flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
+              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" aria-label="Your mobile number" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:16px;color:var(--text);font-family:'JetBrains Mono',monospace"/>
             </div>
-            <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ saveIdentLabel }}</button>
-            <div style="margin-top:12px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
+            <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:var(--amber);color:var(--on-amber);font-size:14.5px;font-weight:700;text-align:center;min-height:56px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ saveIdentLabel }}</button>
+            <div style="margin-top:12px;font-size:12px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
           </div>
 
           <div style="{{ identCardStyle }}">
             <div style="margin-top:18px;border-radius:20px;padding:20px;background:linear-gradient(145deg,#f4553c,#b8341f);box-shadow:0 12px 30px rgba(20,20,24,.16)">
               <div style="font-size:11px;font-weight:700;letter-spacing:.09em;color:rgba(255,255,255,.65)">{{ cardKicker }}</div>
-              <div style="margin-top:6px;font-size:22px;font-weight:700;color:#fff;letter-spacing:-.03em">{{ identName }}</div>
+              <div style="margin-top:6px;font-size:22px;font-weight:700;color:var(--on-amber);letter-spacing:-.03em">{{ identName }}</div>
               <div style="margin-top:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
                 <span style="font-size:13px;color:rgba(255,255,255,.8);font-family:'JetBrains Mono',monospace">{{ identMasked }}</span>
                 <span style="{{ ptsStyle }}">{{ ptsLabel }}</span>
               </div>
             </div>
-            <button onClick="{{ forgetMe }}" style="margin-top:14px;width:100%;padding:13px;border-radius:14px;background:#f5f5f6;color:#62626a;font-size:13px;font-weight:600;text-align:center;min-height:46px">Forget me on this phone</button>
+            <button onClick="{{ forgetMe }}" style="margin-top:14px;width:100%;padding:13px;border-radius:14px;background:var(--bg-2);color:var(--text-muted);font-size:13px;font-weight:600;text-align:center;min-height:46px">Forget me on this phone</button>
           </div>
 
           <div style="{{ rateWrapStyle }}">
-            <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW WAS IT?</div>
+            <div style="margin-top:24px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">HOW WAS IT?</div>
             <div style="margin-top:11px;display:flex;gap:8px">
               <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
                 <button aria-label="{{ st.label }}" onClick="{{ st.tap }}" style="{{ st.style }}">
@@ -475,19 +483,19 @@ a:hover{color:#d33d26}
               </sc-for>
             </div>
             <div style="{{ rateNoteStyle }}">
-              <textarea rows="3" value="{{ rateNote }}" onChange="{{ setRateNote }}" placeholder="Anything you want the kitchen to know?" style="font-size:16px;color:#1a1a1a;line-height:1.5;height:64px"></textarea>
+              <textarea rows="3" value="{{ rateNote }}" onChange="{{ setRateNote }}" placeholder="Anything you want the kitchen to know?" style="font-size:16px;color:var(--text);line-height:1.5;height:64px"></textarea>
             </div>
             <button onClick="{{ sendRating }}" style="{{ rateSendStyle }}">{{ rateSendLabel }}</button>
             <div style="{{ rateDoneStyle }}">{{ rateDone }}</div>
           </div>
 
-          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">THIS TABLE</div>
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">THIS TABLE</div>
           <div style="margin-top:11px;display:flex;flex-direction:column;gap:8px">
             <sc-for list="{{ tableActions }}" as="a" hint-placeholder-count="3">
               <button onClick="{{ a.tap }}" style="{{ a.style }}">
                 <span style="flex:1;min-width:0;display:block">
-                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ a.label }}</span>
-                  <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px;line-height:1.4">{{ a.sub }}</span>
+                  <span style="display:block;font-size:14px;font-weight:600;color:var(--text)">{{ a.label }}</span>
+                  <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.4">{{ a.sub }}</span>
                 </span>
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#8a8a90" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 6 6 6-6 6"></path></svg>
               </button>
@@ -498,18 +506,18 @@ a:hover{color:#d33d26}
 
       <sc-if value="{{ dishOpen }}">
         <div onClick="{{ closeDish }}" style="position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:40;animation:qfade .14s"></div>
-        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:86%;background:#fff;border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
-          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:#e0e0e3;display:block"></span></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:86%;background:var(--bg-1);border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
+          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:var(--bg-2);display:block"></span></div>
           <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 18px" class="qs">
             <span style="{{ dishImgStyle }}"></span>
-            <div style="margin-top:15px;font-size:21px;font-weight:700;color:#111;letter-spacing:-.03em;line-height:1.2">{{ dishName }}</div>
-            <div style="margin-top:7px;font-size:13.5px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ dishDesc }}</div>
+            <div style="margin-top:15px;font-size:21px;font-weight:700;color:var(--text);letter-spacing:-.03em;line-height:1.2">{{ dishName }}</div>
+            <div style="margin-top:7px;font-size:13.5px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ dishDesc }}</div>
 
             <div style="{{ dishAllergenStyle }}">
               <div style="font-size:11.5px;font-weight:700;color:#b0682c;letter-spacing:.05em">CONTAINS</div>
               <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
                 <sc-for list="{{ dishAllergens }}" as="a" hint-placeholder-count="2">
-                  <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#8a5320;background:#fff;border:1px solid #f0d9bc;border-radius:9px;padding:5px 9px">
+                  <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#8a5320;background:var(--bg-1);border:1px solid #f0d9bc;border-radius:9px;padding:5px 9px">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
                     {{ a.label }}
                   </span>
@@ -519,18 +527,18 @@ a:hover{color:#d33d26}
             </div>
 
             <div style="{{ addonWrapStyle }}">
-              <div style="margin-top:20px;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">Make it yours</div>
+              <div style="margin-top:20px;font-size:15.5px;font-weight:700;color:var(--text);letter-spacing:-.02em">Make it yours</div>
               <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
                 <sc-for list="{{ addons }}" as="a" hint-placeholder-count="3">
                   <div style="height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px">
-                    <span style="min-width:0;font-size:14px;color:#1a1a1a">{{ a.name }}</span>
+                    <span style="min-width:0;font-size:14px;color:var(--text)">{{ a.name }}</span>
                     <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-                      <span style="font-size:13px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                      <span style="font-size:13px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
                       <button aria-label="{{ a.decLabel }}" onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                       </button>
                       <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-                      <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0">
+                      <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:var(--amber);color:var(--on-amber);display:grid;place-items:center;flex-shrink:0">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                       </button>
                     </span>
@@ -539,69 +547,69 @@ a:hover{color:#d33d26}
               </div>
             </div>
 
-            <div style="margin-top:18px;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">Anything to tell the kitchen?</div>
-            <div style="margin-top:10px;border:1px solid #ececee;border-radius:15px;padding:13px 14px;background:#fafafb">
-              <textarea rows="2" value="{{ dishNote }}" onChange="{{ setDishNote }}" placeholder="No onions, extra spicy, allergy to..." style="font-size:16px;min-height:64px;color:#1a1a1a;line-height:1.5;height:42px"></textarea>
+            <div style="margin-top:18px;font-size:15.5px;font-weight:700;color:var(--text);letter-spacing:-.02em">Anything to tell the kitchen?</div>
+            <div style="margin-top:10px;border:1px solid var(--line);border-radius:15px;padding:13px 14px;background:var(--bg-2)">
+              <textarea rows="2" value="{{ dishNote }}" onChange="{{ setDishNote }}" placeholder="No onions, extra spicy, allergy to..." style="font-size:16px;min-height:64px;color:var(--text);line-height:1.5;height:42px"></textarea>
             </div>
           </div>
-          <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:13px 20px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:13px;background:#fff">
+          <div style="flex-shrink:0;border-top:1px solid var(--line);padding:13px 20px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:13px;background:var(--bg-1)">
             <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-              <button aria-label="One fewer" onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+              <button aria-label="One fewer" onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:var(--amber)">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
-              <span style="font-size:16px;font-weight:700;color:#111;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
-              <button aria-label="One more" onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+              <span style="font-size:16px;font-weight:700;color:var(--text);min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
+              <button aria-label="One more" onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </span>
-            <button onClick="{{ addToCart }}" style="flex:1;min-width:0;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ addLabel }}</button>
+            <button onClick="{{ addToCart }}" style="flex:1;min-width:0;padding:15px;border-radius:16px;background:var(--amber);color:var(--on-amber);font-size:14.5px;font-weight:700;text-align:center;min-height:56px;box-shadow:0 6px 18px rgba(20,20,24,.16)">{{ addLabel }}</button>
           </div>
         </div>
       </sc-if>
 
       <sc-if value="{{ cartOpen }}">
         <div onClick="{{ closeCart }}" style="position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:40;animation:qfade .14s"></div>
-        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:84%;background:#fff;border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
-          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:#e0e0e3;display:block"></span></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:84%;background:var(--bg-1);border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
+          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:var(--bg-2);display:block"></span></div>
           <div style="flex-shrink:0;padding:6px 20px 12px">
-            <div style="font-size:20px;font-weight:700;color:#111;letter-spacing:-.03em">This round</div>
-            <div style="margin-top:4px;font-size:13px;color:#62626a">{{ cartSub }}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--text);letter-spacing:-.03em">This round</div>
+            <div style="margin-top:4px;font-size:13px;color:var(--text-muted)">{{ cartSub }}</div>
           </div>
           <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 14px" class="qs">
             <sc-for list="{{ cart }}" as="l" hint-placeholder-count="2">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #f4f4f5">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)">
                 <span style="{{ l.imgStyle }}"></span>
                 <span style="flex:1;min-width:0;display:block">
-                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;line-height:1.3">{{ l.name }}</span>
+                  <span style="display:block;font-size:14px;font-weight:600;color:var(--text);line-height:1.3">{{ l.name }}</span>
                   <span style="{{ l.optStyle }}">{{ l.opt }}</span>
-                  <span style="display:block;margin-top:5px;font-size:13.5px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ l.amt }}</span>
+                  <span style="display:block;margin-top:5px;font-size:13.5px;font-weight:700;color:var(--amber);font-family:'JetBrains Mono',monospace">{{ l.amt }}</span>
                 </span>
                 <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                  <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                  <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:var(--amber)">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
-                  <span style="font-size:14px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
-                  <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <span style="font-size:14px;font-weight:700;color:var(--text);min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
+                  <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
               </div>
             </sc-for>
 
-            <div style="margin-top:16px;font-size:12px;font-weight:700;color:#6e6e77;letter-spacing:.08em">PROMO CODE</div>
-            <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:#fff">
-              <input value="{{ promo }}" onChange="{{ setPromo }}" aria-label="Promotion code" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:16px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
-              <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:#f4553c;font-weight:700;flex-shrink:0">Apply</button>
+            <div style="margin-top:16px;font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">PROMO CODE</div>
+            <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:var(--bg-1)">
+              <input value="{{ promo }}" onChange="{{ setPromo }}" aria-label="Promotion code" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:16px;font-weight:600;color:var(--text);padding:0 15px;text-transform:uppercase"/>
+              <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:var(--amber);font-weight:700;flex-shrink:0">Apply</button>
             </div>
             <div style="{{ promoMsgStyle }}">{{ promoMsg }}</div>
           </div>
-          <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:#fff">
+          <div style="flex-shrink:0;border-top:1px solid var(--line);padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:var(--bg-1)">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-              <span style="font-size:13.5px;color:#62626a">{{ cartTotalLabel }}</span>
-              <span style="font-size:19px;font-weight:800;color:#111;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
+              <span style="font-size:13.5px;color:var(--text-muted)">{{ cartTotalLabel }}</span>
+              <span style="font-size:19px;font-weight:800;color:var(--text);letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
             </div>
-            <div style="margin-top:6px;font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
-            <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(20,20,24,.16)">Send to the kitchen</button>
+            <div style="margin-top:6px;font-size:11.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
+            <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:var(--amber);color:var(--on-amber);font-size:15px;font-weight:700;text-align:center;min-height:56px;box-shadow:0 6px 20px rgba(20,20,24,.16)">Send to the kitchen</button>
           </div>
         </div>
       </sc-if>
@@ -611,7 +619,7 @@ a:hover{color:#d33d26}
       <sc-if value="{{ showBar }}">
         <div style="{{ barStyle }}">
           <sc-if value="{{ cartBadgeOn }}">
-            <button onClick="{{ openCart }}" style="margin:0 12px 8px;padding:13px 16px;border-radius:16px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 22px rgba(20,20,24,.16);min-height:52px">
+            <button onClick="{{ openCart }}" style="margin:0 12px 8px;padding:13px 16px;border-radius:16px;background:var(--amber);color:var(--on-amber);display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 22px rgba(20,20,24,.16);min-height:56px">
               <span style="display:flex;align-items:center;gap:10px;min-width:0">
                 <span style="width:26px;height:26px;border-radius:9px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:12.5px;font-weight:800;flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ cartCount }}</span>
                 <span style="font-size:14px;font-weight:700;letter-spacing:-.01em">Review this round</span>
@@ -619,7 +627,7 @@ a:hover{color:#d33d26}
               <span style="font-size:14.5px;font-weight:800;flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
             </button>
           </sc-if>
-          <div style="display:flex;align-items:stretch;gap:2px;padding:4px 8px calc(4px + env(safe-area-inset-bottom));border-top:1px solid #ededef;background:#fff">
+          <div style="display:flex;align-items:stretch;gap:2px;padding:4px 8px calc(4px + env(safe-area-inset-bottom));border-top:1px solid #ededef;background:var(--bg-1)">
             <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
               <button onClick="{{ t.tap }}" style="{{ t.style }}">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="{{ t.icon }}"></path></svg>
@@ -637,7 +645,7 @@ a:hover{color:#d33d26}
 
   <div style="{{ asideStyle }}">
     <div style="font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.5)">SCAN TO ORDER</div>
-    <div style="margin-top:12px;font-size:30px;font-weight:700;color:#fff;letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
+    <div style="margin-top:12px;font-size:30px;font-weight:700;color:var(--on-amber);letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
     <div style="margin-top:14px;font-size:14.5px;color:rgba(255,255,255,.72);line-height:1.65;text-wrap:pretty">{{ asideBody }}</div>
     <div style="margin-top:26px;display:flex;flex-direction:column;gap:14px">
       <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
@@ -646,7 +654,7 @@ a:hover{color:#d33d26}
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
           </span>
           <span style="display:block;min-width:0">
-            <span style="display:block;font-size:14px;font-weight:600;color:#fff">{{ r.title }}</span>
+            <span style="display:block;font-size:14px;font-weight:600;color:var(--on-amber)">{{ r.title }}</span>
             <span style="display:block;font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;line-height:1.55;text-wrap:pretty">{{ r.sub }}</span>
           </span>
         </div>
@@ -660,7 +668,7 @@ a:hover{color:#d33d26}
 
 </div>
 </x-dc>
-<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="#f4553c"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">QR</text></svg></template>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="var(--amber)"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">QR</text></svg></template>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:940}}">
 /* ═══ KASHIKEYO — GUEST QR ORDERING ═════════════════════════════════════════
    A working table-side portal, not a picture of one.
@@ -740,10 +748,27 @@ class Component extends DCLogic {
      template cannot reach, and overscroll is the one place its colour still
      shows. Without this, iOS rubber-band reveals a near-black band around a
      white app at both edges. */
+  // V2 Lagoon: applied here (called from componentDidMount/Update) rather
+  // than a static markup attribute, because the DC runtime restructures
+  // <html>/<head> after first paint and a markup attribute does not survive
+  // it — the same reason index.html's applyTheme() is a method, not markup.
+  // No session exists yet on a guest phone, so there is no outlet look pref
+  // to read; this defaults to Lagoon (new stores start there, PRODUCT.md)
+  // and follows the device's day/night.
+  applyLook() {
+    if (typeof document === "undefined") return;
+    const de = document.documentElement;
+    de.setAttribute("data-look", "lagoon");
+    const dark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+    de.setAttribute("data-theme", dark ? "dark" : "light");
+  }
   paintBackdrop() {
     if (typeof document === "undefined") return;
-    const bg = this.metrics().bare ? "#fff" : "#1b0d0a";
+    this.applyLook();
     const de = document.documentElement, bd = document.body;
+    const cs = getComputedStyle(de);
+    const v = (name, fallback) => { const x = (cs.getPropertyValue(name) || "").trim(); return x || fallback; };
+    const bg = this.metrics().bare ? v("--bg-1", "#fff") : v("--bg", "#1b0d0a");
     if (de && de.style) {
       de.style.background = bg;
       de.style.overscrollBehavior = "none";
@@ -1481,7 +1506,7 @@ class Component extends DCLogic {
           qty: l.qty, qtyStyle: l.qty > 1 ? "" : "display:none",
           amt: this.fmt(price(l.id, l.price, 0, l.qty)),
           // Plated and waiting to come over, on the outlet's own record.
-          readyStyle: l.ready ? "color:#2ea44f;font-weight:600" : "display:none"
+          readyStyle: l.ready ? "color:var(--go-bright);font-weight:600" : "display:none"
         });
       }));
 
@@ -1800,14 +1825,14 @@ class Component extends DCLogic {
          the bottom bar behind the address bar, so the one control a guest
          needs sits under the browser's own chrome. */
       stageStyle: SH.bare
-        ? "min-height:100dvh;background:#fff;display:block"
-        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
+        ? "min-height:100dvh;background:var(--bg-1);display:block"
+        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#0b2837 0%,#051a24 40%,#03131b 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
       phoneStyle: SH.bare
-        ? "width:100%;max-width:" + SH.scr + "px;margin:0 auto;height:100dvh;background:#fff;position:relative;display:flex;flex-direction:column"
+        ? "width:100%;max-width:" + SH.scr + "px;margin:0 auto;height:100dvh;background:var(--bg-1);position:relative;display:flex;flex-direction:column"
         : "width:" + (SH.scr + 22) + "px;height:" + (SH.h + 22) + "px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)",
       // Bare keeps the notch inset the painted bar used to stand in — the box
       // is real on a real phone even though nothing is drawn in it any more.
-      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative"
+      screenStyle: "width:100%;height:100%;background:var(--bg-1);overflow:hidden;display:flex;flex-direction:column;position:relative"
         + (SH.bare ? ";padding-top:env(safe-area-inset-top)" : ";border-radius:46px"),
       // A drawn notch on a real phone is a second notch under the real one,
       // and a painted clock sits under the device's own. Hidden, not shrunk.
@@ -1815,7 +1840,7 @@ class Component extends DCLogic {
         : "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:120px;height:33px;border-radius:20px;background:#0a0a0a;display:block",
       statusStyle: SH.bare
         ? "display:none"
-        : "flex-shrink:0;height:52px;padding:15px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;color:#111;font-size:15px"
+        : "flex-shrink:0;height:52px;padding:15px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;color:var(--text);font-size:15px"
     };
     if (!k) {
       return Object.assign(V, this.deadVals(), {
@@ -1872,7 +1897,7 @@ class Component extends DCLogic {
       }));
     V.tableChoices = floor.map((t) => ({
       label: t.label,
-      style: "padding:13px 6px;border-radius:14px;background:#fff;border:1px solid #e8e8ea;font-size:13.5px;font-weight:700;color:#1a1a1a;text-align:center;min-height:46px;font-family:'JetBrains Mono',monospace",
+      style: "padding:13px 6px;border-radius:14px;background:var(--bg-1);border:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--text);text-align:center;min-height:46px;font-family:'JetBrains Mono',monospace",
       pick: () => {
         self.setState({ table: t.label });
         self.toast("Table " + self.tblOf(t.label) + " — here is the menu");
@@ -1903,7 +1928,7 @@ class Component extends DCLogic {
     V.coverName = brand.cover ? (o.name || "") : "";
     V.brandLogo = !brand.cover && brand.logo ? this.photoUrl(brand.logo) : "";
     V.brandLogoStyle = !brand.cover && brand.logo
-      ? "width:42px;height:42px;border-radius:11px;background:#f5f5f6;object-fit:contain;padding:3px;flex-shrink:0"
+      ? "width:42px;height:42px;border-radius:11px;background:var(--bg-2);object-fit:contain;padding:3px;flex-shrink:0"
       : "display:none";
     /* THE OFFER BANNERS — live rows off the projection, already filtered by
        the slot switch and each banner's own date window on the server, so a
@@ -1930,7 +1955,7 @@ class Component extends DCLogic {
         }
       },
       tag: b.code ? "OFFER · " + b.code : "WHAT'S ON",
-      tagStyle: "display:inline-block;padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
+      tagStyle: "display:inline-block;padding:3px 8px;border-radius:6px;background:var(--amber);color:var(--on-amber);font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;flex:0 0 " + (banners.length > 1 ? "86%" : "100%") + ";min-height:104px;border-radius:16px;overflow:hidden;background:#241a16;padding:13px 14px;display:flex;align-items:flex-end;scroll-snap-align:start",
       imgStyle: b.img
         ? "position:absolute;inset:0;background:#241a16 center/cover url('" + this.photoUrl(b.img) + "')"
@@ -1939,14 +1964,14 @@ class Component extends DCLogic {
     V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
     V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
     V.avatarStyle = "width:44px;height:44px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
-      + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#6e6e77");
+      + (s.ident ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)");
     V.goYou = () => self.setState({ tab: "you" });
 
     // ── menu ───────────────────────────────────────────────────────────────
     V.q = s.q;
     V.setQ = (e) => self.setState({ q: e.target.value });
     V.clearQ = () => self.setState({ q: "" });
-    V.clearQStyle = s.q ? "width:22px;height:22px;border-radius:50%;background:#e2e2e5;color:#6a6a70;font-size:15px;line-height:1;display:grid;place-items:center;flex-shrink:0" : "display:none";
+    V.clearQStyle = s.q ? "width:22px;height:22px;border-radius:50%;background:#e2e2e5;color:var(--text-muted);font-size:15px;line-height:1;display:grid;place-items:center;flex-shrink:0" : "display:none";
 
     /* Only a diet some dish on this menu actually suits is offered. A dish
        with no recipe claims nothing — silence beats an unearned "Vegetarian"
@@ -1959,7 +1984,7 @@ class Component extends DCLogic {
       return {
         label: d.label,
         style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
-          + (on ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+          + (on ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)"),
         tap: () => self.setState({ diet: on ? s.diet.filter((x) => x !== d.k) : s.diet.concat([d.k]) })
       };
     });
@@ -1997,7 +2022,7 @@ class Component extends DCLogic {
     V.cats = (hasPop ? [{ id: "popular", name: "Most ordered" }] : [])
       .concat([{ id: "all", name: "Everything" }]).concat(k.MENU_CATEGORIES || []).map((c) => {
       const on = cat === c.id;
-      const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
+      const hue = c.id === "all" ? "var(--amber)" : this.artHue(c.id);
       const n = c.id === "all" ? allMenu.length
         : c.id === "popular" ? popIds.length
           : allMenu.filter((m2) => m2.cat === c.id).length;
@@ -2007,8 +2032,8 @@ class Component extends DCLogic {
           : "width:30px;height:30px;border-radius:50%;flex-shrink:0;display:block;"
           + this.artifact(c.id === "all" ? "__all" : c.id, "56%"),
         style: "flex-shrink:0;gap:9px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
-          + (on ? "padding:7px 16px;background:" + hue + ";color:#fff;border:1px solid " + hue
-            : "padding:7px 15px 7px 7px;background:#fff;color:#6a6a70;border:1px solid #ececee"),
+          + (on ? "padding:7px 16px;background:" + hue + ";color:var(--on-amber);border:1px solid " + hue
+            : "padding:7px 15px 7px 7px;background:var(--bg-1);color:var(--text-muted);border:1px solid var(--line)"),
         tap: () => self.setState({ cat: c.id })
       };
     });
@@ -2027,7 +2052,7 @@ class Component extends DCLogic {
     V.filterNote = s.diet.length
       ? "Showing dishes that suit " + s.diet.map((d) => (k.DIETS.filter((x) => x.k === d)[0] || {}).label.toLowerCase()).join(" and ") + ". Worked out from each recipe, not from a label."
       : "";
-    V.filterNoteStyle = s.diet.length ? "margin:10px 20px 0;font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty" : "display:none";
+    V.filterNoteStyle = s.diet.length ? "margin:10px 20px 0;font-size:11.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty" : "display:none";
     // Two identical keyframes alternated by filter state: an animation restarts
     // only when its NAME changes, so the grid lifts in each time the guest
     // narrows the menu and it is obvious the list is now different.
@@ -2051,11 +2076,11 @@ class Component extends DCLogic {
            every dish is in today. */
         desc: m.desc || "",
         descStyle: m.desc
-          ? "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:11.5px;color:#62626a;line-height:1.4;text-align:left"
+          ? "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:11.5px;color:var(--text-muted);line-height:1.4;text-align:left"
           : "display:none",
         tags: al.length ? al.map((a) => a.label).join(" · ") : (k.dishHasMeat && !k.dishHasMeat(m) ? "Vegetarian" : ""),
         tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
-          ? "display:block;margin-top:4px;font-size:11px;color:#6a6a72;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          ? "display:block;margin-top:4px;font-size:11px;color:var(--text-muted);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
           : "display:none",
         /* NO DISH IS EVER A BLANK TILE. What stood here was a short band with
            the dish's initials, hued off its name — which meant a plain menu
@@ -2063,18 +2088,18 @@ class Component extends DCLogic {
            nothing but a colour. The plate is the SECTION's artifact now: its
            hue, its glyph, the same composition the till draws. */
         imgStyle: (m.img
-          ? "background:#f1f1f3 center/cover url('" + this.photoUrl(m.img) + "');"
+          ? "background:var(--bg-2) center/cover url('" + this.photoUrl(m.img) + "');"
           : this.artifact(m.cat, "36%") + ";")
           + "display:block;width:100%;height:132px;border-radius:12px;"
           + (dead ? "filter:grayscale(1);opacity:.5" : ""),
         initial: "",
         badge: dead ? "Sold out" : "",
         badgeStyle: dead
-          ? "position:absolute;left:7px;top:7px;font-size:11px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
+          ? "position:absolute;left:7px;top:7px;font-size:11px;font-weight:800;letter-spacing:.03em;background:var(--amber);color:var(--on-amber);padding:4px 8px;border-radius:8px"
           : "display:none",
         plusStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + (dead ? "background:#e8e8ea;color:#6e6e77" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(20,20,24,.16)"),
-        cardStyle: "background:#fff;border:1px solid #efeff1;border-radius:18px;padding:8px 8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.045);display:block;"
+          + (dead ? "background:var(--bg-2);color:var(--text-muted)" : "background:var(--amber);color:var(--on-amber);box-shadow:0 2px 7px rgba(20,20,24,.16)"),
+        cardStyle: "background:var(--bg-1);border:1px solid var(--line);border-radius:18px;padding:8px 8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.045);display:block;"
           + (dead ? "opacity:.72" : ""),
         tap: () => dead
           ? self.toast(m.name + " is off tonight")
@@ -2084,7 +2109,7 @@ class Component extends DCLogic {
     V.emptyMsg = q
       ? "Nothing matches \u201c" + s.q.trim() + "\u201d" + (s.diet.length ? " with those filters." : ".")
       : "Nothing on the menu suits those filters right now. Clear one and try again.";
-    V.emptyStyle = list.length ? "display:none" : "padding:54px 30px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
+    V.emptyStyle = list.length ? "display:none" : "padding:54px 30px;text-align:center;font-size:13.5px;color:var(--text-muted);line-height:1.65;text-wrap:pretty";
 
     // ── dish sheet ─────────────────────────────────────────────────────────
     const d = s.dish ? this.item(s.dish) : null;
@@ -2097,7 +2122,7 @@ class Component extends DCLogic {
          phone's own white status bar and the back button sit on top of it. */
       V.dishImgStyle = "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;"
         + (d.img
-          ? "background:#f1f1f3 center/cover url('" + this.photoUrl(d.img) + "')"
+          ? "background:var(--bg-2) center/cover url('" + this.photoUrl(d.img) + "')"
           // A dark field, not a light one: the phone's own white status bar and
           // the back button sit on top of this. White ink on it, 6b of tint.
           : this.artifact(d.cat, "26%", "#241f1c", "#ffffff", "6b"));
@@ -2110,9 +2135,9 @@ class Component extends DCLogic {
         const n = s.addons[a.id] || 0;
         return {
           name: a.name, price: +a.price ? "+" + this.fmt(a.price) : "Free", qty: String(n),
-          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
+          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "var(--text)" : "var(--text-muted)"),
           decStyle: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-            + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+            + (n ? "background:var(--bg-2);color:var(--amber)" : "background:var(--bg-2);color:#dcdce0"),
           decLabel: "Remove " + a.name, incLabel: "Add " + a.name,
           inc: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: n + 1 }) }),
           dec: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: Math.max(0, n - 1) }) })
@@ -2161,11 +2186,11 @@ class Component extends DCLogic {
       return {
         name: m ? m.name : "Item", qty: String(l.qty),
         opt: [l.opt, l.note].filter(Boolean).join(" · "),
-        optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:#6a6a72;margin-top:2px;line-height:1.4" : "display:none",
+        optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:var(--text-muted);margin-top:2px;line-height:1.4" : "display:none",
         amt: this.fmt(((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty),
         imgStyle: "display:block;width:52px;height:52px;border-radius:11px;flex-shrink:0;"
           + ((m && m.img)
-            ? "background:#f1f1f3 center/cover url('" + this.photoUrl(m.img) + "')"
+            ? "background:var(--bg-2) center/cover url('" + this.photoUrl(m.img) + "')"
             : this.artifact((m || {}).cat, "52%")),
         decLabel: "One fewer " + (m ? m.name : "item"), incLabel: "One more " + (m ? m.name : "item"),
         inc: () => { const c = s.cart.slice(); c[i] = Object.assign({}, c[i], { qty: c[i].qty + 1 }); self.setState({ cart: c }); },
@@ -2177,7 +2202,7 @@ class Component extends DCLogic {
       };
     });
     V.promo = s.promo;
-    V.promoBorder = s.promoOk ? "#2ea44f" : "#e8e8ea";
+    V.promoBorder = s.promoOk ? "var(--go-bright)" : "#e8e8ea";
     V.setPromo = (e) => self.setState({ promo: e.target.value, promoOk: false, promoMsg: "" });
     V.applyPromo = () => {
       const code = s.promo.trim().toUpperCase();
@@ -2188,7 +2213,7 @@ class Component extends DCLogic {
     };
     V.promoMsg = s.promoMsg;
     V.promoMsgStyle = s.promoMsg
-      ? "margin-top:9px;font-size:12px;line-height:1.55;text-wrap:pretty;color:" + (s.promoOk ? "#2ea44f" : "#c2452f")
+      ? "margin-top:9px;font-size:12px;line-height:1.55;text-wrap:pretty;color:" + (s.promoOk ? "var(--go-bright)" : "var(--amber-deep)")
       : "display:none";
     V.sendOrder = () => self.sendOrder();
 
@@ -2221,7 +2246,7 @@ class Component extends DCLogic {
       const done = i < at, on = i === at;
       return {
         label: label,
-        labelStyle: "display:block;font-size:14.5px;font-weight:" + (on ? 700 : 600) + ";color:" + (done || on ? "#111" : "#c0c0c5"),
+        labelStyle: "display:block;font-size:14.5px;font-weight:" + (on ? 700 : 600) + ";color:" + (done || on ? "var(--text)" : "var(--line-3)"),
         // The paid rung only exists once the outlet says the bill was settled,
         // so it names the receipt rather than repeating the serving line.
         /* money(), never fmt(). fmt() rounds to whole units, which is right
@@ -2244,9 +2269,9 @@ class Component extends DCLogic {
               : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
                 : (at >= 3 ? "On your table — enjoy" : "Brought to table " + tno),
         dot: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(20,20,24,.16)" : "background:#f0f0f2;color:#f0f0f2"),
+          + (done ? "background:var(--go);color:var(--on-amber)" : on ? "background:var(--amber);color:var(--on-amber);box-shadow:0 0 0 4px rgba(20,20,24,.16)" : "background:var(--bg-2);color:#f0f0f2"),
         tickStyle: done || on ? "display:block" : "display:none",
-        rail: "width:2px;flex:1;min-height:14px;background:" + (done ? "#2ea44f" : "#eeeef0") + ";display:" + (i === STAGES.length - 1 ? "none" : "block")
+        rail: "width:2px;flex:1;min-height:14px;background:" + (done ? "var(--go-bright)" : "#eeeef0") + ";display:" + (i === STAGES.length - 1 ? "none" : "block")
       };
     });
     /* ═══ THE ORDER ITSELF ══════════════════════════════════════════════════
@@ -2277,7 +2302,7 @@ class Component extends DCLogic {
     V.ooNeverStyle = oo.never.length ? "margin-top:15px;display:block" : "display:none";
     V.ooTotal = this.money(oo.total);
     V.ooTotalStyle = (oo.on.length || oo.waiting.length || oo.held.length)
-      ? "margin-top:14px;padding-top:12px;border-top:1px solid #efefef;display:flex;justify-content:space-between;align-items:baseline;gap:10px"
+      ? "margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;gap:10px"
       : "display:none";
     /* GOODS ONLY, and it says so. Service and tax are the till's arithmetic
        and they are on the Bill tab; a figure here that quietly matched
@@ -2286,7 +2311,7 @@ class Component extends DCLogic {
     const adds = this.addedOn();
     V.ooTotalNote = "Items so far" + (adds ? " — " + adds + " added on the bill" : "");
     V.trackEmpty = "Your order opens the moment you send a round, and it stays open — everything you add joins it — until the bill is settled.";
-    V.trackEmptyStyle = oo.any ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#6a6a72;line-height:1.65;text-wrap:pretty";
+    V.trackEmptyStyle = oo.any ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:var(--text-muted);line-height:1.65;text-wrap:pretty";
 
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
@@ -2305,8 +2330,8 @@ class Component extends DCLogic {
        as the receipt above it is. */
     const settledNow = !!this.settledHere();
     V.addMore = () => self.setState({ tab: "menu" });
-    const addBtn = "width:100%;padding:13px;border-radius:15px;background:#fff;"
-      + "border:1.4px solid #f4553c;color:#f4553c;font-size:14px;font-weight:700;"
+    const addBtn = "width:100%;padding:13px;border-radius:15px;background:var(--bg-1);"
+      + "border:1.4px solid var(--amber);color:var(--amber);font-size:14px;font-weight:700;"
       + "text-align:center;min-height:48px";
     V.addMoreTrackStyle = (oo.any && !settledNow) ? "margin-top:18px;" + addBtn : "display:none";
     V.addMoreBillStyle = (b && !settledNow) ? "margin-top:16px;" + addBtn : "display:none";
@@ -2350,7 +2375,7 @@ class Component extends DCLogic {
     // what was handed over, tip included.
     const billPaid = done ? done.total : rec ? rec.total - tipPaid : 0;
     V.paidRows = tipPaid ? [{ k: "Food & drinks", v: this.money(billPaid) }, { k: "Tip", v: this.money(tipPaid) }] : [];
-    V.paidRowsStyle = tipPaid ? "margin-top:11px;padding-top:10px;border-top:1px solid #f0f0f0" : "display:none";
+    V.paidRowsStyle = tipPaid ? "margin-top:11px;padding-top:10px;border-top:1px solid var(--line)" : "display:none";
     V.paidTotalLabel = "Total paid";
     // money(), never fmt(): fmt() rounds to whole units, which is right for a
     // menu price and a lie on the figure somebody actually handed over.
@@ -2372,16 +2397,16 @@ class Component extends DCLogic {
       : "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
     V.billEmptyStyle = (b || (rec && paidLines.length)) ? "display:none"
       : "margin-top:40px;text-align:center;font-size:13.5px;color:"
-      + (rec ? "#1f7a3d" : "#6a6a72") + ";line-height:1.65;text-wrap:pretty";
-    const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
+      + (rec ? "var(--go-bright)" : "#6a6a72") + ";line-height:1.65;text-wrap:pretty";
+    const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--text-muted)";
     V.billLines = b ? b.lines : [];
     V.billTotals = b ? [
       { label: "Subtotal", amt: this.money(b.sub), style: rowS },
-      { label: "Discount " + b.discPct + "%", amt: "\u2212 " + this.money(b.disc), style: b.disc ? rowS + ";color:#2ea44f" : "display:none" },
+      { label: "Discount " + b.discPct + "%", amt: "\u2212 " + this.money(b.disc), style: b.disc ? rowS + ";color:var(--go-bright)" : "display:none" },
       { label: "Service charge " + (b.o.sc || 0) + "%", amt: this.money(b.svc), style: b.o.sc ? rowS : "display:none" },
       { label: this.taxRegistered() ? b.o.tax + " " + b.o.rate + "%" : "",
         amt: this.money(b.tax), style: this.taxRegistered() ? rowS : "display:none" },
-      { label: "Table total", amt: this.money(b.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
+      { label: "Table total", amt: this.money(b.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:var(--text);padding-top:9px;border-top:1px solid var(--line);margin-top:3px" }
     ] : [];
 
     V.splitModes = [
@@ -2393,30 +2418,30 @@ class Component extends DCLogic {
       label: m.label, sub: m.sub,
       style: "padding:13px 14px;border-radius:15px;min-height:60px;"
         + (s.split === m.k
-          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(20,20,24,.16)"
-          : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
+          ? "background:var(--amber);color:var(--on-amber);box-shadow:0 5px 14px rgba(20,20,24,.16)"
+          : "background:var(--bg-1);color:var(--text);border:1px solid var(--line)"),
       tap: () => self.setState({ split: m.k })
     }));
-    V.splitEvenStyle = s.split === "even" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitEvenStyle = s.split === "even" ? "margin-top:14px;padding:15px;border-radius:16px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.splitN = String(s.splitN);
     V.splitLess = () => self.setState({ splitN: Math.max(2, s.splitN - 1) });
     V.splitMore = () => self.setState({ splitN: Math.min(20, s.splitN + 1) });
     V.splitEach = b ? this.money(b.total / Math.max(1, s.splitN)) + " each" : "";
-    V.splitItemStyle = s.split === "items" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitItemStyle = s.split === "items" ? "margin-top:14px;padding:15px;border-radius:16px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.pickLines = b ? b.lines.map((l, i) => {
       const on = !!s.picked[i];
       return {
         name: l.name, amt: self.money(l.amt),
         style: "width:100%;margin-top:9px;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;min-height:46px;"
-          + (on ? "background:#fff;border:1.4px solid #f4553c" : "background:#fff;border:1px solid #ececee"),
+          + (on ? "background:var(--bg-1);border:1.4px solid var(--amber)" : "background:var(--bg-1);border:1px solid var(--line)"),
         box: "width:21px;height:21px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"
-          + (on ? "background:#f4553c;color:#fff" : "background:#f2f2f4;color:#f2f2f4"),
+          + (on ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:#f2f2f4"),
         tick: on ? "display:block" : "display:none",
         tap: () => self.setState({ picked: Object.assign({}, s.picked, { [i]: !on }) })
       };
     }) : [];
     V.pickTotal = b ? "Your share: " + this.money(this.myShare()) + " (including your part of service and tax)" : "";
-    V.splitCustomStyle = s.split === "custom" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitCustomStyle = s.split === "custom" ? "margin-top:14px;padding:15px;border-radius:16px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.customAmt = s.customAmt;
     V.setCustom = (e) => self.setState({ customAmt: e.target.value.replace(/[^0-9.]/g, "") });
     const over = b && (+s.customAmt || 0) > b.total + 0.005;
@@ -2426,7 +2451,7 @@ class Component extends DCLogic {
     V.tips = [0, 5, 10, 15].map((p) => ({
       label: p ? p + "%" : "None",
       style: "flex:1;padding:12px 4px;border-radius:14px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
-        + (s.tip === p ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+        + (s.tip === p ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)"),
       tap: () => self.setState({ tip: p })
     }));
     V.tipNote = s.tip
@@ -2445,7 +2470,7 @@ class Component extends DCLogic {
       .map((x) => ({
       label: x.label,
       style: "padding:13px 6px;border-radius:14px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
-        + (s.tender === x.k ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+        + (s.tender === x.k ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)"),
       tap: () => self.setState({ tender: x.k })
     }));
 
@@ -2460,13 +2485,13 @@ class Component extends DCLogic {
     V.askPay = () => asked ? null : this.requestBill();
     V.askPayLabel = asked ? "Asked \u00b7 your server is on the way"
       : "I\u2019m ready to pay \u00b7 " + this.money(this.payDue());
-    V.askPayStyle = "margin-top:14px;width:100%;min-height:52px;padding:15px 8px;border-radius:999px;font-size:14.5px;font-weight:700;text-align:center;color:#fff;"
+    V.askPayStyle = "margin-top:14px;width:100%;min-height:52px;padding:15px 8px;border-radius:999px;font-size:14.5px;font-weight:700;text-align:center;color:var(--on-amber);"
       + (asked ? "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)"
-        : "background:#f4553c;box-shadow:0 6px 20px rgba(20,20,24,.16)");
+        : "background:var(--amber);box-shadow:0 6px 20px rgba(20,20,24,.16)");
     V.askedNote = asked
       ? "Your choice of tender and tip went with the call, so the till has it ready."
       : "Nothing is charged from this phone \u2014 your server brings the machine.";
-    V.askedNoteStyle = "margin-top:9px;font-size:12px;color:#6a6a72;line-height:1.55;text-align:center;text-wrap:pretty";
+    V.askedNoteStyle = "margin-top:9px;font-size:12px;color:var(--text-muted);line-height:1.55;text-align:center;text-wrap:pretty";
     V.payAmount = this.money(this.payDue());
     V.payBreak = b
       ? (s.split === "all" ? "The whole table" : s.split === "even" ? "One of " + s.splitN + " shares" : s.split === "items" ? "The dishes you picked, with their share of service and tax" : "The amount you entered")
@@ -2500,7 +2525,7 @@ class Component extends DCLogic {
     const per = this.prefs().pointsPer || 10;
     V.ptsLabel = b ? "+" + Math.floor(b.net / per) + " pts" : "";
     V.ptsStyle = (b && s.ident && s.ident.phone)
-      ? "font-size:13px;font-weight:800;color:#fff;background:rgba(255,255,255,.2);padding:6px 11px;border-radius:10px;flex-shrink:0"
+      ? "font-size:13px;font-weight:800;color:var(--on-amber);background:rgba(255,255,255,.2);padding:6px 11px;border-radius:10px;flex-shrink:0"
       : "display:none";
     V.forgetMe = () => { self.setState({ ident: null, identName: "", identPhone: "" }); self.toast("Forgotten on this phone"); };
 
@@ -2511,14 +2536,14 @@ class Component extends DCLogic {
     V.stars = [1, 2, 3, 4, 5].map((n) => ({
       label: n + (n === 1 ? " star" : " stars"),
       style: "width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:"
-        + (n <= s.stars ? "#f4553c" : "#e4e4e7") + ";background:" + (n <= s.stars ? "#fff4f2" : "#fafafb"),
+        + (n <= s.stars ? "var(--amber)" : "#e4e4e7") + ";background:" + (n <= s.stars ? "var(--amber-dim)" : "#fafafb"),
       tap: () => self.setState({ stars: n })
     }));
     V.rateNote = s.rateNote;
     V.setRateNote = (e) => self.setState({ rateNote: e.target.value });
-    V.rateNoteStyle = s.stars ? "margin-top:12px;border:1px solid #ececee;border-radius:15px;padding:13px 14px;background:#fafafb" : "display:none";
+    V.rateNoteStyle = s.stars ? "margin-top:12px;border:1px solid var(--line);border-radius:15px;padding:13px 14px;background:var(--bg-2)" : "display:none";
     V.rateSendStyle = (s.stars && !s.rated)
-      ? "margin-top:12px;width:100%;padding:14px;border-radius:15px;background:#1a1a1a;color:#fff;font-size:14px;font-weight:700;text-align:center;min-height:48px"
+      ? "margin-top:12px;width:100%;padding:14px;border-radius:15px;background:var(--amber);color:var(--on-amber);font-size:14px;font-weight:700;text-align:center;min-height:48px"
       : "display:none";
     V.rateSendLabel = "Send to the team";
     V.sendRating = () => {
@@ -2527,7 +2552,7 @@ class Component extends DCLogic {
       self.toast("Thank you — the manager sees this straight away");
     };
     V.rateDone = s.rated ? "Sent. Thank you — a manager reads every one of these." : "";
-    V.rateDoneStyle = s.rated ? "margin-top:12px;font-size:12.5px;color:#2ea44f;line-height:1.55" : "display:none";
+    V.rateDoneStyle = s.rated ? "margin-top:12px;font-size:12.5px;color:var(--go-bright);line-height:1.55" : "display:none";
 
     V.tableActions = [
       {
@@ -2543,7 +2568,7 @@ class Component extends DCLogic {
         tap: () => self.setState({ table: null, cart: [], sent: [] })
       }
     ].map((a) => Object.assign({
-      style: "width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;background:#fff;border:1px solid #ececee;min-height:56px;box-shadow:0 2px 8px rgba(0,0,0,.035)"
+      style: "width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;background:var(--bg-1);border:1px solid var(--line);min-height:56px;box-shadow:0 2px 8px rgba(0,0,0,.035)"
     }, a));
 
     // ── bar ────────────────────────────────────────────────────────────────
@@ -2554,7 +2579,7 @@ class Component extends DCLogic {
     V.tabScrollStyle = "flex:1;min-height:0;overflow-y:auto;padding:6px 20px " + (V.cartBadgeOn ? 96 : 24) + "px";
     V.barStyle = "position:absolute;left:0;right:0;bottom:0;z-index:30;background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 22%)";
     const dot = (on) => on
-      ? "position:absolute;top:6px;right:calc(50% - 15px);width:6px;height:6px;border-radius:50%;background:#f4553c;display:block"
+      ? "position:absolute;top:6px;right:calc(50% - 15px);width:6px;height:6px;border-radius:50%;background:var(--amber);display:block"
       : "display:none";
     V.tabs = [
       { k: "menu", label: "Menu", icon: "M4 6h16M4 12h16M4 18h10", on: false },
@@ -2564,13 +2589,13 @@ class Component extends DCLogic {
     ].map((x) => ({
       label: x.label, icon: x.icon, dotStyle: dot(x.on),
       style: "position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;border-radius:13px;min-height:52px;color:"
-        + (s.tab === x.k ? "#f4553c" : "#6e6e77"),
+        + (s.tab === x.k ? "var(--amber)" : "#6e6e77"),
       tap: () => self.setState({ tab: x.k })
     }));
 
     V.toast = s.toast;
     V.toastStyle = s.toast
-      ? "position:absolute;left:18px;right:18px;top:calc(env(safe-area-inset-top) + " + (SH.bare ? 14 : 44) + "px);z-index:60;pointer-events:none;padding:13px 16px;border-radius:15px;background:rgba(20,20,22,.94);color:#fff;font-size:13.5px;font-weight:600;line-height:1.45;text-align:center;animation:qfade .16s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+      ? "position:absolute;left:18px;right:18px;top:calc(env(safe-area-inset-top) + " + (SH.bare ? 14 : 44) + "px);z-index:60;pointer-events:none;padding:13px 16px;border-radius:15px;background:rgba(20,20,22,.94);color:var(--on-amber);font-size:13.5px;font-weight:600;line-height:1.45;text-align:center;animation:qfade .16s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
       : "display:none";
     return V;
   }
