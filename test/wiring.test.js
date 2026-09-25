@@ -8806,8 +8806,9 @@ test('the till reads at 11px and taps at 44px', () => {
   assert.match(css, /@media \(pointer:coarse\)\{\s*button,\[role="button"\]\{min-height:44px!important;min-width:44px!important\}/,
     'a touch screen gets 44px buttons whatever the inline style says');
   assert.match(SRC, /aria-label="One fewer \{\{ m\.name \}\}" style="width:44px;height:44px;/, 'the dish stepper is 44px');
-  assert.match(SRC, /min-height:52px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px/,
-    'the tender keypad is 52px');
+  // Bumped 52px → 60px with the pay/paid redesign (deep-sea keypad panel).
+  assert.match(SRC, /min-height:60px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px/,
+    'the tender keypad is 60px');
 });
 /* ═══════════════════════════════════════════════════════════════════════
    THE PORTALS, DRIVEN AS A GUEST AND A MEMBER. Each of these was found by
