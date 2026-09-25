@@ -149,6 +149,14 @@
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="{{ identityCaretStyle }}"><path d="M6 9l6 6 6-6"></path></svg>
       </button>
 
+      <sc-if value="{{ barTabs }}">
+        <nav aria-label="Service" style="{{ barTabsStyle }}">
+          <sc-for list="{{ paneTabs }}" as="pt" hint-placeholder-count="3">
+            <button onClick="{{ pt.go }}" style="{{ pt.barStyle }}">{{ pt.label }}<span style="{{ pt.badgeStyle }}">{{ pt.badge }}</span></button>
+          </sc-for>
+        </nav>
+      </sc-if>
+
       <div style="min-width:0;flex:1 1 auto;overflow:hidden">
         <div style="{{ titleStyle }}">{{ pageMain }}</div>
         <div style="{{ subStyle }}">{{ pageSub }}</div>
@@ -4811,7 +4819,13 @@ class Component extends DCLogic {
       // width. Seating a table hands you the Menu; ringing a dish fills Bill's
       // count; Bill is where you charge it. No scroll position to lose, and the
       // strip itself is the record of where you are in the round.
-      showPaneTabs: s.view === "pos" && s.pane !== "layout",
+      /* THE MODE TABS LIVE IN THE TOP BAR (the new layout, as the V2 boards
+         draw them): a segmented control in the frame, not a full-width band
+         between the figures and the floor. A phone keeps the band — it sits
+         under the thumb there, and the bar has no room. */
+      showPaneTabs: s.view === "pos" && s.pane !== "layout" && isM,
+      barTabs: s.view === "pos" && s.pane !== "layout" && !isM,
+      barTabsStyle: "display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--bg-2);border:1px solid var(--line);flex-shrink:0",
       paneTabsWrapStyle: "flex-shrink:0;display:flex;gap:" + (isM ? 5 : 2) + "px;padding:" + (isM ? "8px 10px 9px" : "8px 12px")
         + ";background:var(--bg-1);border-bottom:1px solid var(--line)",
       paneTabs: [
@@ -4830,6 +4844,8 @@ class Component extends DCLogic {
             if (t[0] === "bill") return isM ? this.setState({ cart: true }) : this.setState({ pane: "bill", cart: false });
             this.setState({ pane: t[0], cart: false });
           },
+          barStyle: "display:flex;align-items:center;min-height:40px;padding:0 16px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:" + (on ? 700 : 500) + ";white-space:nowrap;"
+            + (on ? "background:var(--text);color:var(--bg)" : "background:transparent;color:var(--text-dim)"),
           style: "flex:1;display:flex;align-items:center;justify-content:center;min-height:" + (isM ? 46 : 38) + "px;border-radius:" + (isM ? 11 : 9) + "px;"
             + "font-family:inherit;font-size:" + (isM ? 13.5 : 12.5) + "px;font-weight:" + (on ? 700 : 600) + ";white-space:nowrap;letter-spacing:-0.01em;"
             + (on ? "background:var(--text);color:var(--bg)" : "background:var(--bg-2);color:var(--text-dim);border:1px solid var(--line)")
