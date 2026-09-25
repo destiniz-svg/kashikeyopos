@@ -412,6 +412,47 @@
                 Same again
               </button>
             </div>
+            <sc-if value="{{ showOptionsPanel }}">
+            <div style="border-radius:14px;border:1px solid var(--line);background:var(--bg-1);padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <button onClick="{{ opClose }}" aria-label="Back to the menu" style="width:44px;height:44px;flex-shrink:0;border-radius:10px;border:1px solid var(--line-2);background:var(--bg-2);color:var(--text);display:grid;place-items:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
+                <div style="min-width:0">
+                  <div style="font-size:20px;font-weight:800;letter-spacing:-0.02em">{{ modalTitle }}</div>
+                  <div style="font-size:12px;color:var(--text-dim);margin-top:3px">{{ modalSub }}</div>
+                </div>
+                <span style="display:flex;align-items:center;gap:11px;margin-left:auto;flex-shrink:0">
+                  <button onClick="{{ daQtyDec }}" aria-label="One fewer" style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--text)">&#8722;</button>
+                  <span style="font-size:17px;font-weight:700;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ daQty }}</span>
+                  <button onClick="{{ daQtyInc }}" aria-label="One more" style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--text);background:var(--text);color:var(--bg)">+</button>
+                </span>
+              </div>
+              <sc-for list="{{ daGroups }}" as="g" hint-placeholder-count="2">
+                <div style="{{ g.boxStyle }}">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+                    <span style="font-size:14px;font-weight:700;color:var(--text)">{{ g.name }}</span>
+                    <span style="{{ g.needStyle }}">{{ g.needLabel }}</span>
+                  </div>
+                  <sc-for list="{{ g.rows }}" as="a" hint-placeholder-count="3">
+                    <div style="{{ a.rowStyle }}">
+                      <span style="min-width:0;font-size:14px;color:var(--text)">{{ a.name }}</span>
+                      <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                        <span style="font-size:12.5px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                        <button onClick="{{ a.dec }}" aria-label="One fewer {{ a.name }}" style="{{ a.decStyle }}">&#8722;</button>
+                        <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+                        <button onClick="{{ a.inc }}" aria-label="One more {{ a.name }}" style="{{ a.incStyle }}">+</button>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+              <div>
+                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
+                <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:13.5px;color:var(--text);outline:none"/>
+              </div>
+              <button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button>
+            </div>
+            </sc-if>
+            <sc-if value="{{ showDishGrid }}">
             <div style="{{ dishGridStyle }}">
               <sc-for list="{{ dishSkel }}" as="k" hint-placeholder-count="0">
                 <div style="{{ k.style }}" aria-hidden="true">
@@ -461,6 +502,7 @@
                 <div style="grid-column:1/-1;padding:52px 20px;text-align:center;color:var(--text-faint);font-size:12.5px">{{ menuEmptyText }}</div>
               </sc-if>
             </div>
+            </sc-if>
           </div>
           </sc-if>
         </div>
@@ -531,13 +573,13 @@
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px;gap:8px">
                   <div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-shrink:0">
-                    <button onClick="{{ l.dec }}" style="width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);line-height:1">−</button>
+                    <button onClick="{{ l.dec }}" aria-label="One fewer {{ l.name }}" style="width:48px;height:48px;display:grid;place-items:center;font-size:16px;color:var(--text-dim);line-height:1">−</button>
                     <span style="min-width:22px;text-align:center;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
-                    <button onClick="{{ l.inc }}" style="width:26px;height:24px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);line-height:1">+</button>
+                    <button onClick="{{ l.inc }}" aria-label="One more {{ l.name }}" style="width:48px;height:48px;display:grid;place-items:center;font-size:16px;color:var(--text-dim);line-height:1">+</button>
                   </div>
                   <span style="{{ l.stateStyle }}">{{ l.stateText }}</span>
-                  <button onClick="{{ l.note }}" style="font-size:11px;color:var(--text-muted);padding:3px 7px;border-radius:999px;border:1px solid var(--line)">Note</button>
-                  <button onClick="{{ l.del }}" style="font-size:11px;color:var(--text);padding:3px 7px;border-radius:999px;border:1px solid var(--line-3)" style-hover="background:var(--bg-3);border-color:var(--text)">Void</button>
+                  <button onClick="{{ l.note }}" style="font-size:11px;color:var(--text-muted);padding:3px 7px;min-height:48px;min-width:48px;border-radius:999px;border:1px solid var(--line)">Note</button>
+                  <button onClick="{{ l.del }}" style="font-size:11px;color:var(--text);padding:3px 7px;min-height:48px;min-width:48px;border-radius:999px;border:1px solid var(--line-3)" style-hover="background:var(--bg-3);border-color:var(--text)">Void</button>
                 </div>
                 <div style="{{ l.noteStyle }}">{{ l.noteText }}</div>
               </div>
@@ -1260,6 +1302,7 @@
                   </div>
                 </div>
                 <div style="{{ shareNoteStyle }}">{{ shareNote }}</div>
+                <button onClick="{{ openSplitItems }}" style="{{ splitItemsBtnStyle }}">{{ splitItemsLabel }}</button>
                 <div class="pay-tenders" style="margin-bottom:14px">
                   <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="4">
                     <button onClick="{{ t.pick }}" style="{{ t.style }}">
@@ -1685,21 +1728,26 @@
           </sc-if>
 
           <sc-if value="{{ mDishAdd }}">
-            <div style="display:flex;flex-direction:column;gap:14px">
-              <div>
-                <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Make it yours</span>
-                <sc-for list="{{ daRows }}" as="a" hint-placeholder-count="4">
-                  <div style="{{ a.rowStyle }}">
-                    <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.name }}</span>
-                    <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                      <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
-                      <button onClick="{{ a.dec }}" aria-label="One fewer" style="{{ a.decStyle }}">&#8722;</button>
-                      <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-                      <button onClick="{{ a.inc }}" aria-label="One more" style="{{ a.incStyle }}">+</button>
-                    </span>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ daGroups }}" as="g" hint-placeholder-count="2">
+                <div style="{{ g.boxStyle }}">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <span style="font-size:13px;font-weight:700;color:var(--text)">{{ g.name }}</span>
+                    <span style="{{ g.needStyle }}">{{ g.needLabel }}</span>
                   </div>
-                </sc-for>
-              </div>
+                  <sc-for list="{{ g.rows }}" as="a" hint-placeholder-count="3">
+                    <div style="{{ a.rowStyle }}">
+                      <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.name }}</span>
+                      <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                        <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                        <button onClick="{{ a.dec }}" aria-label="One fewer {{ a.name }}" style="{{ a.decStyle }}">&#8722;</button>
+                        <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+                        <button onClick="{{ a.inc }}" aria-label="One more {{ a.name }}" style="{{ a.incStyle }}">+</button>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
               <div>
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
                 <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;color:var(--text);outline:none"/>
@@ -1707,12 +1755,44 @@
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted)">Quantity</span>
                 <span style="display:flex;align-items:center;gap:11px">
-                  <button onClick="{{ daQtyDec }}" aria-label="One fewer" style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--text)">&#8722;</button>
+                  <button onClick="{{ daQtyDec }}" aria-label="One fewer" style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--text)">&#8722;</button>
                   <span style="font-size:15px;font-weight:700;min-width:18px;text-align:center;font-family:'JetBrains Mono',monospace">{{ daQty }}</span>
-                  <button onClick="{{ daQtyInc }}" aria-label="One more" style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--text);background:var(--text);color:var(--bg)">+</button>
+                  <button onClick="{{ daQtyInc }}" aria-label="One more" style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--text);background:var(--text);color:var(--bg)">+</button>
                 </span>
               </div>
-              <button onClick="{{ daAdd }}" style="width:100%;padding:13px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:700;text-align:center;min-height:48px">{{ daAddLabel }}</button>
+              <button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mSplitItems }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow-y:auto">
+                <sc-for list="{{ siLines }}" as="l" hint-placeholder-count="4">
+                  <button onClick="{{ l.pick }}" style="{{ l.style }}">
+                    <span style="flex:1;min-width:0;text-align:left;font-size:13.5px;font-weight:600">{{ l.name }}</span>
+                    <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--bg-2);color:var(--text-dim);white-space:nowrap">{{ l.guestLabel }}</span>
+                    <span style="font-size:13.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ l.amount }}</span>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ siEmpty }}">
+                  <div style="padding:20px;text-align:center;color:var(--text-faint);font-size:12.5px">Nothing on this bill yet</div>
+                </sc-if>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted)">Tap a line, then tap the guest it belongs to.</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <sc-for list="{{ siChecks }}" as="c" hint-placeholder-count="2">
+                  <button onClick="{{ c.pick }}" style="{{ c.style }}">
+                    <span>{{ c.name }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace">{{ c.total }}</span>
+                  </button>
+                </sc-for>
+                <button onClick="{{ siAddGuest }}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:64px;min-width:96px;padding:8px 12px;border-radius:14px;font-size:12.5px;font-weight:700;border:1px dashed var(--line-2);background:transparent;color:var(--text-dim)">+ Add a guest</button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--line)">
+                <span style="font-size:12px;color:var(--text-dim)">Whole bill</span>
+                <span style="font-size:15px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ siTotal }}</span>
+              </div>
+              <button onClick="{{ siDone }}" style="width:100%;padding:15px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:14px;font-weight:700;text-align:center;min-height:56px">Done · pay each guest</button>
             </div>
           </sc-if>
 
@@ -7702,7 +7782,17 @@ class Component extends DCLogic {
         const t = Object.assign({}, s.tickets); delete t[this.ticketKey()];
         this.setState({ tickets: t, activeTable: null, pane: "floor" });
         this.toast(this.slotName(s.activeTable) + " cleared");
-      }
+      },
+      /* DISH OPTIONS AS A SIDE PANEL. On tablet and desktop the panel replaces
+         the menu grid, beside the ticket, instead of opening as a centred
+         modal — the ticket stays live while a choice is made. The overlay
+         shell is suppressed for this modal kind on these widths (see
+         `hasModal` in `overlayVals()`); `modalVals()` is the one place the
+         grouping, the required-group validation and the running price are
+         computed, so the panel and the phone's bottom sheet read one answer. */
+      showOptionsPanel: !isPhone && !!s.modal && s.modal.kind === "dishadd",
+      showDishGrid: isPhone || !s.modal || s.modal.kind !== "dishadd",
+      opClose: () => this.setState({ modal: null })
     };
   }
 
@@ -7833,7 +7923,11 @@ class Component extends DCLogic {
       // A toast is centred on the viewport, so a long message has to be told it
       // cannot grow past it — otherwise both ends run off screen on a phone.
       toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
-      hasModal: !!s.modal,
+      /* Dish options replace the menu grid beside the ticket on tablet and
+         desktop instead of opening as a centred modal — the ticket stays
+         live. Phone keeps the bottom sheet, which the modal shell already
+         renders correctly. */
+      hasModal: !!s.modal && !(m.kind === "dishadd" && this.effBp() !== "m"),
       // A lock is not a modal: it has no close, no scrim dismissal and no
       // escape. Anything else makes the PIN decorative.
       closeModal: () => { if (s.modal && s.modal.kind === "lock") return; this.setState({ modal: null }); },
@@ -7874,7 +7968,7 @@ class Component extends DCLogic {
       // the card clips its own corners instead of letting a wide child out.
       modalStyle: this.effBp() === "m"
         ? "background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;box-shadow:0 -14px 50px rgba(0,0,0,.6);width:100%;max-width:100vw;max-height:92dvh;display:flex;flex-direction:column;overflow:hidden;animation:ksheet .2s"
-        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:min(" + (m.kind === "pay" ? "880px" : m.kind === "dishb" || m.kind === "menuio" ? "740px" : m.kind === "settled" ? "740px" : m.kind === "receipt" || m.kind === "z" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" || m.kind === "recipeb" || m.kind === "counter" ? "620px" : "520px") + ", calc(100vw - " + (this.modalPad() * 2) + "px));max-height:calc(100dvh - " + (this.modalPad() * 2) + "px);display:flex;flex-direction:column;overflow:hidden;animation:kmodal .18s"
+        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:min(" + (m.kind === "pay" ? "880px" : m.kind === "splitItems" ? "820px" : m.kind === "dishb" || m.kind === "menuio" ? "740px" : m.kind === "settled" ? "740px" : m.kind === "receipt" || m.kind === "z" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" || m.kind === "recipeb" || m.kind === "counter" ? "620px" : "520px") + ", calc(100vw - " + (this.modalPad() * 2) + "px));max-height:calc(100dvh - " + (this.modalPad() * 2) + "px);display:flex;flex-direction:column;overflow:hidden;animation:kmodal .18s"
     };
     if (!s.modal) return base;
     const v = Object.assign(base, this.modalVals(m));
@@ -7907,6 +8001,66 @@ class Component extends DCLogic {
     const gAll = this.guestsOf(tk);
     const gIdx = Math.min(s.activeSplit, Math.max(0, gAll.length - 1));
     const T = tk ? this.totals(tk, gAll.length > 1 ? gIdx : undefined) : { sub: 0, svc: 0, tax: 0, total: 0 };
+
+    if (m.kind === "splitItems") {
+      /* SPLIT BY ITEM. Tap a line, then tap the guest it belongs to — the
+         drag route is not the only one (WCAG 2.5.7). A line's `.split` is
+         the whole of the assignment; `totals(tk, split)` already runs the
+         SAME bill engine per guest on their own net, so nothing here
+         re-derives money, and the shares add up to the one-bill total by
+         construction (see test/wiring.test.js). */
+      const guests = gAll.length ? gAll : [this.newGuest(0)];
+      const sel = m.sel;
+      const lineKey = (l, i) => l.lid || (l.id + ":" + i);
+      const lines = (tk ? tk.lines : []).map((l, i) => {
+        const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
+        const key = lineKey(l, i);
+        const gi2 = Math.min(l.split || 0, guests.length - 1);
+        const on = sel === key;
+        return {
+          key: key, name: l.qty + "× " + mi.name, amount: MVR(this.linePrice(l) * l.qty),
+          guestLabel: this.guestLabel(guests[gi2] || guests[0]),
+          on: on,
+          style: "display:flex;align-items:center;gap:10px;min-height:56px;padding:0 14px;border-radius:14px;cursor:pointer;"
+            + (on ? "border:2px solid var(--amber);background:var(--amber-dim)" : "border:1px solid var(--line);background:var(--bg-1)"),
+          pick: () => this.setState({ modal: Object.assign({}, m, { sel: on ? null : key }) })
+        };
+      });
+      const assign = (gi2) => {
+        if (sel == null) return;
+        this.mutate(undefined, (t) => {
+          const idx = t.lines.findIndex((l, i) => lineKey(l, i) === sel);
+          if (idx >= 0) t.lines[idx] = Object.assign({}, t.lines[idx], { split: gi2 });
+        });
+        this.setState({ modal: Object.assign({}, m, { sel: null }) });
+      };
+      const checks = guests.map((g, i) => {
+        const gt = this.totals(tk, guests.length > 1 ? i : undefined);
+        return {
+          idx: i, name: this.guestLabel(g), total: MVR(gt.total),
+          pick: () => assign(i),
+          style: "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:64px;min-width:96px;padding:8px 12px;border-radius:14px;font-size:12.5px;font-weight:700;"
+            + (sel != null ? "border:2px dashed var(--amber);background:var(--amber-dim);cursor:pointer" : "border:1px solid var(--line);background:var(--bg-1)")
+        };
+      });
+      const whole = this.totals(tk);
+      const placed = (tk ? tk.lines.length : 0) > 0;
+      return {
+        modalTitle: "Split by item · " + (s.activeTable ? this.slotName(s.activeTable) : ""),
+        modalSub: sel != null ? "Tap the guest this line belongs to" : "Tap a line, then tap the guest it belongs to",
+        mSplitItems: true,
+        siLines: lines,
+        siEmpty: !placed,
+        siChecks: checks,
+        siAddGuest: () => {
+          let n = 0;
+          this.mutate(undefined, (t) => { n = (t.guests || guests).length; t.guests = (t.guests || guests).concat([this.newGuest(n)]); });
+          this.queue("guest_add", "Guest " + (n + 1) + " seated · T" + pad(s.activeTable), "orders", { table: this.slotName(s.activeTable), split: 0, guest: this.newGuest(n) });
+        },
+        siTotal: MVR(whole.total),
+        siDone: () => this.setState({ modal: (m.back || null) })
+      };
+    }
 
     if (m.kind === "pay") {
       // What was typed is in the tender currency; what the bill is owed in is MVR.
@@ -8062,6 +8216,14 @@ class Component extends DCLogic {
         shareNote: evenN > 1 ? "Share " + (paidN + 1) + " of " + evenN + " · " + MVRc(due) + " each"
           + (paidN ? " · " + MVRc(T.total - paidAmt) + " still to collect" : " · each share can use its own tender") : "",
         shareNoteStyle: evenN > 1 ? "margin-bottom:12px;padding:9px 12px;border-radius:8px;background:var(--bg-3);border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text-dim)" : "display:none",
+        /* SPLIT BY ITEM. A guest is already a real bill (§ totals(tk, split)):
+           each guest's own net, service and tax, computed the same way the
+           whole bill is — never a slice of one number. This opens the one
+           screen that assigns a LINE to a guest; settling a guest's own bill
+           still happens right here, one Pay per guest, unchanged. */
+        openSplitItems: () => this.setState({ modal: { kind: "splitItems", back: m } }),
+        splitItemsLabel: "Split by item" + (gAll.length > 1 ? " · " + gAll.length + " guests" : ""),
+        splitItemsBtnStyle: "width:100%;text-align:left;padding:10px 12px;margin-bottom:12px;border-radius:10px;border:1px dashed var(--line-2);background:var(--bg-2);color:var(--text-dim);font-size:11.5px;font-weight:600;min-height:48px",
         // ONE tender set, and it is the one the processors define. This list
         // was hardcoded to four, so Transfer and QR could not be taken at the
         // till at all — and a suspended processor's tender stayed on screen to
@@ -9314,46 +9476,107 @@ class Component extends DCLogic {
        times as the guest asks for it. */
     if (m.kind === "dishadd") {
       const dish = (K0.MENU || []).find((x) => String(x.id) === String(m.id));
-      if (!dish) return { modalTitle: "Dish", modalSub: "", mDishAdd: true, daRows: [] };
+      if (!dish) return { modalTitle: "Dish", modalSub: "", mDishAdd: true, daRows: [], daGroups: [] };
       const picks = m.picks || {};
       const mods = this.addonsFor(dish);
       const qty = Math.max(1, +m.qty || 1);
       const put = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
-      const setPick = (id, n) => {
+      /* GROUPED, THE WAY THE SCHEMA HAS ALWAYS HELD IT. `a.group` names a
+         `chain.modifier_group` row — required, min, max — and a till-made
+         add-on with no such row falls back to being its own optional group
+         of one (modWrite()'s own fallback: `gid = a.group || a.id`). */
+      const groupsById = new Map();
+      const order = [];
+      mods.forEach((a) => {
+        const gid = a.group || a.id;
+        if (!groupsById.has(gid)) {
+          const g = ((K() || {}).MODIFIER_GROUPS || []).find((x) => x.id === gid);
+          groupsById.set(gid, {
+            id: gid, name: g ? g.name : a.name,
+            required: !!(g && g.required),
+            min: g ? Math.max(0, +g.min || 0) : 0,
+            max: g ? Math.max(1, +g.max || 1) : 1,
+            rows: []
+          });
+          order.push(gid);
+        }
+        groupsById.get(gid).rows.push(a);
+      });
+      const pickedIn = (g) => g.rows.reduce((n, r) => n + (picks[r.id] || 0), 0);
+      const setPick = (gid, id, n) => {
+        const g = groupsById.get(gid);
         const next = Object.assign({}, picks);
-        if (n > 0) next[id] = n; else delete next[id];
+        if (n <= 0) { delete next[id]; put({ picks: next }); return; }
+        // A single-choice group behaves as a radio — picking one clears the rest.
+        if (g && g.max <= 1) { g.rows.forEach((r) => delete next[r.id]); next[id] = 1; put({ picks: next }); return; }
+        const otherSum = g ? g.rows.filter((r) => r.id !== id).reduce((a, r) => a + (next[r.id] || 0), 0) : 0;
+        const capped = g ? Math.max(0, g.max - otherSum) : n;
+        if (capped <= 0) return; // the group is already at its max
+        next[id] = Math.min(n, capped);
         put({ picks: next });
       };
       const extra = mods.reduce((a, x) => a + (picks[x.id] || 0) * (+x.price || 0), 0);
       const chosen = mods.filter((x) => picks[x.id])
         .map((x) => (picks[x.id] > 1 ? picks[x.id] + "× " : "") + x.name);
       const base = this.menuPrice(dish);
+      /* A required group with nothing chosen blocks Add — orange, never
+         a vanished button — and Add says exactly how many are left. */
+      const unmet = order.map((gid) => groupsById.get(gid))
+        .filter((g) => g.required && pickedIn(g) < Math.max(1, g.min));
+      const blocked = unmet.length > 0;
+      const rowFor = (a, gid) => {
+        const n = picks[a.id] || 0;
+        return {
+          name: a.name, price: a.price ? "+" + MVR(a.price) : "included",
+          qty: String(n), on: !!n,
+          onStyle: n ? "border:2px solid var(--sea,var(--amber));background:var(--amber-dim,var(--bg-2));color:var(--text);font-weight:700"
+            : "border:1px solid var(--line-2);background:var(--bg-1);color:var(--text)",
+          qtyStyle: "font-size:14px;font-weight:700;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace;color:"
+            + (n ? "var(--text)" : "var(--text-faint)"),
+          // PRODUCT.md: 48px minimum on a touch surface — this is the row's
+          // whole reason for being, not a secondary control.
+          decStyle: "width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;border:1px solid var(--line);background:"
+            + (n ? "var(--bg-2)" : "transparent") + ";color:" + (n ? "var(--text)" : "var(--text-faint)"),
+          incStyle: "width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--text);color:var(--bg);border:1px solid var(--text)",
+          rowStyle: "min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)",
+          dec: () => setPick(gid, a.id, Math.max(0, n - 1)),
+          inc: () => setPick(gid, a.id, n + 1)
+        };
+      };
       return {
         modalTitle: dish.name,
         modalSub: MVRc(base) + " · " + this.catMeta(dish.cat).name
           + " · " + mods.length + " add-on" + (mods.length === 1 ? "" : "s") + " on this dish",
         mDishAdd: true,
-        daRows: mods.map((a) => {
-          const n = picks[a.id] || 0;
+        // Flat rows, kept for anything still reading them directly.
+        daRows: mods.map((a) => rowFor(a, a.group || a.id)),
+        daGroups: order.map((gid) => {
+          const g = groupsById.get(gid);
+          const met = !g.required || pickedIn(g) >= Math.max(1, g.min);
           return {
-            name: a.name, price: a.price ? "+" + MVR(a.price) : "free",
-            qty: String(n),
-            qtyStyle: "font-size:14px;font-weight:700;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace;color:"
-              + (n ? "var(--text)" : "var(--text-faint)"),
-            decStyle: "width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;border:1px solid var(--line);background:"
-              + (n ? "var(--bg-2)" : "transparent") + ";color:" + (n ? "var(--text)" : "var(--text-faint)"),
-            incStyle: "width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--text);color:var(--bg);border:1px solid var(--text)",
-            rowStyle: "min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)",
-            dec: () => setPick(a.id, Math.max(0, n - 1)),
-            inc: () => setPick(a.id, n + 1)
+            id: g.id, name: g.name,
+            needLabel: g.required ? "Required · choose " + Math.max(1, g.min) : "Optional",
+            needStyle: "font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;"
+              + (g.required && !met ? "background:var(--warn);color:var(--on-warn,#fff)" : "background:var(--bg-2);color:var(--text-dim)"),
+            boxStyle: "padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);"
+              + (g.required && !met ? "box-shadow:inset 0 0 0 2px var(--warn)" : ""),
+            rows: g.rows.map((a) => rowFor(a, gid))
           };
         }),
         daNote: m.note || "", onDaNote: (e) => put({ note: e.target.value }),
         daQty: String(qty),
         daQtyDec: () => put({ qty: Math.max(1, qty - 1) }),
         daQtyInc: () => put({ qty: qty + 1 }),
-        daAddLabel: "Add · " + MVRc((base + extra) * qty),
+        daBlocked: blocked,
+        daAddLabel: blocked
+          ? "Add · " + unmet.length + " to finish"
+          : "Add · " + MVRc((base + extra) * qty),
+        daAddStyle: "width:100%;padding:15px;border-radius:999px;font-size:14px;font-weight:700;text-align:center;min-height:56px;"
+          + (blocked
+            ? "background:var(--bg-2);color:var(--text-faint);cursor:not-allowed"
+            : "background:var(--amber);color:var(--on-amber);cursor:pointer"),
         daAdd: () => {
+          if (blocked) return;
           /* The names go on the note the kitchen reads and the money goes on
              the price the bill charges — one line, both halves, exactly as an
              accepted guest round already lands. */

@@ -170,7 +170,9 @@ const MODAL_KINDS = [
   'move', 'zones', 'periodPick', 'bankRow', 'delorder', 'ticket', 'receipt',
   'z', 'settled', 'creditNote', 'count', 'form', 'guest', 'held', 'dishb',
   'menuio', 'outlet', 'recipeb', 'resv', 'catb', 'info', 'outletDetail',
-  'user', 'customer', 'dish', 'share'
+  'user', 'customer', 'dish', 'share',
+  // The options side panel (also the phone's bottom sheet) and split by item.
+  'dishadd', 'splitItems'
 ];
 
 const FORMS = [

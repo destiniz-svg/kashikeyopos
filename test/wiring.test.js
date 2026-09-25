@@ -6065,12 +6065,12 @@ test('choosing a dish at the till shows its add-ons, and the money follows', () 
   assert.ok(/openAddons\(id\) \{/.test(SRC), 'the sheet has an opener');
   assert.ok(/m\.kind === "dishadd"/.test(SRC), 'and a body');
   const sheet = SRC.slice(SRC.indexOf('if (m.kind === "dishadd")'),
-    SRC.indexOf('if (m.kind === "dishadd")') + 3000);
+    SRC.indexOf('if (m.kind === "dishadd")') + 6000);
   assert.ok(/Make it yours/.test(SRC), 'wearing the portal\'s own heading');
   assert.ok(/picks\[x\.id\] \|\| 0\) \* \(\+x\.price \|\| 0\)/.test(sheet),
     'a quantity each, priced — two extra shots are one line, not two');
-  assert.ok(/daAddLabel: "Add · " \+ MVRc\(\(base \+ extra\) \* qty\)/.test(sheet),
-    'and the button says what the line will cost');
+  assert.ok(/daAddLabel: blocked\s*\n\s*\? "Add · " \+ unmet\.length \+ " to finish"\s*\n\s*: "Add · " \+ MVRc\(\(base \+ extra\) \* qty\)/.test(sheet),
+    'and the button says what the line will cost, or how many required groups are left');
 
   /* ONE DEFINITION OF WHAT A LINE COSTS, and it closed a money defect that
      was already live: the QR round's op carried menuPrice + addons to the
@@ -9195,4 +9195,128 @@ test('the pay screen\'s "Cash due" card stops overlapping content on a phone', (
   F.state.vh = 900;
   v = F.modalVals({ kind: 'pay', given: '' });
   assert.match(v.dueStripStyle, /display:none/);
+});
+
+/* ═══ Dish options as a side panel (SPEC §3.1) ══════════════════════════ */
+
+/* A required modifier group blocks Add with a reason, never a vanished
+   button — and it is grouped by `chain.modifier_group`, which the server
+   has always published (min/max/required) and the till used to ignore,
+   flattening every dish's options into one undifferentiated list. */
+test('a required option group blocks Add until it is satisfied', () => {
+  const kpos = Object.assign({}, FX.kpos(), {
+    MODIFIERS: [
+      { id: 'a1', name: 'Roshi', price: 0, group: 'g1', cats: ['mains'] },
+      { id: 'a2', name: 'Rice', price: 5, group: 'g1', cats: ['mains'] },
+      { id: 'a3', name: 'Extra egg', price: 15, group: 'g2', cats: ['mains'] }
+    ],
+    MODIFIER_GROUPS: [
+      { id: 'g1', name: 'Served with', min: 1, max: 1, required: true },
+      { id: 'g2', name: 'Add', min: 0, max: 3, required: false }
+    ]
+  });
+  const F = H.makeInstance({ kpos: kpos, raw: FX.raw(), real: FX.real() });
+
+  let m = { kind: 'dishadd', id: 'm1', picks: {}, note: '', qty: 1 };
+  let v = F.modalVals(m);
+  assert.strictEqual(v.daGroups.length, 2, 'the flat add-on list is grouped');
+  const served = v.daGroups.find((g) => g.id === 'g1');
+  assert.match(served.needLabel, /Required/);
+  assert.strictEqual(v.daBlocked, true, 'nothing chosen in a required group');
+  assert.match(v.daAddLabel, /to finish/, 'the button says why, never just vanishing');
+
+  // Choosing the required option unblocks Add — the price rides on it too.
+  served.rows[0].inc(); // Roshi, included
+  v = F.modalVals(F.state.modal);
+  assert.strictEqual(v.daBlocked, false);
+  assert.match(v.daAddLabel, /Add/);
+  assert.doesNotMatch(v.daAddLabel, /to finish/);
+
+  // A single-choice group (max 1) behaves as a radio: picking Rice clears Roshi.
+  const served2 = F.modalVals(F.state.modal).daGroups.find((g) => g.id === 'g1');
+  served2.rows[1].inc(); // Rice, +5.00
+  v = F.modalVals(F.state.modal);
+  const g1 = v.daGroups.find((g) => g.id === 'g1');
+  assert.strictEqual(g1.rows[0].qty, '0', 'Roshi cleared');
+  assert.strictEqual(g1.rows[1].qty, '1', 'Rice picked');
+  assert.match(v.daAddLabel, /190/, 'price 185 + 5 rides the running total');
+});
+
+/* The panel replaces the grid beside the ticket on tablet and desktop — the
+   ticket stays live — and the phone keeps the bottom sheet the modal shell
+   already renders. `hasModal` is what suppresses the centred-modal overlay
+   for this one kind on the wider breakpoints. */
+test('dish options open as a side panel on tablet/desktop, a sheet on phone', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  F.state.tickets = Object.assign({}, F.state.tickets, { [key]: F.blankTicket() });
+  F.state.activeTable = slot;
+  F.state.pane = 'menu';
+  F.state.modal = { kind: 'dishadd', id: 'm1', picks: {}, note: '', qty: 1 };
+
+  F.state.bp = 'd';
+  assert.strictEqual(F.posVals().showOptionsPanel, true, 'desktop: inline panel');
+  assert.strictEqual(F.posVals().showDishGrid, false, 'the panel replaces the grid');
+  assert.strictEqual(F.overlayVals().hasModal, false, 'no centred modal on desktop');
+
+  F.state.bp = 't';
+  assert.strictEqual(F.posVals().showOptionsPanel, true, 'tablet: inline panel too');
+
+  F.state.bp = 'm';
+  assert.strictEqual(F.posVals().showOptionsPanel, false, 'phone keeps the sheet');
+  assert.strictEqual(F.posVals().showDishGrid, true);
+  assert.strictEqual(F.overlayVals().hasModal, true, 'the modal shell renders the bottom sheet');
+});
+
+/* ═══ Split by item (SPEC §6, Scenario F) ═══════════════════════════════ */
+
+/* Every share is run through the SAME bill engine (totals()) on its own
+   net — never a slice of one number — so the shares add up to the bill to
+   the laari, and each one's service and tax is right on its own goods. */
+test('split by item: the shares add up to the one-bill total', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  // Reef fish 185.00 and garlic rice 45.00 shared oddly across two guests —
+  // not a round number, which is the case the old "1000 ÷ 4" rule missed.
+  const tk = Object.assign(F.blankTicket(), {
+    bizDate: F.today(),
+    guests: [{ name: 'Guest 1', type: 'walkin', custId: null }, { name: 'Guest 2', type: 'walkin', custId: null }],
+    lines: [
+      { id: 'm1', qty: 1, note: '', split: 0, fired: true, since: 1 }, // 185.00
+      { id: 'm2', qty: 1, note: '', split: 1, fired: true, since: 2 }  // 45.00
+    ]
+  });
+  F.state.tickets = Object.assign({}, F.state.tickets, { [key]: tk });
+  F.state.activeTable = slot;
+
+  const whole = F.totals(tk);
+  const share0 = F.totals(tk, 0);
+  const share1 = F.totals(tk, 1);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  assert.strictEqual(r2(share0.total + share1.total), r2(whole.total),
+    'the shares sum to the whole bill exactly');
+  assert.strictEqual(r2(share0.tax + share1.tax), r2(whole.tax));
+  assert.strictEqual(r2(share0.svc + share1.svc), r2(whole.svc));
+  // Each share's tax is right on its OWN net, not a fraction of the bill's.
+  assert.strictEqual(r2(share0.tax), r2((share0.net + share0.svc) * (whole.taxRate / 100)));
+
+  // Tapping a line in the split-items screen reassigns it — the money above
+  // is recomputed from `l.split`, so moving a line moves its money with it.
+  F.state.modal = { kind: 'splitItems', sel: null };
+  let v = F.modalVals(F.state.modal);
+  assert.strictEqual(v.siLines.length, 2);
+  assert.strictEqual(v.mSplitItems, true);
+  const fishLine = v.siLines[0];
+  fishLine.pick(); // select the fish line
+  v = F.modalVals(F.state.modal);
+  const toGuest2 = v.siChecks[1];
+  toGuest2.pick(); // move it onto Guest 2
+  const moved = F.state.tickets[key].lines.find((l) => l.id === 'm1');
+  assert.strictEqual(moved.split, 1, 'the tap-line-then-tap-guest route reassigns the line');
+
+  // Guest 2 now carries the whole bill, Guest 1 nothing — and the two still
+  // sum to the one-bill total.
+  const after0 = F.totals(F.state.tickets[key], 0);
+  const after1 = F.totals(F.state.tickets[key], 1);
+  assert.strictEqual(r2(after0.total + after1.total), r2(whole.total));
 });
