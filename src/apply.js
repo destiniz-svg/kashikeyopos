@@ -983,9 +983,36 @@ async function ticketRef(c, p) {
   return t ? t.id : null;
 }
 
-H.move_table = async (c, p, ctx) => {
+/* Scalar edits (covers, table, note) are last-write-wins UNLESS the op
+   carries a lamport, in which case it is last-write-wins BY LAMPORT:
+   Each field keeps its OWN stamp (`party_lamport`, `table_lamport`,
+   `note_lamport`, migration 058) holding the lamport of the edit that last
+   won THAT field, and this one only applies when its own lamport beats it.
+   One stamp for the whole ticket would make a covers change refuse a table
+   move nobody else made — a false conflict that drops a real edit — which
+   is what makes the winner the causally later edit rather than whichever
+   push happened to reach the outlet first. An op with no lamport (an old
+   client, before this shipped) gets the old behaviour exactly: applied
+   unconditionally, because a device naming no clock cannot lose a
+   comparison against one. The loser is not a network failure — the outlet
+   answered — so it is never parked or retried: `result.conflict` names the
+   value that won, and the device that lost is told once, on the very push
+   that lost. */
+H.move_table = async (c, p, ctx, lamport) => {
   const id = await ticketRef(c, p);
   if (!id) return { skipped: 'no open ticket' };
+  const lam = Number(lamport) || 0;
+  if (lam) {
+    const q = await c.query("UPDATE ticket SET table_no = $2, table_lamport = $3 WHERE id = $1"
+      + " AND status = 'open' AND table_lamport < $3 RETURNING id", [id, String(p.to), lam]);
+    if (!q.rows.length) {
+      const cur = await one(c, "SELECT table_no, status FROM ticket WHERE id = $1", [id]);
+      if (!cur || cur.status !== 'open') return { skipped: 'ticket closed' };
+      return { ok: false, conflict: { ticketId: id, field: 'table', value: cur.table_no } };
+    }
+    await log(c, 'move_table', 'ticket', id, { table: p.from }, { table: p.to });
+    return { ok: true };
+  }
   const q = await c.query("UPDATE ticket SET table_no = $2 WHERE id = $1"
     + " AND status = 'open' RETURNING id", [id, String(p.to)]);
   if (!q.rows.length) return { skipped: 'ticket closed' };
@@ -1015,9 +1042,17 @@ H.close_ticket = async (c, p, ctx) => {
   return { ok: true };
 };
 
-H.ticket_status = async (c, p) => {
+H.ticket_status = async (c, p, ctx, lamport) => {
   const id = await ticketRef(c, p);
   if (!id) return { skipped: 'no open ticket' };
+  const lam = Number(lamport) || 0;
+  if (lam) {
+    const q = await c.query('UPDATE ticket SET note = coalesce($2, note), note_lamport = $3'
+      + ' WHERE id = $1 AND note_lamport < $3 RETURNING id', [id, p.note || null, lam]);
+    if (q.rows.length) return { ok: true };
+    const cur = await one(c, 'SELECT note FROM ticket WHERE id = $1', [id]);
+    return { ok: false, conflict: { ticketId: id, field: 'note', value: cur ? cur.note : null } };
+  }
   await c.query('UPDATE ticket SET note = coalesce($2, note) WHERE id = $1',
     [id, p.note || null]);
   return { ok: true };
@@ -1049,11 +1084,20 @@ H.zones_update = async (c, p) => {
   return { zones: arr(p.zones).length };
 };
 
-H.covers_update = async (c, p) => {
+H.covers_update = async (c, p, ctx, lamport) => {
   const id = await ticketRef(c, p);
   if (!id) return { skipped: 'no open ticket' };
+  const party = Math.max(1, num(p.party) || 1);
+  const lam = Number(lamport) || 0;
+  if (lam) {
+    const q = await c.query('UPDATE ticket SET party = $2, covers = greatest($2, covers),'
+      + ' party_lamport = $3 WHERE id = $1 AND party_lamport < $3 RETURNING id', [id, party, lam]);
+    if (q.rows.length) return { ok: true };
+    const cur = await one(c, 'SELECT party FROM ticket WHERE id = $1', [id]);
+    return { ok: false, conflict: { ticketId: id, field: 'covers', value: cur ? cur.party : null } };
+  }
   await c.query('UPDATE ticket SET party = $2, covers = greatest($2, covers)'
-    + ' WHERE id = $1', [id, Math.max(1, num(p.party) || 1)]);
+    + ' WHERE id = $1', [id, party]);
   return { ok: true };
 };
 
@@ -3759,7 +3803,11 @@ function slug(s) {
 async function applyOp(c, op, ctx) {
   const fn = H[op.kind];
   if (!fn) return { recorded: true, unmodelled: op.kind };
-  return fn(c, op.payload || {}, ctx) || {};
+  // The op's own lamport, handed on as a fourth argument that only the
+  // scalar-ticket-edit handlers read (migration 058). Every other handler
+  // ignores it — JS does not mind an extra argument — so this costs nothing
+  // anywhere else in the 115-kind contract.
+  return fn(c, op.payload || {}, ctx, op.lamport) || {};
 }
 
 module.exports = { applyOp, postJournal, moveStock, publishDeclaration,

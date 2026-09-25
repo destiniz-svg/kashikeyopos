@@ -3295,6 +3295,26 @@ class Component extends DCLogic {
         ? "The outlet keeps refusing \u201c" + (one.label || one.kind) + "\u201d \u2014 set aside on Sync & Devices"
         : parked.length + " operations were refused repeatedly \u2014 set aside on Sync & Devices", "err");
     });
+    /* A scalar ticket edit (covers, table, note) lost to a LATER edit
+       somewhere else while both were offline (migration 058, `apply.js`
+       `H.covers_update`/`move_table`/`ticket_status`). This is not a
+       refusal like the ones above \u2014 the outlet resolved it, applied the
+       winner, and moved on \u2014 so the op is never parked or retried; it is
+       simply answered differently. The next poll brings the winning value
+       onto this screen regardless (covers_update/move_table/ticket_status
+       all ride the floor tick), so the toast is the explanation, not the
+       repair: reusing `toast()` rather than a new banner, same as every
+       other "the outlet already decided this" notice on this screen. */
+    window.addEventListener("kpos-sync-done", (e) => {
+      (e.detail || []).forEach((x) => {
+        const cf = x.result && x.result.conflict;
+        if (!cf) return;
+        const said = cf.field === "covers" ? "covers are now " + cf.value
+          : cf.field === "table" ? "the table is now " + cf.value
+          : "the note was changed";
+        this.toast("Changed on the till: " + said, "warn");
+      });
+    });
     // Live rows the server has applied since this terminal last looked. The
     // floor is shared: a table opened on the handheld is a table on this till.
     /* THE OUTLET IS SERVING A BUILD THIS PAGE IS NOT RUNNING. Fired once per
