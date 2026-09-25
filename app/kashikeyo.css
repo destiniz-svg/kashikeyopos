@@ -382,3 +382,15 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
   --bg:#010c12; --bg-0:#03131b; --bg-1:#05202c; --bg-2:#05202c; --bg-3:#0a2e3e;
   --line-soft:#05202c; --line:#0a2e3e; --line-2:#11394a; --line-3:#1a4a5e; --mute-dim:#0a2e3e;
 }
+
+/* ═══ PAY / PAID (redesign, 2026-09) ═══════════════════════════════════════
+   Sizing helpers only — every figure they draw is already bound from
+   modalVals()/receiptVals(). The due figure repeats (a sticky strip on
+   narrow/short viewports, this big one otherwise), so only one shows at a
+   time; the breakpoint mirrors bpOf()'s own 760px line. */
+.pay-due-big{display:block;font-size:clamp(52px,9vw,132px)}
+@media (max-width:759px){.pay-due-big{display:none}}
+.pay-giv-chg{font-size:clamp(20px,2.6vw,30px)}
+.paid-change-big{font-size:clamp(72px,14vw,188px)}
+.pay-tenders{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+@media (min-width:760px){.pay-tenders{grid-template-columns:repeat(3,1fr)}}
