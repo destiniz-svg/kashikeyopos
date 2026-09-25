@@ -862,6 +862,11 @@
       return this._fetch("/api/outlet/" + this.outletId + "/menu/ideas",
         { method: "POST", body: { brief: brief, pantry: pantry, context: context } });
     }
+    /* The stock and CFO questions. The outlet owns the prompt — see /advise. */
+    advise(kind, question, facts) {
+      return this._fetch("/api/outlet/" + this.outletId + "/advise/" + kind,
+        { method: "POST", body: { question: question, facts: facts } });
+    }
     scanInvoice(image) {
       return this._fetch("/api/outlet/" + this.outletId + "/invoice/scan",
         { method: "POST", body: { image: image } });

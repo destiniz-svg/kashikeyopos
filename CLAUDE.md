@@ -4044,11 +4044,17 @@ test drives all four states against the local server — spike, held twenty
 minutes, cleared by a success, and a spike again after — with `Date.now`
 substituted rather than the suite sleeping for twenty minutes.
 
-**Stated rather than fixed**: two more callers of `window.claude` remain — the
-Today briefing and the CFO advisory. Both are honest about being unreachable
-(they say so on screen), and both want a free-text contract rather than the
-JSON one these two doors keep, so they are a third door rather than a third
-line. They stay dead-but-honest until that door is written.
+**The third door is written.** The stock question and the CFO advisory were
+the last two callers of `window.claude`. They ask `POST /advise/stock` (rank 3)
+and `/advise/cfo` (rank 4) now. The free text rides as `{"answer": ""}`, so the
+seam's JSON contract holds. **The system prompt is the outlet's**, keyed by the
+door. A body that could set it would be an open model proxy on this install's
+key. The terminal's own locally computed answer still lands first either way.
+
+**And the two older doors were not rate-limited at all.** `gate()` takes its
+window in MILLISECONDS, and both passed `3600`. An "hourly" bucket that refills
+in 3.6 seconds does nothing against spend. All three are `3600e3` now, and the
+wiring test pins it.
 
 ## A punch belongs to a person, and the outlet has to say which
 
