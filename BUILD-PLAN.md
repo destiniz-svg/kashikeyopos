@@ -152,10 +152,10 @@ Each starts only when a pilot store asks for it.
 
 ---
 
-## 7. Decisions still needed from you
+## 7. Decisions (25 Sep 2026)
 
-1. **Offline receipt number format:** confirm with your accountant that a
-   device-prefixed number satisfies MIRA (blocks 1.7 only).
-2. **Default look for new stores:** Standard or Lagoon. *Recommended:*
-   Lagoon, since it's the one that stands out, with Standard one tap away.
-3. **Pilot store for phase 2:** which shop tests handoff, push and the hub.
+1. **Offline receipt numbers:** they carry the till's code (`HLC-T2-000118`).
+   Tell the accountant before 1.7 ships.
+2. **Default look for new stores:** Lagoon. Standard is one setting away.
+3. **Pilot store for phase 2:** Seaside Holdings.
+4. **Dhivehi:** stays open until a pilot store asks for it.

@@ -47,7 +47,9 @@ KashikeyoPOS is a point of sale and back office for cafés and restaurants in th
   - Tips are held for staff and are not revenue.
 - **Tech:** Node, Express and Postgres; the pages are hand-written HTML with no build step. Only two runtime dependencies are allowed.
 - **Platform:** a web app installed from the browser. It must work in Chrome on Android and Windows and in Safari on iPad. Local data lives in IndexedDB. Browsers can't reach each other or a network printer directly; that needs the store hub. Anything needing a native app (tap-to-pay, a watch app) waits until a customer asks for it.
-- **Language:** English only for now. Dhivehi (Thaana) is an open decision. Receipts print ASCII only.
+- **Receipt numbers offline:** a sale made offline prints a number carrying the till's code (for example `HLC-T2-000118`), and the server keeps that number rather than issuing another (decided 2026-09-25).
+- **Pilot store:** Seaside Holdings trials phase 2 first (handoff between devices, push alerts, the store hub).
+- **Language:** English only for now. Dhivehi (Thaana) stays an open decision until a pilot store asks for it. Receipts print ASCII only.
 - **Honest figures:** every figure on screen is measured. A number that can't be measured is replaced by a sentence saying what's true.
 
 ## Brand Commitments
@@ -57,6 +59,7 @@ KashikeyoPOS is a point of sale and back office for cafés and restaurants in th
 - **Visual direction (chosen 2026-09-25):** one layout, two looks, each with a day and a night theme. The layout is the category standard (Square POS 2024, Toast, Lightspeed Restaurant), finished to Linear / Stripe dashboard craft, so staff learn it fast whichever look is on.
   - **Standard:** light, near-monochrome, colour only for state.
   - **Lagoon:** deep-sea chrome, lagoon turquoise for the next action, coral for late, and large display numerals (Bricolage Grotesque). Its signature is the waterline: tables and kitchen tickets fill with water as they wait against the store's target.
+  - New stores start on Lagoon (decided 2026-09-25). Standard is one setting away.
   - The store picks the look, and it applies to every device. Day or night is per device and follows the device's setting unless someone overrides it.
   - Guest and member portals take the store's brand colour where one is set, and the look's accent otherwise.
 - **Colour has one meaning:** the accent is the next action, orange means "choose or fix this before it can go", and coral means "past its time". Every colour is paired with a word.
