@@ -16,6 +16,7 @@ const INVITE = require('../../app/kashikeyo-invite.js');
 const SHARE = require('../../app/kashikeyo-share.js');
 const email = require('../email');
 const { gate } = require('../limit');
+const notify = require('../notify');
 
 const r = express.Router();
 
@@ -162,6 +163,7 @@ r.post('/:slug/order', guest, async function (req, res, next) {
      simply not this outlet's member. */
   const mt = verifyMember(String(req.get('x-member-token') || ''));
   let memberId = (mt && mt.o === req.ctx.outletId && mt.m) ? mt.m : null;
+  let freshOrder = false;
   try {
     const out = await withOutlet(req.ctx, async function (c) {
       // A revoked card (057) still carries a signed token; it earns nothing.
@@ -186,9 +188,20 @@ r.post('/:slug/order', guest, async function (req, res, next) {
       await c.query("SELECT chain.log_anon($1,'qr_order','guest_order',$2,$3)",
         [req.ctx.outletId, ins.rows[0].id,
           JSON.stringify({ table, lines: b.lines.length })]);
+      freshOrder = true;
       return result;
     });
     res.status(201).json(out);
+    // AFTER the commit above, never before it — and never for a replay
+    // (`freshOrder` is only set on the branch that actually inserted a
+    // row), or a retried POST wakes the till twice for one round.
+    if (freshOrder) {
+      notify.notifyTill(req.ctx.outletId, {
+        title: 'QR order to accept', body: 'Table ' + table + ' sent ' + b.lines.length
+          + (b.lines.length === 1 ? ' dish' : ' dishes'),
+        action: 'qr_order', table: String(table)
+      }).catch(() => {});
+    }
   } catch (e) { next(e); }
 });
 
@@ -222,12 +235,21 @@ r.post('/:slug/request', guest, async function (req, res, next) {
     };
   }
   try {
+    const kind = String(b.kind).slice(0, 24);
     const row = await withOutlet(req.ctx, (c) => c.query(
       'INSERT INTO guest_request (table_no, kind, detail, pay) VALUES ($1,$2,$3,$4)'
-      + ' RETURNING id, at', [String(table), String(b.kind).slice(0, 24),
+      + ' RETURNING id, at', [String(table), kind,
         (b.detail || '').slice(0, 400), pay ? JSON.stringify(pay) : null])
       .then((q) => q.rows[0]));
     res.status(201).json(row);
+    // AFTER the commit, and only for the one kind slice 2.3 ships: a bill
+    // ask. Manager/water/help calls are a follow-up (see BUILD-PLAN.md §5).
+    if (kind === 'bill') {
+      notify.notifyTill(req.ctx.outletId, {
+        title: 'Bill asked', body: 'Table ' + table + ' is asking for the bill',
+        action: 'bill', table: String(table)
+      }).catch(() => {});
+    }
   } catch (e) { next(e); }
 });
 

@@ -489,6 +489,8 @@
     registerDevice: function (body) { return api.registerDevice(body); },
     changePin: function (cur, next) { return api.changePin(cur, next); },
     claimDevice: function (code) { return api.claimDevice(code); },
+    pushSubscribe: function (sub) { return api.pushSubscribe(sub); },
+    pushUnsubscribe: function (endpoint) { return api.pushUnsubscribe(endpoint); },
     /* END THIS SESSION. Different from the lock screen, which is a handover:
        this drops the token, stops the poll, and POSTs /api/auth/signout so the
        session row is revoked — a copy of this browser's storage stops being a

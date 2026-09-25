@@ -1084,6 +1084,24 @@ BEGIN
       ref_id    text,
       by_staff  uuid
     );
+
+    -- A DEVICE'S SUBSCRIPTION TO WEB PUSH (059), keyed by the endpoint the
+    -- push service gave it — the one thing that is stable for the life of a
+    -- subscription and unique across every browser on every phone. staff_id
+    -- says WHO to wake (order ready); device_id and rank-at-subscribe-time
+    -- are not stored here — "till devices, rank >= 2" is answered by joining
+    -- chain.staff at send time, so a promotion or demotion takes effect on
+    -- the next alert rather than requiring a re-subscribe.
+    CREATE TABLE IF NOT EXISTS %1$I.push_subscription (
+      endpoint   text PRIMARY KEY,
+      staff_id   uuid,
+      device_id  uuid,
+      p256dh     text NOT NULL,
+      auth       text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_ok_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS push_subscription_staff ON %1$I.push_subscription(staff_id);
   $ddl$, s);
 
   -- ══ GRANTS ══════════════════════════════════════════════════════════════

@@ -13,7 +13,21 @@
    arrays and zeroes, and every screen has an empty state that says what to do.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const { withOutletRead } = require('./db');
+const { withOutletRead, control } = require('./db');
+const push = require('./push');
+
+// Resolves the VAPID public key without letting a single-database install
+// (no CONTROL_DB) fail a bootstrap over it — the same "absent, not broken"
+// doctrine the AI seam and the backup shelf already keep. An env override
+// needs no registry at all, so it is tried before `control()` can throw.
+async function vapidPublicKeyOrNull() {
+  try {
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+      return (await push.getVapidKeys(null)).publicKeyB64u;
+    }
+    return (await push.getVapidKeys(control())).publicKeyB64u;
+  } catch (e) { return null; }
+}
 // What this install is running. Read once, from the one place it is stated.
 const APP_VERSION = require('../package.json').version;
 // What the BROWSER is running, as opposed to what this process is. See
@@ -263,6 +277,13 @@ async function buildBootstrap(ctx) {
     // `0 || 8` silently turning that into 8% would overcharge every guest.
     const rateByOutlet = currentRates(taxVers.rows, ctx.tz);
 
+    // The VAPID public key, published so the till can subscribe to Web Push.
+    // Never the private half — that never leaves src/push.js and the
+    // registry it reads from. `null` where no key can be resolved (no
+    // CONTROL_DB and no VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY override): the
+    // Settings switch is then absent rather than a button that fails.
+    const pushKey = await vapidPublicKeyOrNull();
+
     const kpos = {
       CHAIN: chainOf(company.rows[0], setting),
       OUTLETS: outlets.rows.map((o) => outletOf(o, rateByOutlet, zones.rows, tables.rows, ctx.outletId)),
@@ -432,6 +453,7 @@ async function buildBootstrap(ctx) {
       PORTAL: { base: baseDomain(),
         origin: portalOrigin(((outlets.rows.find(
           (o) => o.id === ctx.outletId) || {}).slug) || '') },
+      PUSH_KEY: pushKey,
       LOCATIONS: locations.rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind })),
       VENDORS: suppliers.rows.map((r) => ({
         id: r.id, name: r.name, trn: r.trn || '', terms: r.terms_days,

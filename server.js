@@ -91,6 +91,13 @@ function csp() {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
+    // Explicit rather than left to fall back to script-src: app/sw.js is a
+    // same-origin file, so this changes nothing about whether it can
+    // register, but it keeps the worker's own permission the narrow one
+    // (no 'unsafe-eval' — the service worker never runs the DC template
+    // runtime) rather than inheriting whatever a page's script-src happens
+    // to carry.
+    "worker-src 'self'",
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

@@ -5,6 +5,7 @@ const { sameOutlet, atLeast } = require('../auth');
 const { applyOp } = require('../apply');
 const { all, buildLive } = require('../bootstrap');
 const sse = require('../sse');
+const notify = require('../notify');
 
 const r = express.Router({ mergeParams: true });
 
@@ -195,6 +196,22 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
         return out;
       });
       results.push(...part);
+      /* AFTER this chunk's own COMMIT, never inside it — a push send must
+         never hold the transaction open, and a chunk that then failed to
+         push (a dead push service) must never roll back a ticket that
+         really did just go READY. `H.kds_bump`/`H.kds_bump_all` are the only
+         handlers that attach `notify` today (order ready); see
+         src/apply.js `readyNotice()`. Fire-and-forget — src/notify.js is
+         its own best-effort seam, same doctrine as src/watch.js. */
+      for (const r of part) {
+        const n = r && r.result && r.result.notify;
+        if (n && n.type === 'order_ready') {
+          notify.notifyStaff(req.ctx.outletId, n.staffId,
+            { title: 'Order ready', body: (n.tableNo ? 'T' + n.tableNo + ' is ready' : 'An order is ready')
+              + (n.dishes ? ' · ' + n.dishes + (n.dishes === 1 ? ' dish' : ' dishes') : ''),
+              action: 'ticket', ticketId: r.result.ticketId }).catch(() => {});
+        }
+      }
     }
     /* Wake this outlet's other devices. A push of pure replays proves the
        device can reach its outlet (see the device stamp above) and nothing

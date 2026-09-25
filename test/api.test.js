@@ -7570,6 +7570,7 @@ const getWith = (p, h) => call('GET', p, undefined, h);
 const post = (p, b, t) => call('POST', p, b, auth(t));
 const postWith = (p, b, h) => call('POST', p, b, h);
 const patch = (p, b, t) => call('PATCH', p, b, auth(t));
+const del = (p, b, t) => call('DELETE', p, b, auth(t));
 const push = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, token);
 
 /* The code the outlet issued, read off the floor board — which is where a
@@ -7601,3 +7602,166 @@ function one(sql, params) {
   return db.withOutlet({ outletId, rank: 5, actor: null },
     (c) => c.query(sql, params || []).then((q) => q.rows[0]));
 }
+
+/* ___ SLICE 2.3 . WEB PUSH ___ */
+
+// A local stub push service. Real endpoints (fcm.googleapis.com and the
+// like) are on the public internet, and src/push.js refuses to dial a
+// private/loopback address unless PUSH_ALLOW_LOOPBACK=1 - the same fence
+// PRINT_ALLOW_LOOPBACK already keeps for the print relay, aimed the other
+// way (an endpoint must normally resolve PUBLIC; a printer must normally
+// resolve PRIVATE). Set here, non-production, for exactly this test.
+function pushStub(status) {
+  const http = require('node:http');
+  const hits = [];
+  let resolveHit;
+  let hitPromise = new Promise((res) => { resolveHit = res; });
+  const srv = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      hits.push({ headers: req.headers, body: Buffer.concat(chunks) });
+      res.writeHead(status || 201);
+      res.end();
+      resolveHit();
+      hitPromise = new Promise((res2) => { resolveHit = res2; });
+    });
+  });
+  return new Promise((resolve) => {
+    srv.listen(0, '127.0.0.1', () => {
+      const port = srv.address().port;
+      resolve({
+        url: 'http://127.0.0.1:' + port + '/ep',
+        hits,
+        waitForHit: (ms) => Promise.race([
+          hitPromise,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('no push arrived within ' + (ms || 3000) + 'ms')), ms || 3000))
+        ]),
+        close: () => new Promise((r) => srv.close(r))
+      });
+    });
+  });
+}
+
+async function insertSub(endpoint, staffId) {
+  const push = require('../src/push');
+  const gen = push.generateP256();
+  const auth = require('crypto').randomBytes(16);
+  await db.withOutlet({ outletId, rank: 5, actor: null }, (c) => c.query(
+    'INSERT INTO push_subscription (endpoint, staff_id, device_id, p256dh, auth)'
+    + ' VALUES ($1,$2,$3,$4,$5)',
+    [endpoint, staffId || null, null,
+      Buffer.from(gen.publicRaw).toString('base64url'), auth.toString('base64url')]));
+}
+
+test('web push: a session is required to subscribe, and the endpoint round-trips through the outlet', opts, async () => {
+  process.env.PUSH_ALLOW_LOOPBACK = '1';
+  const sub = { endpoint: 'http://127.0.0.1:1/no-such-listener/' + uuid(),
+    keys: { p256dh: 'BItestp256dhtestp256dhtestp256dhtestp256dhtestp256dhtestp256dh1', auth: 'authtestauthtest' } };
+
+  const anon = await post('/api/outlet/' + outletId + '/push/subscribe', sub);
+  assert.strictEqual(anon.status, 401, 'no session, no subscription');
+
+  const ok = await post('/api/outlet/' + outletId + '/push/subscribe', sub, token);
+  assert.strictEqual(ok.status, 201, JSON.stringify(ok.body));
+
+  const row = await one('SELECT staff_id, p256dh, auth FROM push_subscription WHERE endpoint = $1',
+    [sub.endpoint]);
+  assert.ok(row, 'the row landed in the outlet\'s own schema');
+  assert.strictEqual(row.p256dh, sub.keys.p256dh);
+
+  // Re-subscribing the same endpoint upserts rather than duplicating.
+  const again = await post('/api/outlet/' + outletId + '/push/subscribe', sub, token);
+  assert.strictEqual(again.status, 201);
+  const count = await all2('SELECT id FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
+  assert.strictEqual(count.length, 1, 'one row per endpoint, not one per subscribe');
+
+  const gone = await del('/api/outlet/' + outletId + '/push/subscribe', { endpoint: sub.endpoint }, token);
+  assert.strictEqual(gone.status, 200);
+  const after = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
+  assert.strictEqual(after, undefined, 'unsubscribed');
+
+  // A cross-outlet request is refused the way every /outlet/:id route is.
+  const wrong = await post('/api/outlet/' + (Number(outletId) + 9000) + '/push/subscribe', sub, token);
+  assert.strictEqual(wrong.status, 403);
+});
+
+test('web push: the VAPID public key is generated once and stays stable across calls', opts, async () => {
+  const a = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.ok(a.body.kpos.PUSH_KEY, 'the public key is published');
+  assert.strictEqual(a.body.kpos.PUSH_KEY, b.body.kpos.PUSH_KEY, 'the same key on the next read');
+  const rows = await db.control().query('SELECT count(*)::int AS n FROM chain.vapid_key');
+  assert.strictEqual(rows.rows[0].n, 1, 'exactly one row, whatever asked for it and however many times');
+  // The private half is never in this response, by construction (JSON
+  // cannot even carry it - publicKeyB64u is a string, not the key object).
+  assert.strictEqual(JSON.stringify(a.body).indexOf('privateKey'), -1);
+});
+
+test('web push: a 404/410 from the push service deletes the subscription', opts, async () => {
+  process.env.PUSH_ALLOW_LOOPBACK = '1';
+  const stub = await pushStub(410);
+  await insertSub(stub.url, null);
+  const before = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [stub.url]);
+  assert.ok(before, 'the fixture landed');
+
+  const notify = require('../src/notify');
+  await notify.notifyTill(outletId, { title: 'Bill asked', body: 'Table 9 is asking for the bill' });
+  await stub.waitForHit();
+  await new Promise((r) => setTimeout(r, 200)); // the DELETE runs after the response
+
+  const after = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [stub.url]);
+  assert.strictEqual(after, undefined, 'a 410 answer deletes the row');
+  await stub.close();
+});
+
+test('web push: a QR order and a bill ask each wake a till device, rank >= 2', opts, async () => {
+  process.env.PUSH_ALLOW_LOOPBACK = '1';
+  const stub = await pushStub(201);
+  const cashier = await one("SELECT id FROM chain.staff WHERE outlet_id = $1 AND rank >= 2 LIMIT 1", [outletId]);
+  assert.ok(cashier, 'a rank>=2 staff member exists on this fixture');
+  await insertSub(stub.url, cashier.id);
+
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T77');
+  const tableTok = t.body.token;
+
+  const order = await postWith('/api/g/' + slug + '/order',
+    { lines: [{ id: 'm1', qty: 1 }], opId: uuid() }, { 'x-table-token': tableTok });
+  assert.strictEqual(order.status, 201);
+  await stub.waitForHit();
+  assert.strictEqual(stub.hits.length, 1);
+  // aes128gcm ciphertext - opaque on the wire, which is the whole point.
+  assert.strictEqual(stub.hits[0].headers['content-encoding'], 'aes128gcm');
+  assert.ok(stub.hits[0].headers.authorization.startsWith('vapid '));
+
+  const ask = await postWith('/api/g/' + slug + '/request',
+    { kind: 'bill', pay: { tender: 'cash', due: 40 } }, { 'x-table-token': tableTok });
+  assert.strictEqual(ask.status, 201);
+  await stub.waitForHit();
+  assert.strictEqual(stub.hits.length, 2, 'the bill ask sent a second, separate push');
+
+  await stub.close();
+});
+
+test('web push: order ready wakes the one staff member who owns the ticket, and the payload carries no money', opts, async () => {
+  process.env.PUSH_ALLOW_LOOPBACK = '1';
+  const stub = await pushStub(201);
+  const owner = await one("SELECT id FROM chain.staff WHERE outlet_id = $1 AND rank = 5 LIMIT 1", [outletId]);
+  await insertSub(stub.url, owner.id);
+
+  const table = 'T91';
+  const lid = uuid();
+  await push([{ opId: uuid(), kind: 'add_line', payload: { table: table, split: 0,
+    lid: lid, item: 'm1', name: 'Garlic Rice', qty: 1, price: 45 } }]);
+  await push([{ opId: uuid(), kind: 'fire_course',
+    payload: { table: table, split: 0, lids: [lid], station: 'hot' } }]);
+
+  const bump = await push([{ opId: uuid(), kind: 'kds_bump', payload: { table: table, split: 0 } }]);
+  assert.ok(!bump.body.results[0].error, JSON.stringify(bump.body));
+
+  await stub.waitForHit();
+  assert.strictEqual(stub.hits.length, 1, 'order ready reached the ticket\'s own staff');
+  await stub.close();
+});

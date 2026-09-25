@@ -3123,7 +3123,8 @@ H.kds_bump = async (c, p, ctx) => {
       + ' bumped_by = $2 WHERE id = $1', [p.kdsId, ctx.actor]);
   }
   const rung = await setRung(c, id, await rungFromPass(c, id), ctx);
-  return { ticketId: id, bumped: q.rowCount, stage: rung };
+  return Object.assign({ ticketId: id, bumped: q.rowCount, stage: rung },
+    await readyNotice(c, id, rung, q.rowCount));
 };
 
 // The expeditor calls the whole table away. Same write, no line filter.
@@ -3135,8 +3136,25 @@ H.kds_bump_all = async (c, p, ctx) => {
   await c.query("UPDATE kds_ticket SET stage = 'Served', served_at = now(),"
     + ' bumped_by = $2 WHERE ticket_id = $1 AND served_at IS NULL', [id, ctx.actor]);
   const rung = await setRung(c, id, await rungFromPass(c, id), ctx);
-  return { ticketId: id, bumped: q.rowCount, stage: rung };
+  return Object.assign({ ticketId: id, bumped: q.rowCount, stage: rung },
+    await readyNotice(c, id, rung, q.rowCount));
 };
+
+/* WHAT A PUSH ABOUT "ORDER READY" NEEDS, composed here because this is the
+   one place the op that just made it ready still has the ticket open. Never
+   sent from inside this transaction (see src/routes/sync.js, which reads
+   `result.notify` only AFTER its chunk has committed) — this only says WHAT
+   the notice should carry, not whether one goes out. `null` unless the
+   ticket just crossed INTO ready with at least one line actually bumped: a
+   recall or a re-push of an already-ready ticket must not wake anybody a
+   second time. */
+async function readyNotice(c, ticketId, rung, bumped) {
+  if (rung !== RUNG.READY || !bumped) return {};
+  const t = await one(c, 'SELECT table_no, opened_by FROM ticket WHERE id = $1', [ticketId]);
+  if (!t || !t.opened_by) return {};
+  return { notify: { type: 'order_ready', staffId: t.opened_by,
+    tableNo: t.table_no || '', dishes: bumped } };
+}
 
 // A bump undone. The plate goes back on the screen and the order goes back to
 // the kitchen, because the guest was told Ready and it was not.

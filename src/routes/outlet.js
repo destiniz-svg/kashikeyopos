@@ -17,6 +17,7 @@ const { applyOp } = require('../apply');
 const { presetCounts, applyPreset } = require('../preset');
 const { resetTrade, census } = require('../reset');
 const ai = require('../ai');
+const push = require('../push');
 
 const r = express.Router({ mergeParams: true });
 
@@ -1547,6 +1548,53 @@ r.post('/advise/stock', sameOutlet, atLeast('manager'),
   gate('advise', { ip: [60, 3600e3] }, (req) => 'outlet:' + req.params.id), advise('stock'));
 r.post('/advise/cfo', sameOutlet, atLeast('admin'),
   gate('advise', { ip: [60, 3600e3] }, (req) => 'outlet:' + req.params.id), advise('cfo'));
+
+/* ═══ WEB PUSH SUBSCRIPTIONS ════════════════════════════════════════════════
+   Any signed-in device — kitchen and up — may ask to be woken on this
+   outlet, because the settings switch is "Alerts on this device", not a
+   manager's decision about somebody else's phone. `staff_id` is who is
+   signed in NOW; a device that changes hands re-subscribes on its next
+   sign-in from Settings, which is the same terminal-scoped shape every
+   other device preference already keeps.
+
+   The endpoint is the primary key: a re-subscribe (a browser rotating its
+   own push registration, or simply pressing the switch again) upserts the
+   keys rather than growing a second row for the same phone. */
+r.post('/push/subscribe', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
+  const b = req.body || {};
+  const endpoint = String(b.endpoint || '').trim();
+  const keys = b.keys || {};
+  const p256dh = String(keys.p256dh || b.p256dh || '').trim();
+  const auth = String(keys.auth || b.auth || '').trim();
+  if (!endpoint || !p256dh || !auth) {
+    return res.status(400).json({ error: 'endpoint, p256dh and auth are all required' });
+  }
+  if (endpoint.length > 2000) return res.status(400).json({ error: 'that endpoint is too long' });
+  try {
+    await push.checkEndpointAllowed(endpoint);
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
+  }
+  try {
+    await withOutlet(req.ctx, (c) => c.query(
+      'INSERT INTO push_subscription (endpoint, staff_id, device_id, p256dh, auth)'
+      + ' VALUES ($1,$2,$3,$4,$5)'
+      + ' ON CONFLICT (endpoint) DO UPDATE SET staff_id = excluded.staff_id,'
+      + ' device_id = excluded.device_id, p256dh = excluded.p256dh, auth = excluded.auth',
+      [endpoint, req.ctx.actor, req.ctx.deviceId || null, p256dh, auth]));
+    res.status(201).json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+r.delete('/push/subscribe', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
+  const endpoint = String((req.body || {}).endpoint || req.query.endpoint || '').trim();
+  if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+  try {
+    const q = await withOutlet(req.ctx, (c) =>
+      c.query('DELETE FROM push_subscription WHERE endpoint = $1', [endpoint]));
+    res.json({ ok: true, removed: q.rowCount });
+  } catch (e) { next(e); }
+});
 
 module.exports = r;
 module.exports.snapshot = snapshot;
