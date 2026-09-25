@@ -10,6 +10,14 @@
 <link rel="apple-touch-icon" href="/brand/kashikeyo-mark.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- V2 Lagoon: same token set the terminal reads (kashikeyo.css). Look/theme
+     are applied by the logic class below (paintBackdrop -> applyLook), same
+     as index.html's applyTheme(), not by a markup attribute here — the DC
+     runtime restructures <html>/<head> after first paint, so a static
+     attribute does not survive it. This portal has no session yet, so it
+     cannot ask the outlet for a look preference: it defaults to Lagoon (the
+     new-store default, PRODUCT.md) and follows the device's day/night. -->
+<link rel="stylesheet" href="kashikeyo.css">
 <script src="./support.js"></script>
 </head>
 <body>
@@ -26,7 +34,8 @@
 <script src="./guest-bridge.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+:root{--ink-on-dark:#fff}
+body{background:var(--bg);font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:transform .09s cubic-bezier(.2,.8,.3,1),opacity .12s}
 button:active:not(:disabled){transform:scale(.96)}
 button:disabled{cursor:not-allowed}
@@ -39,13 +48,13 @@ input{font:inherit;color:inherit;background:none;border:none;outline:none;width:
    sees a ring and a guest tabbing always does. The accent is the app's own,
    at 2px with an offset, and it clears 3:1 on both the white sheets and the
    dark backdrop. */
-:focus-visible{outline:2px solid #f4553c;outline-offset:2px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline-offset:-2px}
-a{color:#f4553c;text-decoration:none}
-a:hover{color:#d63f27}
+a{color:var(--amber);text-decoration:none}
+a:hover{color:var(--amber-deep)}
 ::-webkit-scrollbar{width:0;height:0}
 *{scrollbar-width:none}
-::placeholder{color:#6e6e77}
+::placeholder{color:var(--text-muted)}
 @keyframes qup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes qpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes qsheet{from{transform:translateY(100%)}to{transform:none}}
@@ -62,7 +71,7 @@ a:hover{color:#d63f27}
    and quantity controls 30-34px: a guest at the table, phone in one hand,
    taps the neighbour. On a touch screen every button is at least 44x44;
    !important because the sizes it corrects are inline. */
-@media (pointer:coarse){button,[role="button"]{min-width:44px!important;min-height:44px!important}}
+@media (pointer:coarse){button,[role="button"]{min-width:48px!important;min-height:48px!important}}
 </style>
 </helmet>
 
@@ -75,30 +84,30 @@ a:hover{color:#d63f27}
         <span style="display:flex;align-items:flex-end;gap:6px;padding-top:2px">
           <svg viewBox="0 0 20 12" width="18" height="11" fill="#111"><rect x="0" y="7.5" width="3" height="4.5" rx="1"></rect><rect x="4.5" y="5" width="3" height="7" rx="1"></rect><rect x="9" y="2.5" width="3" height="9.5" rx="1"></rect><rect x="13.5" y="0" width="3" height="12" rx="1"></rect></svg>
           <svg viewBox="0 0 16 12" width="16" height="12" fill="#111"><path d="M8 11.2 6.1 9.1a2.7 2.7 0 0 1 3.8 0zM8 6.2c-1.5 0-2.9.6-3.9 1.6L2.7 6.3A7.5 7.5 0 0 1 8 4.1c2 0 3.9.8 5.3 2.2l-1.4 1.5A5.5 5.5 0 0 0 8 6.2zM8 1.6C5.4 1.6 3 2.7 1.3 4.4L0 3A11 11 0 0 1 8 0c3.1 0 6 1.2 8 3l-1.3 1.4A9.4 9.4 0 0 0 8 1.6z"></path></svg>
-          <span style="width:23px;height:12px;border:1.4px solid rgba(0,0,0,.35);border-radius:3.5px;padding:1.6px;display:block"><span style="display:block;width:100%;height:100%;background:#111;border-radius:1.6px"></span></span>
+          <span style="width:23px;height:12px;border:1.4px solid rgba(0,0,0,.35);border-radius:3.5px;padding:1.6px;display:block"><span style="display:block;width:100%;height:100%;background:var(--amber);border-radius:1.6px"></span></span>
         </span>
       </div>
 
       <sc-if value="{{ linkDead }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:20px 26px 40px;animation:qup .2s">
-          <span style="width:54px;height:54px;border-radius:16px;background:#f4f4f5;display:grid;place-items:center">
+          <span style="width:54px;height:54px;border-radius:16px;background:var(--bg-2);display:grid;place-items:center">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#62626a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3zM12 9v4M12 16h.01"></path></svg>
           </span>
-          <div style="margin-top:18px;font-size:26px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.14">This link does not open a card</div>
-          <div style="margin-top:9px;font-size:14px;color:#62626a;line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
-          <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:#f7f7f8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#6a6a70;overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
-          <div style="margin-top:18px;font-size:12px;color:#6a6a72;line-height:1.6;text-wrap:pretty">Ask the restaurant for their rewards address — your points are on your phone number, not on this link.</div>
+          <div style="margin-top:18px;font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.035em;line-height:1.14">This link does not open a card</div>
+          <div style="margin-top:9px;font-size:14px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
+          <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:var(--bg-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-muted);overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
+          <div style="margin-top:18px;font-size:12px;color:var(--text-muted);line-height:1.6;text-wrap:pretty">Ask the restaurant for their rewards address — your points are on your phone number, not on this link.</div>
         </div>
       </sc-if>
 
       <sc-if value="{{ sSignIn }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 26px 24px;display:flex;flex-direction:column;animation:qup .2s">
           <div style="padding-top:16px">
-            <span style="width:54px;height:54px;border-radius:16px;background:#f4553c;display:grid;place-items:center;box-shadow:0 8px 20px rgba(20,20,24,.16)">
+            <span style="width:54px;height:54px;border-radius:16px;background:var(--amber);display:grid;place-items:center;box-shadow:0 8px 20px rgba(20,20,24,.16)">
               <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
             </span>
-            <div style="font-size:26px;font-weight:700;color:#111;letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
-            <div style="font-size:14px;color:#62626a;margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
+            <div style="font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
           </div>
 
           <!-- The invitation landing card. It replaces the address field,
@@ -106,38 +115,38 @@ a:hover{color:#d63f27}
                to type it back is asking them to prove what they just handed
                over. -->
           <div style="{{ joinStepStyle }}">
-            <div style="border:1px solid #efefef;border-radius:18px;padding:16px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+            <div style="border:1px solid var(--line);border-radius:18px;padding:16px;background:var(--bg-1);box-shadow:0 2px 10px rgba(0,0,0,.04)">
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="{{ joinAvatarStyle }}">{{ joinInitials }}</span>
                 <span style="display:block;min-width:0">
-                  <span style="display:block;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">{{ joinName }}</span>
-                  <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:2px">{{ joinTier }}</span>
+                  <span style="display:block;font-size:15.5px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ joinName }}</span>
+                  <span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:2px">{{ joinTier }}</span>
                 </span>
               </div>
               <div style="{{ joinPtsStyle }}">
-                <span style="display:block;font-size:12px;font-weight:700;letter-spacing:.08em;color:#6e6e77">ALREADY YOURS</span>
-                <span style="display:block;margin-top:4px;font-size:30px;font-weight:700;color:#111;letter-spacing:-.035em;font-family:'JetBrains Mono',monospace">{{ joinPts }}</span>
-                <span style="display:block;font-size:13px;color:#62626a">points · {{ joinWorth }} off a bill</span>
+                <span style="display:block;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--text-muted)">ALREADY YOURS</span>
+                <span style="display:block;margin-top:4px;font-size:30px;font-weight:700;color:var(--text);letter-spacing:-.035em;font-family:'JetBrains Mono',monospace">{{ joinPts }}</span>
+                <span style="display:block;font-size:13px;color:var(--text-muted)">points · {{ joinWorth }} off a bill</span>
               </div>
-              <div style="margin-top:14px;padding-top:13px;border-top:1px solid #f4f4f5;font-size:12.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ joinFrom }}</div>
+              <div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--line);font-size:12.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ joinFrom }}</div>
             </div>
             <div style="{{ joinWarnStyle }}">{{ joinWarn }}</div>
           </div>
 
           <div style="{{ phoneStepStyle }}">
-            <div style="font-size:12.5px;font-weight:600;color:#5a5a60;letter-spacing:.02em">Phone or email</div>
-            <div style="margin-top:9px;height:54px;border:1.4px solid #ececef;border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 15px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04)">
+            <div style="font-size:12.5px;font-weight:600;color:var(--text-muted);letter-spacing:.02em">Phone or email</div>
+            <div style="margin-top:9px;height:54px;border:1.4px solid var(--line);border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 15px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04)">
               <span style="display:grid;place-items:center;flex-shrink:0">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#6e6e77" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM3 7l9 6 9-6"></path></svg>
               </span>
-              <input value="{{ idValue }}" onChange="{{ setId }}" aria-label="Your mobile number or email address" placeholder="7712345 or you@example.com" style="min-height:44px;font-size:16px;font-weight:500;color:#1a1a1a;letter-spacing:.02em"/>
+              <input value="{{ idValue }}" onChange="{{ setId }}" aria-label="Your mobile number or email address" placeholder="7712345 or you@example.com" style="min-height:44px;font-size:16px;font-weight:500;color:var(--text);letter-spacing:.02em"/>
             </div>
-            <div style="margin-top:12px;font-size:12px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ phoneHint }}</div>
+            <div style="margin-top:12px;font-size:12px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ phoneHint }}</div>
             <div style="{{ idErrStyle }}">{{ idErr }}</div>
           </div>
 
           <div style="{{ otpStepStyle }}">
-            <div style="font-size:12.5px;font-weight:600;color:#5a5a60;letter-spacing:.02em">{{ otpLabel }}</div>
+            <div style="font-size:12.5px;font-weight:600;color:var(--text-muted);letter-spacing:.02em">{{ otpLabel }}</div>
             <div style="margin-top:11px;display:flex;gap:10px">
               <sc-for list="{{ otpBoxes }}" as="b" hint-placeholder-count="4">
                 <span style="{{ b.style }}">{{ b.ch }}</span>
@@ -152,9 +161,9 @@ a:hover{color:#d63f27}
           </div>
 
           <div style="flex:1"></div>
-          <div style="margin-top:22px;font-size:11.5px;color:#6e6e77;line-height:1.55;text-wrap:pretty">{{ signInFoot }}</div>
+          <div style="margin-top:22px;font-size:11.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ signInFoot }}</div>
         </div>
-        <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 22px;background:#fff;display:flex;gap:12px;align-items:center">
+        <div style="flex-shrink:0;border-top:1px solid var(--line);padding:14px 22px;background:var(--bg-1);display:flex;gap:12px;align-items:center">
           <button onClick="{{ signInBack }}" style="{{ signInBackStyle }}">{{ signInBackLabel }}</button>
           <button onClick="{{ signInNext }}" disabled="{{ signInDisabled }}" style="{{ signInBtnStyle }}">{{ signInBtn }}</button>
         </div>
@@ -166,13 +175,13 @@ a:hover{color:#d63f27}
             <div style="flex:1;min-width:0">
               <div style="{{ greetStyle }}">{{ greetLine }}</div>
               <div style="{{ nameStyle }}">{{ mName }}</div>
-              <div style="display:flex;align-items:center;gap:7px;margin-top:9px;color:#f4553c;font-size:15px;font-weight:500">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#f4553c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:9px;color:var(--amber);font-size:15px;font-weight:500">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
                 {{ tierLine }}
               </div>
             </div>
-            <button aria-label="Menu" onClick="{{ openSheet }}" style="width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.10);display:grid;place-items:center;flex-shrink:0">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f4553c" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h11"></path></svg>
+            <button aria-label="Menu" onClick="{{ openSheet }}" style="width:46px;height:46px;border-radius:50%;background:var(--bg-1);box-shadow:0 3px 12px rgba(0,0,0,.10);display:grid;place-items:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--amber)" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h11"></path></svg>
             </button>
           </div>
 
@@ -195,7 +204,7 @@ a:hover{color:#d63f27}
                 <img src="{{ storeLogo }}" alt="" style="{{ storeLogoStyle }}"/>
                 <span style="display:block;min-width:0">
                   <span style="display:block;font-size:11px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
-                  <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
+                  <span style="display:block;font-size:20px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
                 </span>
               </span>
               <span style="{{ tierBadgeStyle }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"></circle><path d="M8.5 14 7 22l5-3 5 3-1.5-8"></path></svg>{{ tierMark }}</span>
@@ -203,11 +212,11 @@ a:hover{color:#d63f27}
             <span style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:26px">
               <span style="display:block">
                 <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">POINTS BALANCE</span>
-                <span style="display:block;font-size:34px;font-weight:700;color:#fff;letter-spacing:-.035em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }}</span>
+                <span style="display:block;font-size:34px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.035em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }}</span>
               </span>
               <span style="display:block;text-align:right">
                 <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">WORTH</span>
-                <span style="display:block;font-size:15px;font-weight:700;color:#fff;margin-top:4px;font-family:'JetBrains Mono',monospace">{{ mWorth }}</span>
+                <span style="display:block;font-size:15px;font-weight:700;color:var(--ink-on-dark);margin-top:4px;font-family:'JetBrains Mono',monospace">{{ mWorth }}</span>
               </span>
             </span>
             <span style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:16px;border-top:1px solid rgba(255,255,255,.16)">
@@ -216,46 +225,46 @@ a:hover{color:#d63f27}
             </span>
           </div>
 
-          <button onClick="{{ openScan }}" style="margin-top:12px;width:100%;height:50px;border-radius:25px;background:#fff;border:1.4px solid #f4553c;color:#f4553c;font-size:14.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f4553c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 12h10"></path></svg>
+          <button onClick="{{ openScan }}" style="margin-top:12px;width:100%;height:50px;border-radius:25px;background:var(--bg-1);border:1.4px solid var(--amber);color:var(--amber);font-size:14.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 12h10"></path></svg>
             Show code at the till
           </button>
 
-          <div style="margin-top:22px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px">
+          <div style="margin-top:22px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-              <span style="font-size:14.5px;font-weight:700;color:#111;letter-spacing:-.02em">{{ nextTierTitle }}</span>
-              <span style="font-size:12.5px;color:#6a6a72;font-family:'JetBrains Mono',monospace">{{ nextTierMeta }}</span>
+              <span style="font-size:14.5px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ nextTierTitle }}</span>
+              <span style="font-size:12.5px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">{{ nextTierMeta }}</span>
             </div>
-            <div style="margin-top:12px;height:8px;border-radius:5px;background:#f2f2f4;overflow:hidden">
+            <div style="margin-top:12px;height:8px;border-radius:5px;background:var(--bg-2);overflow:hidden">
               <span style="{{ tierBarStyle }}"></span>
             </div>
-            <div style="margin-top:10px;font-size:12.5px;color:#62626a;line-height:1.5;text-wrap:pretty">{{ nextTierSub }}</div>
+            <div style="margin-top:10px;font-size:12.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty">{{ nextTierSub }}</div>
           </div>
 
           <div style="{{ tileGridStyle }}">
-            <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
-              <div style="font-size:11.5px;font-weight:600;color:#6a6a72;letter-spacing:.05em">HOUSE ACCOUNT</div>
-              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ creditLeft }}</div>
-              <div style="font-size:11.5px;color:#6a6a72;margin-top:4px;line-height:1.45">{{ creditSub }}</div>
+            <div style="border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
+              <div style="font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:.05em">HOUSE ACCOUNT</div>
+              <div style="font-size:19px;font-weight:700;color:var(--text);letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ creditLeft }}</div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;line-height:1.45">{{ creditSub }}</div>
             </div>
-            <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
-              <div style="font-size:11.5px;font-weight:600;color:#6a6a72;letter-spacing:.05em">LIFETIME</div>
-              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ mSpent }}</div>
-              <div style="font-size:11.5px;color:#6a6a72;margin-top:4px;line-height:1.45">{{ visitsSub }}</div>
+            <div style="border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
+              <div style="font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:.05em">LIFETIME</div>
+              <div style="font-size:19px;font-weight:700;color:var(--text);letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ mSpent }}</div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;line-height:1.45">{{ visitsSub }}</div>
             </div>
           </div>
 
           <div style="{{ liveWrapStyle }}">
             <div style="display:flex;align-items:center;gap:9px">
-              <span style="width:8px;height:8px;border-radius:50%;background:#f4553c;display:block;flex-shrink:0;animation:qpulse 1.5s ease-in-out infinite"></span>
-              <span style="font-size:14px;font-weight:700;color:#111;letter-spacing:-.02em">{{ liveTitle }}</span>
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);display:block;flex-shrink:0;animation:qpulse 1.5s ease-in-out infinite"></span>
+              <span style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ liveTitle }}</span>
             </div>
-            <div style="margin-top:8px;font-size:12.5px;color:#62626a;line-height:1.5;text-wrap:pretty">{{ liveSub }}</div>
+            <div style="margin-top:8px;font-size:12.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty">{{ liveSub }}</div>
             <div style="margin-top:12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-              <span style="font-size:12.5px;color:#62626a">Running total</span>
-              <span style="font-size:17px;font-weight:700;color:#f4553c;letter-spacing:-.02em;font-family:'JetBrains Mono',monospace">{{ liveTotal }}</span>
+              <span style="font-size:12.5px;color:var(--text-muted)">Running total</span>
+              <span style="font-size:17px;font-weight:700;color:var(--amber);letter-spacing:-.02em;font-family:'JetBrains Mono',monospace">{{ liveTotal }}</span>
             </div>
-            <div style="margin-top:6px;font-size:12px;color:#6a6a72">{{ liveEarn }}</div>
+            <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">{{ liveEarn }}</div>
           </div>
 
           <div style="{{ offersHeadStyle }}">Offers for you</div>
@@ -266,7 +275,7 @@ a:hover{color:#d63f27}
                 <span style="position:absolute;inset:0;background:linear-gradient(96deg,rgba(24,10,8,.88) 0%,rgba(24,10,8,.55) 55%,rgba(24,10,8,.1) 100%);display:block"></span>
                 <span style="position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:15px 16px;width:100%">
                   <span style="{{ o.tagStyle }}">{{ o.tag }}</span>
-                  <span style="display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.25;text-align:left;max-width:230px;text-wrap:pretty">{{ o.title }}</span>
+                  <span style="display:block;font-size:15px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.02em;line-height:1.25;text-align:left;max-width:230px;text-wrap:pretty">{{ o.title }}</span>
                   <span style="display:block;font-size:11.5px;color:rgba(255,255,255,.76);line-height:1.4;text-align:left;max-width:230px;text-wrap:pretty">{{ o.sub }}</span>
                 </span>
               </button>
@@ -278,14 +287,14 @@ a:hover{color:#d63f27}
       <sc-if value="{{ sOrder }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
           <div style="{{ bindWrapStyle }}">
-            <div style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Select your table</div>
-            <div style="margin-top:7px;font-size:13px;color:#62626a;line-height:1.55;text-wrap:pretty">Select your table below, or scan the QR on your table card. Everything you order is attached to your membership and earns points.</div>
+            <div style="font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">Select your table</div>
+            <div style="margin-top:7px;font-size:13px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">Select your table below, or scan the QR on your table card. Everything you order is attached to your membership and earns points.</div>
             <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap">
               <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="8">
                 <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
               </sc-for>
             </div>
-            <div style="margin-top:16px;font-size:12px;color:#6a6a72;line-height:1.5">{{ bindHint }}</div>
+            <div style="margin-top:16px;font-size:12px;color:var(--text-muted);line-height:1.5">{{ bindHint }}</div>
           </div>
 
           <div style="{{ orderWrapStyle }}">
@@ -300,12 +309,12 @@ a:hover{color:#d63f27}
             <div style="{{ usualHeadStyle }}">{{ usualHead }}</div>
             <div style="{{ usualWrapStyle }}">
               <sc-for list="{{ usuals }}" as="u" hint-placeholder-count="3">
-                <button onClick="{{ u.add }}" style="flex-shrink:0;width:132px;text-align:left;background:#fff;border:1px solid #efefef;border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px">
+                <button onClick="{{ u.add }}" style="flex-shrink:0;width:132px;text-align:left;background:var(--bg-1);border:1px solid var(--line);border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px">
                   <span style="{{ u.imgStyle }}"></span>
-                  <span style="display:block;padding:0 4px;font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.25">{{ u.name }}</span>
+                  <span style="display:block;padding:0 4px;font-size:13px;font-weight:600;color:var(--text);line-height:1.25">{{ u.name }}</span>
                   <span style="margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 4px">
-                    <span style="font-size:13px;font-weight:700;color:#f4553c;white-space:nowrap">{{ u.priceLabel }}</span>
-                    <span style="width:26px;height:26px;border-radius:50%;background:#f4553c;display:grid;place-items:center;flex-shrink:0">
+                    <span style="font-size:13px;font-weight:700;color:var(--amber);white-space:nowrap">{{ u.priceLabel }}</span>
+                    <span style="width:26px;height:26px;border-radius:50%;background:var(--amber);display:grid;place-items:center;flex-shrink:0">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                     </span>
                   </span>
@@ -313,9 +322,9 @@ a:hover{color:#d63f27}
               </sc-for>
             </div>
 
-            <div style="margin-top:18px;height:48px;border:1px solid #ececec;border-radius:16px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.03)">
+            <div style="margin-top:18px;height:48px;border:1px solid #ececec;border-radius:16px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--bg-1);box-shadow:0 1px 3px rgba(0,0,0,.03)">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#c2c2c6" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input placeholder="Search the menu..." aria-label="Search the menu" value="{{ q }}" onChange="{{ setQ }}" style="min-height:44px;font-size:16px;color:#1a1a1a"/>
+              <input placeholder="Search the menu..." aria-label="Search the menu" value="{{ q }}" onChange="{{ setQ }}" style="min-height:44px;font-size:16px;color:var(--text)"/>
             </div>
 
             <div style="{{ catRowStyle }}">
@@ -333,11 +342,11 @@ a:hover{color:#d63f27}
                     <span style="{{ d.offStyle }}">Sold out</span>
                   </span>
                   <span style="display:block;padding:0 4px">
-                    <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em;line-height:1.25">{{ d.name }}</span>
-                    <span style="display:block;font-size:11.5px;color:#6a6a72;line-height:1.4;margin-top:4px;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty">{{ d.desc }}</span>
+                    <span style="display:block;font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.01em;line-height:1.25">{{ d.name }}</span>
+                    <span style="display:block;font-size:11.5px;color:var(--text-muted);line-height:1.4;margin-top:4px;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty">{{ d.desc }}</span>
                   </span>
                   <span style="margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px">
-                    <span style="font-size:14px;font-weight:700;color:#f4553c;white-space:nowrap">{{ d.priceLabel }}</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap">{{ d.priceLabel }}</span>
                     <span style="{{ d.plusStyle }}">
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                     </span>
@@ -352,24 +361,24 @@ a:hover{color:#d63f27}
                 <div style="display:flex;align-items:center;gap:12px">
                   <span style="{{ l.imgStyle }}"></span>
                   <span style="flex:1;min-width:0;display:block">
-                    <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em">{{ l.name }}</span>
-                    <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:4px">{{ l.priceLabel }}</span>
+                    <span style="display:block;font-size:14.5px;font-weight:600;color:var(--text);letter-spacing:-.01em">{{ l.name }}</span>
+                    <span style="display:block;font-size:13.5px;font-weight:600;color:var(--amber);margin-top:4px">{{ l.priceLabel }}</span>
                   </span>
                   <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-                    <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+                    <button aria-label="{{ l.decLabel }}" onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:var(--amber);display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                     </button>
-                    <span style="font-size:14.5px;font-weight:600;color:#1a1a1a;min-width:9px;text-align:center">{{ l.qty }}</span>
-                    <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+                    <span style="font-size:14.5px;font-weight:600;color:var(--text);min-width:9px;text-align:center">{{ l.qty }}</span>
+                    <button aria-label="{{ l.incLabel }}" onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:var(--amber);display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                     </button>
                   </span>
                 </div>
               </sc-for>
-              <div style="border-top:1px solid #f0f0f0;padding-top:12px;display:flex;flex-direction:column;gap:9px">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:#4a4a4f"><span>Subtotal</span><span style="color:#1a1a1a;font-weight:500">{{ cartSubLabel }}</span></div>
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:#4a4a4f"><span>Points this round</span><span style="color:#1f7a3d;font-weight:600">{{ cartPtsLabel }}</span></div>
-                <div style="font-size:11.5px;color:#6a6a72;line-height:1.5;text-wrap:pretty">{{ orderFoot }}</div>
+              <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--text-muted)"><span>Subtotal</span><span style="color:var(--text);font-weight:500">{{ cartSubLabel }}</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--text-muted)"><span>Points this round</span><span style="color:var(--go-bright);font-weight:600">{{ cartPtsLabel }}</span></div>
+                <div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty">{{ orderFoot }}</div>
               </div>
             </div>
 
@@ -380,15 +389,15 @@ a:hover{color:#d63f27}
       <sc-if value="{{ sOrders }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
           <div style="margin-top:14px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-            <span style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">My orders</span>
-            <span style="font-size:12.5px;color:#6a6a72">{{ ordersMeta }}</span>
+            <span style="font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">My orders</span>
+            <span style="font-size:12.5px;color:var(--text-muted)">{{ ordersMeta }}</span>
           </div>
 
           <div style="{{ trackWrapStyle }}">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
               <span style="display:block;min-width:0">
-                <span style="display:block;font-size:15px;font-weight:700;color:#111;letter-spacing:-.02em">{{ trackTitle }}</span>
-                <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px">{{ trackSub }}</span>
+                <span style="display:block;font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ trackTitle }}</span>
+                <span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px">{{ trackSub }}</span>
               </span>
               <span style="{{ etaStyle }}">{{ etaLabel }}</span>
             </div>
@@ -410,29 +419,29 @@ a:hover{color:#d63f27}
 
           <div style="{{ roundsWrapStyle }}">
             <sc-for list="{{ rounds }}" as="rd" hint-placeholder-count="1">
-              <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-bottom:1px solid #f4f4f4">
-                  <span style="font-size:13.5px;font-weight:700;color:#111">{{ rd.title }}</span>
-                  <span style="font-size:12.5px;color:#6a6a72">{{ rd.at }}</span>
+              <div style="border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-bottom:1px solid var(--line)">
+                  <span style="font-size:13.5px;font-weight:700;color:var(--text)">{{ rd.title }}</span>
+                  <span style="font-size:12.5px;color:var(--text-muted)">{{ rd.at }}</span>
                 </div>
                 <div style="padding:6px 15px 12px;display:flex;flex-direction:column;gap:12px">
                   <sc-for list="{{ rd.lines }}" as="rl" hint-placeholder-count="2">
                     <div style="display:flex;align-items:center;gap:11px;padding-top:8px">
                       <span style="{{ rl.imgStyle }}"></span>
                       <span style="flex:1;min-width:0;display:block">
-                        <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ rl.name }}</span>
+                        <span style="display:block;font-size:14px;font-weight:600;color:var(--text)">{{ rl.name }}</span>
                         <span style="{{ rl.chipStyle }}">{{ rl.status }}</span>
                       </span>
                       <span style="display:block;text-align:right;flex-shrink:0">
-                        <span style="display:block;font-size:12.5px;color:#6a6a72">×{{ rl.qty }}</span>
-                        <span style="display:block;font-size:13.5px;font-weight:600;color:#1a1a1a;margin-top:3px">{{ rl.priceLabel }}</span>
+                        <span style="display:block;font-size:12.5px;color:var(--text-muted)">×{{ rl.qty }}</span>
+                        <span style="display:block;font-size:13.5px;font-weight:600;color:var(--text);margin-top:3px">{{ rl.priceLabel }}</span>
                       </span>
                     </div>
                   </sc-for>
                 </div>
                 <div style="padding:12px 15px;border-top:1px dashed #ececef;display:flex;align-items:center;justify-content:space-between;gap:12px">
-                  <span style="font-size:12.5px;color:#62626a">{{ rd.ptsLine }}</span>
-                  <span style="font-size:14px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ rd.total }}</span>
+                  <span style="font-size:12.5px;color:var(--text-muted)">{{ rd.ptsLine }}</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--amber);font-family:'JetBrains Mono',monospace">{{ rd.total }}</span>
                 </div>
               </div>
             </sc-for>
@@ -442,35 +451,35 @@ a:hover{color:#d63f27}
 
           <div style="{{ visitFootStyle }}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
-              <span style="font-size:13.5px;color:#4a4a4f">Table total so far</span>
-              <span style="font-size:16px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ visitTotal }}</span>
+              <span style="font-size:13.5px;color:var(--text-muted)">Table total so far</span>
+              <span style="font-size:16px;font-weight:700;color:var(--amber);font-family:'JetBrains Mono',monospace">{{ visitTotal }}</span>
             </div>
-            <div style="margin-top:8px;font-size:11.5px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ visitFoot }}</div>
+            <div style="margin-top:8px;font-size:11.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ visitFoot }}</div>
           </div>
         </div>
       </sc-if>
 
       <sc-if value="{{ sBill }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
-          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">The bill</div>
-          <div style="margin-top:6px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">The bill</div>
+          <div style="margin-top:6px;font-size:13.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
 
           <div style="{{ billBodyStyle }}">
-            <div style="margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+            <div style="margin-top:16px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
               <sc-for list="{{ billLines }}" as="l" hint-placeholder-count="3">
-                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:var(--text-muted)">
                   <span style="min-width:0">{{ l.name }}</span>
-                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:var(--text)">{{ l.amt }}</span>
                 </div>
               </sc-for>
-              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:7px">
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px">
                 <sc-for list="{{ billTotals }}" as="t" hint-placeholder-count="4">
                   <div style="{{ t.style }}"><span>{{ t.label }}</span><span style="font-family:'JetBrains Mono',monospace">{{ t.amt }}</span></div>
                 </sc-for>
               </div>
             </div>
 
-            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#6e6e77;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <sc-for list="{{ splitModes }}" as="m" hint-placeholder-count="4">
                 <button onClick="{{ m.tap }}" style="{{ m.style }}">
@@ -482,59 +491,59 @@ a:hover{color:#d63f27}
 
             <div style="{{ splitEvenStyle }}">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
+                <span style="font-size:13.5px;color:var(--text-muted)">Between how many?</span>
                 <span style="display:flex;align-items:center;gap:12px">
-                  <button aria-label="One fewer share" onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f2f2f4;display:grid;place-items:center;color:#f4553c">
+                  <button aria-label="One fewer share" onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:var(--amber)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
                   </button>
-                  <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
-                  <button aria-label="One more share" onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                  <span style="font-size:17px;font-weight:700;color:var(--text);min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
+                  <button aria-label="One more share" onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:var(--amber);display:grid;place-items:center;color:var(--on-amber)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                   </button>
                 </span>
               </div>
-              <div style="margin-top:11px;font-size:13.5px;color:#f4553c;font-weight:700">{{ splitEach }}</div>
+              <div style="margin-top:11px;font-size:13.5px;color:var(--amber);font-weight:700">{{ splitEach }}</div>
             </div>
 
             <div style="{{ splitItemStyle }}">
-              <div style="font-size:12.5px;color:#62626a;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table for whoever is paying it.</div>
+              <div style="font-size:12.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table for whoever is paying it.</div>
               <sc-for list="{{ pickLines }}" as="l" hint-placeholder-count="3">
                 <button onClick="{{ l.tap }}" style="{{ l.style }}">
                   <span style="{{ l.box }}">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="{{ l.tick }}"><path d="m5 13 4.5 4.5L19 7"></path></svg>
                   </span>
-                  <span style="flex:1;min-width:0;font-size:13.5px;color:#1a1a1a">{{ l.name }}</span>
-                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:#4a4a4f">{{ l.amt }}</span>
+                  <span style="flex:1;min-width:0;font-size:13.5px;color:var(--text)">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:var(--text-muted)">{{ l.amt }}</span>
                 </button>
               </sc-for>
-              <div style="margin-top:12px;font-size:13.5px;color:#f4553c;font-weight:700">{{ pickTotal }}</div>
+              <div style="margin-top:12px;font-size:13.5px;color:var(--amber);font-weight:700">{{ pickTotal }}</div>
             </div>
 
             <div style="{{ splitCustomStyle }}">
-              <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
-              <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:14px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
-                <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
-                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" aria-label="Amount to pay" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+              <div style="font-size:13.5px;color:var(--text-muted)">What are you putting in?</div>
+              <div style="margin-top:10px;height:52px;border:1.4px solid var(--amber);border-radius:14px;display:flex;align-items:center;padding:0 15px;gap:9px;background:var(--bg-1)">
+                <span style="font-size:14px;font-weight:700;color:var(--amber);flex-shrink:0">MVR</span>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" aria-label="Amount to pay" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace"/>
               </div>
             </div>
 
             <button onClick="{{ togglePoints }}" style="{{ ptsRowStyle }}">
               <span style="flex:1;min-width:0;display:block">
-                <span style="display:block;font-size:14px;font-weight:700;color:#1a1a1a">Pay with points</span>
-                <span style="display:block;font-size:12px;color:#62626a;margin-top:2px;line-height:1.45">{{ ptsRowSub }}</span>
+                <span style="display:block;font-size:14px;font-weight:700;color:var(--text)">Pay with points</span>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.45">{{ ptsRowSub }}</span>
               </span>
               <span style="{{ ptsSwitchStyle }}"><span style="{{ ptsKnobStyle }}"></span></span>
             </button>
 
-            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#6e6e77;letter-spacing:.08em">TIP FOR THE TEAM</div>
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">TIP FOR THE TEAM</div>
             <div style="margin-top:10px;display:flex;gap:8px">
               <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
               </sc-for>
             </div>
-            <div style="margin-top:9px;font-size:11.5px;color:#6a6a72;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+            <div style="margin-top:9px;font-size:11.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
 
-            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#6e6e77;letter-spacing:.08em">PAYING WITH</div>
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:var(--text-muted);letter-spacing:.08em">PAYING WITH</div>
             <div style="margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:7px">
               <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="4">
                 <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -545,7 +554,7 @@ a:hover{color:#d63f27}
             <div style="margin-top:18px;border-radius:16px;background:#fff8f6;border:1px solid #ffd9d1;padding:16px">
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
                 <span style="font-size:14px;font-weight:700;color:#c2452f">You are paying</span>
-                <span style="font-size:22px;font-weight:700;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
+                <span style="font-size:22px;font-weight:700;color:var(--amber);letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
               </div>
               <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
             </div>
@@ -560,13 +569,13 @@ a:hover{color:#d63f27}
 
       <sc-if value="{{ sRewards }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
-          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Rewards</div>
-          <div style="margin-top:6px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ rewardsSub }}</div>
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">Rewards</div>
+          <div style="margin-top:6px;font-size:13.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ rewardsSub }}</div>
 
           <div style="margin-top:16px;border-radius:16px;background:#fff5f2;border:1px solid #f7c8bd;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px">
             <span style="display:block">
               <span style="display:block;font-size:11.5px;font-weight:600;color:#c2452f;letter-spacing:.05em">AVAILABLE</span>
-              <span style="display:block;font-size:22px;font-weight:700;color:#f4553c;letter-spacing:-.03em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }} pts</span>
+              <span style="display:block;font-size:22px;font-weight:700;color:var(--amber);letter-spacing:-.03em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }} pts</span>
             </span>
             <span style="font-size:12.5px;color:#c2452f;text-align:right;line-height:1.45;max-width:130px;text-wrap:pretty">{{ earnRateLine }}</span>
           </div>
@@ -576,8 +585,8 @@ a:hover{color:#d63f27}
               <div style="{{ r.rowStyle }}">
                 <span style="{{ r.imgStyle }}"></span>
                 <span style="flex:1;min-width:0;display:block">
-                  <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em;line-height:1.3">{{ r.name }}</span>
-                  <span style="display:block;font-size:12px;color:#6a6a72;margin-top:3px;line-height:1.45;text-wrap:pretty">{{ r.sub }}</span>
+                  <span style="display:block;font-size:14.5px;font-weight:600;color:var(--text);letter-spacing:-.01em;line-height:1.3">{{ r.name }}</span>
+                  <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.45;text-wrap:pretty">{{ r.sub }}</span>
                   <span style="{{ r.costStyle }}">{{ r.cost }}</span>
                 </span>
                 <button onClick="{{ r.redeem }}" disabled="{{ r.locked }}" style="{{ r.btnStyle }}">{{ r.btn }}</button>
@@ -588,15 +597,15 @@ a:hover{color:#d63f27}
           <div style="{{ vouchHeadStyle }}">Ready to use</div>
           <div style="{{ vouchWrapStyle }}">
             <sc-for list="{{ vouchers }}" as="v" hint-placeholder-count="1">
-              <div style="border:1.4px dashed #f4553c;border-radius:14px;background:#fff8f6;padding:14px 15px;display:flex;align-items:center;gap:13px">
-                <span style="width:38px;height:38px;border-radius:50%;background:#f4553c;display:grid;place-items:center;flex-shrink:0">
+              <div style="border:1.4px dashed var(--amber);border-radius:14px;background:var(--amber-dim);padding:14px 15px;display:flex;align-items:center;gap:13px">
+                <span style="width:38px;height:38px;border-radius:50%;background:var(--amber);display:grid;place-items:center;flex-shrink:0">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z"></path></svg>
                 </span>
                 <span style="flex:1;min-width:0;display:block">
-                  <span style="display:block;font-size:14px;font-weight:700;color:#1a1a1a">{{ v.name }}</span>
+                  <span style="display:block;font-size:14px;font-weight:700;color:var(--text)">{{ v.name }}</span>
                   <span style="display:block;font-size:12px;color:#a05a48;margin-top:2px;font-family:'JetBrains Mono',monospace">{{ v.meta }}</span>
                 </span>
-                <span style="font-size:12.5px;font-weight:700;color:#f4553c;flex-shrink:0;letter-spacing:.04em">{{ v.code }}</span>
+                <span style="font-size:12.5px;font-weight:700;color:var(--amber);flex-shrink:0;letter-spacing:.04em">{{ v.code }}</span>
               </div>
             </sc-for>
           </div>
@@ -605,8 +614,8 @@ a:hover{color:#d63f27}
 
       <sc-if value="{{ sActivity }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
-          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Activity</div>
-          <div style="margin-top:6px;font-size:13.5px;color:#62626a;line-height:1.55;text-wrap:pretty">{{ activitySub }}</div>
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">Activity</div>
+          <div style="margin-top:6px;font-size:13.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ activitySub }}</div>
           <div style="{{ activityNoteStyle }}">{{ activityNote }}</div>
 
           <div style="margin-top:16px;display:flex;gap:8px">
@@ -622,8 +631,8 @@ a:hover{color:#d63f27}
                   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
                 </span>
                 <span style="flex:1;min-width:0;display:block">
-                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em">{{ a.title }}</span>
-                  <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px">{{ a.meta }}</span>
+                  <span style="display:block;font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.01em">{{ a.title }}</span>
+                  <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px">{{ a.meta }}</span>
                 </span>
                 <span style="display:block;text-align:right;flex-shrink:0">
                   <span style="{{ a.amtStyle }}">{{ a.amt }}</span>
@@ -638,45 +647,45 @@ a:hover{color:#d63f27}
 
       <sc-if value="{{ sAccount }}" hint-placeholder-val="{{ false }}">
         <div style="animation:qup .2s">
-          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Profile</div>
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">Profile</div>
 
           <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
             <span style="{{ avatarStyle }}">{{ mInitials }}</span>
             <span style="flex:1;min-width:0;display:block">
-              <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
-              <span style="display:block;font-size:13px;color:#6a6a72;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPhone }}</span>
+              <span style="display:block;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ mName }}</span>
+              <span style="display:block;font-size:13px;color:var(--text-muted);margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPhone }}</span>
             </span>
           </div>
 
-          <div style="margin-top:20px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
+          <div style="margin-top:20px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
             <sc-for list="{{ accRows }}" as="r" hint-placeholder-count="4">
               <div style="{{ r.style }}">
-                <span style="font-size:13.5px;color:#5a5a60">{{ r.label }}</span>
-                <span style="font-size:13.5px;font-weight:600;color:#1a1a1a;text-align:right;font-family:'JetBrains Mono',monospace">{{ r.value }}</span>
+                <span style="font-size:13.5px;color:var(--text-muted)">{{ r.label }}</span>
+                <span style="font-size:13.5px;font-weight:600;color:var(--text);text-align:right;font-family:'JetBrains Mono',monospace">{{ r.value }}</span>
               </div>
             </sc-for>
           </div>
 
-          <div style="margin-top:20px;font-size:15px;font-weight:700;color:#111;letter-spacing:-.02em">Preferences</div>
+          <div style="margin-top:20px;font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.02em">Preferences</div>
           <div style="margin-top:11px;display:flex;flex-direction:column;gap:9px">
             <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="3">
-              <button onClick="{{ t.tap }}" style="display:flex;align-items:center;gap:13px;padding:14px;border-radius:14px;border:1px solid #efefef;background:#fff;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.03)">
+              <button onClick="{{ t.tap }}" style="display:flex;align-items:center;gap:13px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.03)">
                 <span style="flex:1;display:block">
-                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ t.label }}</span>
-                  <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px;line-height:1.45;text-wrap:pretty">{{ t.sub }}</span>
+                  <span style="display:block;font-size:14px;font-weight:600;color:var(--text)">{{ t.label }}</span>
+                  <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.45;text-wrap:pretty">{{ t.sub }}</span>
                 </span>
                 <span style="{{ t.trackStyle }}"><span style="{{ t.knobStyle }}"></span></span>
               </button>
             </sc-for>
           </div>
 
-          <button onClick="{{ signOut }}" style="margin-top:20px;width:100%;padding:14px;border-radius:26px;border:1.4px solid #ececef;color:#62626a;font-size:14px;font-weight:600;background:#fff">Sign out</button>
-          <div style="margin-top:16px;font-size:11.5px;color:#6e6e77;line-height:1.55;text-wrap:pretty">{{ accFoot }}</div>
+          <button onClick="{{ signOut }}" style="margin-top:20px;width:100%;padding:14px;border-radius:26px;border:1.4px solid var(--line);color:var(--text-muted);font-size:14px;font-weight:600;background:var(--bg-1)">Sign out</button>
+          <div style="margin-top:16px;font-size:11.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty">{{ accFoot }}</div>
         </div>
       </sc-if>
         </div>
 
-        <div style="flex-shrink:0;padding:10px 20px 14px;background:#fff;border-top:1px solid #f4f4f4">
+        <div style="flex-shrink:0;padding:10px 20px 14px;background:var(--bg-1);border-top:1px solid var(--line)">
           <button onClick="{{ barTap }}" style="{{ actionBarStyle }}">
             <span style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left">
               <span style="display:block;max-width:100%;font-size:14.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ barLine }}</span>
@@ -693,7 +702,7 @@ a:hover{color:#d63f27}
       <div style="{{ chromeStyle }}">
         <div style="height:52px;display:flex;align-items:center;gap:12px;padding:0 18px;border-top:1px solid #e4e4e6">
           <span style="font-size:14px;font-weight:500;color:#3a3a3c;letter-spacing:-.02em;flex-shrink:0"><span style="font-size:11px">A</span>A</span>
-          <span style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:14.5px;color:#111">
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:14.5px;color:var(--text)">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="#3a3a3c"><path d="M17 9V7a5 5 0 0 0-10 0v2H5.8v12h12.4V9zm-8-2a3 3 0 0 1 6 0v2H9z"></path></svg>
             {{ host }}
           </span>
@@ -706,10 +715,10 @@ a:hover{color:#d63f27}
           <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H14v16h4.5a1.5 1.5 0 0 0 1.5-1.5z"></path></svg>
           <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="13" rx="2.5"></rect><path d="M8 4h10.5A2.5 2.5 0 0 1 21 6.5V16"></path></svg>
         </div>
-        <div style="height:24px;display:grid;place-items:center"><span style="width:138px;height:5px;border-radius:3px;background:#111;display:block"></span></div>
+        <div style="height:24px;display:grid;place-items:center"><span style="width:138px;height:5px;border-radius:3px;background:var(--amber);display:block"></span></div>
       </div>
 
-      <div style="{{ homeBarStyle }}"><span style="width:138px;height:5px;border-radius:3px;background:#111;display:block"></span></div>
+      <div style="{{ homeBarStyle }}"><span style="width:138px;height:5px;border-radius:3px;background:var(--amber);display:block"></span></div>
 
       <div style="{{ scrimStyle }}" onClick="{{ closeAll }}"></div>
 
@@ -717,10 +726,10 @@ a:hover{color:#d63f27}
         <div style="display:flex;align-items:center;gap:13px">
           <span style="{{ dsImgStyle }}"></span>
           <span style="flex:1;min-width:0;display:block">
-            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ dsName }}</span>
-            <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:3px">{{ dsPrice }}</span>
+            <span style="display:block;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ dsName }}</span>
+            <span style="display:block;font-size:13.5px;font-weight:600;color:var(--amber);margin-top:3px">{{ dsPrice }}</span>
           </span>
-          <button aria-label="Close" onClick="{{ dsClose }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ dsClose }}" style="width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
@@ -728,83 +737,83 @@ a:hover{color:#d63f27}
         <div style="{{ dsTagStyle }}">{{ dsTags }}</div>
         <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:min(34dvh,270px);overflow-y:auto">
           <sc-for list="{{ dsAddons }}" as="a" hint-placeholder-count="3">
-            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;border:1px solid #efefef;background:#fff">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;border:1px solid var(--line);background:var(--bg-1)">
               <span style="flex:1;min-width:0;display:block">
-                <span style="display:block;font-size:13.5px;font-weight:600;color:#1a1a1a">{{ a.name }}</span>
-                <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px">{{ a.price }}</span>
+                <span style="display:block;font-size:13.5px;font-weight:600;color:var(--text)">{{ a.name }}</span>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px">{{ a.price }}</span>
               </span>
               <button aria-label="{{ a.decLabel }}" onClick="{{ a.dec }}" style="{{ a.decStyle }}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
-              <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24,.16)">
+              <button aria-label="{{ a.incLabel }}" onClick="{{ a.inc }}" style="width:27px;height:27px;border-radius:50%;background:var(--amber);color:var(--on-amber);display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24,.16)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
               </button>
             </div>
           </sc-for>
         </div>
         <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
-          <span style="display:flex;align-items:center;gap:11px;flex-shrink:0;border:1.4px solid #ececef;border-radius:999px;padding:6px 8px">
-            <button aria-label="One fewer" onClick="{{ dsQtyDec }}" style="width:30px;height:30px;border-radius:50%;background:#f5f5f6;color:#f4553c;display:grid;place-items:center">
+          <span style="display:flex;align-items:center;gap:11px;flex-shrink:0;border:1.4px solid var(--line);border-radius:999px;padding:6px 8px">
+            <button aria-label="One fewer" onClick="{{ dsQtyDec }}" style="width:30px;height:30px;border-radius:50%;background:var(--bg-2);color:var(--amber);display:grid;place-items:center">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
             </button>
-            <span style="font-size:15px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dsQty }}</span>
-            <button aria-label="One more" onClick="{{ dsQtyInc }}" style="width:30px;height:30px;border-radius:50%;background:#f4553c;display:grid;place-items:center">
+            <span style="font-size:15px;font-weight:700;color:var(--text);min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dsQty }}</span>
+            <button aria-label="One more" onClick="{{ dsQtyInc }}" style="width:30px;height:30px;border-radius:50%;background:var(--amber);display:grid;place-items:center">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
             </button>
           </span>
-          <button onClick="{{ dsAdd }}" style="flex:1;min-height:52px;padding:14px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ dsAddLabel }}</button>
+          <button onClick="{{ dsAdd }}" style="flex:1;min-height:56px;padding:14px 8px;border-radius:999px;background:#141416;color:var(--ink-on-dark);box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ dsAddLabel }}</button>
         </div>
       </div>
 
       <div style="{{ scanStyle }}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <span style="display:block">
-            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Show this at the till</span>
-            <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px">Your cashier keys the code to attach this visit</span>
+            <span style="display:block;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">Show this at the till</span>
+            <span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px">Your cashier keys the code to attach this visit</span>
           </span>
-          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
-        <div style="margin-top:18px;border:1.4px solid #f0f0f0;border-radius:18px;padding:22px 18px;text-align:center;background:#fff">
+        <div style="margin-top:18px;border:1.4px solid var(--line);border-radius:18px;padding:22px 18px;text-align:center;background:var(--bg-1)">
           <div style="display:flex;align-items:flex-end;justify-content:center;gap:3px;height:76px">
             <sc-for list="{{ bars }}" as="b" hint-placeholder-count="30">
               <span style="{{ b.style }}"></span>
             </sc-for>
           </div>
-          <div style="margin-top:16px;font-size:21px;font-weight:700;color:#111;letter-spacing:.02em;font-family:'JetBrains Mono',monospace">{{ mCode }}</div>
-          <div style="margin-top:6px;font-size:12px;color:#6a6a72">{{ mName }} · {{ mTier }}</div>
+          <div style="margin-top:16px;font-size:21px;font-weight:700;color:var(--text);letter-spacing:.02em;font-family:'JetBrains Mono',monospace">{{ mCode }}</div>
+          <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">{{ mName }} · {{ mTier }}</div>
         </div>
         <div style="{{ announceStyle }}">{{ announceMsg }}</div>
-        <button onClick="{{ announce }}" style="margin-top:14px;width:100%;min-height:52px;padding:14px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ announceBtn }}</button>
+        <button onClick="{{ announce }}" style="margin-top:14px;width:100%;min-height:56px;padding:14px;border-radius:999px;background:#141416;color:var(--ink-on-dark);box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ announceBtn }}</button>
       </div>
 
       <div style="{{ sheetStyle }}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <span style="display:block">
-            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
-            <span style="display:block;font-size:12.5px;color:#6a6a72;margin-top:3px">{{ mTier }} · {{ mPoints }} points</span>
+            <span style="display:block;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em">{{ mName }}</span>
+            <span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px">{{ mTier }} · {{ mPoints }} points</span>
           </span>
-          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+          <button aria-label="Close" onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;flex-shrink:0">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
         </div>
         <div style="margin-top:16px;display:flex;flex-direction:column;gap:9px">
           <sc-for list="{{ sheetRows }}" as="r" hint-placeholder-count="3">
-            <button onClick="{{ r.tap }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1px solid #efefef;background:#fff;text-align:left">
+            <button onClick="{{ r.tap }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);text-align:left">
               <span style="width:34px;height:34px;border-radius:50%;background:#fff2ef;display:grid;place-items:center;flex-shrink:0">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#f4553c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
               </span>
               <span style="flex:1;display:block">
-                <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a">{{ r.label }}</span>
-                <span style="display:block;font-size:12px;color:#6a6a72;margin-top:2px">{{ r.sub }}</span>
+                <span style="display:block;font-size:14.5px;font-weight:600;color:var(--text)">{{ r.label }}</span>
+                <span style="display:block;font-size:12px;color:var(--text-muted);margin-top:2px">{{ r.sub }}</span>
               </span>
             </button>
           </sc-for>
         </div>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f2f2f2;display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <span style="font-size:11px;color:#6e6e77;letter-spacing:.05em">{{ poweredLine }}</span>
+          <span style="font-size:11px;color:var(--text-muted);letter-spacing:.05em">{{ poweredLine }}</span>
           <span style="{{ syncStyle }}">{{ syncLabel }}</span>
         </div>
       </div>
@@ -821,7 +830,7 @@ a:hover{color:#d63f27}
        is actually talking rather than asserting that it is. -->
   <div style="{{ asideStyle }}">
     <div style="font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.5)">YOUR MEMBERSHIP</div>
-    <div style="margin-top:12px;font-size:30px;font-weight:700;color:#fff;letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
+    <div style="margin-top:12px;font-size:30px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
     <div style="margin-top:14px;font-size:14.5px;color:rgba(255,255,255,.72);line-height:1.65;text-wrap:pretty">{{ asideBody }}</div>
     <div style="margin-top:26px;display:flex;flex-direction:column;gap:14px">
       <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
@@ -830,7 +839,7 @@ a:hover{color:#d63f27}
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
           </span>
           <span style="display:block;min-width:0">
-            <span style="display:block;font-size:14px;font-weight:600;color:#fff">{{ r.title }}</span>
+            <span style="display:block;font-size:14px;font-weight:600;color:var(--ink-on-dark)">{{ r.title }}</span>
             <span style="display:block;font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;line-height:1.55;text-wrap:pretty">{{ r.sub }}</span>
           </span>
         </div>
@@ -937,10 +946,24 @@ class Component extends DCLogic {
      reach, and overscroll is the one place its colour still shows. Without
      this, iOS rubber-band reveals a near-black band around a white app at
      both edges. */
+  // V2 Lagoon: see guest.html's applyLook() for why this is a method rather
+  // than a static markup attribute — the DC runtime restructures <html>
+  // after first paint. No session exists yet, so there is no outlet look
+  // pref to read; defaults to Lagoon (PRODUCT.md) and follows day/night.
+  applyLook() {
+    if (typeof document === "undefined") return;
+    const de = document.documentElement;
+    de.setAttribute("data-look", "lagoon");
+    const dark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+    de.setAttribute("data-theme", dark ? "dark" : "light");
+  }
   paintBackdrop() {
     if (typeof document === "undefined") return;
-    const bg = this.metrics().bare ? "#fff" : "#1b0d0a";
+    this.applyLook();
     const de = document.documentElement, bd = document.body;
+    const cs = getComputedStyle(de);
+    const v = (name, fallback) => { const x = (cs.getPropertyValue(name) || "").trim(); return x || fallback; };
+    const bg = this.metrics().bare ? v("--bg-1", "#fff") : "#03131b";
     if (de && de.style) { de.style.background = bg; de.style.overscrollBehavior = "none"; }
     if (bd && bd.style) { bd.style.background = bg; bd.style.overscrollBehavior = "none"; }
   }
@@ -1418,7 +1441,7 @@ class Component extends DCLogic {
   // not — never a raw data URL and never a blank box.
   plate(d, glyphSize) {
     return d && d.img
-      ? "background:#f1f1f3 center/cover url('" + this.photoUrl(d.img) + "');"
+      ? "background:var(--bg-2) center/cover url('" + this.photoUrl(d.img) + "');"
       : this.artifact(d ? d.cat : null, glyphSize || "36%") + ";";
   }
   rewardCatalog() {
@@ -1780,14 +1803,14 @@ class Component extends DCLogic {
       // to brick. Same room, same product — a member walking from the QR menu
       // to their card should not feel handed to somebody else.
       pageStyle: M.bare
-        ? "min-height:100dvh;background:#fff;display:block"
-        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
+        ? "min-height:100dvh;background:var(--bg-1);display:block"
+        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#0b2837 0%,#051a24 40%,#03131b 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
       frameStyle: M.bare
-        ? "width:100%;max-width:" + M.scr + "px;margin:0 auto;height:100dvh;position:relative;background:#fff;display:block"
+        ? "width:100%;max-width:" + M.scr + "px;margin:0 auto;height:100dvh;position:relative;background:var(--bg-1);display:block"
         : "width:" + (M.scr + 22) + "px;height:" + (M.h + 22) + "px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 44px 90px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.4)",
       // Bare keeps the notch inset the painted bar used to stand in — the box
       // is real on a real phone even though nothing is drawn in it any more.
-      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative" + (M.bare ? ";padding-top:env(safe-area-inset-top)" : ";border-radius:46px"),
+      screenStyle: "width:100%;height:100%;background:var(--bg-1);overflow:hidden;display:flex;flex-direction:column;position:relative" + (M.bare ? ";padding-top:env(safe-area-inset-top)" : ";border-radius:46px"),
       /* The explainer column, framed viewports only. On the real thing there
          is no space to earn, and a column below the app is a page nobody
          scrolls to. */
@@ -1804,7 +1827,7 @@ class Component extends DCLogic {
       camStyle: M.bare ? "display:none" : "position:absolute;top:34px;left:calc(50% + 40px);width:11px;height:11px;border-radius:50%;background:#16171b;box-shadow:inset 0 0 0 1.5px #0d0d0f;display:block;z-index:6",
       // Painted chrome is HIDDEN, never shrunk — but the inset it occupied is
       // real on a notched phone, so bare keeps the safe area and drops the paint.
-      statusStyle: M.bare ? "display:none" : "flex-shrink:0;height:54px;padding:16px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:#111",
+      statusStyle: M.bare ? "display:none" : "flex-shrink:0;height:54px;padding:16px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:var(--text)",
       // The address bar shows the address this page is actually at, and the
       // prop is only a fallback for the design tool. A made-up hostname on a
       // screenshot is a hostname somebody eventually types.
@@ -1831,8 +1854,8 @@ class Component extends DCLogic {
       // card that does not stretch into a billboard.
       tileGridStyle: "margin-top:14px;display:grid;grid-template-columns:repeat(" + M.cols + ",minmax(0,1fr));gap:12px",
       rewardsGridStyle: "margin-top:20px;display:grid;grid-template-columns:repeat(" + (M.wide ? 2 : 1) + ",minmax(0,1fr));gap:12px",
-      chromeStyle: (this.props.showBrowserChrome ?? true) && !M.bare ? "flex-shrink:0;background:#f7f7f8;display:flex;flex-direction:column" : "display:none",
-      homeBarStyle: (this.props.showBrowserChrome ?? true) || M.bare ? "display:none" : "flex-shrink:0;height:24px;display:grid;place-items:center;background:#fff",
+      chromeStyle: (this.props.showBrowserChrome ?? true) && !M.bare ? "flex-shrink:0;background:var(--bg-2);display:flex;flex-direction:column" : "display:none",
+      homeBarStyle: (this.props.showBrowserChrome ?? true) || M.bare ? "display:none" : "flex-shrink:0;height:24px;display:grid;place-items:center;background:var(--bg-1)",
       idValue: this.idValue(),
       setId: (e) => this.setState({ email: e.target.value }),
       openSheet: () => this.setState({ sheet: true }),
@@ -1864,7 +1887,7 @@ class Component extends DCLogic {
         if (el) el.scrollTop = 0;
       }),
       toastStyle: s.toast
-        ? "position:absolute;left:50%;top:calc(env(safe-area-inset-top) + " + (M.bare ? 14 : 44) + "px);transform:translateX(-50%);max-width:300px;pointer-events:none;padding:12px 18px;border-radius:24px;background:rgba(20,20,22,.94);color:#fff;font-size:13px;font-weight:500;text-align:center;line-height:1.4;z-index:20;animation:qtoast .18s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+        ? "position:absolute;left:50%;top:calc(env(safe-area-inset-top) + " + (M.bare ? 14 : 44) + "px);transform:translateX(-50%);max-width:300px;pointer-events:none;padding:12px 18px;border-radius:24px;background:rgba(20,20,22,.94);color:var(--ink-on-dark);font-size:13px;font-weight:500;text-align:center;line-height:1.4;z-index:20;animation:qtoast .18s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
         : "display:none",
       toastMsg: s.toast ? s.toast.msg : ""
     };
@@ -1888,7 +1911,7 @@ class Component extends DCLogic {
     V.sActivity = signedIn && s.tab === "activity";
     V.sAccount = signedIn && s.tab === "account";
     V.scrimStyle = (s.sheet || s.scan || s.dishSheet) ? "position:absolute;inset:0;background:rgba(15,10,9,.42);z-index:14;animation:qup .16s" : "display:none";
-    const sheetBase = "position:absolute;left:0;right:0;bottom:0;z-index:15;background:#fff;border-radius:26px 26px " + (M.bare ? "0 0" : "46px 46px") + ";padding:20px 22px 30px;box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1)";
+    const sheetBase = "position:absolute;left:0;right:0;bottom:0;z-index:15;background:var(--bg-1);border-radius:26px 26px " + (M.bare ? "0 0" : "46px 46px") + ";padding:20px 22px 30px;box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1)";
     V.sheetStyle = s.sheet ? sheetBase : "display:none";
     V.scanStyle = s.scan ? sheetBase : "display:none";
 
@@ -1938,7 +1961,7 @@ class Component extends DCLogic {
         V.joinInitials = String(jn.name || "")
           .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
         V.joinAvatarStyle = "width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-          + "font-size:16px;font-weight:700;color:#fff;background:linear-gradient(140deg,"
+          + "font-size:16px;font-weight:700;color:var(--ink-on-dark);background:linear-gradient(140deg,"
           + (t.from || "#8a6a4f") + " 0%," + (t.to || "#5d4632") + " 100%)";
         V.joinName = jn.name || "";
         V.joinTier = tierName + " member"
@@ -1946,7 +1969,7 @@ class Component extends DCLogic {
         // Hidden at zero, where a balance argues against the invitation
         // rather than for it.
         V.joinPtsStyle = jn.points
-          ? "margin-top:15px;padding-top:14px;border-top:1px solid #f4f4f5"
+          ? "margin-top:15px;padding-top:14px;border-top:1px solid var(--line)"
           : "display:none";
         V.joinPts = (jn.points || 0).toLocaleString("en-US");
         // What the OUTLET said they are worth. Deriving it here would quote a
@@ -1975,8 +1998,8 @@ class Component extends DCLogic {
       V.otpLabel = "The four digits your server reads out";
       V.otpBoxes = [0, 1, 2, 3].map((i) => ({
         ch: s.otp[i] || "",
-        style: "flex:1;max-width:96px;height:" + (M.scr < 360 ? 54 : 60) + "px;border-radius:14px;border:1.6px solid " + (s.otp.length === i ? "#f4553c" : s.otp[i] ? "#f7c8bd" : "#ececef")
-          + ";background:" + (s.otp[i] ? "#fff8f6" : "#fff") + ";display:grid;place-items:center;font-size:24px;font-weight:700;color:#111"
+        style: "flex:1;max-width:96px;height:" + (M.scr < 360 ? 54 : 60) + "px;border-radius:14px;border:1.6px solid " + (s.otp.length === i ? "var(--amber)" : s.otp[i] ? "var(--amber-dim)" : "var(--line)")
+          + ";background:" + (s.otp[i] ? "var(--amber-dim)" : "var(--bg-1)") + ";display:grid;place-items:center;font-size:24px;font-weight:700;color:var(--text)"
       }));
       V.otpErr = s.otpErr;
       V.otpErrStyle = s.otpErr && onOtp ? "margin-top:12px;font-size:12.5px;color:#d64545;font-weight:500" : "display:none";
@@ -2001,7 +2024,7 @@ class Component extends DCLogic {
           }, () => { if (full) this.signInNext(); });
         },
         style: key
-          ? "height:52px;border-radius:14px;background:#f7f7f8;font-size:20px;font-weight:600;color:#1a1a1a"
+          ? "height:52px;border-radius:14px;background:var(--bg-2);font-size:20px;font-weight:600;color:var(--text)"
           : "height:52px;visibility:hidden"
       }));
       // One button, whatever the transport: the code goes to the email on the
@@ -2013,9 +2036,9 @@ class Component extends DCLogic {
          field to fill is a dead end wearing a label. */
       V.signInBtn = onOtp ? "Verify & sign in" : jn ? "Send my code" : "Get my code";
       V.signInDisabled = onOtp ? s.otp.length < 4 : jn ? false : !this.idOk();
-      V.signInBtnStyle = "flex:1.4;min-height:52px;padding:15px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";background:#e4e4e8;color:#55555d;box-shadow:none;cursor:not-allowed" : "");
+      V.signInBtnStyle = "flex:1.4;min-height:56px;padding:15px 8px;border-radius:999px;background:#141416;color:var(--ink-on-dark);box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";background:#e4e4e8;color:#55555d;box-shadow:none;cursor:not-allowed" : "");
       V.signInBackLabel = jn ? "Not you?" : "Back";
-      V.signInBackStyle = "flex:1;min-height:52px;padding:15px 8px;border-radius:999px;border:1.4px solid #ececef;color:#62626a;font-size:14.5px;font-weight:600;background:#fff";
+      V.signInBackStyle = "flex:1;min-height:52px;padding:15px 8px;border-radius:999px;border:1.4px solid var(--line);color:var(--text-muted);font-size:14.5px;font-weight:600;background:var(--bg-1)";
       V.chromeStyle = "display:none";
       V.signInFoot = jn
         ? "The code goes to the address on your membership \u2014 never one typed on this "
@@ -2051,8 +2074,8 @@ class Component extends DCLogic {
     // "Welcome back" only to somebody who has been, the rule the invitation
     // landing keeps; a first visit is welcomed by the store.
     V.greetLine = m.visits ? "Welcome back," : "Welcome to " + (this.outlet().name || "Kashikeyo") + ",";
-    V.greetStyle = "font-size:" + (M.scr < 380 ? 15 : 17) + "px;color:#62626a;letter-spacing:-.01em;line-height:1.3";
-    V.nameStyle = "font-size:" + (M.scr < 380 ? 20 : 23) + "px;font-weight:700;color:#111;letter-spacing:-.03em;margin-top:2px;line-height:1.2;text-wrap:pretty";
+    V.greetStyle = "font-size:" + (M.scr < 380 ? 15 : 17) + "px;color:var(--text-muted);letter-spacing:-.01em;line-height:1.3";
+    V.nameStyle = "font-size:" + (M.scr < 380 ? 20 : 23) + "px;font-weight:700;color:var(--text);letter-spacing:-.03em;margin-top:2px;line-height:1.2;text-wrap:pretty";
     V.mName = m.name;
     V.mPhone = m.phone;
     V.mTier = tier.name;
@@ -2071,9 +2094,9 @@ class Component extends DCLogic {
     const hex = String(m.id).replace(/[^0-9a-f]/gi, "").toUpperCase();
     V.mCode = "KM " + hex.slice(0, 4) + " " + hex.slice(4, 8) + " " + hex.slice(8, 12);
     V.mInitials = m.name.split(" ").map((x) => x[0]).slice(0, 2).join("");
-    V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:#fff;letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
+    V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:var(--ink-on-dark);letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
     V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
-    V.tierBadgeStyle = "height:30px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:inline-flex;align-items:center;gap:6px;flex-shrink:0;font-size:11px;font-weight:700;color:#fff;letter-spacing:.12em";
+    V.tierBadgeStyle = "height:30px;padding:0 11px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:inline-flex;align-items:center;gap:6px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--ink-on-dark);letter-spacing:.12em";
 
     // The bar climbs in POINTS, because that is what the ladder measures. It
     // ran on spend against point thresholds, so it was full at every tier.
@@ -2083,7 +2106,7 @@ class Component extends DCLogic {
     const toGo = next ? Math.max(0, nextAt - pts) : 0;
     V.nextTierTitle = next ? "Next: " + next.name : "Top tier reached";
     V.nextTierMeta = next ? toGo.toLocaleString("en-US") + " pts to go" : "";
-    V.tierBarStyle = "display:block;height:100%;width:" + pct.toFixed(0) + "%;border-radius:5px;background:linear-gradient(90deg,#f4553c,#f6b81c)";
+    V.tierBarStyle = "display:block;height:100%;width:" + pct.toFixed(0) + "%;border-radius:5px;background:linear-gradient(90deg,var(--amber),var(--amber-bright))";
     V.nextTierSub = next
       ? "Earn " + toGo.toLocaleString("en-US") + " more points across any " + k.CHAIN.name
         + " outlet to unlock " + next.name
@@ -2112,13 +2135,13 @@ class Component extends DCLogic {
        real phone saw no offer, ever, whatever the screen at the counter said
        was live. */
     let promos = ((this.K() || {}).BANNERS || []).slice(0, 3);
-    V.offersHeadStyle = promos.length ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.offersHeadStyle = promos.length ? "margin-top:24px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em" : "display:none";
     V.offersWrapStyle = promos.length
       ? "margin-top:12px;display:grid;grid-template-columns:repeat(" + (M.wide ? 2 : 1) + ",minmax(0,1fr));gap:11px"
       : "display:none";
     V.offers = promos.map((b) => ({
       title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
-      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
+      tagStyle: "padding:3px 8px;border-radius:6px;background:var(--amber);color:var(--on-amber);font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
       /* No image is a TINTED CARD, never a path to a file that is not there —
          the dark card ground carries the white copy either way. */
@@ -2135,7 +2158,7 @@ class Component extends DCLogic {
     const off = this.eightySix();
     const inCart = {};
     s.cart.forEach((l) => { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
-    V.bindWrapStyle = bound ? "display:none" : "margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:18px";
+    V.bindWrapStyle = bound ? "display:none" : "margin-top:16px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:18px";
     V.orderWrapStyle = bound ? "margin-top:16px;display:block" : "display:none";
     /* THE ROOM AS IT REALLY IS, never a guessed twelve: the projection
        carries the outlet's own floor, and the chips are its labels — a card
@@ -2155,7 +2178,7 @@ class Component extends DCLogic {
         }
         this.toast("Ordering at table " + n + " · " + o.name);
       },
-      style: "padding:10px 15px;border-radius:22px;font-size:13.5px;font-weight:600;border:1px solid #efefef;background:#fff;color:#2b2b2e;box-shadow:0 2px 7px rgba(0,0,0,.045)"
+      style: "padding:10px 15px;border-radius:22px;font-size:13.5px;font-weight:600;border:1px solid var(--line);background:var(--bg-1);color:#2b2b2e;box-shadow:0 2px 7px rgba(0,0,0,.045)"
     }));
     V.bindHint = seat
       ? "The till already has you seated at table " + seat.table + " — pick it to add to that ticket."
@@ -2173,7 +2196,7 @@ class Component extends DCLogic {
         imgStyle: this.plate(d, "34%") + "display:block;width:100%;height:88px;border-radius:12px"
       };
     });
-    V.usualHeadStyle = bound && V.usuals.length ? "margin-top:20px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.usualHeadStyle = bound && V.usuals.length ? "margin-top:20px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em" : "display:none";
     V.usualWrapStyle = bound && V.usuals.length ? "margin:12px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:11px;overflow-x:auto" : "display:none";
 
     V.catRowStyle = "margin:14px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:9px;overflow-x:auto";
@@ -2197,7 +2220,7 @@ class Component extends DCLogic {
     V.cats = (hasPop ? [{ id: "popular", name: "Most ordered" }] : [])
       .concat([{ id: "all", name: "All dishes" }]).concat(k.MENU_CATEGORIES || []).map((c) => {
       const on = cat === c.id;
-      const hue = c.id === "all" ? "#1a1a1a" : this.artHue(c.id);
+      const hue = c.id === "all" ? "var(--amber)" : this.artHue(c.id);
       const cn = c.id === "all" ? railMenu.length
         : c.id === "popular" ? popIds.length
           : railMenu.filter((m2) => m2.cat === c.id).length;
@@ -2208,8 +2231,8 @@ class Component extends DCLogic {
         // edge, since this row is text-only — and the selected one fills with
         // it, dropping the edge because its whole field is already that colour.
         style: "flex-shrink:0;border-radius:22px;white-space:nowrap;font-size:13.5px;font-weight:600;"
-          + (on ? "padding:9px 15px;border:1px solid " + hue + ";background:" + hue + ";color:#fff"
-            : "padding:9px 15px 9px 12px;border:1px solid #efefef;border-left:4px solid " + hue + ";background:#fff;color:#2b2b2e")
+          + (on ? "padding:9px 15px;border:1px solid " + hue + ";background:" + hue + ";color:var(--on-amber)"
+            : "padding:9px 15px 9px 12px;border:1px solid var(--line);border-left:4px solid " + hue + ";background:var(--bg-1);color:#2b2b2e")
       };
     });
     const q = s.q.trim().toLowerCase();
@@ -2231,11 +2254,11 @@ class Component extends DCLogic {
       return {
         name: d.name, desc: d.desc || tagLine, priceLabel: this.fmt(this.price(d)), off: sold, badge: n ? String(n) : "",
         add: () => sold ? this.toast(d.name + " is off tonight") : this.addLine(d.id),
-        cardStyle: "text-align:left;background:#fff;border:1px solid " + (n ? "#f7c8bd" : "#efefef") + ";border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:" + (sold ? ".55" : "1"),
+        cardStyle: "text-align:left;background:var(--bg-1);border:1px solid " + (n ? "var(--amber-dim)" : "#efefef") + ";border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:" + (sold ? ".55" : "1"),
         imgStyle: this.plate(d, "36%") + "display:block;width:100%;height:118px;border-radius:12px" + (sold ? ";filter:grayscale(1)" : ""),
-        badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#f4553c;color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
-        offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
-        plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24," + (sold ? "0" : ".16") + ")"
+        badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
+        offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:var(--ink-on-dark);font-size:11px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
+        plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "var(--line-3)" : "var(--amber)") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(20,20,24," + (sold ? "0" : ".16") + ")"
       };
     });
 
@@ -2266,17 +2289,17 @@ class Component extends DCLogic {
       V.dsName = ds.name;
       V.dsPrice = this.fmt(this.price(ds));
       V.dsDesc = ds.desc || "";
-      V.dsDescStyle = ds.desc ? "margin-top:12px;font-size:13px;color:#4a4a4f;line-height:1.55;text-wrap:pretty" : "display:none";
+      V.dsDescStyle = ds.desc ? "margin-top:12px;font-size:13px;color:var(--text-muted);line-height:1.55;text-wrap:pretty" : "display:none";
       V.dsTags = dsAl.length ? "Contains " + dsAl.map((a) => a.label).join(", ")
         : (k2b.dishHasMeat && !k2b.dishHasMeat(ds) ? "Vegetarian" : "");
-      V.dsTagStyle = V.dsTags ? "margin-top:8px;font-size:12px;color:#6a6a72" : "display:none";
+      V.dsTagStyle = V.dsTags ? "margin-top:8px;font-size:12px;color:var(--text-muted)" : "display:none";
       V.dsAddons = dsMods.map((a) => {
         const n = s.dishAddons[a.id] || 0;
         return {
           name: a.name, price: +a.price ? "+" + this.fmt(a.price) : "Free", qty: String(n),
-          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#6e6e77"),
+          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "var(--text)" : "var(--text-muted)"),
           decStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
-            + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+            + (n ? "background:var(--bg-2);color:var(--amber)" : "background:var(--bg-2);color:#dcdce0"),
           decLabel: "Remove " + a.name, incLabel: "Add " + a.name,
           inc: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: n + 1 }) }),
           dec: () => this.setState({ dishAddons: Object.assign({}, s.dishAddons, { [a.id]: Math.max(0, n - 1) }) })
@@ -2289,7 +2312,7 @@ class Component extends DCLogic {
       V.dsAdd = () => this.confirmDishSheet();
       V.dsClose = () => this.setState({ dishSheet: null });
     }
-    V.cartHeadStyle = nCart ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.cartHeadStyle = nCart ? "margin-top:24px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em" : "display:none";
     V.cartWrapStyle = nCart ? "margin-top:13px;display:flex;flex-direction:column;gap:15px" : "display:none";
     V.cartSubLabel = this.money(this.cartSub());
     V.cartPtsLabel = "+" + Math.floor(this.cartSub() / this.pointsPer()) + " pts";
@@ -2329,15 +2352,15 @@ class Component extends DCLogic {
     const late = stageNow === 2 && left === 0 && !posF;
     const firstAt = s.sent.length ? s.sent[0].at : 0;
     const hhmm = (t) => t ? new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
-    V.trackWrapStyle = (flat.length || posF) ? "margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px 16px 4px" : "display:none";
+    V.trackWrapStyle = (flat.length || posF) ? "margin-top:16px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px 16px 4px" : "display:none";
     V.trackTitle = ["On its way to the floor", "Your server has the ticket", "Cooking now", "Plated and ready", "Everything is served"][stageNow];
     V.trackSub = (flat.length ? flat.length + " item" + (flat.length === 1 ? "" : "s") + " · " : "")
       + "table " + s.table + (posF ? " · updated " + hhmm(posF.at) : "");
     V.etaLabel = stageNow >= 4 ? "Complete" : stageNow === 3 ? "Coming out now"
       : stageNow === 2 ? (late ? "Any minute now" : "~" + left + " min") : "Confirming";
     V.etaStyle = "flex-shrink:0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:700;white-space:nowrap;background:"
-      + (stageNow >= 4 ? "#eaf7ee;color:#1f7a3d" : stageNow === 3 ? "#eaf7ee;color:#1f7a3d"
-        : stageNow === 2 ? (late ? "#fdeeee;color:#b03636" : "#fff3e6;color:#b4630f") : "#f2f2f4;color:#5a5a60");
+      + (stageNow >= 4 ? "#eaf7ee;color:var(--go-bright)" : stageNow === 3 ? "#eaf7ee;color:var(--go-bright)"
+        : stageNow === 2 ? (late ? "#fdeeee;color:#b03636" : "#fff3e6;color:#b4630f") : "#f2f2f4;color:var(--text-muted)");
     V.steps = [
       { label: "Sent from your phone", sub: hhmm(firstAt) || "From this table" },
       { label: "Accepted at the till", sub: stageNow >= 1 ? "Attached to your membership" : "Waiting for the floor terminal" },
@@ -2348,15 +2371,15 @@ class Component extends DCLogic {
       const done = i < stageNow, on = i === stageNow;
       return {
         label: st.label, sub: st.sub,
-        dotStyle: "width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:" + (done || on ? "#f4553c" : "#fff") + ";border:2.5px solid " + (done || on ? "#f4553c" : "#dcdce0") + (on ? ";box-shadow:0 0 0 4px rgba(20,20,24,.16);animation:qpulse 1.8s ease-in-out infinite" : ""),
-        barStyle: i === 4 ? "display:none" : "flex:1;width:2.5px;min-height:26px;margin:3px 0;border-radius:2px;display:block;background:" + (done ? "#f4553c" : "#ececef"),
-        labelStyle: "display:block;font-size:14px;font-weight:" + (on ? "700" : "600") + ";color:" + (done || on ? "#1a1a1a" : "#6a6a72"),
-        subStyle: "display:block;font-size:12px;color:" + (on ? "#f4553c" : "#6a6a72") + ";margin-top:3px;line-height:1.45"
+        dotStyle: "width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:" + (done || on ? "var(--amber)" : "var(--bg-1)") + ";border:2.5px solid " + (done || on ? "var(--amber)" : "var(--line)") + (on ? ";box-shadow:0 0 0 4px rgba(20,20,24,.16);animation:qpulse 1.8s ease-in-out infinite" : ""),
+        barStyle: i === 4 ? "display:none" : "flex:1;width:2.5px;min-height:26px;margin:3px 0;border-radius:2px;display:block;background:" + (done ? "var(--amber)" : "var(--line)"),
+        labelStyle: "display:block;font-size:14px;font-weight:" + (on ? "700" : "600") + ";color:" + (done || on ? "var(--text)" : "var(--text-muted)"),
+        subStyle: "display:block;font-size:12px;color:" + (on ? "var(--amber)" : "#6a6a72") + ";margin-top:3px;line-height:1.45"
       };
     });
     // My orders — one card per round, newest first, with each line's own stage.
     const NAME = ["Sent to the floor", "Accepted at the till", "In the kitchen", "Ready", "Served"];
-    const TINT = [["#f2f2f4", "#5a5a60"], ["#eef4ff", "#1f4f9c"], ["#fff3e6", "#b4630f"], ["#eaf7ee", "#1f7a3d"], ["#eaf7ee", "#1f7a3d"]];
+    const TINT = [["#f2f2f4", "#5a5a60"], ["#eef4ff", "#1f4f9c"], ["#fff3e6", "var(--warn-bright)"], ["#eaf7ee", "var(--go-bright)"], ["#eaf7ee", "var(--go-bright)"]];
     let visitSum = 0;
     V.rounds = s.sent.slice().reverse().map((r, ri) => {
       let sum = 0;
@@ -2378,9 +2401,9 @@ class Component extends DCLogic {
       };
     });
     V.roundsWrapStyle = s.sent.length ? "margin-top:18px;display:flex;flex-direction:column;gap:14px" : "display:none";
-    V.ordersEmptyStyle = s.sent.length ? "display:none" : "margin-top:18px;padding:20px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:#6a6a72;line-height:1.6;text-wrap:pretty";
+    V.ordersEmptyStyle = s.sent.length ? "display:none" : "margin-top:18px;padding:20px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:var(--text-muted);line-height:1.6;text-wrap:pretty";
     V.ordersMeta = s.sent.length ? s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " · table " + s.table : "This visit";
-    V.visitFootStyle = s.sent.length ? "margin-top:18px;border:1px solid #efefef;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px 16px" : "display:none";
+    V.visitFootStyle = s.sent.length ? "margin-top:18px;border:1px solid var(--line);border-radius:14px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px 16px" : "display:none";
     V.visitTotal = this.money(visitSum);
     V.visitFoot = "Before the " + (o.sc || 0) + "% service charge"
       + (this.taxRegistered() ? " and " + o.tax + " " + o.rate + "%" : "")
@@ -2401,15 +2424,15 @@ class Component extends DCLogic {
         name: r.name, sub: tierLocked ? r.tier + " tier only" : r.sub, cost: r.cost.toLocaleString("en-US") + " pts",
         locked: locked,
         redeem: () => this.redeem(r),
-        rowStyle: "display:flex;align-items:center;gap:13px;padding:12px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);opacity:" + (locked ? ".62" : "1"),
+        rowStyle: "display:flex;align-items:center;gap:13px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--bg-1);box-shadow:0 2px 8px rgba(0,0,0,.04);opacity:" + (locked ? ".62" : "1"),
         imgStyle: this.plate({ img: r.img, cat: r.cat }, "55%") + "width:58px;height:58px;border-radius:12px;flex-shrink:0;display:block" + (locked ? ";filter:grayscale(.7)" : ""),
-        costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#6a6a72" : "#f4553c") + ";margin-top:5px;font-family:'JetBrains Mono',monospace",
+        costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#6a6a72" : "var(--amber)") + ";margin-top:5px;font-family:'JetBrains Mono',monospace",
         btn: tierLocked ? "Locked" : poor ? (r.cost - pts) + " pts" : "Redeem",
         btnStyle: "flex-shrink:0;padding:10px 15px;border-radius:22px;font-size:13px;font-weight:600;white-space:nowrap;"
-          + (locked ? "background:#f4f4f6;color:#6a6a72" : "background:#f4553c;color:#fff;box-shadow:0 3px 10px rgba(20,20,24,.16)")
+          + (locked ? "background:var(--bg-2);color:var(--text-muted)" : "background:var(--amber);color:var(--on-amber);box-shadow:0 3px 10px rgba(20,20,24,.16)")
       };
     });
-    V.vouchHeadStyle = s.redeemed.length ? "margin-top:26px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.vouchHeadStyle = s.redeemed.length ? "margin-top:26px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-.02em" : "display:none";
     V.vouchWrapStyle = s.redeemed.length ? "margin-top:12px;display:flex;flex-direction:column;gap:10px" : "display:none";
     V.vouchers = s.redeemed.slice().reverse().map((r) => ({
       name: r.name, code: r.code,
@@ -2451,8 +2474,8 @@ class Component extends DCLogic {
     V.actTabs = [["all", "All"], ["visit", "Visits"], ["reward", "Rewards"]].map((t) => ({
       label: t[1],
       pick: () => this.setState({ actTab: t[0] }),
-      style: "padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid " + (s.actTab === t[0] ? "#f4553c" : "#ececef")
-        + ";background:" + (s.actTab === t[0] ? "#fff5f2" : "#fff") + ";color:" + (s.actTab === t[0] ? "#f4553c" : "#5a5a60")
+      style: "padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid " + (s.actTab === t[0] ? "var(--amber)" : "var(--line)")
+        + ";background:" + (s.actTab === t[0] ? "var(--amber-dim)" : "var(--bg-1)") + ";color:" + (s.actTab === t[0] ? "var(--amber)" : "var(--text-muted)")
     }));
     const shown = hist.filter((h) => s.actTab === "all" || h.kind === s.actTab);
     // The lifetime figures are the chain's own record of this member and stand
@@ -2462,14 +2485,14 @@ class Component extends DCLogic {
     V.activityNote = this._histReal
       ? "Your last " + this._histReal + " bill" + (this._histReal === 1 ? "" : "s") + " at this restaurant. Earlier visits are counted in your lifetime total above."
       : "Nothing settled here yet. A bill appears the moment the till closes it against your card.";
-    V.activityNoteStyle = "margin-top:10px;font-size:11.5px;color:#6a6a72;line-height:1.55;text-wrap:pretty";
+    V.activityNoteStyle = "margin-top:10px;font-size:11.5px;color:var(--text-muted);line-height:1.55;text-wrap:pretty";
     V.activity = shown.map((h) => ({
       title: h.title, meta: h.meta, amt: h.amt, pts: h.pts, icon: ICON[h.kind] || ICON.visit,
-      iconWrapStyle: "width:40px;height:40px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;background:" + (h.kind === "reward" ? "#fff2ef" : "#f6f6f7") + ";color:" + (h.kind === "reward" ? "#f4553c" : "#6a6a6f"),
-      amtStyle: "display:" + (h.amt ? "block" : "none") + ";font-size:14px;font-weight:600;color:#1a1a1a;font-family:'JetBrains Mono',monospace",
-      ptsStyle: "display:" + (h.pts ? "block" : "none") + ";font-size:12px;margin-top:2px;font-weight:600;font-family:'JetBrains Mono',monospace;color:" + (h.neg ? "#d64545" : h.pts === "pending" ? "#b4630f" : "#1f7a3d")
+      iconWrapStyle: "width:40px;height:40px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;background:" + (h.kind === "reward" ? "#fff2ef" : "#f6f6f7") + ";color:" + (h.kind === "reward" ? "var(--amber)" : "#6a6a6f"),
+      amtStyle: "display:" + (h.amt ? "block" : "none") + ";font-size:14px;font-weight:600;color:var(--text);font-family:'JetBrains Mono',monospace",
+      ptsStyle: "display:" + (h.pts ? "block" : "none") + ";font-size:12px;margin-top:2px;font-weight:600;font-family:'JetBrains Mono',monospace;color:" + (h.neg ? "#d64545" : h.pts === "pending" ? "var(--warn-bright)" : "var(--go-bright)")
     }));
-    V.actEmptyStyle = shown.length ? "display:none" : "padding:38px 6px;text-align:center;font-size:13px;color:#6a6a72";
+    V.actEmptyStyle = shown.length ? "display:none" : "padding:38px 6px;text-align:center;font-size:13px;color:var(--text-muted)";
 
     // account
     V.accRows = [
@@ -2480,7 +2503,7 @@ class Component extends DCLogic {
       ["Home outlet", o.name]
     ].map((r, i, arr) => ({
       label: r[0], value: r[1],
-      style: "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px" + (i < arr.length - 1 ? ";border-bottom:1px solid #f4f4f4" : "")
+      style: "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px" + (i < arr.length - 1 ? ";border-bottom:1px solid var(--line)" : "")
     }));
     V.toggles = [
       ["email", "Email from " + k.CHAIN.name, "Offers, receipts and booking reminders"],
@@ -2490,8 +2513,8 @@ class Component extends DCLogic {
       return {
         label: t[1], sub: t[2],
         tap: () => this.setState({ prefs: Object.assign({}, s.prefs, { [t[0]]: !on }) }),
-        trackStyle: "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (on ? "#f4553c" : "#e2e2e5") + ";justify-content:" + (on ? "flex-end" : "flex-start"),
-        knobStyle: "width:20px;height:20px;border-radius:50%;background:#fff;display:block;box-shadow:0 1px 4px rgba(0,0,0,.22)"
+        trackStyle: "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (on ? "var(--amber)" : "#e2e2e5") + ";justify-content:" + (on ? "flex-end" : "flex-start"),
+        knobStyle: "width:20px;height:20px;border-radius:50%;background:var(--bg-1);display:block;box-shadow:0 1px 4px rgba(0,0,0,.22)"
       };
     });
     V.accFoot = "Your profile lives with " + k.CHAIN.name + ", not on this phone. Points, credit and tier are set by the till — this app shows them and asks for things.";
@@ -2500,7 +2523,7 @@ class Component extends DCLogic {
     V.bars = Array.from({ length: 34 }, (_, i) => {
       const w = 2 + ((i * 7 + m.visits) % 3);
       const h = 44 + ((i * 13 + m.points) % 32);
-      return { style: "display:block;width:" + w + "px;height:" + h + "px;background:#111;border-radius:1px" };
+      return { style: "display:block;width:" + w + "px;height:" + h + "px;background:var(--amber);border-radius:1px" };
     });
     const fresh = s.announced && Date.now() - s.announced < 120000;
     V.announceBtn = fresh ? "The till knows you are here" : "Tell the till I'm here";
@@ -2522,16 +2545,16 @@ class Component extends DCLogic {
       : "Nothing on your table yet";
     V.billBodyStyle = B ? "display:block" : "display:none";
     V.billEmpty = "Once your server has put something on the table's ticket, the bill appears here — and you can split it, spend points, tip and ask to pay.";
-    V.billEmptyStyle = B ? "display:none" : "margin-top:22px;padding:22px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:#6a6a72;line-height:1.6;text-wrap:pretty";
-    const bRow = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
+    V.billEmptyStyle = B ? "display:none" : "margin-top:22px;padding:22px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:var(--text-muted);line-height:1.6;text-wrap:pretty";
+    const bRow = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--text-muted)";
     V.billLines = B ? B.lines.map((l) => ({ name: l.name, amt: this.money(l.amt) })) : [];
     V.billTotals = B ? [
       { label: "Subtotal", amt: this.money(B.sub), style: bRow },
-      { label: "Discount " + B.discPct + "%", amt: "\u2212 " + this.money(B.disc), style: B.disc ? bRow + ";color:#1f7a3d" : "display:none" },
+      { label: "Discount " + B.discPct + "%", amt: "\u2212 " + this.money(B.disc), style: B.disc ? bRow + ";color:var(--go-bright)" : "display:none" },
       { label: "Service charge " + (B.o.sc || 0) + "%", amt: this.money(B.svc), style: B.o.sc ? bRow : "display:none" },
       { label: this.taxRegistered() ? B.o.tax + " " + B.o.rate + "%" : "",
         amt: this.money(B.tax), style: this.taxRegistered() ? bRow : "display:none" },
-      { label: "Table total", amt: this.money(B.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
+      { label: "Table total", amt: this.money(B.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:var(--text);padding-top:9px;border-top:1px solid var(--line);margin-top:3px" }
     ] : [];
     V.splitModes = [
       { k: "all", label: "I'll get it", sub: "The whole table" },
@@ -2542,37 +2565,37 @@ class Component extends DCLogic {
       label: mm.label, sub: mm.sub,
       style: "padding:13px 14px;border-radius:14px;min-height:60px;text-align:left;"
         + ((s.split || "all") === mm.k
-          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(20,20,24,.16)"
-          : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
+          ? "background:var(--amber);color:var(--on-amber);box-shadow:0 5px 14px rgba(20,20,24,.16)"
+          : "background:var(--bg-1);color:var(--text);border:1px solid var(--line)"),
       tap: () => this.setState({ split: mm.k })
     }));
-    V.splitEvenStyle = s.split === "even" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitEvenStyle = s.split === "even" ? "margin-top:13px;padding:15px;border-radius:15px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.splitN = String(s.splitN || 2);
     V.splitLess = () => this.setState({ splitN: Math.max(2, (s.splitN || 2) - 1) });
     V.splitMore = () => this.setState({ splitN: Math.min(20, (s.splitN || 2) + 1) });
     V.splitEach = B ? this.money(B.total / Math.max(1, s.splitN || 2)) + " each" : "";
-    V.splitItemStyle = s.split === "items" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitItemStyle = s.split === "items" ? "margin-top:13px;padding:15px;border-radius:15px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.pickLines = B ? B.lines.map((l, i) => {
       const on = !!(s.picked || {})[i];
       return {
         name: l.name, amt: this.money(l.amt),
         style: "width:100%;margin-top:9px;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;min-height:46px;"
-          + (on ? "background:#fff;border:1.4px solid #f4553c" : "background:#fff;border:1px solid #ececee"),
+          + (on ? "background:var(--bg-1);border:1.4px solid var(--amber)" : "background:var(--bg-1);border:1px solid var(--line)"),
         box: "width:21px;height:21px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"
-          + (on ? "background:#f4553c;color:#fff" : "background:#f2f2f4;color:#f2f2f4"),
+          + (on ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:#f2f2f4"),
         tick: on ? "display:block" : "display:none",
         tap: () => this.setState({ picked: Object.assign({}, s.picked, { [i]: !on }) })
       };
     }) : [];
     V.pickTotal = B ? "Your share: " + this.money(this.myShare()) + " (with your part of service and tax)" : "";
-    V.splitCustomStyle = s.split === "custom" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitCustomStyle = s.split === "custom" ? "margin-top:13px;padding:15px;border-radius:15px;background:var(--bg-2);border:1px solid var(--line)" : "display:none";
     V.customAmt = s.customAmt || "";
     V.setCustom = (e) => this.setState({ customAmt: e.target.value.replace(/[^0-9.]/g, "") });
     // Points are the one thing a member has that a walk-in does not, so this is
     // the screen where they finally behave like money.
     const ptsWorth = this.ptValue();
     V.ptsRowStyle = "margin-top:16px;width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;min-height:60px;text-align:left;"
-      + (s.usePoints ? "background:#f0f9f2;border:1.4px solid #a8dcb8" : "background:#fff;border:1px solid #e8e8ea");
+      + (s.usePoints ? "background:#f0f9f2;border:1.4px solid #a8dcb8" : "background:var(--bg-1);border:1px solid var(--line)");
     V.ptsRowSub = ptsWorth > 0
       ? (s.usePoints && !this.pointsFitSplit()
         ? "Points pay the whole bill, not a share — switch to the whole table to use them."
@@ -2580,13 +2603,13 @@ class Component extends DCLogic {
         ? "Using " + this.money(this.pointsApplied()) + " of your " + this.money(ptsWorth) + ". The till clears them when it settles."
         : this.money(ptsWorth) + " available · " + pts.toLocaleString("en-US") + " points")
       : "No points to spend yet";
-    V.ptsSwitchStyle = "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (s.usePoints ? "#2ea44f" : "#dcdce0");
-    V.ptsKnobStyle = "width:20px;height:20px;border-radius:50%;background:#fff;display:block;transition:transform .16s;transform:translateX(" + (s.usePoints ? "18px" : "0") + ")";
+    V.ptsSwitchStyle = "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (s.usePoints ? "var(--go-bright)" : "var(--line)");
+    V.ptsKnobStyle = "width:20px;height:20px;border-radius:50%;background:var(--bg-1);display:block;transition:transform .16s;transform:translateX(" + (s.usePoints ? "18px" : "0") + ")";
     V.togglePoints = () => ptsWorth > 0 ? this.setState({ usePoints: !s.usePoints }) : this.toast("You have no points to spend yet");
     V.tips = [0, 5, 10, 15].map((pc) => ({
       label: pc ? pc + "%" : "None",
       style: "flex:1;padding:12px 4px;border-radius:13px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
-        + ((s.tip || 0) === pc ? "background:#1a1a1a;color:#fff" : "background:#f4f4f6;color:#6a6a70"),
+        + ((s.tip || 0) === pc ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)"),
       tap: () => this.setState({ tip: pc })
     }));
     V.tipNote = s.tip
@@ -2607,8 +2630,8 @@ class Component extends DCLogic {
     ]).map((x) => ({
       label: x.label,
       style: "padding:12px 4px;border-radius:13px;font-size:13px;font-weight:700;text-align:center;min-height:46px;"
-        + (x.k === "credit" && !canCredit ? "background:#fafafb;color:#6e6e77"
-          : (s.tender || "card") === x.k ? "background:#1a1a1a;color:#fff" : "background:#f4f4f6;color:#6a6a70"),
+        + (x.k === "credit" && !canCredit ? "background:var(--bg-2);color:var(--text-muted)"
+          : (s.tender || "card") === x.k ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);color:var(--text-muted)"),
       tap: () => (x.k === "credit" && !canCredit)
         ? this.toast(this.payDue() > 0 ? "Not enough headroom on your house account"
           : "Your points cover this — there is nothing to charge")
@@ -2617,7 +2640,7 @@ class Component extends DCLogic {
     V.creditNote = s.tender === "credit"
       ? "Charged to your house account · " + this.fmt(Math.max(0, (m.credit || 0) - (m.used || 0))) + " available. The till still authorises it."
       : "";
-    V.creditNoteStyle = s.tender === "credit" ? "margin-top:9px;font-size:11.5px;color:#62626a;line-height:1.5;text-wrap:pretty" : "display:none";
+    V.creditNoteStyle = s.tender === "credit" ? "margin-top:9px;font-size:11.5px;color:var(--text-muted);line-height:1.5;text-wrap:pretty" : "display:none";
     V.payAmount = this.money(this.payDue());
     V.payBreak = B
       ? ((s.split || "all") === "all" ? "The whole table" : s.split === "even" ? "One of " + (s.splitN || 2) + " shares" : s.split === "items" ? "The dishes you picked, with their share of service and tax" : "The amount you entered")
@@ -2625,15 +2648,15 @@ class Component extends DCLogic {
         + (s.tip ? " · plus a " + s.tip + "% tip" : "")
         + ". Your server brings the machine — nothing is charged from this phone."
       : "";
-    V.askBillStyle = "margin-top:16px;width:100%;padding:16px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:15px;font-weight:650;letter-spacing:-.01em;text-align:center;min-height:52px";
+    V.askBillStyle = "margin-top:16px;width:100%;padding:16px;border-radius:999px;background:#141416;color:var(--ink-on-dark);box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:15px;font-weight:650;letter-spacing:-.01em;text-align:center;min-height:56px";
     V.askBillLabel = s.asked ? "Ask again" : "Ask for the bill";
     V.askBill = () => this.requestBill();
     V.askedNote = s.asked ? "Asked at " + hhmm(s.asked) + ". Your server has it on the floor terminal." : "";
-    V.askedStyle = s.asked ? "margin-top:11px;font-size:12.5px;color:#1f7a3d;line-height:1.55;text-align:center" : "display:none";
+    V.askedStyle = s.asked ? "margin-top:11px;font-size:12.5px;color:var(--go-bright);line-height:1.55;text-align:center" : "display:none";
 
     const live = !!this.posSession();
     V.syncLabel = live ? "Till connected" : "Offline — showing saved profile";
-    V.syncStyle = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:" + (live ? "#1f7a3d" : "#b4630f");
+    V.syncStyle = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:" + (live ? "var(--go-bright)" : "var(--warn-bright)");
 
     // Navigation is the QR menu's chip row, not a tab bar: same component, same
     // place on the screen, so a guest who has used the table menu already knows
@@ -2653,7 +2676,7 @@ class Component extends DCLogic {
         label: t[1], icon: t[2],
         pick: () => V.go(t[0]),
         style: "flex-shrink:0;display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:26px;white-space:nowrap;font-size:14px;font-weight:500;border:1px solid "
-          + (on ? "#f4553c" : "#efefef") + ";background:" + (on ? "#fff5f2" : "#fff") + ";color:" + (on ? "#f4553c" : "#2b2b2e")
+          + (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "var(--amber-dim)" : "var(--bg-1)") + ";color:" + (on ? "var(--amber)" : "var(--text)")
           + ";box-shadow:0 2px 7px rgba(0,0,0," + (on ? ".07" : ".045") + ")"
       };
     });
@@ -2666,9 +2689,9 @@ class Component extends DCLogic {
        the only thing left to do is look at it. */
     const barHot = (a) => {
       V.actionBarStyle = "width:100%;height:56px;border-radius:28px;display:flex;"
-        + "align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;color:#fff;"
-        + (a ? "background:#f4553c;box-shadow:0 8px 22px rgba(20,20,24,.16)"
-             : "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)");
+        + "align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;"
+        + (a ? "color:var(--on-amber);background:var(--amber);box-shadow:0 8px 22px rgba(20,20,24,.16)"
+             : "color:var(--ink-on-dark);background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)");
     };
     if (nCart) {
       barHot(true);

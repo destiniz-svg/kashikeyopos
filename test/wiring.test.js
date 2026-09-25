@@ -3023,9 +3023,12 @@ test('the terminal keeps one radius scale and the floor says what to do when emp
   [...radii].forEach((r) => assert.ok(allowed.has(r), 'radius ' + r + 'px is off the scale (4 8 10 14 16 999)'));
   assert.match(SRC, /floorEmpty: !edit && s\.pane !== "menu" && !plan\.length,/, 'the empty floor is the whole plan, not one zone');
   assert.match(SRC, /<sc-if value="\{\{ floorEmpty \}\}">[\s\S]{0,600}Set up the floor/);
+  // V2 Lagoon (PRODUCT.md accessibility floor): both portals moved off the
+  // old brand-coral-on-brick palette onto the terminal's own token set, and
+  // the touch-target floor moved from 44px to 48px with them.
   for (const f of ['app/guest.html', 'app/member.html']) {
     const s = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    assert.match(s, /@media \(pointer:coarse\)\{button,\[role="button"\]\{min-width:44px!important;min-height:44px!important\}\}/, f + ' taps at 44px');
+    assert.match(s, /@media \(pointer:coarse\)\{button,\[role="button"\]\{min-width:48px!important;min-height:48px!important\}\}/, f + ' taps at 48px');
     assert.ok(!/box-shadow:[^;"]*rgba\(244,\s*85,\s*60/.test(s), f + ' draws no coral glow');
   }
 });

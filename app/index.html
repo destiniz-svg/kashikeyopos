@@ -434,7 +434,7 @@
                   </div>
                   <sc-for list="{{ g.rows }}" as="a" hint-placeholder-count="3">
                     <div style="{{ a.rowStyle }}">
-                      <span style="min-width:0;font-size:14px;color:var(--text)">{{ a.name }}</span>
+                      <span style="min-width:0;font-size:14px;color:var(--text)">{{ a.label }}</span>
                       <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
                         <span style="font-size:12.5px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
                         <button onClick="{{ a.dec }}" aria-label="One fewer {{ a.name }}" style="{{ a.decStyle }}">&#8722;</button>
@@ -449,7 +449,7 @@
                 <span style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--text-muted);margin-bottom:7px">Note for the kitchen</span>
                 <input aria-label="Allergy, doneness, course order…" value="{{ daNote }}" onChange="{{ onDaNote }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:13.5px;color:var(--text);outline:none"/>
               </div>
-              <button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button>
+              <div style="position:sticky;bottom:-16px;margin:0 -18px -16px;padding:12px 18px 16px;background:var(--bg-1);border-top:1px solid var(--line)"><button onClick="{{ daAdd }}" disabled="{{ daBlocked }}" style="{{ daAddStyle }}">{{ daAddLabel }}</button></div>
             </div>
             </sc-if>
             <sc-if value="{{ showDishGrid }}">
@@ -1737,7 +1737,7 @@
                   </div>
                   <sc-for list="{{ g.rows }}" as="a" hint-placeholder-count="3">
                     <div style="{{ a.rowStyle }}">
-                      <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.name }}</span>
+                      <span style="min-width:0;font-size:13px;color:var(--text)">{{ a.label }}</span>
                       <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
                         <span style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
                         <button onClick="{{ a.dec }}" aria-label="One fewer {{ a.name }}" style="{{ a.decStyle }}">&#8722;</button>
@@ -1778,7 +1778,6 @@
                   <div style="padding:20px;text-align:center;color:var(--text-faint);font-size:12.5px">Nothing on this bill yet</div>
                 </sc-if>
               </div>
-              <div style="font-size:11px;color:var(--text-muted)">Tap a line, then tap the guest it belongs to.</div>
               <div style="display:flex;gap:10px;flex-wrap:wrap">
                 <sc-for list="{{ siChecks }}" as="c" hint-placeholder-count="2">
                   <button onClick="{{ c.pick }}" style="{{ c.style }}">
@@ -7922,7 +7921,7 @@ class Component extends DCLogic {
       toastMsg: s.toast ? s.toast.msg : "",
       // A toast is centred on the viewport, so a long message has to be told it
       // cannot grow past it — otherwise both ends run off screen on a phone.
-      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
+      toastStyle: "position:fixed;left:50%;bottom:" + (s.view === "pos" && s.pane !== "layout" && this.effBp() === "m" ? "calc(76px + env(safe-area-inset-bottom))" : "26px") + ";transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
       /* Dish options replace the menu grid beside the ticket on tablet and
          desktop instead of opening as a centred modal — the ticket stays
          live. Phone keeps the bottom sheet, which the modal shell already
@@ -9560,7 +9559,8 @@ class Component extends DCLogic {
               + (g.required && !met ? "background:var(--warn);color:var(--on-warn,#fff)" : "background:var(--bg-2);color:var(--text-dim)"),
             boxStyle: "padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);"
               + (g.required && !met ? "box-shadow:inset 0 0 0 2px var(--warn)" : ""),
-            rows: g.rows.map((a) => rowFor(a, gid))
+            // A one-option group named after its option would say the name twice.
+            rows: g.rows.map((a) => Object.assign(rowFor(a, gid), { label: g.rows.length === 1 && a.name === g.name ? "" : a.name }))
           };
         }),
         daNote: m.note || "", onDaNote: (e) => put({ note: e.target.value }),
