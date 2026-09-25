@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html data-theme="light">
+<html data-theme="light" data-look="lagoon">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -14,9 +14,16 @@
 /* Follow the reader's own setting. The terminal has a theme switcher of its
    own; a front door does not, and a phone set to dark at midnight should not
    be handed a white page. Inline and first, so there is no flash of the
-   wrong one. */
+   wrong one.
+
+   `look` is an outlet setting (BUILD-PLAN.md 0.2), and this panel runs before
+   the outlet step has created one — there is nothing to read yet. New stores
+   start on Lagoon (decided 2026-09-25), the same default account.html and
+   guest.html's applyLook() use for the same reason, so that is set here too
+   rather than left to the CSS default. */
 (function () {
   try {
+    document.documentElement.setAttribute("data-look", "lagoon");
     var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
     var set = function () {
       document.documentElement.setAttribute("data-theme", dark && dark.matches ? "dark" : "light");
@@ -74,7 +81,7 @@ body{
   position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto;
   scrollbar-width:thin}
 .brand{display:flex;align-items:center;gap:11px;padding:0 22px 18px}
-.brand img{width:34px;height:34px;border-radius:11px;background:var(--brand-plate);
+.brand img{width:34px;height:34px;border-radius:10px;background:var(--brand-plate);
   border:1px solid var(--brand-plate-line);object-fit:contain;padding:2px}
 .brand b{font-size:13.5px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
 .brand span{color:var(--brand-olive-bright)}
@@ -86,14 +93,14 @@ body{
 /* The spine itself: one line behind every node, so the steps read as a
    sequence rather than as unrelated buttons. */
 .steps:before{content:"";position:absolute;left:calc(22px + 12px);top:16px;bottom:16px;
-  width:2px;background:var(--line);border-radius:2px}
+  width:2px;background:var(--line);border-radius:999px}
 .step{display:flex;align-items:flex-start;gap:13px;padding:9px 22px;border:0;width:100%;
   background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;
   position:relative;border-radius:0;transition:background .14s}
 .step:hover:not(:disabled){background:var(--bg-2)}
 .step:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .step[aria-current="true"]{background:var(--bg-2)}
-.step .no{flex-shrink:0;width:26px;height:26px;border-radius:9px;display:grid;
+.step .no{flex-shrink:0;width:26px;height:26px;border-radius:8px;display:grid;
   place-items:center;font-size:11px;font-weight:800;
   font-family:'JetBrains Mono',monospace;position:relative;z-index:1;
   background:var(--bg-1);color:var(--text-faint);border:2px solid var(--line);
@@ -123,8 +130,8 @@ body{
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mobar .mn{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
     font-weight:700;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);
-    border-radius:20px;padding:4px 10px}
-  .mobar .mbar{height:3px;background:var(--bg-3);border-radius:3px;overflow:hidden;
+    border-radius:999px;padding:4px 10px}
+  .mobar .mbar{height:3px;background:var(--bg-3);border-radius:999px;overflow:hidden;
     margin-top:10px}
   .mobar .mbar i{display:block;height:100%;width:100%;background:var(--amber);transform-origin:left center;transition:transform .3s cubic-bezier(.2,.7,.3,1)}
 }
@@ -150,7 +157,7 @@ label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08
   color:var(--text-faint)}
 label .req{color:var(--amber-bright);margin-left:3px}
 input,select,textarea{
-  background:var(--bg-2);border:1px solid var(--line-2);border-radius:11px;
+  background:var(--bg-2);border:1px solid var(--line-2);border-radius:10px;
   padding:12px 15px;min-height:50px;color:var(--text);font:inherit;font-size:16px;
   width:100%;outline:none;transition:border-color .14s,background .14s,box-shadow .14s;
 }
@@ -161,7 +168,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--amber);background:var
 input.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
 .hint{font-size:11px;color:var(--text-muted);text-wrap:pretty;line-height:1.5}
 .err{font-size:12.5px;color:var(--danger-bright);margin-top:12px;font-weight:600;
-  background:var(--bad-dim);border:1px solid var(--danger-line);border-radius:11px;
+  background:var(--bad-dim);border:1px solid var(--danger-line);border-radius:10px;
   padding:11px 13px;text-wrap:pretty}
 .foot{font-size:11.5px;color:var(--text-muted);margin-top:20px;padding-top:16px;
   border-top:1px solid var(--line-soft);text-wrap:pretty;line-height:1.6}
@@ -182,7 +189,7 @@ input.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-button.go{flex:0 0 auto;padding:13px 22px;min-height:48px;border-radius:12px;border:0;
+button.go{flex:0 0 auto;padding:13px 22px;min-height:48px;border-radius:14px;border:0;
   background:var(--amber);color:var(--on-amber);font-size:13.5px;font-weight:700;
   letter-spacing:-.01em;transition:transform .12s,filter .14s;
   box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 16px rgba(0,0,0,.14)}
@@ -190,21 +197,21 @@ button.go:hover:not(:disabled){filter:brightness(1.06)}
 button.go:active:not(:disabled){transform:translateY(1px)}
 button.go:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 button.ghost{background:var(--bg-1);border:1px solid var(--line-2);color:var(--text-dim);
-  padding:13px 17px;min-height:48px;border-radius:12px;font-size:12.5px;
+  padding:13px 17px;min-height:48px;border-radius:14px;font-size:12.5px;
   font-weight:600;transition:background .14s,border-color .14s}
 button.ghost:hover{background:var(--bg-2);border-color:var(--line-3);color:var(--text)}
 button.mini{background:var(--bg-2);border:1px solid var(--line-2);color:var(--text-dim);
-  padding:8px 12px;min-height:38px;border-radius:9px;font-size:11.5px;
+  padding:8px 12px;min-height:38px;border-radius:8px;font-size:11.5px;
   font-weight:600;transition:background .14s,border-color .14s}
 button.mini:hover{background:var(--bg-3);border-color:var(--line-3);color:var(--text)}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th{text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;
   letter-spacing:.08em;color:var(--text-faint);padding:0 8px 9px;white-space:nowrap}
 td{padding:5px 8px;border-top:1px solid var(--line-soft);vertical-align:middle}
-td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radius:9px}
+td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radius:8px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;max-width:100%}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;
-  text-transform:uppercase;letter-spacing:.09em;padding:5px 11px;border-radius:20px;
+  text-transform:uppercase;letter-spacing:.09em;padding:5px 11px;border-radius:999px;
   background:var(--bg-2);color:var(--text-dim);border:1px solid var(--line-2)}
 .chip.ok{background:var(--ok-dim);color:var(--go-bright);border-color:var(--go-line)}
 .chip.warn{background:var(--warn-dim);color:var(--warn-bright);border-color:var(--warn-line)}
@@ -213,17 +220,17 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 .kv:first-child{border-top:0}
 .kv b{font-weight:600;color:var(--text-dim)}
 .kv span{font-family:'JetBrains Mono',monospace;color:var(--text);text-align:right}
-.bar{height:3px;background:var(--bg-3);border-radius:3px;overflow:hidden;margin-top:22px}
+.bar{height:3px;background:var(--bg-3);border-radius:999px;overflow:hidden;margin-top:22px}
 .bar i{display:block;height:100%;width:100%;background:var(--amber);transform-origin:left center;transition:transform .3s cubic-bezier(.2,.7,.3,1)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
-  background:var(--bg-1);border:1px solid var(--line-2);border-radius:12px;
+  background:var(--bg-1);border:1px solid var(--line-2);border-radius:14px;
   padding:13px 19px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
   animation:ktoast .2s;max-width:calc(100vw - 32px)}
 .toast.err{border-color:var(--danger-line);color:var(--danger-bright)}
 /* Thumbs, not mice. In-table controls were 36–38px, which is under the floor
    every other surface in this build holds itself to. */
 @media (max-width:900px){
-  td input,td select{min-height:44px;font-size:16px}
+  td input,td select{min-height:48px;font-size:16px}
   /* min-WIDTH too: the row-delete control is a single glyph, so padding alone
      left it 34px across — tall enough and still too small to hit. */
   button.mini{min-height:40px;min-width:40px;padding:9px 13px}
@@ -250,7 +257,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .pills::-webkit-scrollbar{display:none}
 .pill{display:flex;align-items:center;gap:9px;background:transparent;border:0;
-  padding:4px 2px;color:var(--text-faint);min-height:44px;flex:0 0 auto}
+  padding:4px 2px;color:var(--text-faint);min-height:48px;flex:0 0 auto}
 .pill:disabled{cursor:not-allowed}
 .pill .pd{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
   font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace;
@@ -261,7 +268,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 .pill.done .pl{color:var(--text-muted)}
 .pill.now .pd{background:var(--text);color:var(--bg-0);border-color:var(--text)}
 .pill.now .pl{color:var(--text)}
-.pline{flex:1 1 22px;min-width:22px;height:2px;border-radius:2px;background:var(--line-2);
+.pline{flex:1 1 22px;min-width:22px;height:2px;border-radius:999px;background:var(--line-2);
   margin:0 10px}
 .pline.done{background:var(--go-line)}
 /* On a phone three labelled pills do not fit, and a stepper whose last node is
@@ -273,33 +280,34 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   .pill.now .pl{display:block}
   /* A PILL IS A CONTROL, AND HIDING ITS LABEL SHRANK THE TARGET. With the
      label gone the button is its 30px dot plus 2px of padding either side —
-     34px, under the 44px this build states everywhere else and under the 36px
-     the responsive test measures. The dot stays the same size; the button
-     around it gets the room, which is what a thumb actually hits. Found by
-     `test/responsive.test.js` on the one screen a new customer signs up on. */
-  .pill{min-width:44px;justify-content:center}
+     34px, under the 48px floor a phone or tablet target needs and under the
+     36px the responsive test measures. The dot stays the same size; the
+     button around it gets the room, which is what a thumb actually hits.
+     Found by `test/responsive.test.js` on the one screen a new customer
+     signs up on. */
+  .pill{min-width:48px;justify-content:center}
   .pill.now{justify-content:flex-start}
   .pline{margin:0 7px;min-width:14px}
 }
 
 /* ── a toggle is a question with two written answers ────────────────────── */
 .tog{display:flex;align-items:center;gap:14px;background:var(--bg-2);
-  border:1px solid var(--line-2);border-radius:12px;padding:13px 15px}
+  border:1px solid var(--line-2);border-radius:14px;padding:13px 15px}
 .tog .tt{min-width:0;flex:1}
 .tog .tt b{display:block;font-size:13px;font-weight:700;letter-spacing:-.01em;
   color:var(--text);text-wrap:pretty}
 .tog .tt small{display:block;font-size:11px;color:var(--text-muted);margin-top:2px}
-/* THE TRACK IS 30px AND THE BUTTON IS 44. The switch used to BE its track, so
-   the whole control was 52 × 30 — under the 44px this build states for a tap
-   target everywhere else, on a toggle a customer taps while signing up. The
+/* THE TRACK IS 30px AND THE BUTTON IS 48. The switch used to BE its track, so
+   the whole control was 52 × 30 — under the 48px floor V2 states for a phone
+   or tablet tap target, on a toggle a customer taps while signing up. The
    track is drawn by ::before now and the button is only the hit area around
    it, so nothing about the switch looks different and a thumb gets the room. */
-.sw{flex:0 0 auto;width:52px;height:44px;min-height:44px;border:0;background:transparent;
-  padding:0;position:relative;border-radius:22px}
-.sw::before{content:"";position:absolute;left:0;top:7px;width:52px;height:30px;
-  border-radius:20px;border:1.5px solid var(--line-3);background:var(--bg-3);
+.sw{flex:0 0 auto;width:52px;height:48px;min-height:48px;border:0;background:transparent;
+  padding:0;position:relative;border-radius:999px}
+.sw::before{content:"";position:absolute;left:0;top:9px;width:52px;height:30px;
+  border-radius:999px;border:1.5px solid var(--line-3);background:var(--bg-3);
   transition:background .16s,border-color .16s}
-.sw i{position:absolute;top:10px;left:3px;width:22px;height:22px;border-radius:50%;
+.sw i{position:absolute;top:12px;left:3px;width:22px;height:22px;border-radius:50%;
   background:var(--text-muted);transition:transform .16s,background .16s;display:block}
 .sw.on::before{background:var(--go);border-color:var(--go)}
 .sw.on i{transform:translateX(22px);background:var(--on-go)}
@@ -321,7 +329,7 @@ button.mini.ghosty{background:transparent}
 
 /* ── what is about to be submitted ──────────────────────────────────────── */
 .sum{margin-top:22px;background:var(--bg-2);border:1px solid var(--line-2);
-  border-radius:13px;padding:16px 17px}
+  border-radius:14px;padding:16px 17px}
 .sumh{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
   color:var(--text-faint);margin-bottom:6px}
 .sum .kv{border-top-color:var(--line)}

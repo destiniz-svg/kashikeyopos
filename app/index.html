@@ -8681,7 +8681,7 @@ class Component extends DCLogic {
              their shift. It carries the COUNT, so the screen states the size of
              the roll without an element of its own. */
           lockFindStyle: users.length > 8
-            ? "width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 13px;font-size:13px;color:var(--text);outline:none;min-height:44px"
+            ? "width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 13px;font-size:13px;color:var(--text);outline:none;min-height:48px"
             : "display:none",
           lockFindHint: "Find your name — " + users.length + " on this roll",
           lockFindVal: m.find || "",
@@ -8724,7 +8724,7 @@ class Component extends DCLogic {
             ? "font-size:11px;color:var(--warn-bright);background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:10px;padding:9px 11px;line-height:1.6;margin-top:8px"
             : "display:none",
           lockSignOutLabel: s.signOutIntent ? "Cancel \u2014 keep this terminal signed in" : "Sign out of this terminal\u2026",
-          lockSignOutStyle: "width:100%;margin-top:8px;padding:10px 13px;border-radius:10px;min-height:44px;font-size:11.5px;font-weight:600;text-align:center;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
+          lockSignOutStyle: "width:100%;margin-top:8px;padding:10px 13px;border-radius:10px;min-height:48px;font-size:11.5px;font-weight:600;text-align:center;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
           // Arming (or cancelling) clears any standing refusal with it.
           lockSignOutGo: () => this.setState({ signOutIntent: !s.signOutIntent, modal: { kind: "lock", find: m.find || "" } })
         };
