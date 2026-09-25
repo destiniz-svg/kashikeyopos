@@ -4784,8 +4784,8 @@ test('a discounted receipt shows its discount on every surface', () => {
   // 3 · Orders-reopened prints the STORED total, never a recomputation
   assert.match(SRC, /const ordTotal = ord\.total !== undefined \? ord\.total : \(acc - ordDisc\) \+ svc \+ tax;/,
     'the reopened receipt reads the stored total');
-  assert.match(SRC, /\{ n: "Discount" \+ \(ord\.discCode \? " " \+ ord\.discCode : ""\), v: "\\u2212 " \+ MVRc\(ordDisc\)/,
-    'and shows the discount row');
+  assert.match(SRC, /\{ n: "Discount" \+ \(ord\.discCode \? " " \+ ord\.discCode : ""\), v: "\\u2212 " \+ MVR\(ordDisc\)/,
+    'and shows the discount row, to the laari');
   assert.match(SRC, /refundTotal: ordTotal,/,
     'the refund figure is the stored total too');
   assert.ok(!/TOTAL", v: MVRc\(acc \+ svc \+ tax\)/.test(SRC),

@@ -773,7 +773,10 @@ async function buildState(ctx, opts) {
       payments: ['SELECT p.* FROM payment p JOIN sale s ON s.id = p.sale_id'
         + ' WHERE s.at > now() - ($1 || \' days\')::interval', [String(days)]],
       credits: ['SELECT * FROM credit_note ORDER BY at DESC LIMIT 500'],
-      drawer: ['SELECT * FROM drawer_session ORDER BY opened_at DESC LIMIT 30'],
+      // The opener's NAME rides with the row: the till printed the uuid on the
+      // Z-report and the register close, where a person is who is meant.
+      drawer: ['SELECT d.*, st.name AS opened_by_name FROM drawer_session d'
+        + ' LEFT JOIN chain.staff st ON st.id = d.opened_by ORDER BY d.opened_at DESC LIMIT 30'],
       counts: ['SELECT * FROM stock_count ORDER BY opened_at DESC LIMIT 30'],
       countLines: ['SELECT cl.* FROM count_line cl JOIN stock_count sc ON sc.id = cl.count_id'],
       moves: ['SELECT * FROM stock_move ORDER BY at DESC LIMIT 1500'],
@@ -887,7 +890,7 @@ async function buildState(ctx, opts) {
 
       register: open ? {
         open: true, id: open.id, float: num(open.float_amount),
-        openedBy: open.opened_by, openedAt: ms(open.opened_at)
+        openedBy: open.opened_by_name || open.opened_by, openedAt: ms(open.opened_at)
       } : { open: false },
       registers: drawer.rows.map((d) => ({
         id: d.id, openedAt: ms(d.opened_at), closedAt: ms(d.closed_at),
@@ -1339,8 +1342,9 @@ async function buildLive(ctx, opts) {
         + ' WHERE s.business_date = current_date AND s.at > $1', [since]],
       payments: ['SELECT p.* FROM payment p JOIN sale s ON s.id = p.sale_id'
         + ' WHERE s.business_date = current_date AND s.at > $1', [since]],
-      drawer: ['SELECT * FROM drawer_session WHERE closed_at IS NULL'
-        + ' ORDER BY opened_at DESC LIMIT 1'],
+      drawer: ['SELECT d.*, st.name AS opened_by_name FROM drawer_session d'
+        + ' LEFT JOIN chain.staff st ON st.id = d.opened_by WHERE d.closed_at IS NULL'
+        + ' ORDER BY d.opened_at DESC LIMIT 1'],
       guestOrders: ['SELECT * FROM guest_order WHERE accepted_at IS NULL'
         + ' AND rejected_reason IS NULL ORDER BY at'],
       guestReqs: ['SELECT * FROM guest_request WHERE ack_at IS NULL ORDER BY at'],
@@ -1376,7 +1380,7 @@ async function buildLive(ctx, opts) {
         payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id], ctx.tz)),
       register: open ? {
         open: true, id: open.id, float: num(open.float_amount),
-        openedBy: open.opened_by, openedAt: ms(open.opened_at)
+        openedBy: open.opened_by_name || open.opened_by, openedAt: ms(open.opened_at)
       } : { open: false },
       guestOrders: q.guestOrders.rows.map((g) => ({
         id: g.id, table: g.table_no, lines: g.lines, promo: g.promo,
@@ -1456,6 +1460,9 @@ function settledOf(s, lines, pays, outletId, table, tz) {
     net: num(s.net), svc: num(s.service), tax: num(s.tax),
     taxRate: num(s.tax_rate), taxLabel: s.tax_label,
     round: num(s.rounding), total: num(s.total), tip: num(s.tip),
+    // A redemption is part of how the total was reached; without it a
+    // reopened receipt's own figures do not add up to its TOTAL.
+    pts: num(s.pts), ptsValue: num(s.pts_value),
     tender: tender, payments: pays.map((p) => ({
       method: p.method, amt: num(p.amount), cur: p.currency,
       rate: num(p.fx_rate) || 1, fgn: num(p.fx_amount), tendered: num(p.tendered),
