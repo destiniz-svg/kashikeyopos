@@ -78,7 +78,7 @@ h1{font-size:clamp(26px,4.2vw,34px);font-weight:800;letter-spacing:-.042em;
 /* ── the segmented control: two doors, both visible ─────────────────────── */
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:0 0 24px;
   background:var(--bg-2);border:1px solid var(--line);border-radius:14px}
-.seg button{appearance:none;border:0;background:transparent;color:var(--text-muted);
+.seg button{appearance:none;border:0;text-align:center;background:transparent;color:var(--text-muted);
   font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:48px;
   border-radius:8px;cursor:pointer;transition:background .16s,color .16s}
 .seg button:hover{color:var(--text-dim)}
@@ -125,7 +125,7 @@ input:focus{border-color:var(--amber);background:var(--bg-1);
 /* ── actions ────────────────────────────────────────────────────────────── */
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-button.go{width:100%;padding:15px;min-height:54px;border-radius:14px;border:0;
+button.go{width:100%;padding:15px;min-height:56px;border-radius:14px;border:0;text-align:center;
   background:var(--amber);color:var(--on-amber);font-size:15px;font-weight:700;
   letter-spacing:-.01em;transition:transform .12s,filter .14s;
   box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 16px rgba(0,0,0,.14)}
@@ -155,9 +155,9 @@ button.link:hover{text-decoration:underline}
 /* ── the canvas: three facts, not three adjectives ──────────────────────── */
 .canvas{display:none;position:relative;overflow:hidden;
   background:
-    radial-gradient(120% 90% at 88% 4%, rgba(244,85,60,.24) 0%, transparent 56%),
-    radial-gradient(90% 80% at 6% 96%, rgba(138,148,64,.20) 0%, transparent 58%),
-    linear-gradient(158deg,#241110 0%,#171012 44%,#0e0e10 100%);
+    radial-gradient(120% 90% at 88% 4%, rgba(25,198,214,.20) 0%, transparent 56%),
+    radial-gradient(90% 80% at 6% 96%, rgba(21,140,120,.18) 0%, transparent 58%),
+    linear-gradient(158deg,#0b2837 0%,#051a24 44%,#03131b 100%);
   color:#f3efe8;padding:clamp(40px,5vw,72px)}
 @media (min-width:1000px){ .canvas{display:flex;flex-direction:column;justify-content:center} }
 .canvas:after{content:"";position:absolute;inset:0;pointer-events:none;
