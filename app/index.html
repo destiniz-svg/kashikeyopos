@@ -4971,7 +4971,9 @@ class Component extends DCLogic {
          and food cost are the owner's numbers and pushed the tables down. On a
          tablet the three service figures sit at the foot of the Now column;
          on a phone the floor is tables only, and the figures are on Today. */
-      statsWrapStyle: s.view === "pos" ? "display:none" : "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
+      // The owner dashboard carries its own KPI cards; a second band above them
+      // counted covers differently and showed two numbers under one name.
+      statsWrapStyle: s.view === "pos" || s.view === "owner" ? "display:none" : "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
       nowPulse: s.view === "pos" ? this.statCards().filter((c) => !/food cost/i.test(c.label || "")).slice(0, 3).map((c) => {
         // The code moves to the label so the figure fits a third of the column.
         const v = String(c.value || ""), bare = v.replace(/^[A-Z]{3}\s+/, "");
@@ -5924,7 +5926,13 @@ class Component extends DCLogic {
       guideTitle: g.guideTitle || "How this works",
       guide: (g.guide || []).map((t, i) => ({
         n: String(i + 1), text: t,
-        style: "flex:1 1 190px;min-width:170px;display:flex;align-items:flex-start;gap:8px;padding:11px 14px;border-right:1px solid var(--line-soft)",
+        // On a phone the strip wraps to one item per line (min-width 170px
+        // does not fit beside a sibling at 390px), and a border meant to
+        // separate COLUMNS in a row then draws a stray vertical line down
+        // the right edge of every stacked row instead. The border is only
+        // ever between columns, so it only ever belongs on a row that has
+        // them.
+        style: "flex:1 1 190px;min-width:170px;display:flex;align-items:flex-start;gap:8px;padding:11px 14px;" + (isM ? "border-bottom:1px solid var(--line-soft)" : "border-right:1px solid var(--line-soft)"),
         numStyle: "width:17px;height:17px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted);font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:1px"
       })),
       hasNotes: !!(g.notes && g.notes.length),
