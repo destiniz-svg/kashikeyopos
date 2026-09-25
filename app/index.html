@@ -11134,10 +11134,20 @@ class Component extends DCLogic {
      just added needs no label for the person adding it, and `by`/`device`
      land as `null` on any line laid down before this build shipped, which is
      exactly when nothing should be said. */
+  /* THIS terminal's enrolled id — the one `add_line` stamps as `device_id`.
+     Not `prefs().device`: that is the human label ("POS-1"), and comparing a
+     label with an id labelled every line this till added as picked up from
+     itself. The API client owns the id and keeps it under this key. */
+  myDevice() {
+    try { return (window.KPOS_SYNC && window.KPOS_SYNC.deviceId) || localStorage.getItem("kashikeyo.device"); }
+    catch (e) { return null; }
+  }
   draftOf(l) {
-    if (!l || l.fired || !l.device || l.device === this.prefs().device) return null;
+    if (!l || l.fired || !l.device || l.device === this.myDevice()) return null;
     const dev = (K().DEVICES || []).find((d) => d.id === l.device);
-    const who = l.by ? (this.staffFor(l.by).name || "").split(" ")[0] : "";
+    // `by_staff` is a SIGN-IN identity (chain.staff → USERS), not a payroll
+    // employee (STAFF) — the two rosters share no ids.
+    const who = l.by ? (((K().USERS || []).find((u) => u.id === l.by) || {}).name || "").split(" ")[0] : "";
     const label = (dev && dev.label) || "another device";
     return (who ? who + "’s " : "") + label;
   }

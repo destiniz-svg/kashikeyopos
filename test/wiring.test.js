@@ -2404,8 +2404,11 @@ test('draftOf names another device\'s unsent line, and says nothing about this o
   // for, which is the ordinary case for a brand-new phone — the id is real,
   // the name is not in yet, and the fallback has to say something sane.
   const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
-  F.setState({ prefs: Object.assign({}, F.prefs(), { device: 'd1' }) });
-  const staffId = FX.kpos().STAFF[0].id;
+  // The id the API client stamps on every add_line — NOT prefs().device,
+  // which is the human label; comparing the two is the defect this pins.
+  F.__win.localStorage.setItem('kashikeyo.device', 'd1');
+  F.setState({ prefs: Object.assign({}, F.prefs(), { device: 'POS-1' }) });
+  const staffId = 'u_till';  // a sign-in identity (USERS), never a payroll employee
   const mine = { fired: false, device: 'd1', by: staffId };
   const theirs = { fired: false, device: 'd9', by: staffId };
   const fired = { fired: true, device: 'd9', by: staffId };
@@ -2423,8 +2426,8 @@ test('draftOf names another device\'s unsent line, and says nothing about this o
 
 test('an unfired line from another device survives seed() with its attribution, and the panel shows it', () => {
   const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
-  F.setState({ prefs: Object.assign({}, F.prefs(), { device: 'd9' }) });
-  const staffId = FX.kpos().STAFF[0].id;
+  F.__win.localStorage.setItem('kashikeyo.device', 'd9');
+  const staffId = 'u_till';
   // 'd1' is the fixture's registered device ("POS-1") — this terminal is a
   // DIFFERENT one ('d9'), so the line the outlet says came from 'd1' is a
   // draft picked up from a device this screen can actually name.
