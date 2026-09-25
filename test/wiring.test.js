@@ -9034,3 +9034,15 @@ test('the look is the store\'s, and Lagoon re-maps the shared tokens', () => {
   assert.match(css, /\[data-look="lagoon"\]:not\(\[data-theme="light"\]\)\{/);
   assert.match(css, /\[data-look="lagoon"\]\[data-theme="light"\]\{/);
 });
+
+/* The waterline: a seated table fills against the store's table-turn target,
+   late is said in words as well as colour, and it never takes a tap. */
+test('the floor tile carries the waterline and says late in words', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
+  assert.match(html, /<span class="water" style="\{\{ t\.water \}\}"><\/span>/);
+  assert.match(html, /tableTarget: 60/);
+  assert.match(html, /\(late \? " · over target" : ""\)/);
+  assert.match(css, /\.water\{[^}]*pointer-events:none/);
+  assert.match(css, /prefers-reduced-motion:reduce\)\{\.water\{transition:none\}/);
+});

@@ -340,3 +340,17 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
   [style*="kshimmer"]{background-image:none !important;background:var(--bg-2) !important}
 }
 
+
+/* ═══ THE WATERLINE ══════════════════════════════════════════════════════
+   A seated table fills as it waits against the store's table-turn target
+   (--fill, set per tile) and turns coral past it. It sits under the tile's
+   content (the tile is its own stacking context) and never takes a tap.
+   Lagoon draws water with a wave on its surface; Standard draws the same
+   measure as a thin bar along the foot, because a filled tile is Lagoon's
+   signature and not the category standard. */
+.water{position:absolute;left:0;bottom:0;width:100%;height:var(--fill,0%);background:var(--wl-tint,transparent);z-index:-1;pointer-events:none;transition:height 1.2s ease,width 1.2s ease}
+[data-look="lagoon"] .water::before{content:"";position:absolute;left:0;right:0;top:-6px;height:7px;background:inherit;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M0 8V4Q15 0 30 4T60 4T90 4T120 4V8Z'/%3E%3C/svg%3E") 0 0/100% 100% no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M0 8V4Q15 0 30 4T60 4T90 4T120 4V8Z'/%3E%3C/svg%3E") 0 0/100% 100% no-repeat}
+[data-look="standard"] .water{height:3px;width:var(--fill,0%);background:var(--wl-bar,transparent)}
+@media (prefers-reduced-motion:reduce){.water{transition:none}}
