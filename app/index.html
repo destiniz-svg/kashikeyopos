@@ -3232,6 +3232,9 @@ class Component extends DCLogic {
     const patch = {};
     if (live.outletId && live.outletId !== s.outletId) patch.outletId = live.outletId;
     if (live.settled) patch.settled = live.settled;
+    // The outlet's posted journal — the ledger the accounting screens read
+    // (D7/D8). Only a bootstrap carries it; the five-second slice does not.
+    if (Array.isArray(live.journal)) patch.journal = live.journal;
     /* TODAY'S TAKINGS, FROM THE FIVE-SECOND SLICE — merged, never assigned.
        `settled` above is the bootstrap's wholesale refill and may replace the
        cache outright; this is the trading day only, arriving twelve times a
@@ -6724,19 +6727,25 @@ class Component extends DCLogic {
              the first tap: removing something the kitchen never saw is
              correcting a keystroke, and asking about it teaches the operator
              to tap through the question that matters. */
-          if (l.fired && this._voidArm !== l.lid) {
-            this._voidArm = l.lid;
-            clearTimeout(this._voidArmT);
-            this._voidArmT = setTimeout(() => { this._voidArm = null; }, 4000);
-            this.toast(m.name + " is already cooking. Tap void again within 4 seconds to remove it", "warn");
-            return;
+          const doVoid = (why) => {
+            const at = ((this.ticket() || {}).lines || []).findIndex((x) => x.lid === l.lid);
+            if (at < 0) return;
+            this.mutate(undefined, (t) => t.lines.splice(at, 1));
+            this.queue("void_line", "Void " + m.name + " · " + this.slotName(s.activeTable) + (l.fired ? " · FIRED · " + why + " · authorised by " + this.me() : ""), "order_lines",
+              { table: this.slotName(s.activeTable), split: 0, lid: l.lid,
+                reason: l.fired ? why + " · " + this.me() : "Voided before firing" });
+          };
+          /* A FIRED LINE NAMES ITS REASON (D12). It asked for a second tap and
+             no reason, so the trail held "voided after firing" and nothing a
+             manager could act on. Picking the reason IS the confirmation: one
+             sheet, one tap on why, and a stray tap closes nothing. */
+          if (l.fired) {
+            const R = ["Guest changed their mind", "Wrong item entered", "Sent back — not right", "Took too long", "Goodwill — manager's call"];
+            return this.setState({ modal: { kind: "share", title: "Void " + m.name + "?",
+              sub: "It is already cooking. Why is it coming off?",
+              acts: R.map((why) => ({ label: why, go: () => { this.setState({ modal: null }); doVoid(why); } })) } });
           }
-          this._voidArm = null;
-          clearTimeout(this._voidArmT);
-          this.mutate(undefined, (t) => t.lines.splice(i, 1));
-          this.queue("void_line", "Void " + m.name + " · " + this.slotName(s.activeTable) + (l.fired ? " · FIRED, authorised by " + this.me() : "") , "order_lines",
-            { table: this.slotName(s.activeTable), split: 0, lid: l.lid,
-              reason: l.fired ? "Voided after firing · " + this.me() : "Voided before firing" });
+          doVoid("");
         },
         note: () => this.setState({ modal: { kind: "note", idx: i, val: l.note || "" } }),
         stateStyle: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:var(--ok-dim);color:var(--green)" : "background:var(--warn-dim);color:var(--warn-bright)"),
@@ -12604,7 +12613,10 @@ class Component extends DCLogic {
     // ── money position ──────────────────────────────────────────────────
     const todays = (s.settled || []).filter((r) => (r.bizDate || r.date || this.today()) === dayKey);
     const byT = {};
-    todays.forEach((r) => { byT[r.tender || "cash"] = (byT[r.tender || "cash"] || 0) + (r.total || 0); });
+    // Leg by leg, as the Z-report and the drawer do: by `tender` a split bill
+    // landed whole under "split" or its closing tender, and the cash share
+    // went missing from "Cash in drawers" (D4).
+    todays.forEach((r) => this.payLegs(r).forEach((l) => { const k = l.method || "cash"; byT[k] = (byT[k] || 0) + (+l.amt || 0); }));
     let gst = 0, svc = 0;
     todays.forEach((r) => {
       const o = this.outlet(r.outletId), n = r.net || 0;
@@ -12787,7 +12799,15 @@ class Component extends DCLogic {
           chip: bad.length ? bad.length + " short paid" : openV ? "Awaiting the acquirer" : "All matched",
           note: "Matched batch by batch against the tickets that made it up, at the contract rate. Unmatched receivable is where a month of revenue quietly goes missing." };
       })(),
-      { label: "Voids & comps today", v: MVRc(Math.round(d.tot * 0.006)), pct: 12, tone: "a", chip: "0.6% of sales", note: "Each one is a reversal with a manager PIN behind it, ranked by staff member on the exception report." },
+      /* A COUNT, MEASURED — it was 0.6% of sales, an invented figure over a
+         day with one real void (D12). This terminal knows the fired voids it
+         recorded today; it says so rather than implying the whole outlet. */
+      (() => {
+        const t0 = new Date(s.now.getFullYear(), s.now.getMonth(), s.now.getDate()).getTime();
+        const n = (s.outbox || []).filter((o) => o.op === "void_line" && /FIRED/.test(o.label || "") && (o.queuedAt || 0) >= t0).length;
+        return { label: "Voids after firing today", v: String(n), pct: Math.min(100, n * 10), tone: n ? "a" : "g",
+          chip: "on this terminal", note: "Food voided after it reached the kitchen, each with its reason and the manager who authorised it, on the audit trail." };
+      })(),
       { label: "Terminals out of step", v: String(d.queued), pct: Math.min(100, d.queued * 8), tone: d.queued ? "a" : "g", chip: d.queued ? "Replaying" : "Synced", note: "Queued operations replay in Lamport order. A closed ticket is never overwritten." }
     ];
 
@@ -18381,6 +18401,7 @@ class Component extends DCLogic {
     const cur = per === this.ACCPERIODS()[0];
     const by = {};
     const bump = (code, dr, cr) => {
+      if (!code) return;
       if (!by[code]) by[code] = { dr: 0, cr: 0 };
       by[code].dr += dr; by[code].cr += cr;
     };
@@ -21984,7 +22005,27 @@ class Component extends DCLogic {
     let n = 0;
     const je = () => "JE-" + String(91240 + (n++)).padStart(5, "0");
     const acct = { cash: "1010", card: "1030", wallet: "1030", credit: "1040" };
-    (s.settled || []).filter((x) => x.outletId === s.outletId).forEach((x) => {
+    /* THE POSTED LEDGER, NOT A PICTURE OF IT (D7/D8). This rebuilt the books
+       from bill rows — cash for a split bill, the discount counted twice,
+       no loyalty accounts, invented JE numbers — while the outlet's own
+       journal, which every sale, refund, count and settlement actually posts,
+       sat published and unread. Where it is here, it IS the ledger: one row
+       per line, on the side it was posted. The till's own accruals below
+       (wages, depreciation, overhead) are estimates the outlet does not post,
+       and they stay. */
+    const posted = (s.journal || []).filter((j) => j && Array.isArray(j.lines));
+    if (posted.length) {
+      posted.forEach((j) => {
+        const ref = j.no || je();
+        (j.lines || []).forEach((l) => {
+          const dr = +l.dr || 0, cr = +l.cr || 0;
+          if (!dr && !cr) return;
+          out.push({ ref: ref, t: String(j.date || "").slice(0, 10), src: l.memo || j.memo || j.source,
+            dr: dr ? l.acct : "", cr: cr ? l.acct : "", amt: r2(dr || cr), by: j.by || "auto" });
+        });
+      });
+    }
+    if (!posted.length) (s.settled || []).filter((x) => x.outletId === s.outletId).forEach((x) => {
       const ref = je();
       const V = this.taxAt(x.bizDate);
       const net = x.net || 0;
@@ -22007,12 +22048,12 @@ class Component extends DCLogic {
       if (pk.pack > 0.005) out.push({ ref: ref, t: t(x.at), src: "Packaging · " + x.no, dr: "5700", cr: "1200", amt: pk.pack, by: "auto" });
       if (pk.comm > 0.005) out.push({ ref: ref, t: t(x.at), src: "Aggregator commission · " + x.no, dr: "5800", cr: acct[x.tender] || "1030", amt: pk.comm, by: "auto" });
     });
-    (s.docs || []).filter((d) => d.kind === "CN" && d.outletId === s.outletId).forEach((d) => {
+    if (!posted.length) (s.docs || []).filter((d) => d.kind === "CN" && d.outletId === s.outletId).forEach((d) => {
       const ref = je();
       out.push({ ref: ref, t: t(d.at), src: "Credit note " + d.no, dr: "4000", cr: acct[d.tender] || "1010", amt: d.T.sub, by: d.by });
       if (d.T.tax > 0.005) out.push({ ref: ref, t: t(d.at), src: d.taxLabel + " reversed · " + d.no, dr: "2200", cr: acct[d.tender] || "1010", amt: d.T.tax, by: d.by });
     });
-    (s.counts || []).filter((c) => c.outletId === s.outletId).forEach((c) => {
+    if (!posted.length) (s.counts || []).filter((c) => c.outletId === s.outletId).forEach((c) => {
       // Written so a NaN is skipped rather than posted: one NaN line turns an
       // account's whole total into NaN, and the trial balance loses it.
       if (!(Math.abs(c.varValue) >= 0.005)) return;
@@ -22021,11 +22062,11 @@ class Component extends DCLogic {
       const short = c.varValue < 0;
       out.push({ ref: je(), t: t(c.at), src: "Count variance · " + c.lines.length + " lines", dr: short ? "5100" : "1200", cr: short ? "1200" : "5100", amt: Math.abs(c.varValue), by: c.by });
     });
-    Object.keys(s.vendPays || {}).forEach((no) => {
+    if (!posted.length) Object.keys(s.vendPays || {}).forEach((no) => {
       const pay = s.vendPays[no];
       out.push({ ref: je(), t: t(pay.at), src: "Supplier payment · " + no, dr: "2100", cr: "1020", amt: pay.amt, by: pay.by });
     });
-    Object.keys(s.acqRuns || {}).forEach((date) => {
+    if (!posted.length) Object.keys(s.acqRuns || {}).forEach((date) => {
       const r = s.acqRuns[date];
       const b = this.cardBatches().find((x) => x.date === date);
       if (!b) return;
@@ -23392,7 +23433,21 @@ class Component extends DCLogic {
         { label: "Export all as CSV", primary: true, go: () => this.downloadCsv("kashikeyo-report-pack-" + months[per].split(" ")[0].toLowerCase() + ".csv", [["Period", months[per]], ["Outlet", this.outlet().name], [], ["Report", "Contents", "Cadence"]].concat(rep.map((r) => [r[0], r[1], r[2]]))) }
       ],
       cols: [{ label: "Report", w: "1.4fr" }, { label: "What it contains", w: "3.4fr" }, { label: "Cadence", w: "1fr", a: "center" }, { label: "Formats", w: "1.2fr", a: "right" }],
-      rows: rep.map((r) => ({ go: () => this.downloadCsv("kashikeyo-" + r[0].toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv", [["Report", r[0]], ["Period", months[per]], ["Outlet", this.outlet().name], ["Cadence", r[2]], ["Contents", r[1]], [], ["Generated", new Date().toISOString()]]), cells: [{ t: r[0], w: 600 }, { t: r[1], size: 11.5 }, { t: r[2], chip: this.chip("info") }, "CSV · PDF · XLSX"] })),
+      /* A REPORT EXPORT CARRIES ITS FIGURES (D11). Every row here downloaded a
+         title block and nothing else. The Z-report exports the lines its own
+         screen draws; the GST return's full export lives on its screen, so the
+         row goes there. The rest say what they are rather than claiming
+         formats they do not produce. */
+      rows: rep.map((r) => ({ go: () => {
+        if (r[0] === "Z-report") {
+          const z = this.receiptVals({ kind: "z" });
+          return this.downloadCsv("kashikeyo-" + this.fileTag() + "-z-report.csv",
+            [["Z-report", this.outlet().name], ["Shift", this.shiftLabel()], [], ["Line", "Figure"]]
+              .concat((z.rcpLines || []).map((l) => [l.n, l.v]), (z.rcpTotals || []).map((t) => [t.n, t.v])));
+        }
+        if (r[0] === "GST return") return this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 1 }) });
+        return this.downloadCsv("kashikeyo-" + r[0].toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv", [["Report", r[0]], ["Period", months[per]], ["Outlet", this.outlet().name], ["Cadence", r[2]], ["Contents", r[1]], [], ["Generated", new Date().toISOString()]]);
+      }, cells: [{ t: r[0], w: 600 }, { t: r[1], size: 11.5 }, { t: r[2], chip: this.chip("info") }, r[0] === "Z-report" ? "CSV" : r[0] === "GST return" ? "Open to export" : "Summary"] })),
       notes: [[per === 0 ? "This month is still moving" : "A filed month is frozen",
         per === 0
           ? "The live period recomputes on every read, so two exports taken an hour apart will differ by whatever was rung between them. Close the month under Accounting \u00b7 Trial balance to freeze it \u2014 that is what makes a figure quotable."

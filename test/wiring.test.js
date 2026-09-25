@@ -1402,12 +1402,13 @@ test('the veg mark carries a word, not only a colour and a shape', () => {
     'and reaches a screen reader, a colour-blind eye and a grayscale print');
 });
 
-test('voiding food that is already cooking asks twice', () => {
+test('voiding food that is already cooking asks why, and the why confirms it', () => {
   const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
-  assert.ok(/_voidArm !== l\.lid/.test(IDX), 'a fired line arms before it voids');
-  assert.ok(/_voidArmT = setTimeout/.test(IDX),
-    'and the arm expires, so a stray tap cannot leave it loaded for the next person');
-  assert.ok(/l\.fired && this\._voidArm/.test(IDX),
+  assert.ok(/if \(l\.fired\) \{[\s\S]{0,500}title: "Void " \+ m\.name \+ "\?"/.test(IDX),
+    'a fired line opens a reason sheet rather than voiding on the tap');
+  assert.ok(/reason: l\.fired \? why \+ " · " \+ this\.me\(\) : "Voided before firing"/.test(IDX),
+    'the reason chosen travels on the op to the trail');
+  assert.ok(/doVoid\(""\);/.test(IDX),
     'an unfired line still goes on the first tap — asking about a keystroke'
     + ' teaches an operator to tap through the question that matters');
 });
