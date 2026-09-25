@@ -554,7 +554,7 @@ test('a floor tile says where the food is', () => {
   assert.strictEqual(ready.chipText, 'Ready', 'bumped — it is at the pass');
   assert.match(String(ready.chip), /--ok-dim|--green/,
     'and it is the one green on the floor, so a waiter can read the room');
-  assert.strictEqual(put([]).chipText, 'Open', 'seated with nothing fired');
+  assert.strictEqual(put([]).chipText, 'Seated', 'seated with nothing fired');
 });
 
 /* ═══ A PHONE NEVER DECIDES MONEY ═══════════════════════════════════════════
@@ -9043,7 +9043,7 @@ test('the floor tile carries the waterline and says late in words', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
   assert.match(html, /<span class="water" style="\{\{ t\.water \}\}"><\/span>/);
   assert.match(html, /tableTarget: 60/);
-  assert.match(html, /\(late \? " · over target" : ""\)/);
+  assert.match(html, /chipText: edit \? tb\.seats \+ " seats" : late \? "Late"/, 'late is a word on the tile, not only a colour');
   assert.match(css, /\.water\{[^}]*pointer-events:none/);
   assert.match(css, /prefers-reduced-motion:reduce\)\{\.water\{transition:none\}/);
 });
