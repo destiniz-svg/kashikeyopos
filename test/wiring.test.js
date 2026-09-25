@@ -9751,6 +9751,15 @@ test('no QR on the member card exists to scan in this build - a phone number sca
   const last = F.__toasts[F.__toasts.length - 1];
   assert.strictEqual(last.t, "That code isn't a table or a customer here");
   assert.strictEqual(last.tone, 'warn');
+
+  // AMBIGUITY RESOLVES TO NOBODY: two customers sharing the last seven
+  // digits open neither record — a coin toss over whose account is open.
+  const G = H.makeInstance({ role: 'Cashier', kpos: { CUSTOMERS: [
+    { id: 'c1', name: 'Aishath', phone: '+960 7793216' },
+    { id: 'c2', name: 'Ibrahim', phone: '7793216' }] } });
+  G.actOnScan('7793216');
+  assert.strictEqual(G.state.modal, null, 'neither record opens');
+  assert.match(G.__toasts[G.__toasts.length - 1].t, /Two customers share that number/);
 });
 
 test('the manual fallback runs the same decision the camera would have - one road, not two', () => {

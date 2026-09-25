@@ -4340,10 +4340,15 @@ class Component extends DCLogic {
     }
     const digits = text.replace(/\D+/g, "");
     if (digits.length >= 7) {
-      const m = (this.members() || []).find((c) => {
+      // AMBIGUITY RESOLVES TO NOBODY — the rule member_resolve() and
+      // pin_match() keep: two customers sharing the last seven digits is a
+      // coin toss over whose record opens, so neither does.
+      const hits = (this.members() || []).filter((c) => {
         const cd = String(c.phone || "").replace(/\D+/g, "");
         return cd && cd.slice(-7) === digits.slice(-7);
       });
+      if (hits.length > 1) return this.toast("Two customers share that number — find them in Guests & Credit", "warn");
+      const m = hits[0];
       if (m) { this.setState({ modal: { kind: "customer", id: m.id } }); return this.toast("Found " + m.name); }
     }
     this.toast("That code isn't a table or a customer here", "warn");
