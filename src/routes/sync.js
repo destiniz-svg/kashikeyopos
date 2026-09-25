@@ -4,6 +4,7 @@ const { withOutlet, withOutletRead } = require('../db');
 const { sameOutlet, atLeast } = require('../auth');
 const { applyOp } = require('../apply');
 const { all, buildLive } = require('../bootstrap');
+const sse = require('../sse');
 
 const r = express.Router({ mergeParams: true });
 
@@ -195,6 +196,11 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
       });
       results.push(...part);
     }
+    /* Wake this outlet's other devices. A push of pure replays proves the
+       device can reach its outlet (see the device stamp above) and nothing
+       actually moved, so it wakes nobody — the same distinction the client's
+       own DRAIN_MS/5000s backoff makes for whether a push delivered anything. */
+    if (results.some((r) => r && !r.error && !r.replay)) sse.changed(req.ctx.outletId);
     res.json({ results, at: Date.now() });
   } catch (e) { next(e); }
 });
@@ -315,6 +321,44 @@ r.get('/pull', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
     }
     res.set('cache-control', 'no-store').json(out);
   } catch (e) { next(e); }
+});
+
+/* ═══ STREAM ══════════════════════════════════════════════════════════════
+   "Outlet X changed, pull now" — nothing more. Auth and outlet scoping are
+   the same two gates `/pull` already sits behind, so a stream can never leak
+   one outlet's events to another's devices, or to anybody not signed in.
+
+   Polling stays the fallback: this only shortens the wait between an op
+   landing and the next pull, and a device that never manages to open a
+   stream — a proxy that does not support it, a network that blocks it — is
+   no worse off than before this route existed.
+
+   A heartbeat COMMENT line every 25s, well inside Railway's and most other
+   proxies' idle-connection ceiling. It is a ':'-prefixed line, which every
+   SSE parser (this build's own client included) ignores as not an event, so
+   it costs the client nothing and just keeps the socket looking alive to
+   whatever sits between it and the browser. */
+const SSE_HEARTBEAT_MS = 25000;
+
+r.get('/stream', sameOutlet, atLeast('kitchen'), function (req, res) {
+  res.set({
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no' // nginx/most proxies in front of Railway: don't buffer
+  });
+  res.flushHeaders();
+  res.write(': connected\n\n');
+
+  const remove = sse.add(req.ctx.outletId, res);
+  const heartbeat = setInterval(function () {
+    try { res.write(': heartbeat\n\n'); } catch (e) {}
+  }, SSE_HEARTBEAT_MS);
+
+  req.on('close', function () {
+    clearInterval(heartbeat);
+    remove();
+  });
 });
 
 module.exports = r;

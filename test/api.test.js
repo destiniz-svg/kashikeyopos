@@ -611,6 +611,58 @@ test('the bootstrap carries this outlet and no trade from anywhere else', opts, 
   assert.strictEqual(fish[8], 'kg', 'stock unit');
 });
 
+/* ═══ 1.6 · LIVE UPDATES ═════════════════════════════════════════════════════
+   The stream says "outlet X changed, pull now" and nothing else — the poll
+   is what actually reads. Same two gates as every other outlet route: a
+   session is required, and the outlet in the path must be the outlet in the
+   token. ═══════════════════════════════════════════════════════════════════ */
+test('the live-update stream requires a session, same as the poll', opts, async () => {
+  const res = await fetch(base + '/api/outlet/' + outletId + '/sync/stream');
+  assert.strictEqual(res.status, 401);
+});
+
+test('the live-update stream refuses an outlet that is not the caller\'s', opts, async () => {
+  const other = outletId + 999;
+  const res = await fetch(base + '/api/outlet/' + other + '/sync/stream',
+    { headers: auth(token) });
+  assert.strictEqual(res.status, 403);
+  const body = await res.json();
+  assert.match(body.error, /outlet mismatch/);
+});
+
+test('a change on the outlet wakes an open stream, and only its own outlet', opts, async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const ac = new AbortController();
+  const res = await fetch(base + '/api/outlet/' + outletId + '/sync/stream',
+    { headers: auth(token), signal: ac.signal });
+  assert.strictEqual(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/event-stream/);
+
+  let buf = '';
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const drain = (async () => {
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buf += decoder.decode(chunk.value, { stream: true });
+      }
+    } catch (e) { /* aborted below — expected */ }
+  })();
+
+  // A push of pure replays or errors changes nothing and wakes nobody — see
+  // sync.js. This op is real and audit-only, so it always applies cleanly.
+  await push([{ opId: uuid(), kind: 'device_diagnostics', payload: { probe: true } }]);
+
+  const deadline = Date.now() + 5000;
+  while (!/event:\s*changed/.test(buf) && Date.now() < deadline) await sleep(50);
+  assert.match(buf, /event:\s*changed/, 'the push woke this outlet\'s own open stream');
+
+  ac.abort();
+  await drain;
+});
+
 test('a guest posts intent and never money', opts, async () => {
   const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
   const slug = b.body.kpos.OUTLETS[0].slug;

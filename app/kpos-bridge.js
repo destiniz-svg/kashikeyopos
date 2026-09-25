@@ -403,6 +403,12 @@
       try { root.dispatchEvent(new CustomEvent("kpos-tick", { detail: t })); } catch (e) {}
       absorb(t);
     });
+    // 1.6: the outlet wakes this device the moment another one changes
+    // something, instead of it waiting out the rest of the 5s poll. The poll
+    // itself is untouched and stays the fallback — this can fail to connect
+    // (a proxy, a flaky network) and the till is no worse off than before it
+    // existed.
+    api.startStream();
     // After a push lands, the masters may have moved — a dish was priced, a
     // delivery was received. Re-read rather than guess what changed.
     root.addEventListener("kpos-sync-done", function (e) {

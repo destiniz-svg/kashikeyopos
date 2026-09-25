@@ -9323,3 +9323,106 @@ test('split by item: the shares add up to the one-bill total', () => {
   const after1 = F.totals(F.state.tickets[key], 1);
   assert.strictEqual(r2(after0.total + after1.total), r2(whole.total));
 });
+
+/* ═══ 1.6 · LIVE UPDATES, THE CLIENT SIDE ═══════════════════════════════════
+   The server side is proved against a real database in test/api.test.js
+   (auth required, outlet-scoped, a push wakes an open stream). This pins the
+   client's half: it opens the stream authed the same way as every other
+   call (EventSource cannot carry a header, so this cannot be `new
+   EventSource(...)`), it reconnects with backoff rather than giving up, and
+   the poll is untouched — it is the fallback, not replaced. */
+test('the live-update stream is opened with the same Bearer auth as every other call', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const i = API.indexOf('async _openStream()');
+  assert.ok(i > -1, 'the stream opener is where it was');
+  const body = API.slice(i, i + 2500);
+  assert.ok(!body.includes('new EventSource'),
+    'EventSource cannot carry the Authorization header this API requires — this has to be fetch()');
+  assert.ok(body.includes('fetch(this.baseUrl'), 'opened with the same fetch() every other call uses');
+  assert.ok(body.includes('authorization: "Bearer " + this.token'), 'authed exactly like _fetch()');
+  assert.ok(body.includes('/sync/stream'), 'against the stream route');
+  assert.ok(body.includes('Math.min') && body.includes('_streamBackoffMs'),
+    'reconnects with a capped backoff, not a tight loop');
+});
+
+test('the poll stays the fallback: the stream only wakes an extra pull, never replaces it', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  const onTick = API.indexOf('onTick(fn) {');
+  assert.ok(onTick > -1 && API.slice(onTick, onTick + 400).includes('setTimeout(tick, this.pollMs)'),
+    'the 5s poll loop is still there, untouched by the stream');
+  const frame = API.indexOf('frames[i]');
+  assert.ok(frame > -1, 'the frame parser is where it was');
+  const around = API.slice(frame - 90, frame + 40);
+  assert.ok(/event:/.test(around) && /changed/.test(around) && around.includes('this._tick()'),
+    'a "changed" frame triggers the same _tick() the poll uses — one merge path, not a second one');
+  assert.ok(BRIDGE.includes('api.startStream()'), 'the bridge opens the stream once signed in');
+  assert.ok(API.includes('stopStream() {'), 'and it can be torn down');
+  const stopIdx = API.indexOf('stop() {');
+  assert.ok(stopIdx > -1 && API.slice(stopIdx, stopIdx + 200).includes('this.stopStream()'),
+    'signing out stops the stream, not just the poll');
+});
+
+/* ═══ 1.8 · THE ONE OFFLINE PILL ═════════════════════════════════════════════
+   Critique (who / what / where), written before the change:
+
+   WHO reads this — staff mid-service, hands often full, glancing at the top
+   bar off-axis for well under a second (the same eye this file already
+   holds the till to "across a counter").
+
+   WHAT they must come away knowing, from that one glance — can this till
+   currently reach the outlet, and if not, how much of tonight's work is
+   riding on it reconnecting. Not two independent facts to reconcile: the
+   pill used to say "Offline" in one segment and an unrelated bare number
+   ("3 queued") in the next, so a queue that had already drained while
+   offline read as though nothing were wrong, and a healthy till mid-drain
+   read as though it were broken.
+
+   WHERE the eye is — top-right, beside the clock, exactly where the network
+   dot already lived: no relocation to relearn, no new place to look.
+
+   Built to that: one phrase, in the two shapes the build plan and
+   PRODUCT.md's own offline doctrine ask for — "Offline · N waiting" and
+   "Sending N…" — never a bare count, and no new motion beyond the existing
+   sub-1Hz dot (PRODUCT.md: "late states pulse at most once a second"). */
+test('the offline pill reads "Offline · N waiting" and "Sending N…", never a bare count', () => {
+  const i = SRC.indexOf('outboxLabel: !s.online');
+  assert.ok(i > -1, 'the outbox label expression is where it was');
+  const body = SRC.slice(i, i + 300);
+  assert.ok(body.includes('"Offline" + (queued ? " · " + queued + (isM ? "" : " waiting") : "")'),
+    'offline reads one phrase, "Offline · N waiting" — not a second, unrelated segment');
+  assert.ok(body.includes('"Sending " + queued + (isM ? "" : "…")'),
+    'draining while online reads "Sending N…", not a bare "N queued"');
+});
+
+test('the offline pill is one tap from what is queued', () => {
+  assert.match(SRC, /<button onClick="\{\{ goSync \}\}"[^>]*style="\{\{ outboxStyle \}\}">/,
+    'the label segment opens Sync & Devices, which names every held op and why it is stuck');
+  assert.match(SRC, /goSync: \(\) => this\.setState\(\{ view: "sync" \}\)/);
+});
+
+test('the pill is calm: the label itself never animates, and the one dot that does is sub-1Hz', () => {
+  const dotIdx = SRC.indexOf('netDot: "width:6px;height:6px');
+  assert.ok(dotIdx > -1, 'the dot style is where it was');
+  assert.ok(SRC.slice(dotIdx, dotIdx + 260).includes('kpulse 1.4s infinite'),
+    'the only motion on this pill is the existing offline dot, already under 1Hz (PRODUCT.md: at most once a second)');
+  const styleIdx = SRC.indexOf('outboxStyle: "display:flex;align-items:center;justify-content:center');
+  assert.ok(styleIdx > -1, 'the label style is where it was');
+  assert.ok(!SRC.slice(styleIdx, SRC.indexOf('\n', styleIdx)).includes('animation:'),
+    'the text segment itself carries no animation');
+});
+
+test('the pill measures reachability rather than only mirroring the manual switch', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const pullIdx = API.indexOf('async pull() {');
+  assert.ok(pullIdx > -1, 'pull() is where it was');
+  const pullBody = API.slice(pullIdx, pullIdx + 1600);
+  assert.ok(pullBody.includes('root.__kposForceOffline === true'),
+    'the manual "go offline" switch and a genuine network failure both count as unreachable — one pill, one fact');
+  assert.ok(pullBody.includes('this._setReachable(true)') && pullBody.includes('this._setReachable(false)'),
+    'every pull attempt measures reachability, success or failure');
+  assert.ok(API.includes('window.addEventListener("offline", () => { this._online = false; this._setReachable(false); });'),
+    'a genuine browser offline event updates the measurement at once, not on the next poll');
+  assert.ok(SRC.includes('window.addEventListener("kpos-reachable", (e) => {'),
+    'the terminal reads the measurement — the pill used to move only when the manual switch was pressed');
+});

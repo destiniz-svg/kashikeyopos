@@ -3309,6 +3309,21 @@ class Component extends DCLogic {
       this.syncCurrency();
       if (!this.state.session) this.adoptSession();
     });
+    /* 1.8 THE PILL'S ONE FACT, MEASURED RATHER THAN ASSUMED. `state.online`
+       used to move only when somebody pressed the "go offline" switch on
+       Sync & Devices — a deliberate simulation, and the ONLY thing that ever
+       set it. A router that actually dies left it reading "Online" for the
+       rest of the shift while the outbox quietly filled up behind it,
+       because nothing was ever watching the one fact the top bar claims to
+       report. `kpos-reachable` is the API client's own measurement — taken
+       at every poll and at the browser's own online/offline verdict — and it
+       is the SAME switch the manual toggle already uses: forcing offline for
+       a drill makes the next pull attempt report unreachable too, so the two
+       can never disagree on screen. */
+    window.addEventListener("kpos-reachable", (e) => {
+      const online = !!(e.detail || {}).reachable;
+      if (this.state.online !== online) this.setState({ online });
+    });
     /* Faults that would otherwise die silently — an uncaught throw in a
        handler, a rejected promise nobody awaited — land in a ring buffer the
        diagnostics screen reads. Not React state: a fault must never cause a
@@ -5123,7 +5138,29 @@ class Component extends DCLogic {
         return bits.length ? bits.join(" \u00b7 ") : "Not set up yet";
       })(),
       goSync: () => this.setState({ view: "sync" }),
-      outboxLabel: queued ? (isM ? String(queued) : queued + " queued") : (s.syncing ? (isM ? "" : "Syncing") : (s.online ? (isM ? "" : "Synced") : "Offline")),
+      /* 1.8 THE ONE OFFLINE PILL. Who reads it: staff mid-service, glancing
+         off-axis for under a second — the same eye this file already holds
+         the till to across a counter. What they need from that one glance is
+         a single fact ("can I trust this is reaching the outlet, and how
+         much is riding on it not yet having"), not two labels to reconcile —
+         which is what this was: "Offline" here and an unrelated "3 queued"
+         one segment over, never in the same sentence, and a queue that had
+         drained while offline read as though nothing was wrong at all.
+
+         One phrase now, in PRODUCT.md's own words: "Offline · N waiting"
+         when the link is down, "Sending N…" while it drains back into step,
+         "Synced" the rest of the time — never a bare number with nothing to
+         say what it counts. It sits at the SAME spot as before (no
+         relocation to relearn) and it is tappable straight through to what
+         is queued (goSync, below) — Sync & Devices names each held op and
+         why. Calm on purpose: the only motion is the existing sub-1Hz
+         kpulse dot on the dot button beside it and the sync icon's own
+         steady spin while sending, neither of which is a flash. */
+      outboxLabel: !s.online
+        ? "Offline" + (queued ? " · " + queued + (isM ? "" : " waiting") : "")
+        : queued
+          ? "Sending " + queued + (isM ? "" : "…")
+          : (isM ? "" : (s.syncing ? "Syncing" : "Synced")),
       outboxStyle: "display:flex;align-items:center;justify-content:center;gap:6px;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 9px 0 7px" : "7px 12px 7px 8px") + ";font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--warn-bright)" : "var(--text-dim)"),
       _outboxStyleOld: "display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid " + (queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (queued ? "var(--warn-dim)" : "var(--bg-2)") + ";color:" + (queued ? "var(--warn-bright)" : "var(--text-dim)"),
       spinStyle: s.syncing ? "animation:kspin 1s linear infinite" : "",
