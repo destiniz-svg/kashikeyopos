@@ -429,6 +429,60 @@ test('the orders list follows the pass, and the pass follows the counter', () =>
     'and the plates are cooking again');
 });
 
+/* KDS V2 (SPEC 3.3): colour by TIME, not state — green under half the
+   target and labelled "New", amber from half, coral past it and labelled
+   "Over Nm". The buttons are numbered "Bump 1", "Bump 2" ... in the same
+   order the board renders them, and a bump bar's digit keys 1-9 have to
+   land on that same ticket — not a remembered id, since the board reorders
+   itself by wait, oldest first. */
+test('KDS colour follows the clock, and a bump-bar digit hits the ticket in that screen position', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const line = (lid, id, agoMin) => ({ id: id, lid: lid, qty: 1, note: '', split: 0,
+    fired: true, done: false, since: 1, firedAt: Date.now() - agoMin * 60000 });
+  // Both lines are m1 — the grill dish, target [14, 20] — so both tickets
+  // land on the same station board.
+  const newKey = F.state.outletId + ':1', overKey = F.state.outletId + ':2';
+  F.state.tickets = Object.assign({}, F.state.tickets, {
+    [newKey]: Object.assign(F.blankTicket(), { waiter: 'New', party: 2, bizDate: F.today(),
+      lines: [line('lid-new', 'm1', 2)] }),
+    [overKey]: Object.assign(F.blankTicket(), { waiter: 'Over', party: 2, bizDate: F.today(),
+      lines: [line('lid-over', 'm1', 25)] })
+  });
+  // A physical bump bar sits at a STATION, not the pass — the pass's own
+  // "serve" is the expeditor calling a fully-plated table away, and toasts
+  // rather than bumping while a station still has it.
+  F.setState({ prefs: Object.assign({}, F.prefs(), { kdsStation: 'grill' }) });
+
+  // kdsTickets() sorts oldest (longest wait) first, so the 20-minute ticket
+  // renders — and is numbered — ahead of the 2-minute one.
+  const board = F.kdsVals().kds;
+  assert.strictEqual(board.length, 2, 'both fired tickets are on the pass');
+  const [over, fresh] = board;
+
+  assert.match(over.serveLabel, /^Bump 1/, 'the oldest ticket is Bump 1');
+  assert.match(over.target, /^Over \d+ min$/, 'past the grill’s 20-minute target it names the overrun');
+  assert.match(over.style, /kdspulse/, 'and pulses — slowly, and only past the target');
+  assert.match(over.style, /var\(--danger\)/, 'in the danger token, not an invented colour');
+
+  assert.match(fresh.serveLabel, /^Bump 2/, 'the 2-minute ticket is Bump 2');
+  assert.strictEqual(fresh.target, 'New', 'under half the target it reads New');
+  assert.doesNotMatch(fresh.style, /kdspulse/, 'and never pulses while new');
+
+  // The physical bump bar sends digits, not clicks: key "1" must bump
+  // whichever ticket the board currently numbers Bump 1 — here, Over.
+  F.setState({ view: 'kds' });
+  let prevented = false;
+  F.keyRoute({ key: '1', target: { tagName: 'BODY' }, preventDefault: () => { prevented = true; } });
+  assert.ok(prevented, 'the digit key is claimed by the KDS, not left to type into the page');
+  assert.ok(F.state.tickets[overKey].lines[0].done, 'Bump 1 bumped the ticket the board shows first');
+  assert.ok(!F.state.tickets[newKey].lines[0].done, 'and left the other ticket alone');
+  assert.ok(queued.some((q) => q.kind === 'kds_bump_all'),
+    'the key map calls the existing bump handler — no new op, no new data path');
+});
+
 test('every queued op carries a client-generated opId', () => {
   const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
   const queued = [];
