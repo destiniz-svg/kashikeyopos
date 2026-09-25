@@ -7628,6 +7628,7 @@ function pushStub(status) {
     });
   });
   return new Promise((resolve) => {
+    srv.unref(); // a failed assertion before close() must fail the run, not hang it
     srv.listen(0, '127.0.0.1', () => {
       const port = srv.address().port;
       resolve({
@@ -7637,7 +7638,7 @@ function pushStub(status) {
           hitPromise,
           new Promise((_, rej) => setTimeout(() => rej(new Error('no push arrived within ' + (ms || 3000) + 'ms')), ms || 3000))
         ]),
-        close: () => new Promise((r) => srv.close(r))
+        close: () => new Promise((r) => { srv.closeAllConnections(); srv.close(r); })
       });
     });
   });
@@ -7673,12 +7674,12 @@ test('web push: a session is required to subscribe, and the endpoint round-trips
   // Re-subscribing the same endpoint upserts rather than duplicating.
   const again = await post('/api/outlet/' + outletId + '/push/subscribe', sub, token);
   assert.strictEqual(again.status, 201);
-  const count = await all2('SELECT id FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
+  const count = await all2('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
   assert.strictEqual(count.length, 1, 'one row per endpoint, not one per subscribe');
 
   const gone = await del('/api/outlet/' + outletId + '/push/subscribe', { endpoint: sub.endpoint }, token);
   assert.strictEqual(gone.status, 200);
-  const after = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
+  const after = await one('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [sub.endpoint]);
   assert.strictEqual(after, undefined, 'unsubscribed');
 
   // A cross-outlet request is refused the way every /outlet/:id route is.
@@ -7702,7 +7703,7 @@ test('web push: a 404/410 from the push service deletes the subscription', opts,
   process.env.PUSH_ALLOW_LOOPBACK = '1';
   const stub = await pushStub(410);
   await insertSub(stub.url, null);
-  const before = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [stub.url]);
+  const before = await one('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [stub.url]);
   assert.ok(before, 'the fixture landed');
 
   const notify = require('../src/notify');
@@ -7710,7 +7711,7 @@ test('web push: a 404/410 from the push service deletes the subscription', opts,
   await stub.waitForHit();
   await new Promise((r) => setTimeout(r, 200)); // the DELETE runs after the response
 
-  const after = await one('SELECT id FROM push_subscription WHERE endpoint = $1', [stub.url]);
+  const after = await one('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [stub.url]);
   assert.strictEqual(after, undefined, 'a 410 answer deletes the row');
   await stub.close();
 });
