@@ -153,12 +153,9 @@ a:hover{color:var(--amber-deep)}
             <sc-for list="{{ bannersV }}" as="bn" hint-placeholder-count="1">
               <button onClick="{{ bn.tap }}" style="{{ bn.style }}">
                 <span style="{{ bn.imgStyle }}"></span>
-                <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(24,17,14,.12) 0%,rgba(24,17,14,.78) 100%)"></span>
-                <span style="position:relative;display:block;text-align:left;min-width:0">
-                  <span style="{{ bn.tagStyle }}">{{ bn.tag }}</span>
-                  <span style="display:block;margin-top:7px;font-size:15.5px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.02em;line-height:1.25">{{ bn.title }}</span>
-                  <span style="{{ bn.subStyle }}">{{ bn.sub }}</span>
-                </span>
+                <span style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(24,17,14,.55) 0%,rgba(24,17,14,.72) 100%)"></span>
+                <span style="{{ bn.tagStyle }}">{{ bn.tag }}</span>
+                <span style="position:relative;min-width:0;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px;font-weight:700;color:var(--ink-on-dark);letter-spacing:-.015em">{{ bn.title }}</span>
               </button>
             </sc-for>
           </div>
@@ -555,7 +552,7 @@ a:hover{color:var(--amber-deep)}
           </div>
           <div style="flex-shrink:0;border-top:1px solid var(--line);padding:13px 20px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:13px;background:var(--bg-1)">
             <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
-              <button aria-label="One fewer" onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:var(--amber)">
+              <button aria-label="One fewer" onClick="{{ qtyDec }}" style="{{ qtyDecStyle }}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
               </button>
               <span style="font-size:16px;font-weight:700;color:var(--text);min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
@@ -1937,15 +1934,20 @@ class Component extends DCLogic {
        Tapping one with a code fills the promo field the bill tab verifies at
        settlement; tapping one without simply says what it said. */
     const banners = (k.BANNERS || []);
+    // COMPACT, not a full-bleed card: at 390px the old 104px-tall cards, one
+    // per banner, sat between the cover photo and the search bar and pushed
+    // every dish below the fold — the guest's one task on this screen. A
+    // single 48px strip (still a real touch target) says what is on and lets
+    // a tap open the rest, so the banner is never the reason nobody sees a
+    // dish on first paint. The sub line moves into the toast on tap, same as
+    // a banner with no code already only speaks when pressed.
     V.bannersWrap = banners.length
-      ? "margin-top:13px;padding:0 20px 4px;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory"
+      ? "margin-top:8px;padding:0 20px 4px;display:flex;flex-direction:column;gap:6px"
       : "display:none";
     V.bannersV = banners.map((b) => ({
       title: b.title || "",
       sub: b.sub || "",
-      subStyle: b.sub
-        ? "display:block;margin-top:3px;font-size:12px;color:rgba(255,255,255,.85);line-height:1.45"
-        : "display:none",
+      subStyle: "display:none",
       tap: () => {
         if (b.code) {
           self.setState({ promo: b.code, promoOk: true,
@@ -1956,8 +1958,8 @@ class Component extends DCLogic {
         }
       },
       tag: b.code ? "OFFER · " + b.code : "WHAT'S ON",
-      tagStyle: "display:inline-block;padding:3px 8px;border-radius:6px;background:var(--amber);color:var(--on-amber);font-size:11px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
-      style: "position:relative;flex:0 0 " + (banners.length > 1 ? "86%" : "100%") + ";min-height:104px;border-radius:16px;overflow:hidden;background:#241a16;padding:13px 14px;display:flex;align-items:flex-end;scroll-snap-align:start",
+      tagStyle: "position:relative;flex-shrink:0;display:inline-block;padding:3px 7px;border-radius:6px;background:var(--amber);color:var(--on-amber);font-size:11px;font-weight:700;letter-spacing:.06em;white-space:nowrap",
+      style: "position:relative;min-height:48px;border-radius:12px;overflow:hidden;background:#241a16;padding:0 12px;display:flex;align-items:center;gap:9px",
       imgStyle: b.img
         ? "position:absolute;inset:0;background:#241a16 center/cover url('" + this.photoUrl(b.img) + "')"
         : "display:none"
@@ -2149,6 +2151,18 @@ class Component extends DCLogic {
       V.dishQty = String(s.dishQty);
       V.qtyInc = () => self.setState({ dishQty: s.dishQty + 1 });
       V.qtyDec = () => self.setState({ dishQty: Math.max(1, s.dishQty - 1) });
+      // The "−" used to be an outline (bg-2 fill, amber glyph) beside a solid
+      // filled "+" (amber fill, on-amber glyph) — and on the guest theme
+      // --amber IS a bright accent, so an amber GLYPH on a near-white fill
+      // reads faint next to a dark glyph on a solid amber fill: the same
+      // control, two different weights, one looking disabled when it never
+      // was. Both are solid circles now, at the SAME weight, so only the
+      // direction differs. It dims for real only at qty 1, where another
+      // press does nothing — and var(--text-faint) still holds its own
+      // against var(--bg-2) (measured AA-large in every theme), so even the
+      // dimmed glyph is never below the 3:1 floor a control needs.
+      V.qtyDecStyle = "width:34px;height:34px;border-radius:50%;background:var(--bg-2);display:grid;place-items:center;color:"
+        + (s.dishQty <= 1 ? "var(--text-faint)" : "var(--text)");
       const extra = mods.reduce((a, m2) => a + (s.addons[m2.id] || 0) * m2.price, 0);
       V.addLabel = "Add · " + this.fmt((this.price(d) + extra) * s.dishQty);
       V.closeDish = () => self.setState({ dish: null });
