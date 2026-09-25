@@ -9526,3 +9526,193 @@ test('the pill measures reachability rather than only mirroring the manual switc
   assert.ok(SRC.includes('window.addEventListener("kpos-reachable", (e) => {'),
     'the terminal reads the measurement — the pill used to move only when the manual switch was pressed');
 });
+
+/* ═══ 2.4 · CAMERA SCAN ══════════════════════════════════════════════════════
+   Design critique, written before the build:
+
+   WHO — the person on the pay screen or the floor, one hand on a phone or
+   tablet, the other on the guest's card or the table card they were just
+   handed. Both hands are usually full for less than five seconds.
+
+   WHERE the control lives — the top bar, beside the theme toggle, so it is
+   reachable from every screen rather than only from one. It is gated to
+   Till rank and above (this.rank() >= 2): Kitchen has no bill to attach a
+   scan to, and hiding a control that does nothing for that rank beats a
+   control that opens and immediately refuses.
+
+   THE SHEET — a square video preview capped at 340px, a status line under
+   it in the same tone as every other status line in this build (never a
+   spinner standing in for one), and nothing else until the camera has an
+   answer or a reason it does not.
+
+   PERMISSION-DENIED / NO-CAMERA — named, not guessed at: NotAllowedError
+   and SecurityError both read as "Camera permission was refused... try
+   again", NotFoundError and OverconstrainedError as "No camera was
+   found on this device", because the remedy for the first (open the
+   browser's site settings) is not the remedy for the second (use a device
+   that has one). Both carry the same 48px "Try again" control the manual
+   fallback field sits beside.
+
+   NO DECODER ON THIS DEVICE — BarcodeDetector exists on Chrome, Edge and
+   Android WebView, and not on Safari or iPadOS. This build ships no decoder
+   of its own: a QR decoder that is subtly wrong is worse than none, and the
+   honest answer on a device without one is the same manual field every
+   other unreachable-camera state already offers, with the preview left
+   running because seeing the code still helps somebody read it out.
+
+   TARGETS AND CONTRAST — "Try again" and "Go" are both 48px tall; the
+   manual field is 48px tall so a thumb can tap into it without missing.
+   The status line uses var(--text-dim), the same token measured elsewhere
+   in this file against both themes.
+
+   BUSY — there is no separate spinner state: "Starting the camera..." IS
+   the busy state, read off the same status line as every other state, so
+   the sheet never grows a second vocabulary for "working on it". */
+
+test('the scan control is a top-bar button, gated to Till rank and above', () => {
+  assert.match(SRC, /scanBtnStyle: this\.rank\(\) < 2 \? "display:none"/,
+    'Kitchen sees no control - there is no bill on this rank to attach a scan to');
+  assert.match(SRC, /openScan: \(\) => this\.openScan\(\)/);
+  assert.match(SRC,
+    /<button onClick="\{\{ openScan \}\}" title="Scan a member card or a table's QR" aria-label="Scan" style="\{\{ scanBtnStyle \}\}">/,
+    'the button is in the shell, reachable from every screen');
+});
+
+test('opening the sheet starts the camera; the stream is stopped when it closes', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  let stopped = 0;
+  const fakeStream = { getTracks: () => [{ stop: () => { stopped++; } }] };
+  F.__win.navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+  // A real detector, so the loop stays "live" rather than falling straight
+  // to the manual fallback the way an unsupported browser does (its own
+  // test, below) — this one is about the STREAM, not the decoder.
+  F.__win.BarcodeDetector = class { detect() { return new Promise(() => {}); } };
+  F.openScan();                 // what the top-bar button does
+  F.componentDidUpdate();       // what React calls right after
+  assert.strictEqual(F.state.modal.kind, 'scan');
+  assert.strictEqual(F.state.scanStatus, 'starting');
+  return F._scanStartPromise.then(() => {
+    assert.strictEqual(F.state.scanStatus, 'live', 'a granted camera with a decoder reaches the live state');
+    assert.strictEqual(F._scanStream, fakeStream);
+    F.stopScan();
+    assert.strictEqual(stopped, 1, 'every track on the stream is stopped');
+    assert.strictEqual(F._scanStream, null, 'the reference is dropped, not just the tracks');
+  });
+});
+
+test('closing the sheet any other way - the X, the scrim, a successful scan - stops the camera too', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  let stopped = 0;
+  const fakeStream = { getTracks: () => [{ stop: () => { stopped++; } }] };
+  F.__win.navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+  F.openScan();
+  F.componentDidUpdate();       // establishes this is the sheet React last saw
+  return F._scanStartPromise.then(() => {
+    assert.strictEqual(stopped, 0);
+    // The generic close (the X / scrim / Escape) only ever does one thing:
+    // setState({ modal: null }). componentDidUpdate is what has to notice.
+    F.state.modal = null;
+    F.componentDidUpdate();
+    assert.strictEqual(stopped, 1, 'the stream is torn down the moment the sheet is not "scan" any more');
+  });
+});
+
+test('a slow permission prompt outlived by the sheet leaves no stream running', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  let stopped = 0;
+  const fakeStream = { getTracks: () => [{ stop: () => { stopped++; } }] };
+  let resolveIt;
+  F.__win.navigator.mediaDevices = { getUserMedia: () => new Promise((res) => { resolveIt = res; }) };
+  F.openScan();
+  const p = F.startScanCamera();
+  F.state.modal = null; // the operator closed the sheet before the prompt answered
+  resolveIt(fakeStream);
+  return p.then(() => {
+    assert.strictEqual(stopped, 1, 'a stream nobody is looking at is stopped rather than left running');
+    assert.strictEqual(F._scanStream, undefined);
+  });
+});
+
+test('camera permission refused, or no camera at all - named apart, not guessed at', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  F.__win.navigator.mediaDevices = { getUserMedia: () => { const e = new Error('x'); e.name = 'NotAllowedError'; return Promise.reject(e); } };
+  return F.startScanCamera().then(() => {
+    assert.strictEqual(F.state.scanStatus, 'denied');
+    const v1 = F.modalVals({ kind: 'scan' });
+    assert.match(v1.scanStatusMsg, /permission was refused/);
+    assert.strictEqual(v1.scanShowRetry, true);
+
+    F.__win.navigator.mediaDevices = { getUserMedia: () => { const e = new Error('x'); e.name = 'NotFoundError'; return Promise.reject(e); } };
+    return F.startScanCamera();
+  }).then(() => {
+    assert.strictEqual(F.state.scanStatus, 'nocamera');
+    const v2 = F.modalVals({ kind: 'scan' });
+    assert.match(v2.scanStatusMsg, /No camera was found/);
+  });
+});
+
+test('a browser with no getUserMedia at all falls to the manual field - never a fabricated decode', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  F.__win.navigator.mediaDevices = undefined;
+  return F.startScanCamera().then(() => {
+    assert.strictEqual(F.state.scanStatus, 'unsupported');
+    assert.strictEqual(F.modalVals({ kind: 'scan' }).scanShowManual, true,
+      'the honest fallback for Safari/iPad: BarcodeDetector + a clear "type the code" field, per the slice');
+  });
+});
+
+test('a scanned guest table QR opens that table - matched by the label kashikeyo-qr.js would have encoded, or by its digits', () => {
+  const F = H.makeInstance({ role: 'Cashier' });
+  F.state.layout = { [F.state.outletId]: [{ n: 1, id: 't1', name: 'T05', seats: 2, zone: 'Main' }] };
+  // printQrCards()/tableUrl() compose exactly this shape: this outlet's
+  // address with ?t=<the floor's own label>, real-QR-encoded by
+  // kashikeyo-qr.js. actOnScan()/matchTableFromScan() is what a decoded
+  // string like this one is handed.
+  const url = 'https://seaside.kashikeyopos.com/?t=T05';
+  F.actOnScan(url);
+  assert.strictEqual(F.state.activeTable, 1);
+  assert.strictEqual(F.state.pane, 'menu');
+
+  // A card printed "T05" against a floor since relabelled "5" - the same
+  // digit fallback ticketRef() keeps server-side.
+  F.state.activeTable = null;
+  F.actOnScan('/?t=5');
+  assert.strictEqual(F.state.activeTable, 1, 'digits alone still resolve to the same table');
+});
+
+test('no QR on the member card exists to scan in this build - a phone number scanned or typed finds the customer, and anything else says so plainly', () => {
+  const F = H.makeInstance({ role: 'Cashier', kpos: { CUSTOMERS: [{ id: 'c1', name: 'Aishath', phone: '+960 7793216' }] } });
+  F.actOnScan('7793216');
+  assert.strictEqual(F.state.modal && F.state.modal.kind, 'customer');
+  assert.strictEqual(F.state.modal.id, 'c1');
+
+  F.state.modal = null;
+  F.actOnScan('not-a-table-or-a-customer');
+  assert.strictEqual(F.state.modal, null, 'no record is opened on a guess');
+  const last = F.__toasts[F.__toasts.length - 1];
+  assert.strictEqual(last.t, "That code isn't a table or a customer here");
+  assert.strictEqual(last.tone, 'warn');
+});
+
+test('the manual fallback runs the same decision the camera would have - one road, not two', () => {
+  const F = H.makeInstance({ role: 'Cashier', kpos: { CUSTOMERS: [{ id: 'c1', name: 'Aishath', phone: '7793216' }] } });
+  const v = F.modalVals({ kind: 'scan' });
+  v.onScanManual({ target: { value: '7793216' } });
+  assert.strictEqual(F.state.scanManual, '7793216');
+  v.scanSubmit();
+  // submitManualScan() defers to actOnScan() by a real setTimeout, the same
+  // way handleScanned() does — closing the modal first so the customer sheet
+  // that opens is not immediately torn down by the same setState.
+  return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
+    assert.strictEqual(F.state.modal.kind, 'customer');
+    assert.strictEqual(F.state.modal.id, 'c1');
+  });
+});
+
+test('the till page grants camera to itself; the guest and member portals, on the store\'s own subdomain, are refused it', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(srv, /const onStore = hostHandle\(req\.hostname \|\| req\.get\('host'\) \|\| ''\);/,
+    'read directly - req.storeHandle is set by a later middleware');
+  assert.match(srv, /'permissions-policy', 'geolocation=\(\), microphone=\(\), payment=\(\), camera='\s*\n\s*\+ \(onStore \? '\(\)' : '\(self\)'\)/,
+    'camera is named explicitly rather than left to the browser default, and only the till gets it');
+});
