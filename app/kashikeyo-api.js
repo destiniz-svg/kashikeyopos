@@ -104,11 +104,25 @@
       this._running = false;
       this._flushing = false;
       this._since = 0;
+      // Live updates (see startStream()): the poll stays the source of
+      // truth, this only shortens the wait for it.
+      this._streaming = false;
+      this._streamAbort = null;
+      this._streamTimer = null;
+      this._streamBackoffMs = 0;
       this._online = typeof navigator === "undefined" ? true : navigator.onLine !== false;
+      // Assumed reachable until the first pull proves otherwise — a fresh
+      // page has made no attempt yet, and reporting Offline before it has
+      // even tried would be inventing a fact. See _setReachable() below.
+      this._reachable = true;
       this._restoreToken();
       if (typeof window !== "undefined") {
         window.addEventListener("online", () => { this._online = true; this.flush(); });
-        window.addEventListener("offline", () => { this._online = false; });
+        // The browser's own verdict, applied at once rather than waiting out
+        // a poll cycle — a genuine network drop (this build's browser check:
+        // context.setOffline / page.route abort) should not sit on screen as
+        // "Online" for up to five seconds.
+        window.addEventListener("offline", () => { this._online = false; this._setReachable(false); });
         // A tab coming back to the foreground is the commonest moment a queue
         // has something to say, and the commonest moment nobody drains it.
         document.addEventListener("visibilitychange", () => {
@@ -372,7 +386,19 @@
 
     /* ── the tick ──────────────────────────────────────────────────────── */
     async pull() {
-      if (!this.outletId || !this.token || !this._online) return null;
+      /* THE MANUAL "go offline" SWITCH IS TREATED AS UNREACHABLE TOO. It sits
+         beside `!this._online` on purpose: both are "this terminal cannot
+         reach its outlet right now", one chosen at the counter and one
+         measured off the network, and the top-bar pill (1.8) has one
+         question to answer — can this till currently reach the outlet —
+         never two. Keeping them apart would let a genuinely dropped link
+         report "reachable" the moment a pull happened to succeed while the
+         operator had deliberately armed offline mode, undoing their choice
+         out from under them. */
+      if (!this.outletId || !this.token || !this._online || root.__kposForceOffline === true) {
+        this._setReachable(false);
+        return null;
+      }
       try {
         var out = await this._fetch("/api/outlet/" + this.outletId + "/sync/pull?since="
           + encodeURIComponent(this._since || 0));
@@ -385,8 +411,28 @@
           if (Number(o.lamport) > top) top = Number(o.lamport);
         });
         if (top) this.seen(top);
+        this._setReachable(true);
         return out;
-      } catch (e) { return null; }
+      } catch (e) { this._setReachable(false); return null; }
+    }
+    /* THE FACT THE PILL READS. `_online` is this browser's OWN opinion —
+       `navigator.onLine`, which is true the instant a router answers ARP and
+       says nothing about whether THIS outlet is reachable. A dead link with
+       a live WiFi light left the old pill reading "Online" indefinitely while
+       the outbox filled up behind it, because nothing ever measured the one
+       fact that mattered: did the last attempt to reach the outlet work.
+       `_setReachable()` is that measurement, taken at the only two places
+       that actually try — pull() above (the 5s heartbeat and the 1.6 stream's
+       wake-up both run through it) and the online/offline events below (for
+       the browser's own verdict, which is faster than waiting out a poll
+       cycle) — and it fires an event only when the answer actually changes,
+       so a healthy till mid-service is not re-rendering on every tick. */
+    _setReachable(v) {
+      v = !!v;
+      if (this._reachable === v) return;
+      this._reachable = v;
+      try { root.dispatchEvent(new CustomEvent("kpos-reachable", { detail: { reachable: v } })); }
+      catch (e) {}
     }
 
     /* ONE LOOP, AND THE SLOT IS CLAIMED SYNCHRONOUSLY.
@@ -410,18 +456,89 @@
       if (!this._running) {
         this._running = true;
         var tick = async () => {
-          var s = await this.pull();
+          await this._tick();
           if (!this._running) return;          // stopped while that was in flight
-          if (s) this._subs.forEach(function (f) { try { f(s); } catch (e) {} });
           this._timer = setTimeout(tick, this.pollMs);
         };
         tick();
       }
       return () => { this._subs = this._subs.filter(function (f) { return f !== fn; }); };
     }
+    // One pull, fanned out to every subscriber — the body of the poll loop,
+    // pulled out so the SSE wake-up (startStream()) can trigger the exact
+    // same pull-and-notify off-cycle without a second merge path.
+    async _tick() {
+      var s = await this.pull();
+      if (s) this._subs.forEach(function (f) { try { f(s); } catch (e) {} });
+      return s;
+    }
     stop() {
       this._running = false;
       if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+      this.stopStream();
+    }
+
+    /* ── live updates (1.6) ───────────────────────────────────────────────
+       The poll above is the whole guarantee; this only shortens the wait
+       for it. The server tells every device on this outlet "something
+       changed, pull now" over one long-lived request — no payload, because
+       duplicating what changed here would be a second protocol for a fact
+       pull() already knows how to fetch. A device that can never open one
+       (a proxy that blocks it, a network that will not hold it open) is no
+       worse off than before this existed: the 5-second poll never stops.
+
+       EventSource cannot carry an Authorization header, and this API is
+       authed on that header exactly like every other call — so this is
+       fetch() with a streamed body, parsed by hand, rather than
+       `new EventSource(...)`. */
+    startStream() {
+      if (this._streaming || !this.outletId || !this.token) return;
+      this._streaming = true;
+      this._streamBackoffMs = 0;
+      this._openStream();
+    }
+    stopStream() {
+      this._streaming = false;
+      if (this._streamTimer) { clearTimeout(this._streamTimer); this._streamTimer = null; }
+      if (this._streamAbort) { try { this._streamAbort.abort(); } catch (e) {} this._streamAbort = null; }
+    }
+    async _openStream() {
+      if (!this._streaming || !this.outletId || !this.token) return;
+      var ac = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      this._streamAbort = ac;
+      var connected = false;
+      try {
+        var res = await fetch(this.baseUrl + "/api/outlet/" + this.outletId + "/sync/stream", {
+          headers: { authorization: "Bearer " + this.token },
+          signal: ac ? ac.signal : undefined
+        });
+        if (!res.ok || !res.body || !res.body.getReader) throw new Error("stream " + res.status);
+        connected = true;
+        this._streamBackoffMs = 0; // reconnect promptly next time, once we've proved this route works
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = "";
+        while (this._streaming) {
+          var chunk = await reader.read();
+          if (chunk.done) break;
+          buf += decoder.decode(chunk.value, { stream: true });
+          var frames = buf.split("\n\n");
+          buf = frames.pop(); // the last, possibly-incomplete frame stays buffered
+          for (var i = 0; i < frames.length; i++) {
+            // A ':'-prefixed line is a comment (the server's heartbeat) —
+            // ignored, same as any real SSE client would.
+            if (/(^|\n)event:\s*changed/.test(frames[i])) this._tick();
+          }
+        }
+      } catch (e) { /* network drop, abort, or a proxy that refused it — reconnect below */ }
+      this._streamAbort = null;
+      if (!this._streaming) return;
+      // Reconnect promptly the first time (this route may simply not have
+      // been reachable yet — signing in races the first bootstrap); back off
+      // exponentially after that so a proxy that will never allow this
+      // doesn't spin. The poll is unaffected either way.
+      this._streamBackoffMs = connected ? 1000 : Math.min((this._streamBackoffMs || 1000) * 2, 30000);
+      this._streamTimer = setTimeout(() => this._openStream(), this._streamBackoffMs);
     }
 
     /* ── writes: durable first, network second ─────────────────────────── */
