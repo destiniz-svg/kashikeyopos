@@ -7221,6 +7221,19 @@ test('the model is asked by the outlet, never by the page', () => {
   assert.ok(!/window\.claude/.test(run), 'the menu builder no longer asks the page');
   assert.match(run, /KPOS_BRIDGE\.menuIdeas/, 'it asks its outlet');
   assert.match(run, /AI \|\| \{\}/, 'and reads whether this install has a model at all');
+  // The stock question and the CFO advisory were the last two callers.
+  assert.ok(!/window\.claude/.test(till), 'no screen asks the page for a model');
+  assert.match(till, /KPOS_BRIDGE\.advise\("stock"/, 'the stock question asks its outlet');
+  assert.match(till, /KPOS_BRIDGE\.advise\("cfo"/, 'the CFO advisory asks its outlet');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(route, /r\.post\('\/advise\/cfo', sameOutlet, atLeast\('admin'\)/, 'the CFO read is rank 4');
+  /* The prompt is the outlet's. A door that took `system` from the body
+     would be an open model proxy on this install's key. */
+  const door = route.slice(route.indexOf('function advise('), route.indexOf("r.post('/advise/stock'"));
+  assert.ok(!/b\.system|body\.system/.test(door), 'the page cannot set the prompt');
+  for (const g of route.match(/gate\('(?:invoice_scan|menu_ideas|advise)', \{ ip: \[\d+, [^\]]+\]/g)) {
+    assert.match(g, /3600e3\]/, 'an hourly window is 3600e3 ms, not 3.6 s: ' + g);
+  }
 
   // The key can spend money, so it is held where PLATFORM_KEY and the mail
   // key are: server-side, never rendered, never in a page.

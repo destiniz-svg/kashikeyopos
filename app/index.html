@@ -13538,14 +13538,12 @@ class Component extends DCLogic {
     // improvement on the prose, never the source of the facts — and never a
     // reason for the panel to fail.
     this.setState({ askAnswer: local, askSrc: "Read from this terminal's own rows · " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) });
-    if (!s.online || !(window.claude && window.claude.complete)) return;
+    // The outlet asks the model and owns the prompt (/advise/stock); this
+    // terminal sends the question and the figures it already shows.
+    if (!s.online || !(window.KPOS_BRIDGE && window.KPOS_BRIDGE.advise) || ((K() || {}).AI || {}).ok !== true) return;
     this.setState({ askRunning: true });
     const d = this.stockDigest();
-    const sys = "You are a restaurant stock controller answering the manager at the counter. You are given the real figures for one outlet. "
-      + "Answer in plain prose, no markdown, no bullets, no headings, two short paragraphs at most. Never invent a figure that is not given. "
-      + "Say what to do about it, in the order it costs money to ignore.";
-    const body = "Question: " + q
-      + "\nOutlet: " + d.o.name + " · " + (this.taxLine(d.o) || "not GST registered")
+    const body = "Outlet: " + d.o.name + " · " + (this.taxLine(d.o) || "not GST registered")
       + "\nBelow par: " + (d.short.map((x) => x.name + " " + (Math.round(x.qty * 10) / 10) + "/" + x.par + x.unit).join("; ") || "none")
       + "\nExpired batches: " + (d.expired.map((x) => x.name + " " + Math.abs(x.days) + "d ago " + MVRc(x.value)).join("; ") || "none")
       + "\nExpiring within 7 days: " + (d.soon.map((x) => x.name + " in " + x.days + "d").join("; ") || "none")
@@ -13554,8 +13552,7 @@ class Component extends DCLogic {
       + "\nOff the menu: " + (d.off.join("; ") || "none")
       + "\nUnpriced deliveries: " + d.unpriced;
     try {
-      const txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: body }] });
-      const out = String(txt || "").trim();
+      const out = String(((await window.KPOS_BRIDGE.advise("stock", q, body)) || {}).answer || "").trim();
       if (out) this.setState({ askRunning: false, askAnswer: out, askSrc: "Grounded on this outlet's live rows · nothing here is remembered from another day" });
       else this.setState({ askRunning: false });
       this.queue("stock_query", "Stock question · " + q.slice(0, 48), "audit_log");
@@ -13569,14 +13566,16 @@ class Component extends DCLogic {
     if (s.cfoRunning) return;
     const q = (s.cfoQ || "").trim() || "Give me a two-minute read on this business.";
     if (!s.online) { this.toast("The CFO agent needs the network — the briefing above is already live", "warn"); return; }
-    if (!(window.claude && window.claude.complete)) { this.setState({ cfoAnswer: "The advisory model is unreachable from this terminal. The briefing above is computed locally from posted rows and stays accurate without it." }); return; }
+    // Same door as the stock question (/advise/cfo, rank 4): the outlet owns
+    // the prompt, and the briefing above never depends on the answer.
+    const aiState = (K() || {}).AI || {};
+    if (!(window.KPOS_BRIDGE && window.KPOS_BRIDGE.advise) || aiState.ok !== true) {
+      this.setState({ cfoAnswer: (aiState.reason || "No advisory model is configured on this install") + ". The briefing above is computed locally from posted rows and stays accurate without it." });
+      return;
+    }
     const d = this.analyticsData(), f = this.cfoFindings(d);
     this.setState({ cfoRunning: true });
-    const sys = "You are the CFO of a Maldivian restaurant group, briefing the owner. You are given the real figures. "
-      + "Answer in plain prose, no markdown, no bullet characters, no headings. Three short paragraphs at most. "
-      + "Be specific and quantitative, name outlets, and always say what to do rather than what to observe. "
-      + "If the figures do not support an answer, say so plainly rather than guessing. Never invent a number that is not given.";
-    const body = "Question: " + q + "\n\nToday, net of tax: " + MVRc(d.tot) + " across " + d.rows.length + " outlets, " + d.cov + " covers, average cheque " + MVR(d.tot / (d.cov || 1)) + ".\n"
+    const body = "Today, net of tax: " + MVRc(d.tot) + " across " + d.rows.length + " outlets, " + d.cov + " covers, average cheque " + MVR(d.tot / (d.cov || 1)) + ".\n"
       + "Week on week: " + (d.growth === null ? "no comparable baseline" : d.growth.toFixed(1) + "%") + " (last 7 days " + MVRc(d.last7) + " vs previous 7 " + MVRc(d.prev7) + ").\n"
       + "Blended food cost " + d.fc.toFixed(1) + "% against a " + d.target + "% target. Labour " + d.labour.toFixed(1) + "% (" + MVRc(d.labourCost) + " over " + d.labourHours.toFixed(1) + " clocked hours). Prime cost " + d.prime.toFixed(1) + "% against a 60% ceiling.\n"
       + "Fixed operating cost " + MVRc(d.opex) + " a month, " + MVRc(d.opexDay) + " a day, " + d.opexPct.toFixed(1) + "% of sales. Net margin after everything: " + MVRc(d.profit) + " a day.\n"
@@ -13591,8 +13590,8 @@ class Component extends DCLogic {
       + "\n\nMy own rule-based read — health " + f.score + "/100:\nWorking: " + f.work.map((x) => x.what).join("; ")
       + "\nWatch: " + f.watch.map((x) => x.what).join("; ") + "\nAct now: " + (f.act.map((x) => x.what).join("; ") || "nothing urgent");
     try {
-      const txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 900, system: sys, messages: [{ role: "user", content: body }] });
-      this.setState({ cfoRunning: false, cfoAnswer: String(txt || "").trim() });
+      const r = await window.KPOS_BRIDGE.advise("cfo", q, body);
+      this.setState({ cfoRunning: false, cfoAnswer: String((r || {}).answer || "").trim() || "The advisory model gave no answer. The briefing above is unaffected." });
       this.queue("cfo_query", "CFO advisory · " + q.slice(0, 48), "audit_log");
     } catch (e) {
       this.setState({ cfoRunning: false, cfoAnswer: "The advisory call did not complete. The briefing above is computed locally from posted rows and is unaffected." });

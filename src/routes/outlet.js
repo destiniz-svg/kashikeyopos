@@ -1305,7 +1305,7 @@ r.post('/print', sameOutlet, atLeast('kitchen'), async function (req, res, next)
       the record that matters, plus a trail row saying a scan happened and
       how much of it resolved — never the document and never its text. */
 r.post('/invoice/scan', sameOutlet, atLeast('manager'),
-  gate('invoice_scan', { ip: [30, 3600] }, (req) => 'outlet:' + req.params.id),
+  gate('invoice_scan', { ip: [30, 3600e3] }, (req) => 'outlet:' + req.params.id),
   async function (req, res, next) {
     const b = req.body || {};
     /* The door asks whether this install HAS a model, not whether the last
@@ -1454,7 +1454,7 @@ r.post('/invoice/scan', sameOutlet, atLeast('manager'),
    a list this outlet's own screen composed, and a body that says otherwise
    does not get to become the size of an upstream request. */
 r.post('/menu/ideas', sameOutlet, atLeast('admin'),
-  gate('menu_ideas', { ip: [20, 3600] }, (req) => 'outlet:' + req.params.id),
+  gate('menu_ideas', { ip: [20, 3600e3] }, (req) => 'outlet:' + req.params.id),
   async function (req, res, next) {
     const b = req.body || {};
     const h = ai.health();
@@ -1506,6 +1506,47 @@ r.post('/menu/ideas', sameOutlet, atLeast('admin'),
       });
     } catch (e) { next(e); }
   });
+
+/* ═══ THE STOCK AND CFO QUESTIONS ══════════════════════════════════════════
+   The last two callers of `window.claude.complete`, moved to the outlet for
+   the menu builder's reason. The SYSTEM PROMPT lives here, not in the page:
+   a door that took one from the body would be an open model proxy on this
+   install's key. What travels is the question and the figures the screen
+   already shows; the terminal's own answer stays up whatever this returns. */
+const ADVISERS = {
+  stock: 'You are a restaurant stock controller answering the manager at the counter.'
+    + ' You are given the real figures for one outlet. Say what to do about it, in'
+    + ' the order it costs money to ignore.',
+  cfo: 'You are the CFO of a Maldivian restaurant group, briefing the owner.'
+    + ' You are given the real figures. Be specific and quantitative, name outlets,'
+    + ' and always say what to do rather than what to observe.'
+};
+function advise(kind) {
+  return async function (req, res, next) {
+    const b = req.body || {};
+    const h = ai.health();
+    if (!h.configured) return res.status(503).json({ error: h.reason });
+    const q = String(b.question || '').slice(0, 500).trim();
+    const facts = String(b.facts || '').slice(0, 8000).trim();
+    if (!q || !facts) return res.status(400).json({ error: 'Ask a question about figures this screen holds' });
+    try {
+      const answer = await ai.ask({
+        system: ADVISERS[kind] + ' Answer in plain prose, no markdown, no bullets, no headings,'
+          + ' three short paragraphs at most. Never invent a figure that is not given; if the'
+          + ' figures do not support an answer, say so. Reply with JSON only: {"answer":""}.',
+        prompt: 'Question: ' + q + '\n\n' + facts,
+        maxTokens: 1500
+      });
+      if (!answer.ok) return res.status(502).json({ error: answer.reason });
+      res.json({ answer: String((answer.data || {}).answer || '').slice(0, 3000).trim(),
+        model: answer.model });
+    } catch (e) { next(e); }
+  };
+}
+r.post('/advise/stock', sameOutlet, atLeast('manager'),
+  gate('advise', { ip: [60, 3600e3] }, (req) => 'outlet:' + req.params.id), advise('stock'));
+r.post('/advise/cfo', sameOutlet, atLeast('admin'),
+  gate('advise', { ip: [60, 3600e3] }, (req) => 'outlet:' + req.params.id), advise('cfo'));
 
 module.exports = r;
 module.exports.snapshot = snapshot;
