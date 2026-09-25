@@ -9021,3 +9021,16 @@ test('a locked till names nobody', () => {
   const me = html.slice(html.indexOf('  me() {'), html.indexOf('  me() {') + 400);
   assert.ok(!/x\.role === this\.state\.roleKey/.test(me), 'me() must not guess a person from the role');
 });
+
+/* Two looks, one layout (PRODUCT.md). The look is a store policy that travels;
+   day or night is the device's and defaults to following it. */
+test('the look is the store\'s, and Lagoon re-maps the shared tokens', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo.css'), 'utf8');
+  assert.match(html, /look: "lagoon"\s*\};/, 'new stores start on Lagoon');
+  assert.match(html, /root\.setAttribute\("data-look", this\.look\(\)\)/);
+  assert.match(html, /theme: this\._saved\.theme \|\| "auto"/, 'a device that never chose follows the device');
+  assert.ok(!/look: 1/.test(html.slice(html.indexOf('DEVICE_PREFS = {'), html.indexOf('DEVICE_PREFS = {') + 400)), 'look must travel, not stay on one device');
+  assert.match(css, /\[data-look="lagoon"\]:not\(\[data-theme="light"\]\)\{/);
+  assert.match(css, /\[data-look="lagoon"\]\[data-theme="light"\]\{/);
+});
