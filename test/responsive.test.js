@@ -489,7 +489,7 @@ test('a phone gets a phone, and a desktop gets the framed one', { skip }, async 
           .filter((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius) >= 46
             && e.getBoundingClientRect().width > 200).length
       }));
-      assert.strictEqual(framed.doc, 'rgb(27, 13, 10)',
+      assert.strictEqual(framed.doc, 'rgb(3, 19, 27)',
         name + ': the stage backdrop, so overscroll matches the page');
       assert.strictEqual(framed.scrollW, framed.clientW, name + ': and still no sideways scroll');
       assert.ok(framed.bezels >= 1, name + ': a desktop gets the framed phone');

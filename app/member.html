@@ -963,7 +963,7 @@ class Component extends DCLogic {
     const de = document.documentElement, bd = document.body;
     const cs = getComputedStyle(de);
     const v = (name, fallback) => { const x = (cs.getPropertyValue(name) || "").trim(); return x || fallback; };
-    const bg = this.metrics().bare ? v("--bg-1", "#fff") : v("--bg", "#1b0d0a");
+    const bg = this.metrics().bare ? v("--bg-1", "#fff") : "#03131b";
     if (de && de.style) { de.style.background = bg; de.style.overscrollBehavior = "none"; }
     if (bd && bd.style) { bd.style.background = bg; bd.style.overscrollBehavior = "none"; }
   }
