@@ -9102,3 +9102,97 @@ test('the floor tile carries the waterline and says late in words', () => {
   assert.match(css, /\.water\{[^}]*pointer-events:none/);
   assert.match(css, /prefers-reduced-motion:reduce\)\{\.water\{transition:none\}/);
 });
+
+/* ═══ THE PHONE STEP OF THE NEW V2 LAYOUT ═══════════════════════════════════
+   The in-flow pane band (`showPaneTabs`) moves to a fixed bottom tab bar on
+   a phone, reusing the same `pane`/`cart` state and the same `paneTabs` the
+   top bar's segmented control (`barTabs`) already draws for tablet and desk
+   — no new state, only a new place to draw it. It sits under a modal's own
+   scrim (z-index 60) and the cart sheet (z-index 60), so it is covered and
+   unreachable the instant either opens, and the pay screen's own "Cash due"
+   strip stops sticking over content it has scrolled past.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a phone gets a fixed bottom tab bar; tablet and desktop keep the top bar', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.state.view = 'pos';
+  F.state.pane = 'floor';
+
+  // Desktop: unchanged — the segmented control stays in the top bar, and
+  // there is no bottom bar at all.
+  F.state.bp = 'd';
+  let v = F.shellVals();
+  assert.strictEqual(v.showBottomBar, false, 'no bottom bar off a phone');
+  assert.strictEqual(v.barTabs, true, 'the top-bar segmented control still shows');
+
+  // Tablet: same as desktop.
+  F.state.bp = 't';
+  v = F.shellVals();
+  assert.strictEqual(v.showBottomBar, false);
+  assert.strictEqual(v.barTabs, true);
+
+  // Phone: the fixed bottom bar takes over the SAME paneTabs/pane state —
+  // a ticket carrying 3 items shows on the same badge the old band drew.
+  F.state.bp = 'm';
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  F.state.tickets = Object.assign({}, F.state.tickets, {
+    [key]: Object.assign(F.blankTicket(), {
+      party: 2, bizDate: F.today(),
+      lines: [{ id: 'm1', qty: 3, note: '', split: 0, fired: false, since: 1 }]
+    })
+  });
+  F.state.activeTable = slot;
+  v = F.shellVals();
+  assert.strictEqual(v.showBottomBar, true, 'phone, in the pos view, off the layout pane');
+  assert.strictEqual(v.barTabs, false, 'the top bar drops its own copy on a phone');
+  assert.match(v.bottomBarStyle, /position:fixed/);
+  assert.match(v.bottomBarStyle, /left:0;right:0;bottom:0/);
+  assert.match(v.bottomBarStyle, /min-height:56px/, '≥ 56px tall');
+  assert.match(v.bottomBarStyle, /env\(safe-area-inset-bottom\)/, 'clears the home indicator');
+  assert.match(v.bottomBarStyle, /z-index:55/, 'under the cart sheet and every modal’s scrim (60)');
+
+  const bill = v.paneTabs.find((t) => t.label === 'Bill' || t.label === 'Start');
+  assert.ok(bill, 'the ticket tab is still one of the three panes');
+  assert.strictEqual(bill.badge, '3', 'the item-count badge rides the SAME paneTabs state, not a new one');
+
+  // The floor pane's own scroll grows to clear the fixed bar, or the last
+  // row of the floor or the menu hides under it.
+  assert.match(v.floorPaneStyle, /calc\(82px \+ env\(safe-area-inset-bottom\)\)/);
+
+  // The floor-layout pane never shows a tab strip, on any width.
+  F.state.pane = 'layout';
+  assert.strictEqual(F.shellVals().showBottomBar, false);
+
+  // The markup: fixed, `.chrome` (so Lagoon re-scopes it to deep sea), and
+  // built off the same paneTabs list the old in-flow band used.
+  assert.match(SRC, /<sc-if value="\{\{ showBottomBar \}\}">\s*<nav aria-label="Service" class="chrome" style="\{\{ bottomBarStyle \}\}">\s*<sc-for list="\{\{ paneTabs \}\}"/);
+  assert.doesNotMatch(SRC, /showPaneTabs|paneTabsWrapStyle/, 'the old in-flow band and its state are gone, not duplicated');
+});
+
+/* Reported shape: on a phone the pay screen's "Cash due" strip is the only
+   due figure (the big one is hidden under 760px in kashikeyo.css), and it
+   was `position:sticky` inside a scrolling body — which sticks to the
+   padding edge, not the modal's true top, so it floated a strip's height
+   above where it stuck and overlapped whatever scrolled up under it. */
+test('the pay screen\'s "Cash due" card stops overlapping content on a phone', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+
+  F.state.bp = 'm';
+  F.state.vh = 900;
+  let v = F.modalVals({ kind: 'pay', given: '' });
+  assert.match(v.dueStripStyle, /position:static/, 'not sticky on a phone — nothing left to overlap');
+  assert.doesNotMatch(v.dueStripStyle, /display:none/);
+
+  // A short-viewport tablet keeps the sticky strip — it sits beside the
+  // big due figure there, so there is nothing under it to overlap.
+  F.state.bp = 't';
+  F.state.vh = 600;
+  v = F.modalVals({ kind: 'pay', given: '' });
+  assert.match(v.dueStripStyle, /position:sticky/);
+
+  // Off a phone and a tall viewport, the strip is hidden — the big due
+  // figure is the only one shown.
+  F.state.bp = 'd';
+  F.state.vh = 900;
+  v = F.modalVals({ kind: 'pay', given: '' });
+  assert.match(v.dueStripStyle, /display:none/);
+});
