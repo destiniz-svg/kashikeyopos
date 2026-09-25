@@ -1155,8 +1155,24 @@
                  Said where the money is taken, because that is the moment it
                  costs something to have missed it. It never blocks. -->
             <div style="{{ payWaitStyle }}">{{ payWaitText }}</div>
+            <!-- What is owed, first and always in view: on a phone the bill
+                 column used to arrive after the keypad, a scroll below it. -->
+            <div style="{{ dueStripStyle }}">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:11px;font-weight:700;color:var(--text-dim)">{{ dueLabel }}</span>
+                <span style="font-size:24px;font-weight:700;letter-spacing:-.02em;font-family:'JetBrains Mono',monospace;color:var(--text);white-space:nowrap">{{ dueValue }}</span>
+              </span>
+              <span style="font-size:12.5px;font-family:'JetBrains Mono',monospace;color:var(--text-dim);white-space:nowrap">{{ dueSide }}</span>
+            </div>
             <div style="{{ payGridStyle }}">
               <div>
+                <!-- What changes the amount comes before how it is paid: the
+                     guest's own ask, then their points. -->
+                <div style="{{ askedStyle }}">{{ asked }}</div>
+                <div style="{{ ptsWrap }}">
+                  <button onClick="{{ ptsGo }}" style="{{ ptsStyle }}">{{ ptsLabel }}</button>
+                  <div style="{{ ptsNoteStyle }}">{{ ptsNote }}</div>
+                </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
                   <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700">{{ splitLabel }}</span>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1166,7 +1182,7 @@
                   </div>
                 </div>
                 <div style="{{ shareNoteStyle }}">{{ shareNote }}</div>
-                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px;margin-bottom:14px">
                   <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="4">
                     <button onClick="{{ t.pick }}" style="{{ t.style }}">
                       <span style="font-size:13px;font-weight:700">{{ t.label }}</span>
@@ -1201,11 +1217,6 @@
                       <button onClick="{{ k.press }}" style="{{ k.style }}">{{ k.label }}</button>
                     </sc-for>
                   </div>
-                </div>
-                <div style="{{ askedStyle }}">{{ asked }}</div>
-                <div style="{{ ptsWrap }}">
-                  <button onClick="{{ ptsGo }}" style="{{ ptsStyle }}">{{ ptsLabel }}</button>
-                  <div style="{{ ptsNoteStyle }}">{{ ptsNote }}</div>
                 </div>
                 <div style="{{ refWrap }}">
                   <label style="display:block">
@@ -6465,7 +6476,7 @@ class Component extends DCLogic {
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
           : tb.seats + " seats",
         total: edit || !tot || !this.can("pos", "a") ? "" : MVRc(tot),
-        totalStyle: "font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace"
+        totalStyle: "font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap"
       });
     });
 
@@ -7023,7 +7034,7 @@ class Component extends DCLogic {
           go: () => this.setState({ activeTable: t.slot, activeSplit: 0, pane: "menu", cart: false })
         };
       }),
-      hasOpenStrip: Object.keys(s.tickets || {}).some((k) => k.indexOf(s.outletId + ":") === 0 && (s.tickets[k].lines || []).length),
+      hasOpenStrip: s.pane === "menu" && Object.keys(s.tickets || {}).some((k) => k.indexOf(s.outletId + ":") === 0 && (s.tickets[k].lines || []).length),
       openStripStyle: "display:flex;gap:7px;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:5px;margin-bottom:" + (tight ? 8 : 11) + "px",
       newTabStyle: "flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;min-height:42px;font-family:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;background:transparent;border:1px dashed var(--line-3);color:var(--text-dim)",
       newTabGo: () => this.setState({ pane: "floor", cart: false }),
@@ -7100,8 +7111,8 @@ class Component extends DCLogic {
       showResume: !s.activeTable && heldN > 0,
       resumeLabel: "Resume a parked bill · " + heldN,
       resumeStyle: "width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:8px;padding:11px 14px;border-radius:10px;min-height:44px;font-size:12px;font-weight:700;font-family:inherit;background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)",
-      hasFloorState: out86.length > 0,
-      tableGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px;animation:"
+      hasFloorState: out86.length > 0 && s.pane === "menu",
+      tableGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (this.effBp() === "m" ? 132 : 150) + "px,1fr));gap:10px;animation:"
         + (String(s.zone || "").length % 2 ? "krise" : "kriseb") + " .26s cubic-bezier(.2,.7,.3,1)",
       // An animation only restarts when its NAME changes, so the grid alternates
       // between two identical keyframes keyed off the section. The result: the
@@ -7353,7 +7364,7 @@ class Component extends DCLogic {
       fireHover: this.btnHover("tonal-fwd", { disabled: !unfired }),
       fireDisabled: !unfired,
       pay: () => { if (!this.guardRegister()) return; canPay ? this.setState({ modal: this.payModalFor(tk) }) : this.toast("Add items before taking payment", "warn"); },
-      payLabel: canPay ? "Pay " + MVRc(T.total) : "Pay",
+      payLabel: canPay ? "Pay " + MVR(T.total) : "Pay",
       // Ink is the primary CTA, per the reference profile: hierarchy is carried by
       // size and weight, not hue. Green now appears only on the APPROVED frame of
       // the payment confirm, so a fill that is coloured always means "settled".
@@ -7557,7 +7568,7 @@ class Component extends DCLogic {
       mCount: m.kind === "count", mForm: m.kind === "form",
       mGuest: m.kind === "guest", mHeld: m.kind === "held",
       scrimStyle: "position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);display:flex;z-index:60;animation:kfade .14s;"
-        + (this.effBp() === "m" ? "align-items:flex-end;justify-content:stretch;padding:0" : "align-items:center;justify-content:center;padding:" + this.modalPad() + "px"),
+        + (this.effBp() === "m" ? "align-items:flex-end;justify-content:stretch;padding:0" : (m.kind === "pay" ? "align-items:flex-start;" : "align-items:center;") + "justify-content:center;padding:" + this.modalPad() + "px"),
       // Every popup is capped on both axes against the live viewport, not against
       // a guessed comfortable size. dvh rather than vh so a phone's collapsing
       // address bar cannot push the footer under the fold, and overflow:hidden so
@@ -7711,6 +7722,15 @@ class Component extends DCLogic {
             + ". Settling now takes the money without "
             + (payWait.length === 1 ? "it" : "them") + "."
           : "",
+        // Only where the bill column stacks BELOW the tenders; side by side,
+        // the bill's own "Cash due" is already in view and a second copy
+        // cost the keypad its last row.
+        dueStripStyle: !(this.effBp() === "m" || this.shortVp()) ? "display:none" : "position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;margin-bottom:14px;padding:11px 14px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)",
+        dueLabel: evenN > 1 ? "Share " + (paidN + 1) + " of " + evenN + " due" : (roundDiff ? "Cash due" : "Due"),
+        dueValue: MVR(due),
+        dueSide: m.tender === "cash" && given > 0
+          ? "Given " + MVR(given) + (given >= due ? " \u00b7 change " + MVR(change) : " \u00b7 short " + MVR(r2(due - given)))
+          : "",
         modalTitle: "Settle · " + this.guestLabel(gAll[gIdx]),
         modalSub: this.slotName(s.activeTable) + " · " + o.name
           + (this.taxRegistered(o) ? " · " + this.taxLine(o) : "") + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),
@@ -7747,7 +7767,7 @@ class Component extends DCLogic {
           { k: "credit", label: "Customer credit", sub: "Registered accounts" }
         ].filter((t) => this.tenderLive(t.k)).map((t) => ({
           label: t.label, sub: t.sub, pick: () => this.setState({ modal: Object.assign({}, m, { tender: t.k }) }),
-          style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:10px;border:1px solid " + (m.tender === t.k ? "var(--text)" : "var(--line)") + ";background:" + (m.tender === t.k ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (m.tender === t.k ? "var(--text)" : "var(--text-dim)")
+          style: "display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;min-height:48px;border-radius:10px;border:1px solid " + (m.tender === t.k ? "var(--text)" : "var(--line)") + ";background:" + (m.tender === t.k ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (m.tender === t.k ? "var(--text)" : "var(--text-dim)")
         })),
         /* ── the evidence ────────────────────────────────────────────────
            The reference the PROCESSOR issues, named the way that processor
@@ -7845,7 +7865,9 @@ class Component extends DCLogic {
         // "5·0·0" for a 500 note is three taps to say one thing. Only in
         // rufiyaa: "the next 500" of a foreign note is not a real quantity.
         quickWrap: (m.tender === "cash" && payCur === this.base())
-          ? "display:flex;gap:6px;flex-wrap:wrap;margin-top:9px" : "display:none",
+          // One row of notes, not a row and an orphan: the orphan cost the
+          // keypad its last row above the fold at a laptop height.
+          ? "display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;margin-top:9px" : "display:none",
         quickTender: (function (self) {
           if (m.tender !== "cash" || payCur !== self.base()) return [];
           const up = (step) => Math.ceil((due + 0.001) / step) * step;
@@ -7898,8 +7920,8 @@ class Component extends DCLogic {
         offlineNoteStyle: s.online ? "display:none" : "font-size:11px;color:var(--warn-bright);line-height:1.55;padding:9px 11px;background:var(--warn-dim);border:1px solid var(--warn-line);border-radius:8px;margin-bottom:10px",
         confirmLabel:
           (m.tender === "cash" && given < due ? "Short by " + MVR(due - given)
-            : evenN > 1 ? (paidN + 1 < evenN ? "Take share " + (paidN + 1) + " of " + evenN + " · " + MVRc(due) : "Take the last share · " + MVRc(due))
-            : (gAll.length > 1 ? "Settle " + this.guestLabel(gAll[gIdx]) + " · " + MVRc(due) : "Take " + MVRc(due) + " and close")),
+            : evenN > 1 ? (paidN + 1 < evenN ? "Take share " + (paidN + 1) + " of " + evenN + " · " + MVR(due) : "Take the last share · " + MVR(due))
+            : (gAll.length > 1 ? "Settle " + this.guestLabel(gAll[gIdx]) + " · " + MVR(due) : "Take " + MVR(due) + " and close")),
         // Permanently hidden: the spinner and the tick claimed a terminal
         // round-trip this build does not make. The SVGs stay in the template
         // for a build that one day genuinely integrates an acquirer.
@@ -15338,7 +15360,7 @@ class Component extends DCLogic {
       // pay screen the floor uses, against this ticket — quick cash, keypad,
       // change due, currency, splits — and there is exactly one place in the
       // build where money is taken.
-      tkPayLabel: "Take payment · " + MVRc(T.total),
+      tkPayLabel: "Take payment · " + MVR(T.total),
       tkPayStyle: "width:100%;padding:14px 12px;border-radius:999px;font-size:13.5px;font-weight:800;min-height:50px;font-family:inherit;cursor:pointer;border:1px solid transparent;background:var(--amber);color:var(--on-amber)",
       tkPay: () => {
         if (!this.can("pos", "a")) return this.toast("Taking money needs till rights", "warn");
