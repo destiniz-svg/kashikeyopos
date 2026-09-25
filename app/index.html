@@ -5934,7 +5934,13 @@ class Component extends DCLogic {
           pairs: cs.filter((c) => c.cc.t !== "" && c.cc.t !== undefined).map((c) => ({
             k: c.label,
             v: c.cc.t,
-            vs: "font-size:12px;font-weight:600;color:" + (c.cc.c || "var(--text)") + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap" + (c.mono ? ";font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums" : "") + (c.cc.chip ? ";color:" + c.cc.chip[1] : "")
+            // A record card has room to grow down, not sideways — a stacked
+            // pair is not a table cell fighting six neighbours for one line.
+            // Nowrap+ellipsis here silently ate a report's own description
+            // ("End-of-shift cash-up per t…"), which is the truncation
+            // defect this build refuses elsewhere. Chips stay one line
+            // because they are pills, not prose.
+            vs: "font-size:12px;font-weight:600;color:" + (c.cc.c || "var(--text)") + ";" + (c.cc.chip ? "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" : "white-space:normal;word-break:break-word;line-height:1.4") + (c.mono ? ";font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums" : "") + (c.cc.chip ? ";color:" + c.cc.chip[1] : "")
           }))
         };
       }) : [],

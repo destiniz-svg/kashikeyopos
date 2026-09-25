@@ -131,6 +131,10 @@ body{
   .mobar .mn{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11px;
     font-weight:700;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);
     border-radius:999px;padding:4px 10px}
+  /* The claim-code gate (askClaim) draws before any numbered step exists, so
+     this pill has no "n / total" to hold yet — an empty pill is a shape with
+     nothing in it, not a fact. Hide it until render() gives it one. */
+  .mobar .mn:empty{display:none}
   .mobar .mbar{height:3px;background:var(--bg-3);border-radius:999px;overflow:hidden;
     margin-top:10px}
   .mobar .mbar i{display:block;height:100%;width:100%;background:var(--amber);transform-origin:left center;transition:transform .3s cubic-bezier(.2,.7,.3,1)}
