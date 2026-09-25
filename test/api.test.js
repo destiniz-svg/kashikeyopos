@@ -2903,13 +2903,19 @@ test('a line names who added it and from where, before anyone presses Send', opt
   assert.ok(line, 'and the line is on it');
   assert.strictEqual(line.fired, false, 'unfired — nobody has pressed Send');
   assert.ok(line.by, 'the author reaches the client: ' + JSON.stringify(line));
-  assert.ok(line.device, 'and the device with it: ' + JSON.stringify(line));
+  // The owner's token here was minted with no device, so `device` is a
+  // real null on this line — attribution is only ever what the session had.
+  assert.strictEqual(line.device, null, 'a session with no device stamps none: ' + JSON.stringify(line));
 
   const who = await one('SELECT id FROM chain.staff WHERE name = $1', ['Test Owner']);
   assert.strictEqual(line.by, who.id, 'named by the id the row actually carries');
 
   // Device B: the cashier, on a terminal the owner has never touched.
-  const devB = uuid();
+  // An ENROLLED device — `chain.session.device_id` is a foreign key, so an
+  // id the outlet never issued is refused at sign-in.
+  const enrolB = await post('/api/auth/devices', { label: 'Phone B', kind: 'till' }, token);
+  assert.strictEqual(enrolB.status, 201, JSON.stringify(enrolB.body));
+  const devB = enrolB.body.id;
   const cashier = await post('/api/auth/pin', { outletId, pin: '6520', deviceId: devB });
   assert.strictEqual(cashier.status, 200, JSON.stringify(cashier.body));
   const lidB = uuid();
@@ -2950,7 +2956,11 @@ test('two devices pressing Send on the same ticket fire every line once', opts, 
       lid: lid2, item: 'm2', name: 'Garlic Rice', qty: 1, price: 45 } }
   ]);
 
-  const devB = uuid();
+  // An ENROLLED device — `chain.session.device_id` is a foreign key, so an
+  // id the outlet never issued is refused at sign-in.
+  const enrolB = await post('/api/auth/devices', { label: 'Phone B', kind: 'till' }, token);
+  assert.strictEqual(enrolB.status, 201, JSON.stringify(enrolB.body));
+  const devB = enrolB.body.id;
   const cashier = await post('/api/auth/pin', { outletId, pin: '6520', deviceId: devB });
   assert.strictEqual(cashier.status, 200);
 
@@ -2967,7 +2977,7 @@ test('two devices pressing Send on the same ticket fire every line once', opts, 
   assert.ok(!a.body.results[0].error, JSON.stringify(a.body));
   assert.ok(!b.body.results[0].error, JSON.stringify(b.body));
 
-  const rows = await all2('SELECT id, sent_at FROM ticket_line l JOIN ticket t'
+  const rows = await all2('SELECT l.id, l.sent_at FROM ticket_line l JOIN ticket t'
     + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
   assert.strictEqual(rows.length, 2, 'still exactly the two lines — nothing duplicated');
   assert.ok(rows.every((r) => r.sent_at), 'both fired');
@@ -2994,7 +3004,7 @@ test('a replayed add_line updates the line it already made, not a second one', o
   const replay = await push([add]);
   assert.ok(replay.body.results[0].replay, 'the server recognises its own op back');
 
-  const rows = await all2('SELECT id, qty FROM ticket_line l JOIN ticket t'
+  const rows = await all2('SELECT l.id, l.qty FROM ticket_line l JOIN ticket t'
     + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
   assert.strictEqual(rows.length, 1, 'one line, not two');
 
@@ -3005,7 +3015,7 @@ test('a replayed add_line updates the line it already made, not a second one', o
     table: table, split: 0, lid: lid, item: 'm1', name: 'Grilled Reef Fish',
     qty: 3, price: 185 } }]);
   assert.ok(!again.body.results[0].error, JSON.stringify(again.body));
-  const rows2 = await all2('SELECT id, qty FROM ticket_line l JOIN ticket t'
+  const rows2 = await all2('SELECT l.id, l.qty FROM ticket_line l JOIN ticket t'
     + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table]);
   assert.strictEqual(rows2.length, 1, 'still one line');
   assert.strictEqual(Number(rows2[0].qty), 3,
