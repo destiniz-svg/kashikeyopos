@@ -9011,3 +9011,13 @@ test('the loose ends of the second run', () => {
   // The pay preview restates the bill after points.
   assert.match(SRC, /label: "Points redeemed", value:/);
 });
+
+/* Reported: "when I switch and log in it stays in Hassan Mufeed". With no
+   session the top bar and me() fell back to the first person on the roll with
+   the locked role, so a locked till wore a real person's name. */
+test('a locked till names nobody', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.match(html, /userName: s\.session \? s\.session\.name : "Nobody signed in"/);
+  const me = html.slice(html.indexOf('  me() {'), html.indexOf('  me() {') + 400);
+  assert.ok(!/x\.role === this\.state\.roleKey/.test(me), 'me() must not guess a person from the role');
+});

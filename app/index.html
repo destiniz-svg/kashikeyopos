@@ -4762,8 +4762,12 @@ class Component extends DCLogic {
       payGridStyle: (isM || this.shortVp()) ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
 
       nav: nav,
-      userName: (s.session || {}).name || u.name,
-      userInitials: (((s.session || {}).name) || u.name).split(" ").map((x) => x[0]).slice(0, 2).join(""),
+      /* NOBODY IS NOBODY. With no session this fell back to the first person
+         on the roll holding the locked role — so after Switch user the top bar
+         read "Hassan Mufeed · LOCKED", which is read as "still signed in as
+         Hassan". Reported exactly that way. A locked till names no one. */
+      userName: s.session ? s.session.name : "Nobody signed in",
+      userInitials: s.session ? String(s.session.name || "").split(" ").map((x) => x[0]).slice(0, 2).join("") : "—",
       // The sidebar role select is hidden on the tablet icon rail, which has no
       // drawer — so surface the switcher in the topbar at that width.
       roleSelStyle: this.effBp() === "t"
@@ -17403,8 +17407,11 @@ class Component extends DCLogic {
   me() {
     const sess = this.state.session;
     if (sess && sess.user) return sess.user;
-    const u = (K().USERS || []).find((x) => x.role === this.state.roleKey);
-    return u ? u.user : "terminal";
+    // A signed-in person with no handle is still that person; a locked till
+    // is nobody. Guessing "the first user with this role" put somebody else's
+    // name on the trail.
+    if (sess && sess.name) return sess.name;
+    return "terminal";
   }
   info(title, sub, rows, note, edit, avatar) { this.setState({ modal: { kind: "info", title: title, sub: sub, rows: rows, note: note, edit: edit, avatar: avatar } }); }
   // Header block for a person: photo or silhouette, name, role, contract chip.
