@@ -2332,7 +2332,8 @@ class Component extends DCLogic {
     drawer: false,
     cart: false,
     vh: typeof window === "undefined" ? 900 : window.innerHeight,
-    theme: this._saved.theme || this.props.theme || "light",
+    // A device that has never chosen follows its own day/night setting.
+    theme: this._saved.theme || "auto",
     // "guest" was the old default; it migrates to the neutral ink profile. An
     // accent the user actually picked is still honoured.
     accent: (this._saved.accent && this._saved.accent !== "guest") ? this._saved.accent : (this.props.accent || "ink")
@@ -2785,6 +2786,12 @@ class Component extends DCLogic {
     this._lastThemeProp = this.props.theme;
     this._lastAccentProp = this.props.accent;
     this.applyTheme();
+    // "auto" has to hear the device change its mind at dusk.
+    try {
+      const mq = matchMedia("(prefers-color-scheme: dark)");
+      const onScheme = () => { if (this.state.theme === "auto") this.setState({ now: new Date() }); };
+      if (mq.addEventListener) mq.addEventListener("change", onScheme); else if (mq.addListener) mq.addListener(onScheme);
+    } catch (e) { /* no matchMedia: auto stays whatever it resolved to */ }
     this.requireSignIn();
     /* AND THE IDLE CLOCK IS READ AT ONCE. checkIdle() ran only from a
        fifteen-second interval, and an interval does not run while the app is
@@ -3156,7 +3163,15 @@ class Component extends DCLogic {
   // The Tweaks prop always carries its default, so it can't win outright or
   // the in-app toggle would never take. Props seed state and override only
   // when the user actually changes them.
-  themeMode() { return this.state.theme; }
+  /* "auto" follows the device's own day/night setting, which is what a
+     phone or tablet already does for everything else on it. Every reader
+     below wants light or dark, so auto is resolved here and nowhere else. */
+  themeMode() {
+    const t = this.state.theme;
+    if (t !== "auto") return t;
+    return (typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  look() { return this.prefs().look === "standard" ? "standard" : "lagoon"; }
   accentKey() { return this.state.accent; }
   syncThemeProps() {
     const p = this.props, patch = {};
@@ -3169,6 +3184,7 @@ class Component extends DCLogic {
     if (typeof document === "undefined") return;
     const mode = this.themeMode(), root = document.documentElement;
     root.setAttribute("data-theme", mode === "light" ? "light" : "dark");
+    root.setAttribute("data-look", this.look());
     const key = this.accentKey(), a = this.ACCENTS()[key];
     // Each accent carries a light set. These land as INLINE styles on <html>, which
     // outrank [data-theme="light"] — so picking the dark values in light mode put a
@@ -3176,7 +3192,9 @@ class Component extends DCLogic {
     // needs it darker. Always resolve the set against the active mode.
     const src = (mode === "light" && a && a.light) ? a.light : a;
     const keys = [["--amber", "base"], ["--amber-bright", "bright"], ["--amber-dim", "dim"], ["--amber-line", "line"], ["--amber-deep", "deep"], ["--on-amber", "on"]];
-    if (src && key !== "guest") keys.forEach((k) => root.style.setProperty(k[0], src[k[1]]));
+    // Lagoon's accent IS the look, so a picked accent applies to Standard only;
+    // an inline value would outrank the look's own turquoise.
+    if (src && key !== "guest" && this.look() === "standard") keys.forEach((k) => root.style.setProperty(k[0], src[k[1]]));
     else keys.forEach((k) => root.style.removeProperty(k[0]));
     if (mode === "light") { root.style.setProperty("--paper", "#ffffff"); root.style.setProperty("--qr-ink", "#1f1c17"); }
     else { root.style.removeProperty("--paper"); root.style.removeProperty("--qr-ink"); }
@@ -10584,7 +10602,10 @@ class Component extends DCLogic {
     autoLock: 5, voidPin: true, cashRound: true, kotPrint: true,
     kdsSound: true, showCost: true, blindClose: true,
     paper: 80, copies: 1, autoPrint: false, lang: "en",
-    pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false, qrBanners: false
+    pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false, qrBanners: false,
+    // The store's look (PRODUCT.md: one layout, two looks). A policy, so it
+    // travels to every terminal; day or night stays per device.
+    look: "lagoon"
   };
   DEVICE_PREFS = {
     navPinned: 1, kdsStation: 1, printConn: 1, printerHost: 1, printerName: 1,
@@ -23631,13 +23652,25 @@ class Component extends DCLogic {
             }
             this.openForm("resetStore");
           } },
-        { title: "Theme", sub: "Stored per user as ThemeMode + CustomColors", chip: mode, chipBg: "var(--amber-dim)", chipFg: "var(--amber-bright)",
+        { title: "Appearance", sub: "The look is the store's; day or night is this device's",
+          chip: (this.look() === "lagoon" ? "Lagoon" : "Standard") + " · " + (this.state.theme === "auto" ? "auto" : mode),
+          chipBg: "var(--amber-dim)", chipFg: "var(--amber-bright)",
           picks: [
-            { label: "Mode", opts: [{ label: "Dark", on: mode === "dark", go: () => this.setState({ theme: "dark" }) }, { label: "Light", on: mode === "light", go: () => this.setState({ theme: "light" }) }] },
-            { label: "Accent", opts: Object.keys(acc).map((k) => ({ label: acc[k].label, on: key === k, go: () => this.setState({ accent: k }) })) }
-          ],
-          rows: [["Tokens", "38 CSS custom properties"], ["Applied at", ":root — no reload"]],
-          foot: "Ink is the shared palette: a near-black fill, a pure-white card and a true-grey page, so colour is left to mean go, warn and danger. The whole app reads these tokens, so an accent change re-skins every screen at once." },
+            // The look travels to every terminal, so it is a setting like any
+            // other policy: edit rights, and `set` queues it to the outlet.
+            { label: "Look", opts: [
+              { label: "Lagoon", on: this.look() === "lagoon", go: () => set("look", "lagoon") },
+              { label: "Standard", on: this.look() === "standard", go: () => set("look", "standard") }] },
+            { label: "Day or night", opts: [
+              { label: "Follow this device", on: this.state.theme === "auto", go: () => this.setState({ theme: "auto" }) },
+              { label: "Day", on: this.state.theme === "light", go: () => this.setState({ theme: "light" }) },
+              { label: "Night", on: this.state.theme === "dark", go: () => this.setState({ theme: "dark" }) }] }
+          ].concat(this.look() === "standard"
+            ? [{ label: "Accent", opts: Object.keys(acc).map((k) => ({ label: acc[k].label, on: key === k, go: () => this.setState({ accent: k }) })) }]
+            : []),
+          foot: this.look() === "lagoon"
+            ? "Lagoon: deep-sea surfaces, lagoon turquoise for the next action, and large display figures for money and table numbers. It changes every terminal in this store at once; day or night is set on each device."
+            : "Standard: a near-black action, white cards on a grey page, so colour is left to mean go, warn and danger. The accent below is this device's own." },
         { title: "Merchant branding", sub: "What the guest sees", chip: "Editable", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
           rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden" : "shown"]],
           foot: "The trading name a guest sees on receipts, the KOT and the QR portal. Separate from the registered company under Company — an outlet may override this while the legal entity stays the same.",

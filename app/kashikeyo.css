@@ -166,6 +166,44 @@
      grey desk was the tint that read as "beige" in the reference comparison. */
   --scrim:rgba(20,20,20,.34); --shadow-lg:0 1px 2px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.10);
 }
+/* ═══ THE LAGOON LOOK ══════════════════════════════════════════════════════
+   One layout, two looks (PRODUCT.md). `data-look` on <html> is the store's
+   choice and `data-theme` is this device's day or night, so these two blocks
+   re-map the SAME token names the whole app already reads — no screen is
+   edited to change look. Night is guarded with :not(light) because
+   [data-theme="light"] and [data-look="lagoon"] have equal specificity and
+   source order would otherwise decide.
+
+   Deep-sea neutrals, lagoon turquoise as the accent (the next action), and
+   the semantic families left alone: green commits money, red destroys, amber
+   warns, whatever the look. Ink tiers hold the 7:1 floor on bg…bg-2 like the
+   blocks above. */
+[data-look="lagoon"]:not([data-theme="light"]){
+  --bg:#03131b; --bg-0:#051a24; --bg-1:#071f2b; --bg-2:#0b2837; --bg-3:#11394a;
+  --line-soft:#0b2837; --line:#11394a; --line-2:#1a4a5e; --line-3:#2a6178;
+  --mute-dim:#1a4a5e;
+  --text:#e5f4f6; --text-dim:#c6dde3; --text-muted:#b0ccd4; --text-faint:#9dbec8;
+  --code-text:#c6dde3;
+  --amber:#35e4f2; --amber-bright:#7defff; --amber-dim:#073545; --amber-line:#0f5566; --amber-deep:#22b8c6; --on-amber:#021a22;
+  --brand-dim:#073545;
+  --scrim:rgba(1,12,18,.78); --shadow-lg:0 2px 4px rgba(0,0,0,.45), 0 24px 64px rgba(0,0,0,.6);
+  --font-display:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;
+}
+[data-look="lagoon"][data-theme="light"]{
+  --bg:#edf4f5; --bg-0:#e4eef0; --bg-1:#ffffff; --bg-2:#f6fafb; --bg-3:#ddebee;
+  --line-soft:#eef5f6; --line:#d5e3e7; --line-2:#bed2d8; --line-3:#93aeb7;
+  --mute-dim:#bed2d8;
+  --text:#06222e; --text-dim:#1b3a47; --text-muted:#2c4b57; --text-faint:#33515d;
+  --code-text:#1b3a47;
+  --amber:#19c6d6; --amber-bright:#08535e; --amber-dim:#ddf6f9; --amber-line:#a8e3ea; --amber-deep:#0e8f9c; --on-amber:#04202b;
+  --brand-dim:#ddf6f9;
+  --scrim:rgba(4,24,33,.42); --shadow-lg:0 1px 2px rgba(6,34,46,.08), 0 16px 40px rgba(6,34,46,.14);
+  --font-display:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;
+}
+/* Money and table numbers set in the look's display face. Standard has none,
+   so it falls back to the body face and nothing changes there. */
+.disp{font-family:var(--font-display,inherit);font-stretch:88%;letter-spacing:-.02em}
+
 *{box-sizing:border-box}
 /* Tabular figures everywhere, inherited, not opt-in. A total that reflows its
    own width as digits change reads as a glitch and pulls the eye off the line
