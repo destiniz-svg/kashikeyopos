@@ -4971,7 +4971,9 @@ class Component extends DCLogic {
          and food cost are the owner's numbers and pushed the tables down. On a
          tablet the three service figures sit at the foot of the Now column;
          on a phone the floor is tables only, and the figures are on Today. */
-      statsWrapStyle: s.view === "pos" ? "display:none" : "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
+      // The owner dashboard carries its own KPI cards; a second band above them
+      // counted covers differently and showed two numbers under one name.
+      statsWrapStyle: s.view === "pos" || s.view === "owner" ? "display:none" : "display:flex;align-items:stretch;gap:1px;background:var(--line);border-bottom:1px solid var(--line);flex-shrink:0",
       nowPulse: s.view === "pos" ? this.statCards().filter((c) => !/food cost/i.test(c.label || "")).slice(0, 3).map((c) => {
         // The code moves to the label so the figure fits a third of the column.
         const v = String(c.value || ""), bare = v.replace(/^[A-Z]{3}\s+/, "");
