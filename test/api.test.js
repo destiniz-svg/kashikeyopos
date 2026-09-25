@@ -7616,8 +7616,8 @@ test('web push: a 404/410 from the push service deletes the subscription', opts,
 
   const notify = require('../src/notify');
   await notify.notifyTill(outletId, { title: 'Bill asked', body: 'Table 9 is asking for the bill' });
-  await stub.waitForHit();
-  await new Promise((r) => setTimeout(r, 200)); // the DELETE runs after the response
+  // notifyTill is awaited here, so the send and the DELETE have both finished.
+  assert.strictEqual(stub.hits.length, 1, 'the push service was dialled');
 
   const after = await one('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [stub.url]);
   assert.strictEqual(after, undefined, 'a 410 answer deletes the row');
