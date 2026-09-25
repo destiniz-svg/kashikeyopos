@@ -9914,3 +9914,11 @@ test('Settings -> Terminal carries the "Alerts on this device" switch, and it sa
   assert.match(sw.sub, /does not support push notifications/);
   assert.strictEqual(typeof sw.go, 'function');
 });
+
+test('web push: an endpoint that resolves to this server or its LAN is refused before it is dialled', async () => {
+  const push = require('../src/push');
+  for (const host of ['127.0.0.1', '0.0.0.0', '10.0.0.5', '192.168.1.1', '169.254.169.254', '[::1]', '[::]']) {
+    await assert.rejects(push.checkEndpointAllowed('https://' + host + '/x'), /public address/, host);
+  }
+  await assert.rejects(push.checkEndpointAllowed('http://8.8.8.8/x'), /https/);
+});

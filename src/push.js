@@ -200,10 +200,10 @@ async function checkEndpointAllowed(urlStr) {
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(flat);
   const o = v4 ? v4.slice(1, 5).map(Number) : null;
   const isPrivateV4 = !!o && (
-    o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)
+    o[0] === 0 || o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)
     || o[0] === 127 || (o[0] === 169 && o[1] === 254) || (o[0] === 100 && o[1] >= 64 && o[1] <= 127)
   );
-  const isPrivateV6 = /^f[cde][0-9a-f]{2}:/i.test(flat) || flat === '::1' || /^fe80:/i.test(flat);
+  const isPrivateV6 = /^f[cde][0-9a-f]{2}:/i.test(flat) || flat === '::1' || flat === '::' || /^fe[89ab][0-9a-f]:/i.test(flat);
   const isLoopback = /^127\./.test(flat) || flat === '::1';
   const allowLoop = process.env.NODE_ENV !== 'production'
     && process.env.PUSH_ALLOW_LOOPBACK === '1' && isLoopback;
