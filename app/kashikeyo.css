@@ -355,6 +355,15 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
 [data-look="standard"] .water{top:auto;height:3px;background:var(--wl-bar,transparent);transform:translateX(calc(var(--fill,0%) - 100%))}
 @media (prefers-reduced-motion:reduce){.water{transition:none}}
 
+/* An overdue KDS ticket pulses to draw the eye without flashing (WCAG 2.3.1):
+   a slow opacity breathe, at most once every two seconds, applied inline only
+   on the ticket card that is past its target. Colour, the thicker border and
+   the words "Over Nm" already say it, so the animation is decoration here —
+   unlike the offline kpulse above, which is the only signal it carries and so
+   stays alive under reduced motion. This one does not. */
+@keyframes kdspulse{0%,100%{opacity:1}50%{opacity:.6}}
+@media (prefers-reduced-motion:reduce){@keyframes kdspulse{from{opacity:1}to{opacity:1}}}
+
 /* ═══ THE CHROME (the new layout) ═════════════════════════════════════════
    The frame of the till — the nav rail, the top bar, the Now column and the
    ticket beside the menu — is deep sea in the Lagoon look, day and night,

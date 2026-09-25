@@ -641,12 +641,13 @@
           </sc-for>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px;align-items:start">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;align-items:start">
           <sc-for list="{{ kds }}" as="k" hint-placeholder-count="6">
             <div style="{{ k.style }}">
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line);{{ k.headBg }}">
+              <div style="position:relative;overflow:hidden;isolation:isolate;display:flex;justify-content:space-between;align-items:center;padding:13px 15px;border-bottom:1px solid var(--line)">
+                <div class="water" style="{{ k.water }}"></div>
                 <div>
-                  <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;font-family:'JetBrains Mono',monospace">{{ k.table }}</div>
+                  <div class="disp" style="font-size:21px;font-weight:800;letter-spacing:-0.02em;font-family:var(--font-display,'JetBrains Mono',monospace)">{{ k.table }}</div>
                   <div style="font-size:11px;color:var(--text-dim);margin-top:2px">{{ k.meta }}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
@@ -3092,6 +3093,15 @@ class Component extends DCLogic {
       return;
     }
     if (m) return;
+    // A PHYSICAL BUMP BAR TYPES NUMBER KEYS (SPEC 3.3). The buttons on screen
+    // are numbered "Bump 1", "Bump 2" ... in the same order kdsVals() renders
+    // them, so key "3" bumps whichever ticket currently sits third — never a
+    // remembered id, because the board reorders itself as tickets age.
+    if (this.state.view === "kds" && /^[1-9]$/.test(e.key)) {
+      const tks = this.kdsVals().kds, tk = tks[parseInt(e.key, 10) - 1];
+      if (tk) { e.preventDefault(); tk.serve(); }
+      return;
+    }
     if (e.key === "/") { e.preventDefault(); this.focusSearch(); }
   }
 
@@ -6503,18 +6513,38 @@ class Component extends DCLogic {
       kdsFoot: isExpo
         ? "The pass shows every ticket with each station's progress. Serve stays shut until all stations are up — plating a table in pieces is what makes a kitchen look slow when it is not."
         : this.stationName(scope) + " only · red at " + tgt[1] + " minutes, amber at " + tgt[0] + ". A ticket with work at another station shows what it is waiting on, so nothing is sent out half made.",
-      kds: list.map((tk) => {
+      kds: list.map((tk, ti) => {
         const mine = isExpo ? tk.items : tk.items.filter((l) => stnKey(l) === scope);
-        const late = tk.wait >= tgt[1], warn = tk.wait >= tgt[0];
+        /* COLOUR BY TIME, NOT STATE (V2, SPEC 3.3). The pass has one clock, not
+           four statuses to guess a colour from: green under half the target,
+           amber from half, coral past it — with the minutes over said in words,
+           because a blinking wall of tickets told a chef nothing new and a
+           colour alone fails anyone colour-blind. Expo has no single station,
+           so it measures against the store's own kitchen target; a station
+           screen keeps that station's own target, per SPEC's "per station". */
+        const tgtFull = isExpo ? (this.prefs().kdsSla || 18) : tgt[1];
+        const half = tgtFull / 2;
+        const late = tk.wait >= tgtFull, warn = !late && tk.wait >= half;
+        const fill = Math.min(100, Math.max(6, Math.round(tk.wait / tgtFull * 100)));
         return {
           table: this.slotName(tk.num),
           meta: (tk.t.waiter || "Unassigned") + " · " + tk.t.party + " covers" + (tk.t.resNote ? " · " + tk.t.resNote : ""),
           wait: tk.wait,
-          style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--warn-line)" : "var(--line)") + ";border-radius:10px;overflow:hidden;display:flex;flex-direction:column",
-          headBg: late ? "background:var(--bad-dim)" : warn ? "background:var(--warn-dim)" : "",
-          timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
-          target: "target " + tgt[0] + "m",
-          targetStyle: "font-size:11px;color:var(--text-faint);margin-top:1px;white-space:nowrap",
+          style: "background:var(--bg-1);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;border:"
+            + (late ? "2px solid var(--danger)" : warn ? "1px solid var(--warn-line)" : "1px solid var(--line)")
+            // A slow opacity breathe, never a flash (WCAG 2.3.1) — kdspulse is
+            // silenced under prefers-reduced-motion in kashikeyo.css.
+            + (late ? ";animation:kdspulse 2.4s ease-in-out infinite" : ""),
+          // THE WATERLINE (kashikeyo.css, the pattern floor tiles use in
+          // posVals()): the header fills against the same clock that sets the
+          // colour, so the longest-waiting ticket reads from across the pass.
+          water: "--fill:" + fill + "%;--wl-tint:" + (late ? "var(--danger-dim)" : warn ? "var(--warn-dim)" : "var(--ok-dim)")
+            + ";--wl-bar:" + (late ? "var(--danger)" : warn ? "var(--warn)" : "var(--green)"),
+          timerStyle: "font-size:27px;font-weight:800;font-family:var(--font-display,'JetBrains Mono',monospace);letter-spacing:-0.03em;color:"
+            + (late ? "var(--danger-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
+          target: late ? "Over " + Math.max(1, Math.round(tk.wait - tgtFull)) + " min" : warn ? "target " + tgtFull + "m" : "New",
+          targetStyle: "font-size:11.5px;font-weight:800;margin-top:1px;white-space:nowrap;color:"
+            + (late ? "var(--danger-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
           cross: (() => {
             if (isExpo) {
               const by = {};
@@ -6545,9 +6575,12 @@ class Component extends DCLogic {
               // Which pass owns this line, as set on the dish in Menu Master.
               stn: m.id ? this.stationName(this.dishStation(m)) : "",
               stnStyle: m.id ? "display:inline-block;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin-top:4px;padding:2px 6px;border-radius:4px;background:color-mix(in oklab, " + this.catMeta(m.cat).color + " 14%, transparent);color:" + this.catMeta(m.cat).color : "display:none",
-              style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px;transition:.1s",
+              style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:9px 13px;min-height:48px;transition:.1s",
               qty: "font-size:13px;font-weight:800;color:var(--text);font-family:'JetBrains Mono',monospace;min-width:24px;flex-shrink:0;padding-top:1px",
-              noteStyle: l.note ? "display:block;font-size:11px;font-weight:500;color:var(--text-muted);margin-top:3px" : "display:none",
+              // Allergy, doneness and course notes stay bold and bright no
+              // matter how the ticket's own colour reads — the one line on
+              // this card that must never fade into the rest of it.
+              noteStyle: l.note ? "display:block;font-size:12px;font-weight:800;color:var(--warn-bright);margin-top:3px" : "display:none",
               check: "font-size:13px;color:var(--line-3);flex-shrink:0",
               bump: () => {
                 const t = Object.assign({}, this.state.tickets);
@@ -6571,10 +6604,14 @@ class Component extends DCLogic {
           // the expeditor calling the table away — and it stays shut until every
           // station is up, because a table plated in pieces is the single most
           // common reason a kitchen looks slow when it is not.
-          serveLabel: isExpo
-            ? (mine.length ? "Waiting on " + mine.length + " line" + (mine.length === 1 ? "" : "s") : "Serve · " + this.slotName(tk.num))
-            : "Bump all " + this.stationName(scope).toLowerCase() + " · " + this.slotName(tk.num),
-          serveStyle: "margin:0;padding:11px;text-align:center;font-size:11.5px;font-weight:700;border-top:1px solid var(--line);width:100%;font-family:inherit;min-height:44px;"
+          // NUMBERED IN SCREEN ORDER (SPEC 3.3, build phase 1): a physical bump
+          // bar types digit keys, not clicks, so the button a cook is looking
+          // at has to carry the same number the key map uses — keyRoute() maps
+          // 1-9 to kds[0..8].serve() in this same order.
+          serveLabel: "Bump " + (ti + 1) + " · " + (isExpo
+            ? (mine.length ? "waiting on " + mine.length + " line" + (mine.length === 1 ? "" : "s") : this.slotName(tk.num))
+            : this.stationName(scope).toLowerCase() + " · " + this.slotName(tk.num)),
+          serveStyle: "margin:0;padding:14px;text-align:center;font-size:13px;font-weight:800;border-top:1px solid var(--line);width:100%;font-family:inherit;min-height:56px;"
             + (isExpo && mine.length
               ? "background:var(--bg-2);color:var(--text-faint)"
               : isExpo
