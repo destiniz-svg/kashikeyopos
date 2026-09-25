@@ -226,14 +226,6 @@
     <sc-if value="{{ vPos }}" hint-placeholder-val="{{ true }}">
       <div style="{{ posSplitStyle }}">
 
-        <sc-if value="{{ showPaneTabs }}">
-          <div style="{{ paneTabsWrapStyle }}">
-            <sc-for list="{{ paneTabs }}" as="pt" hint-placeholder-count="3">
-              <button onClick="{{ pt.go }}" style="{{ pt.style }}">{{ pt.label }}<span style="{{ pt.badgeStyle }}">{{ pt.badge }}</span></button>
-            </sc-for>
-          </div>
-        </sc-if>
-
         <div style="{{ posRowStyle }}">
         <div style="{{ floorPaneStyle }}">
           <sc-if value="{{ tip }}">
@@ -1193,6 +1185,24 @@
     </sc-if>
 
   </div>
+
+  <!-- THE BOTTOM TAB BAR (phone only, the new V2 layout): Floor, Menu and Bill
+       moved off the in-flow band near the top and pinned to the thumb instead.
+       Same three tabs, same `pane`/`cart` state and the same badges the top
+       bar's segmented control (barTabs) draws on a tablet or a desk — nothing
+       new is invented here, only where it is drawn. Fixed below every pane's
+       own content, `.chrome` so Lagoon re-scopes it to deep sea, and z-index
+       55 — under the cart scrim (58), the ticket sheet (60) and every modal's
+       own scrim (60) — so it is covered, and unreachable, the instant either
+       is open. The pay keypad and its confirm button are inside that modal,
+       always above this bar for the same reason. -->
+  <sc-if value="{{ showBottomBar }}">
+    <nav aria-label="Service" class="chrome" style="{{ bottomBarStyle }}">
+      <sc-for list="{{ paneTabs }}" as="pt" hint-placeholder-count="3">
+        <button onClick="{{ pt.go }}" style="{{ pt.style }}">{{ pt.label }}<span style="{{ pt.badgeStyle }}">{{ pt.badge }}</span></button>
+      </sc-for>
+    </nav>
+  </sc-if>
 
   <sc-if value="{{ hasToast }}">
     <div style="{{ toastStyle }}">{{ toastMsg }}</div>
@@ -4907,7 +4917,11 @@ class Component extends DCLogic {
       posSplitStyle: "flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--bg)",
       floorPaneStyle: (!isM && s.pane === "bill")
         ? "display:none"
-        : "flex:1;background:var(--bg);overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;padding:" + (isM ? "13px 13px calc(24px + env(safe-area-inset-bottom))" : "16px 20px 24px"),
+        // On a phone the bottom tab bar is FIXED — outside the flow — so the
+        // pane's own scroll has to clear it by hand: the bar's rendered
+        // height (~58px) plus the safe-area inset it already pads itself
+        // with, or the last row of a table grid or a dish sits under it.
+        : "flex:1;background:var(--bg);overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;padding:" + (isM ? "13px 13px calc(82px + env(safe-area-inset-bottom))" : "16px 20px 24px"),
       ticketPaneStyle: isM
         ? "position:fixed;left:0;right:0;bottom:0;z-index:60;height:min(88dvh,680px);background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -12px 44px rgba(0,0,0,.55);transition:transform .22s cubic-bezier(.32,.72,0,1);transform:translateY(" + (s.cart ? "0" : "101%") + ")"
         : (s.pane === "bill"
@@ -4928,13 +4942,16 @@ class Component extends DCLogic {
       // strip itself is the record of where you are in the round.
       /* THE MODE TABS LIVE IN THE TOP BAR (the new layout, as the V2 boards
          draw them): a segmented control in the frame, not a full-width band
-         between the figures and the floor. A phone keeps the band — it sits
-         under the thumb there, and the bar has no room. */
-      showPaneTabs: s.view === "pos" && s.pane !== "layout" && isM,
+         between the figures and the floor. A phone gets a fixed BOTTOM tab
+         bar instead — it sits under the thumb there, and the top bar has no
+         room — covered by the cart sheet and every modal's own scrim the
+         instant either opens (see bottomBarStyle's z-index). */
+      showBottomBar: s.view === "pos" && s.pane !== "layout" && isM,
       barTabs: s.view === "pos" && s.pane !== "layout" && !isM,
       barTabsStyle: "display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--bg-2);border:1px solid var(--line);flex-shrink:0",
-      paneTabsWrapStyle: "flex-shrink:0;display:flex;gap:" + (isM ? 5 : 2) + "px;padding:" + (isM ? "8px 10px 9px" : "8px 12px")
-        + ";background:var(--bg-1);border-bottom:1px solid var(--line)",
+      bottomBarStyle: "position:fixed;left:0;right:0;bottom:0;z-index:55;min-height:56px;box-sizing:border-box;"
+        + "display:flex;gap:6px;padding:6px 8px calc(6px + env(safe-area-inset-bottom));"
+        + "background:var(--bg-1);border-top:1px solid var(--line)",
       paneTabs: [
         ["floor", this.siteFloorLabel ? "Floor" : "Floor", openN],
         ["menu", "Menu", 0],
@@ -8007,7 +8024,16 @@ class Component extends DCLogic {
         // Only where the bill column stacks BELOW the tenders; side by side,
         // the bill's own "Cash due" is already in view and a second copy
         // cost the keypad its last row.
-        dueStripStyle: !(this.effBp() === "m" || this.shortVp()) ? "display:none" : "position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;margin-bottom:14px;padding:11px 14px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)",
+        //
+        // NOT STICKY ON A PHONE. `position:sticky` inside this scrolling
+        // body sticks to the padding edge, not the true top of the modal —
+        // so on a phone, where this strip is the ONLY due figure (the big
+        // one is hidden under 760px), scrolling the pay sheet left it
+        // floating a strip's height above where it stuck, overlapping
+        // whatever scrolled up under it. A tablet in a short viewport keeps
+        // the sticky behaviour: it sits beside the big due figure there, so
+        // there is nothing under it to overlap.
+        dueStripStyle: !(this.effBp() === "m" || this.shortVp()) ? "display:none" : "position:" + (this.effBp() === "m" ? "static" : "sticky") + ";top:0;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;margin-bottom:14px;padding:11px 14px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)",
         dueLabel: evenN > 1 ? "Share " + (paidN + 1) + " of " + evenN + " due" : (roundDiff ? "Cash due" : "Due"),
         dueValue: MVR(due),
         dueSide: m.tender === "cash" && given > 0
