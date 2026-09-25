@@ -7043,6 +7043,82 @@ pages, not UTF-8; Thaana cannot print yet and the screen stays the reference).
 how cash walks. KOT dockets carry their station's lines in double-size type;
 the bill, receipt and Z-report carry their real rows.
 
+## Web Push, with no push library
+
+Three events wake a device today: **order ready** (the one staff member who
+opened the ticket, via `ticket.opened_by`), **bill asked** and **QR order to
+accept** (every till device at that outlet, rank ≥ 2). Sold out and manager
+call are follow-ups — the till has no manager-call feature to trigger from
+yet, and sold-out was left for a clean PR (see `BUILD-PLAN.md` §5, 2.3).
+
+**No push library — RFC 8291/8292 against node's own `crypto`, in one file**
+(`src/push.js`), for the same reason the QR encoder and the ESC/POS composer
+have no library either: two runtime dependencies, and this is not one of
+them. The proof is the RFC 8291 Appendix A test vector — fixed keys, a fixed
+salt, a published ciphertext — encrypted here and compared byte for byte in
+`test/wiring.test.js`; a round trip against itself would only prove encrypt
+and decrypt agree with each other, never that the framing matches what a
+real push service expects. VAPID's ES256 JWT is signed with
+`dsaEncoding: 'ieee-p1363'`, the one flag that makes node emit the raw
+64-byte signature the spec wants rather than DER, and a JWT this module
+signs is verified with plain `crypto.verify` in the same test.
+
+**The keys are generated, never typed.** `chain.vapid_key` lives in the
+REGISTRY (`control/005`), one row (`id boolean PRIMARY KEY DEFAULT true`),
+written by whichever process gets there first (`INSERT ... ON CONFLICT DO
+NOTHING`, then read back) — the same race-safety `chain.provision_outlet()`
+needed for a role, solved the same way: insert-if-absent, read the winner.
+`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` override when set.
+No outlet role has ever been able to open a session on the registry at all
+(`control/003`), so the table needs no grant of its own to keep an outlet
+out — the same protection-by-absence `chain.licence` and the account plane
+already rely on. The private key never appears in a bootstrap, a response,
+or a log line; only `publicKeyB64u` is ever read outside `src/push.js`,
+published to the till as `PUSH_KEY` so it can subscribe.
+
+**Subscriptions are outlet-scoped**, `push_subscription` (migration 059,
+same DO-loop-over-`outlet\_%`-schemas-plus-edit-003 pattern as 048's door
+receipt), keyed by the push service's own endpoint URL. `staff_id` says who
+to wake; "till devices, rank ≥ 2" is answered by joining `chain.staff` at
+**send** time, never cached at subscribe time, so a promotion or a demotion
+takes effect on the next alert rather than needing a re-subscribe.
+
+**Sending happens after the triggering op's own transaction has committed**,
+never inside it and never awaited by the response that triggered it —
+`src/notify.js` is fire-and-forget, same doctrine as `src/watch.js` and
+`src/email.js`: log once, never retry in a loop, never block the caller. In
+`src/routes/sync.js` that means after each chunk's `withOutlet()` has
+returned; in `src/routes/guest.js` it means after the 201 has already been
+built from the committed result.
+
+**A payload is what a lock screen may show** — what happened and where,
+composed server-side, never a total, a name or a phone number. `app/sw.js`
+shows it with exactly ONE action (a second action is a second decision on a
+lock screen), tags it by kind+table so a guest mashing "ask for the bill"
+replaces the standing alert rather than stacking five, and forwards a tap to
+an already-open tab rather than opening a second one where it can.
+
+**Settings → Terminal carries "Alerts on this device"**, a switch that
+reuses the existing `toggles` row (the same 48px control `showCost` and
+`voidPin` already use) rather than a new component. It asks
+`Notification.requestPermission()` only from the click itself, and says
+plainly, before asking, when it cannot work: unsupported browser, iOS not
+installed to the home screen (push only reaches an installed PWA there), a
+prior denial, or no key published yet.
+
+**What is proved**: the RFC 8291 vector exactly, the JWT round-trip, that no
+call site's payload carries money or a name, that every send is textually
+after its op's commit, and the switch's states on the shipped logic class.
+**What is not**: a real phone receiving one. The API test points a
+subscription's endpoint at a local HTTP stub (`PUSH_ALLOW_LOOPBACK=1`,
+non-production only — the same shape `PRINT_ALLOW_LOOPBACK` already keeps
+for the print relay's own SSRF fence, aimed the other way: a push endpoint
+is normally required to resolve to a PUBLIC address, since a subscription's
+endpoint is supplied by the subscribing device and trusting it blind would
+let a compromised till probe this server's own network) and proves a 410
+deletes the subscription and an accepted send reaches the stub — not that
+Chrome, Firefox or Apple's own gateway accept a message built this way.
+
 ## The pages carry a Content-Security-Policy
 
 Built in `server.js` from the files on disk: everything is `'self'` — local

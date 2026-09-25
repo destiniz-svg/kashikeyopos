@@ -9784,3 +9784,141 @@ test('the till page grants camera to itself; the guest and member portals, on th
   assert.match(srv, /'permissions-policy', 'geolocation=\(\), microphone=\(\), payment=\(\), camera='\s*\n\s*\+ \(onStore \? '\(\)' : '\(self\)'\)/,
     'camera is named explicitly rather than left to the browser default, and only the till gets it');
 });
+
+/* ___ SLICE 2.3 . WEB PUSH ___ */
+
+test('RFC 8291 Appendix A: the fixed vector encrypts to the published ciphertext, byte for byte', () => {
+  const push = require('../src/push');
+  const b64u = (b) => Buffer.from(b).toString('base64url');
+  const unb64u = (s) => Buffer.from(String(s).replace(/\s+/g, ''), 'base64url');
+
+  const uaPublicB64 = 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
+  const asPublicB64 = 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8';
+  const asPrivateB64 = 'yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw';
+  const saltB64 = 'DGv6ra1nlYgDCS1FRnbzlw';
+  const authB64 = 'BTBZMqHH6r4Tts7J_aSIgg';
+  const plaintext = Buffer.from('When I grow up, I want to be a watermelon', 'ascii');
+  const expected = 'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27ml'
+    + 'mlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPT'
+    + 'pK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN';
+
+  const asPublicRaw = unb64u(asPublicB64);
+  const asPrivateKey = push.privateKeyFromRawD(unb64u(asPrivateB64), asPublicRaw);
+  const asPublicKey = push.publicKeyFromRaw(asPublicRaw);
+
+  const out = push.encrypt(plaintext, unb64u(uaPublicB64), unb64u(authB64), {
+    salt: unb64u(saltB64),
+    asKeyPair: { publicKey: asPublicKey, privateKey: asPrivateKey, publicRaw: asPublicRaw }
+  });
+  assert.strictEqual(b64u(out), expected);
+});
+
+test('VAPID: an ES256 JWT this module signs verifies with node crypto, IEEE P1363 encoding', () => {
+  const push = require('../src/push');
+  const crypto = require('crypto');
+  const kp = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const jwt = push.signVapidJwt('https://push.example.net', 'mailto:ops@example.com', kp.privateKey, 3600);
+  const parts = jwt.split('.');
+  assert.strictEqual(parts.length, 3);
+  const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+  assert.deepStrictEqual(header, { typ: 'JWT', alg: 'ES256' });
+  const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+  assert.strictEqual(payload.aud, 'https://push.example.net');
+  assert.strictEqual(payload.sub, 'mailto:ops@example.com');
+  const sig = Buffer.from(parts[2], 'base64url');
+  assert.strictEqual(sig.length, 64, 'P-256 IEEE P1363 signature is 64 raw bytes, never DER');
+  const ok = crypto.verify('sha256', Buffer.from(parts[0] + '.' + parts[1]),
+    { key: kp.publicKey, dsaEncoding: 'ieee-p1363' }, sig);
+  assert.strictEqual(ok, true);
+});
+
+test('a VAPID keypair generated here round-trips through raw<->JWK with no ASN.1 of its own', () => {
+  const push = require('../src/push');
+  const gen = push.generateP256();
+  assert.strictEqual(gen.publicRaw.length, 65);
+  assert.strictEqual(gen.publicRaw[0], 4, 'an uncompressed point starts 0x04');
+  assert.strictEqual(gen.privateRaw.length, 32);
+  const rebuilt = push.publicKeyFromRaw(gen.publicRaw);
+  assert.strictEqual(rebuilt.export({ format: 'jwk' }).x, gen.publicKey.export({ format: 'jwk' }).x);
+});
+
+test('a push payload never carries money, a name or a phone number - checked at every call site', () => {
+  const syncSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+  const guestSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  const applySrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const FORBIDDEN = /\b(total|amount|price|cogs|phone|guest_name|guest_phone|member|due|tip)\b/i;
+  const calls = [
+    syncSrc.match(/notify\.notifyStaff\(req\.ctx\.outletId, n\.staffId,[\s\S]*?\}\);/),
+    guestSrc.match(/notify\.notifyTill\(req\.ctx\.outletId, \{[\s\S]*?\}\)\.catch/),
+    guestSrc.match(/title: 'Bill asked'[\s\S]*?\}\)\.catch/)
+  ].filter(Boolean).map((m) => m[0]);
+  assert.ok(calls.length >= 2, 'expected to find the order-ready and bill-asked notify payloads');
+  for (const c of calls) assert.doesNotMatch(c, FORBIDDEN, 'a lock-screen payload must carry no money, name or phone: ' + c);
+  const readyNotice = applySrc.match(/async function readyNotice\([\s\S]*?\n\}/)[0];
+  assert.doesNotMatch(readyNotice, /guest_name|guest_phone/i);
+});
+
+test('a push is sent only after the triggering op has committed, never inside its transaction', () => {
+  const syncSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+  const guestSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'guest.js'), 'utf8');
+  const commitAt = syncSrc.indexOf('const part = await withOutlet(req.ctx');
+  const notifyAt = syncSrc.indexOf('notify.notifyStaff(req.ctx.outletId, n.staffId');
+  assert.ok(commitAt >= 0 && notifyAt > commitAt,
+    'the order-ready notify must run after the chunk that made it ready has committed');
+  const orderCommitAt = guestSrc.indexOf("r.post('/:slug/order'");
+  const orderRespondAt = guestSrc.indexOf('res.status(201).json(out);');
+  const orderNotifyAt = guestSrc.indexOf('notifyTill(req.ctx.outletId', orderCommitAt);
+  assert.ok(orderRespondAt > 0 && orderNotifyAt > orderRespondAt,
+    'a QR order notify must run after the response is already built from the committed result');
+  const billCommitAt = guestSrc.indexOf("r.post('/:slug/request'");
+  const billRespondAt = guestSrc.indexOf('res.status(201).json(row);', billCommitAt);
+  const billNotifyAt = guestSrc.indexOf("if (kind === 'bill')", billCommitAt);
+  assert.ok(billRespondAt > 0 && billNotifyAt > billRespondAt,
+    'a bill-asked notify must run after the response is already built from the committed result');
+});
+
+test('app/sw.js exists, shows one action, and never a second one', () => {
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'app', 'sw.js'), 'utf8');
+  assert.match(sw, /addEventListener\('push'/);
+  assert.match(sw, /addEventListener\('notificationclick'/);
+  assert.match(sw, /actions:\s*\[\{[^}]*\}\]/, 'exactly one action, not a menu of them');
+});
+
+test('the server carries an explicit worker-src and serves sw.js with the right headers', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(srv, /"worker-src 'self'"/);
+  assert.match(srv, /service-worker-allowed/);
+});
+
+test('the VAPID private key material never appears in a bootstrap or a response shape', () => {
+  const bootSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  // Checking whether VAPID_PRIVATE_KEY is CONFIGURED (the env var's name) is
+  // fine and expected; reading the KEY MATERIAL back out of what push.js
+  // hands back is what would leak it into a bootstrap.
+  assert.doesNotMatch(bootSrc, /\.privateKey\b|\.privateRaw\b|privateKeyB64u/);
+  assert.match(bootSrc, /publicKeyB64u/, 'only the public half is ever read here');
+});
+
+test('Settings -> Terminal carries the "Alerts on this device" switch, and it says plainly when it cannot work', () => {
+  const F = H.makeInstance({ role: 'Owner' });
+  const reason = F.pushBlockedReason();
+  assert.match(reason, /does not support push notifications/);
+  F.state.tab = { set: 'device' };
+  F.state.pushSub = false;
+  const s = F.g_settings();
+  const terminal = s.cards.find((c) => c.title === 'Terminal');
+  assert.ok(terminal, 'the Terminal card exists');
+  const sw = (terminal.toggles || []).find((t) => t.label === 'Alerts on this device');
+  assert.ok(sw, 'the alerts switch is on the Terminal card');
+  assert.strictEqual(sw.on, false);
+  assert.match(sw.sub, /does not support push notifications/);
+  assert.strictEqual(typeof sw.go, 'function');
+});
+
+test('web push: an endpoint that resolves to this server or its LAN is refused before it is dialled', async () => {
+  const push = require('../src/push');
+  for (const host of ['127.0.0.1', '0.0.0.0', '10.0.0.5', '192.168.1.1', '169.254.169.254', '[::1]', '[::]']) {
+    await assert.rejects(push.checkEndpointAllowed('https://' + host + '/x'), /public address/, host);
+  }
+  await assert.rejects(push.checkEndpointAllowed('http://8.8.8.8/x'), /https/);
+});

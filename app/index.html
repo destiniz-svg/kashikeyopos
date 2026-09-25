@@ -2473,6 +2473,11 @@ class Component extends DCLogic {
 
   state = {
     ready: !!window.KPOS,
+    // Whether THIS device holds a live push subscription — null while it has
+    // not been asked yet (the Terminal card asks once, in componentDidMount,
+    // which is not a user gesture and so never requests permission; it only
+    // reads back whatever the browser already knows).
+    pushSub: null,
     view: this.props.startView || this._saved.view || "pos",
     roleKey: (this._saved.session && this._saved.session.role) || this.props.startRole
       || (this._saved.session ? this._saved.roleKey : null) || "Cashier",
@@ -3061,6 +3066,9 @@ class Component extends DCLogic {
     this.checkIdle();
     window.addEventListener("resize", this._onResize);
     this._mountRest();
+    // Read-only: asks the browser what it already knows, never Notification
+    // permission (that needs a click — see togglePushAlerts()).
+    this.refreshPushSub();
     // Measured, not asserted — see cacheSize().
     try {
       if (navigator.storage && navigator.storage.estimate) {
@@ -3356,6 +3364,26 @@ class Component extends DCLogic {
       const d = e.detail || {};
       this.setState({ buildStale: { mine: d.mine || null, outlet: d.outlet || null, at: Date.now() } });
     });
+    /* A NOTIFICATION'S ONE ACTION. app/sw.js shows the alert and forwards
+       the tap here (a signed-in tab is focused rather than a second one
+       opened) as one event carrying what the push already told the lock
+       screen — a table or a ticket, never a total or a name. Orders &
+       Tickets is where all three of this slice's events (order ready, a
+       bill asked, a QR order waiting) are already listed, so "the right
+       screen" is that tab; a future slice can jump straight to the ticket
+       or the pay screen once each has a direct route from here. */
+    window.addEventListener("kpos-push-open", (e) => {
+      this.setState({ view: "orders", drawer: false });
+    });
+    try {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener("message", (e) => {
+          if (e.data && e.data.type === "kpos-push-open") {
+            window.dispatchEvent(new CustomEvent("kpos-push-open", { detail: e.data.data || {} }));
+          }
+        });
+      }
+    } catch (e) {}
     window.addEventListener("kpos-live", (e) => {
       this.applyLive((e.detail || {}).state);
       this.syncCurrency();
@@ -12452,6 +12480,111 @@ class Component extends DCLogic {
     this.toast("Locked after " + mins + " minutes idle", "warn");
   }
   touch() { if (Date.now() - (this.state.lastTouch || 0) > 20000) this.setState({ lastTouch: Date.now() }); }
+
+  /* ═══ WEB PUSH: "Alerts on this device" ════════════════════════════════
+     DESIGN CRITIQUE, done before this control was built (standing rule):
+
+     Who gets woken, by what. Order-ready wakes the ONE staff member who
+     opened the ticket — never the whole floor, because "your table is
+     ready" on every phone in the room is noise that trains people to
+     ignore it. A bill asked or a QR order waiting wakes TILL DEVICES,
+     rank >= 2 — the people who can actually walk over and accept or
+     settle — never the kitchen, which has its own pass to watch.
+
+     Noise budget. The service worker tags each notification by
+     kind+table/ticket and sets `renotify`, so a guest mashing "ask for the
+     bill" replaces the standing alert rather than stacking five identical
+     ones. TTL is short (60s server-side default): this is a nudge to act
+     now, not a message to read later, and a push service holding a stale
+     one for a phone that was off for an hour is not useful past the
+     first minute or two of it.
+
+     Lock-screen privacy. The payload a push carries is composed entirely
+     server-side (src/notify.js) and is checked there against exactly this
+     rule: what happened and where — never a total, a guest's name, a
+     phone number, or anything else a passer-by glancing at a locked
+     screen should not read.
+
+     Targets and contrast. This reuses the shared `toggles` row the
+     Security and Service cards already render (voidPin, showCost, …) —
+     the same 48px switch, the same token colours already measured at
+     ≥7:1 in both themes — rather than a new component with its own
+     accessibility pass to redo. */
+
+  // Read-only: what the browser already knows. Never asks permission —
+  // that needs a user gesture, and componentDidMount is not one.
+  refreshPushSub() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      this.setState({ pushSub: false }); return;
+    }
+    navigator.serviceWorker.getRegistration("/sw.js").then((reg) => {
+      if (!reg) { this.setState({ pushSub: false }); return null; }
+      return reg.pushManager.getSubscription().then((sub) => this.setState({ pushSub: !!sub }));
+    }).catch(() => this.setState({ pushSub: false }));
+  }
+
+  // Says plainly when the switch cannot work, BEFORE asking permission —
+  // asking and then failing burns the one gesture a browser lets a site
+  // ask with per session on some platforms.
+  pushBlockedReason() {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return "This browser does not support push notifications";
+    }
+    const ua = navigator.userAgent || "";
+    const iOS = /iPad|iPhone|iPod/.test(ua)
+      || (ua.indexOf("Macintosh") >= 0 && navigator.maxTouchPoints > 1);
+    const standalone = window.navigator.standalone === true
+      || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+    if (iOS && !standalone) {
+      return "Add Kashikeyo to your Home Screen first — iOS only delivers alerts to an installed app, not a Safari tab";
+    }
+    if (Notification.permission === "denied") {
+      return "Notifications are blocked for this site — allow them for Kashikeyo in your browser or system settings, then try again";
+    }
+    if (!(K().PUSH_KEY)) return "This install has no push key yet — ask an administrator to check the server";
+    return null;
+  }
+
+  async togglePushAlerts() {
+    const B = window.KPOS_BRIDGE;
+    if (this.state.pushSub) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+        const sub = reg && await reg.pushManager.getSubscription();
+        if (sub) {
+          if (B && B.pushUnsubscribe) await B.pushUnsubscribe(sub.endpoint).catch(() => {});
+          await sub.unsubscribe();
+        }
+      } catch (e) { /* the switch still reads off, which is the honest state */ }
+      this.setState({ pushSub: false });
+      this.toast("Alerts off for this device");
+      return;
+    }
+    const reason = this.pushBlockedReason();
+    if (reason) { this.toast(reason, "warn"); return; }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        this.toast("Permission denied — allow notifications for Kashikeyo to get alerts here", "warn");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      // The public key only — the private half never leaves the server.
+      const raw = atob(K().PUSH_KEY.replace(/-/g, "+").replace(/_/g, "/")
+        + "===".slice((K().PUSH_KEY.length + 3) % 4));
+      const applicationServerKey = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) applicationServerKey[i] = raw.charCodeAt(i);
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+      const j = sub.toJSON();
+      if (!B || !B.pushSubscribe) throw new Error("Not connected to an outlet yet");
+      await B.pushSubscribe({ endpoint: j.endpoint, keys: j.keys });
+      this.setState({ pushSub: true });
+      this.toast("Alerts on for this device");
+    } catch (e) {
+      this.toast((e && e.message) || "Could not turn on alerts", "err");
+    }
+  }
   // Derived, never stored: an hourly rate kept as its own field drifts away
   // from the contract salary, and then the timesheet and the payroll run
   // disagree about what a shift cost. basic ÷ the statutory month of hours.
@@ -24683,6 +24816,12 @@ class Component extends DCLogic {
           // a cache size in megabytes, never measured. Both come from somewhere real, and
           // where the browser will not say, the row says it will not.
           rows: [["App version", this.appVer()], ["Offline cache", this.cacheSize()], ["Receipt printer", P.receiptPrinter || "not bound"], ["Kitchen printer", P.kotPrinter || "not bound"], ["Paper", P.paper + " mm \u00b7 " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
+          toggles: [
+            { label: "Alerts on this device", sub: this.state.pushSub === null ? "Checking\u2026"
+                : this.state.pushSub ? "Order ready, bill asked and QR orders wake this device"
+                : (this.pushBlockedReason() || "Off \u2014 turn on to be woken by this device"),
+              on: !!this.state.pushSub, go: () => this.togglePushAlerts() }
+          ],
           foot: "Bound to this outlet by device registration.",
           go: gate(() => this.openForm("terminal")) }
       ]);

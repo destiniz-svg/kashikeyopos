@@ -775,6 +775,20 @@
       });
     }
 
+    /* ── web push subscriptions ──────────────────────────────────────────
+       Not an outbox op: subscribing is a fact about THIS browser's push
+       registration, useless replayed against a different one, and a
+       failed subscribe must tell the person who pressed the switch right
+       away rather than sitting in an outbox waiting to be pushed. */
+    pushSubscribe(sub) {
+      return this._fetch("/api/outlet/" + this.outletId + "/push/subscribe",
+        { method: "POST", body: sub });
+    }
+    pushUnsubscribe(endpoint) {
+      return this._fetch("/api/outlet/" + this.outletId + "/push/subscribe",
+        { method: "DELETE", body: { endpoint: endpoint } });
+    }
+
     /* ── the only cross-outlet read, and it is aggregates ───────────────── */
     estateDay(date) {
       if (this.rank < 5) return Promise.reject(new Error("rank 5 required"));
