@@ -7832,7 +7832,7 @@ class Component extends DCLogic {
       toastMsg: s.toast ? s.toast.msg : "",
       // A toast is centred on the viewport, so a long message has to be told it
       // cannot grow past it — otherwise both ends run off screen on a phone.
-      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
+      toastStyle: "position:fixed;left:50%;bottom:" + (s.view === "pos" && s.pane !== "layout" && this.effBp() === "m" ? "calc(76px + env(safe-area-inset-bottom))" : "26px") + ";transform:translateX(-50%);z-index:80;max-width:calc(100vw - 28px);text-align:center;text-wrap:pretty;padding:11px 20px;border-radius:999px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--warn);color:var(--on-warn)"),
       hasModal: !!s.modal,
       // A lock is not a modal: it has no close, no scrim dismissal and no
       // escape. Anything else makes the PIN decorative.
