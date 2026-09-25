@@ -326,9 +326,11 @@
             </div>
             <div style="{{ paneActionsStyle }}">
               <div style="{{ legendStyle }}">
-                <span><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--line-3)"></span>Available</span>
-                <span><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--warn)"></span>Occupied</span>
-                <span><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--blue)"></span>Reserved</span>
+                <span style="color:var(--text-dim)">Water rises with the wait</span>
+                <span><span style="width:10px;height:10px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px;background:var(--amber-dim);box-shadow:inset 0 0 0 1px var(--amber)"></span>Seated</span>
+                <span><span style="width:10px;height:10px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px;background:var(--info-dim);box-shadow:inset 0 0 0 1px var(--blue)"></span>Cooking</span>
+                <span><span style="width:10px;height:10px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px;background:var(--ok-dim);box-shadow:inset 0 0 0 1px var(--green)"></span>Ready</span>
+                <span><span style="width:10px;height:10px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px;background:var(--danger-dim);box-shadow:inset 0 0 0 1px var(--danger)"></span>Late</span>
               </div>
               <button onClick="{{ floorEditGo }}" style="{{ floorEditStyle }}">{{ floorEditLabel }}</button>
             </div>
@@ -366,7 +368,7 @@
               <button onClick="{{ t.go }}" onContextMenu="{{ t.ctx }}" onTouchStart="{{ t.press }}" onTouchEnd="{{ t.release }}" onTouchMove="{{ t.release }}" title="{{ t.hint }}" style="{{ t.style }}">
                 <span class="water" style="{{ t.water }}"></span>
                 <span style="display:flex;justify-content:space-between;align-items:flex-start;width:100%;gap:6px">
-                  <span class="disp" style="font-size:22px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-family:var(--font-display,'JetBrains Mono',monospace)">{{ t.label }}</span>
+                  <span class="disp" style="font-size:26px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-family:var(--font-display,'JetBrains Mono',monospace)">{{ t.label }}</span>
                   <span style="{{ t.chip }}">{{ t.chipText }}</span>
                 </span>
                 <span style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;gap:6px;margin-top:14px">
@@ -6559,7 +6561,7 @@ class Component extends DCLogic {
       // Ready is the only green on this floor: it means go and carry it.
       const rung = st === "occupied" ? this.ticketStage(i) : -1;
       const FLOOR = [
-        ["Open", "var(--warn)", "var(--warn-dim);color:var(--warn-bright)"],
+        ["Seated", "var(--amber)", "var(--amber-dim);color:var(--amber-bright)"],
         ["Cooking", "var(--blue)", "var(--info-dim);color:var(--blue-bright)"],
         ["Ready", "var(--green)", "var(--ok-dim);color:var(--green)"],
         ["Served", "var(--warn)", "var(--warn-dim);color:var(--warn-bright)"]
@@ -6599,21 +6601,25 @@ class Component extends DCLogic {
         // per-key diff reset the stripe: it sets the shorthand when selection
         // changes and never re-applies a border-left that did not change, so
         // picking a second table used to blank the first one's status colour.
-        style: (() => {
-          const side = (edit ? "1px dashed " : "1px solid ") + (on && !edit ? "var(--text-dim)" : "var(--line)");
-          return "position:relative;overflow:hidden;isolation:isolate;display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:" + (on && !edit ? "var(--bg-3)" : "var(--bg-1)")
-            + ";border-top:" + side + ";border-right:" + side + ";border-bottom:" + side
-            + ";border-left:3px solid " + accent
-            + ";box-shadow:" + (on && !edit ? "inset 0 0 0 1px var(--text-dim)" : "none") + ";transition:.12s";
-        })(),
-        chip: "font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (edit ? "var(--mute-dim);color:var(--text-dim)" : rw ? rw[2] : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
-        chipText: edit ? tb.seats + " seats" : rw ? rw[0] : st === "reserved" ? "Res" : "Free",
+        /* THE TILE STAFF READ ALL SHIFT (the new layout). Bigger, a state said
+           as a WORD, the wait carried by the water rather than a stripe, and a
+           selected table ringed in the look's accent so it cannot be missed.
+           One border shorthand only: mixing it with border-left is how
+           React's per-key diff used to blank a stripe. */
+        style: "position:relative;overflow:hidden;isolation:isolate;display:flex;flex-direction:column;justify-content:space-between;gap:10px;text-align:left;"
+          + "padding:14px 14px 12px;border-radius:16px;min-height:" + (isPhone ? 108 : 118) + "px;background:var(--bg-1);"
+          + "border:" + (edit ? "1px dashed var(--line-2)" : late ? "1.5px solid var(--danger)" : st === "reserved" ? "1px dashed var(--blue)" : "1px solid var(--line)")
+          + ";box-shadow:" + (on && !edit ? "0 0 0 3px var(--bg),0 0 0 6px var(--amber)" : "none") + ";transition:transform .12s ease,box-shadow .12s ease",
+        chip: "font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:999px;white-space:nowrap;background:"
+          + (edit ? "var(--mute-dim);color:var(--text-dim)" : late ? "var(--danger-dim);color:var(--danger-bright)" : rw ? rw[2] : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
+        chipText: edit ? tb.seats + " seats" : late ? "Late" : rw ? rw[0] : st === "reserved" ? "Reserved" : "Free",
         meta: edit ? tb.zone
           : st === "reserved" ? t.resName + " · " + t.resAt
-          : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m") + (late ? " · over target" : "")
-          : tb.seats + " seats",
+          : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills" : t.party + " covers") + " · " + this.tkAge(t) + " min"
+            + (t.waiter ? " · " + String(t.waiter).split(" ")[0] : "")
+          : tb.seats + " seats · tap to seat",
         total: edit || !tot || !this.can("pos", "a") ? "" : MVRc(tot),
-        totalStyle: "font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap"
+        totalStyle: "font-size:16px;font-weight:700;color:var(--text);white-space:nowrap;font-family:var(--font-display,'JetBrains Mono',monospace)"
       });
     });
 
@@ -7272,7 +7278,7 @@ class Component extends DCLogic {
       resumeLabel: "Resume a parked bill · " + heldN,
       resumeStyle: "width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:8px;padding:11px 14px;border-radius:10px;min-height:44px;font-size:12px;font-weight:700;font-family:inherit;background:var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)",
       hasFloorState: out86.length > 0 && s.pane === "menu",
-      tableGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (this.effBp() === "m" ? 132 : 150) + "px,1fr));gap:10px;animation:"
+      tableGridStyle: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (this.effBp() === "m" ? 140 : 170) + "px,1fr));gap:12px;animation:"
         + (String(s.zone || "").length % 2 ? "krise" : "kriseb") + " .26s cubic-bezier(.2,.7,.3,1)",
       // An animation only restarts when its NAME changes, so the grid alternates
       // between two identical keyframes keyed off the section. The result: the
