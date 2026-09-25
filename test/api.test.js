@@ -5929,6 +5929,39 @@ test('a credit refund lowers the customer\'s drawn balance', opts, async () => {
   assert.strictEqual(await used(), start + 140, 'the refunded 60 is no longer owed');
 });
 
+/* Reported by the money retest: a refund reversed the whole amount through 4000,
+   leaving output tax and the service pool overstated. The till still sends its
+   own (wrong) split — tax extracted as if inclusive, no service — so the server
+   derives the legs from the sale, in proportion to what is refunded. */
+test('a refund reverses revenue, service and tax in the sale\'s own proportions', opts, async () => {
+  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 10,
+    tax: 8.8, round: 0, total: 118.8, taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8,
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'card', amt: 118.8 }], stockMoves: []
+  } }]);
+  const saleId = sold.body.results[0].result.saleId;
+  const legs = async (amt) => {
+    const rf = await push([{ opId: uuid(), kind: 'refund', payload: {
+      saleId: saleId, bizDate: today(), net: amt, tax: 0, svc: 0, amt: amt,
+      method: 'card', reason: 'Wrong order' } }]);
+    const cn = rf.body.results[0].result.creditNoteId;
+    const rows = await db.withOutlet({ outletId, rank: 5, actor: null }, (c) => c.query(
+      'SELECT l.account_code AS a, sum(l.dr - l.cr)::numeric AS v'
+      + ' FROM journal_line l JOIN journal j ON j.id = l.journal_id'
+      + " WHERE j.source = 'refund' AND j.source_id = $1 GROUP BY 1", [String(cn)]));
+    const by = {}; rows.rows.forEach((r) => { by[r.a] = Number(r.v); });
+    return by;
+  };
+  const whole = await legs(118.8);
+  assert.strictEqual(whole['4000'], 100, 'revenue gives back the net');
+  assert.strictEqual(whole['2300'], 10, 'the service pool gives back its share');
+  assert.strictEqual(whole['2200'], 8.8, 'output tax is reversed, not left owed');
+  const half = await legs(59.4);
+  assert.deepStrictEqual([half['4000'], half['2300'], half['2200']], [50, 5, 4.4],
+    'a partial refund carries a partial share of each');
+});
+
 // One bill paid two ways is one visit at its own total. The history joined
 // payments bare, so a split counted twice and spent double.
 test('a split bill is one visit at its total, not one per tender', opts, async () => {
