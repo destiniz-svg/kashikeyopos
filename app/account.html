@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html data-theme="light">
+<html data-theme="light" data-look="lagoon">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,9 +12,16 @@
 /* Follow the reader's own setting. The terminal has a theme switcher of its
    own; a front door does not, and a phone set to dark at midnight should not
    be handed a white page. Inline and first, so there is no flash of the
-   wrong one. */
+   wrong one.
+
+   There is no outlet yet, so there is no store look preference to read
+   either — this is the state applyLook() in guest.html is in for the same
+   reason: new stores start on Lagoon (PRODUCT.md, decided 2026-09-25), so
+   that is the default here too, and it is set from JS rather than left on
+   the markup alone so it survives the same way the theme does. */
 (function () {
   try {
+    document.documentElement.setAttribute("data-look", "lagoon");
     var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
     var set = function () {
       document.documentElement.setAttribute("data-theme", dark && dark.matches ? "dark" : "light");
@@ -57,7 +64,7 @@ body{padding-bottom:env(safe-area-inset-bottom,0px);
 
 /* ── identity ───────────────────────────────────────────────────────────── */
 .brand{display:flex;align-items:center;gap:11px;margin-bottom:clamp(26px,4vw,40px)}
-.brand img{width:38px;height:38px;border-radius:12px;background:var(--brand-plate);
+.brand img{width:38px;height:38px;border-radius:14px;background:var(--brand-plate);
   border:1px solid var(--brand-plate-line);object-fit:contain;padding:3px}
 .brand b{font-size:15px;font-weight:800;letter-spacing:-.03em;display:block;line-height:1.1}
 .brand span{color:var(--brand-olive-bright)}
@@ -70,10 +77,10 @@ h1{font-size:clamp(26px,4.2vw,34px);font-weight:800;letter-spacing:-.042em;
 
 /* ── the segmented control: two doors, both visible ─────────────────────── */
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:0 0 24px;
-  background:var(--bg-2);border:1px solid var(--line);border-radius:13px}
-.seg button{appearance:none;border:0;background:transparent;color:var(--text-muted);
-  font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:44px;
-  border-radius:9px;cursor:pointer;transition:background .16s,color .16s}
+  background:var(--bg-2);border:1px solid var(--line);border-radius:14px}
+.seg button{appearance:none;border:0;text-align:center;background:transparent;color:var(--text-muted);
+  font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:48px;
+  border-radius:8px;cursor:pointer;transition:background .16s,color .16s}
 .seg button:hover{color:var(--text-dim)}
 .seg button[aria-selected="true"]{background:var(--bg-3);color:var(--text);
   box-shadow:0 1px 2px rgba(0,0,0,.14),inset 0 0 0 1px var(--line-2);font-weight:700}
@@ -86,7 +93,7 @@ h1{font-size:clamp(26px,4.2vw,34px);font-weight:800;letter-spacing:-.042em;
 .f{display:flex;flex-direction:column;gap:7px;margin-bottom:16px;min-width:0}
 label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;
   color:var(--text-faint)}
-input{background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px;
+input{background:var(--bg-2);border:1px solid var(--line-2);border-radius:14px;
   padding:13px 15px;min-height:50px;color:var(--text);font:inherit;font-size:16px;
   width:100%;outline:none;transition:border-color .14s,background .14s,box-shadow .14s}
 input::placeholder{color:var(--text-faint);opacity:.7}
@@ -110,7 +117,7 @@ input:focus{border-color:var(--amber);background:var(--bg-1);
    work that succeeded. A send that did not happen is neither: the account was
    made and no code is coming, which is a WARNING and now reads as one. */
 .msg{font-size:13px;font-weight:600;margin:0 0 16px;text-wrap:pretty;
-  padding:11px 13px;border-radius:11px;border:1px solid transparent;line-height:1.5}
+  padding:11px 13px;border-radius:10px;border:1px solid transparent;line-height:1.5}
 .msg.err{color:var(--danger-bright);background:var(--bad-dim);border-color:var(--danger-line)}
 .msg.ok{color:var(--go-bright);background:var(--ok-dim);border-color:var(--go-line)}
 .msg.warn{color:var(--warn-bright);background:var(--warn-dim);border-color:var(--warn-line)}
@@ -118,20 +125,20 @@ input:focus{border-color:var(--amber);background:var(--bg-1);
 /* ── actions ────────────────────────────────────────────────────────────── */
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-button.go{width:100%;padding:15px;min-height:54px;border-radius:13px;border:0;
+button.go{width:100%;padding:15px;min-height:56px;border-radius:14px;border:0;text-align:center;
   background:var(--amber);color:var(--on-amber);font-size:15px;font-weight:700;
   letter-spacing:-.01em;transition:transform .12s,filter .14s;
   box-shadow:0 1px 2px rgba(0,0,0,.16),0 6px 16px rgba(0,0,0,.14)}
 button.go:hover:not(:disabled){filter:brightness(1.06)}
 button.go:active:not(:disabled){transform:translateY(1px)}
 button.go:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
-button.ghost{width:100%;padding:13px;min-height:50px;border-radius:12px;
+button.ghost{width:100%;padding:13px;min-height:50px;border-radius:14px;
   border:1px solid var(--line-2);background:var(--bg-1);color:var(--text);
   font-size:14px;font-weight:600;display:flex;align-items:center;
   justify-content:center;gap:10px;transition:background .14s,border-color .14s}
 button.ghost:hover{background:var(--bg-2);border-color:var(--line-3)}
 button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
-  font-weight:600;padding:11px 6px;min-height:44px;border-radius:8px}
+  font-weight:600;padding:11px 6px;min-height:48px;border-radius:8px}
 button.link:hover{text-decoration:underline}
 .alts{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:520px){ .alts.two{grid-template-columns:1fr 1fr} }
@@ -148,9 +155,9 @@ button.link:hover{text-decoration:underline}
 /* ── the canvas: three facts, not three adjectives ──────────────────────── */
 .canvas{display:none;position:relative;overflow:hidden;
   background:
-    radial-gradient(120% 90% at 88% 4%, rgba(244,85,60,.24) 0%, transparent 56%),
-    radial-gradient(90% 80% at 6% 96%, rgba(138,148,64,.20) 0%, transparent 58%),
-    linear-gradient(158deg,#241110 0%,#171012 44%,#0e0e10 100%);
+    radial-gradient(120% 90% at 88% 4%, rgba(25,198,214,.20) 0%, transparent 56%),
+    radial-gradient(90% 80% at 6% 96%, rgba(21,140,120,.18) 0%, transparent 58%),
+    linear-gradient(158deg,#0b2837 0%,#051a24 44%,#03131b 100%);
   color:#f3efe8;padding:clamp(40px,5vw,72px)}
 @media (min-width:1000px){ .canvas{display:flex;flex-direction:column;justify-content:center} }
 .canvas:after{content:"";position:absolute;inset:0;pointer-events:none;
@@ -171,7 +178,7 @@ button.link:hover{text-decoration:underline}
 .cv li span{display:block;font-size:12.5px;line-height:1.6;color:rgba(243,239,232,.62);
   text-wrap:pretty}
 .cv code{font-family:'JetBrains Mono',monospace;font-size:11.5px;
-  color:#ffc9bd;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px}
+  color:#ffc9bd;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:4px}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
