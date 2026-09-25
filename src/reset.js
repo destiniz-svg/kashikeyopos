@@ -54,7 +54,7 @@ const SETUP = [
   'account', 'asset', 'banner', 'employee', 'ingredient', 'ingredient_unit',
   'item', 'item_modifier', 'location', 'maintenance_log', 'menu_category',
   'menu_section', 'modifier', 'modifier_group', 'opex', 'price_override',
-  'promo', 'recipe_line', 'rota_shift', 'setting', 'table_def', 'zone'
+  'promo', 'push_subscription', 'recipe_line', 'rota_shift', 'setting', 'table_def', 'zone'
 ];
 
 function ident(s) {

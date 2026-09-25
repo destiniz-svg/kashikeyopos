@@ -7509,100 +7509,6 @@ test('an invoice scan resolves against the outlet, and posts nothing', opts, asy
   }
 });
 
-test('shut down cleanly', opts, async () => {
-  if (server) await new Promise((res) => server.close(res));
-  if (db) await db.shutdown();
-});
-
-/* ── plumbing ───────────────────────────────────────────────────────────── */
-function uuid() { return require('crypto').randomUUID(); }
-function round(n) { return Math.round(n * 100) / 100; }
-
-/* The business date belongs to the OUTLET, and the fixture outlet is in Malé.
-   This was `toISOString()` — the container's UTC date — twice, in two copies of
-   the same function. Every caller uses it as a business date, which the server
-   files on the outlet's own calendar, so from 19:00 UTC the fixture and the
-   server were a day apart. It only ever SHOWED on the trial countdown, which
-   does arithmetic across the boundary: that test failed for the five hours
-   before midnight UTC, every day, with an assertion message about exactly this.
-   A suite that is red every evening is a suite people stop reading. */
-const FIXTURE_TZ = 'Indian/Maldives';
-function today() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: FIXTURE_TZ });
-}
-
-/* `fetch` refuses to set a Host header, and Host is the whole question here. */
-function callHost(host, method, path) {
-  const http = require('http');
-  const u = new URL(base + path);
-  return new Promise((resolve, reject) => {
-    const req = http.request({ host: u.hostname, port: u.port, method,
-      path: u.pathname + u.search, headers: { host: host } }, (res) => {
-      let text = '';
-      res.setEncoding('utf8');
-      res.on('data', (d) => { text += d; });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function call(method, path, body, headers) {
-  const res = await fetch(base + path, {
-    method,
-    // A redirect is the ANSWER for the OAuth callback, not a step on the way
-    // to one — following it would test the page it lands on instead.
-    redirect: 'manual',
-    headers: Object.assign({ 'content-type': 'application/json' }, headers || {}),
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  const text = await res.text();
-  let parsed = null;
-  try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = { raw: text }; }
-  return { status: res.status, body: parsed,
-    headers: { location: res.headers.get('location'),
-      'retry-after': res.headers.get('retry-after') } };
-}
-const auth = (t) => (t ? { authorization: 'Bearer ' + t } : {});
-const get = (p, t) => call('GET', p, undefined, auth(t));
-const getWith = (p, h) => call('GET', p, undefined, h);
-const post = (p, b, t) => call('POST', p, b, auth(t));
-const postWith = (p, b, h) => call('POST', p, b, h);
-const patch = (p, b, t) => call('PATCH', p, b, auth(t));
-const del = (p, b, t) => call('DELETE', p, b, auth(t));
-const push = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, token);
-
-/* The code the outlet issued, read off the floor board — which is where a
-   server reads it out to the guest. The response never carries it (that is
-   MEMBER_CODE_ECHO, and it is development only, because it turns a phone
-   number into a login), so a test must look where a person would. */
-function boardCode(match) {
-  // ORDER BY `at`, not `id`: the id is a uuid, so ordering on it returns an
-  // arbitrary row and a test that passes by luck.
-  return one("SELECT detail FROM guest_request WHERE kind = 'member_code'"
-    + ' AND detail LIKE $1 ORDER BY at DESC LIMIT 1', ['%' + match + '%'])
-    .then((r) => (/(\d{4})\s*$/.exec((r || {}).detail || '') || [])[1] || '');
-}
-
-/* Through the OWNER connection, because an outlet's login role has INSERT on
-   chain.audit and nothing else — a till that could read its own trail could
-   edit its own story. This is the connection a support engineer uses. */
-function asOwner(sql, params) {
-  return db.owner().query(sql, params || []).then((q) => q.rows[0]);
-}
-
-// Every row, where a test needs more than the first.
-function all2(sql, params) {
-  return db.withOutlet({ outletId, rank: 5, actor: null },
-    (c) => c.query(sql, params || []).then((q) => q.rows));
-}
-
-function one(sql, params) {
-  return db.withOutlet({ outletId, rank: 5, actor: null },
-    (c) => c.query(sql, params || []).then((q) => q.rows[0]));
-}
-
 /* ___ SLICE 2.3 . WEB PUSH ___ */
 
 // A local stub push service. Real endpoints (fcm.googleapis.com and the
@@ -7766,3 +7672,97 @@ test('web push: order ready wakes the one staff member who owns the ticket, and 
   assert.strictEqual(stub.hits.length, 1, 'order ready reached the ticket\'s own staff');
   await stub.close();
 });
+
+test('shut down cleanly', opts, async () => {
+  if (server) await new Promise((res) => server.close(res));
+  if (db) await db.shutdown();
+});
+
+/* ── plumbing ───────────────────────────────────────────────────────────── */
+function uuid() { return require('crypto').randomUUID(); }
+function round(n) { return Math.round(n * 100) / 100; }
+
+/* The business date belongs to the OUTLET, and the fixture outlet is in Malé.
+   This was `toISOString()` — the container's UTC date — twice, in two copies of
+   the same function. Every caller uses it as a business date, which the server
+   files on the outlet's own calendar, so from 19:00 UTC the fixture and the
+   server were a day apart. It only ever SHOWED on the trial countdown, which
+   does arithmetic across the boundary: that test failed for the five hours
+   before midnight UTC, every day, with an assertion message about exactly this.
+   A suite that is red every evening is a suite people stop reading. */
+const FIXTURE_TZ = 'Indian/Maldives';
+function today() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: FIXTURE_TZ });
+}
+
+/* `fetch` refuses to set a Host header, and Host is the whole question here. */
+function callHost(host, method, path) {
+  const http = require('http');
+  const u = new URL(base + path);
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: u.hostname, port: u.port, method,
+      path: u.pathname + u.search, headers: { host: host } }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { text += d; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function call(method, path, body, headers) {
+  const res = await fetch(base + path, {
+    method,
+    // A redirect is the ANSWER for the OAuth callback, not a step on the way
+    // to one — following it would test the page it lands on instead.
+    redirect: 'manual',
+    headers: Object.assign({ 'content-type': 'application/json' }, headers || {}),
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await res.text();
+  let parsed = null;
+  try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = { raw: text }; }
+  return { status: res.status, body: parsed,
+    headers: { location: res.headers.get('location'),
+      'retry-after': res.headers.get('retry-after') } };
+}
+const auth = (t) => (t ? { authorization: 'Bearer ' + t } : {});
+const get = (p, t) => call('GET', p, undefined, auth(t));
+const getWith = (p, h) => call('GET', p, undefined, h);
+const post = (p, b, t) => call('POST', p, b, auth(t));
+const postWith = (p, b, h) => call('POST', p, b, h);
+const patch = (p, b, t) => call('PATCH', p, b, auth(t));
+const del = (p, b, t) => call('DELETE', p, b, auth(t));
+const push = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, token);
+
+/* The code the outlet issued, read off the floor board — which is where a
+   server reads it out to the guest. The response never carries it (that is
+   MEMBER_CODE_ECHO, and it is development only, because it turns a phone
+   number into a login), so a test must look where a person would. */
+function boardCode(match) {
+  // ORDER BY `at`, not `id`: the id is a uuid, so ordering on it returns an
+  // arbitrary row and a test that passes by luck.
+  return one("SELECT detail FROM guest_request WHERE kind = 'member_code'"
+    + ' AND detail LIKE $1 ORDER BY at DESC LIMIT 1', ['%' + match + '%'])
+    .then((r) => (/(\d{4})\s*$/.exec((r || {}).detail || '') || [])[1] || '');
+}
+
+/* Through the OWNER connection, because an outlet's login role has INSERT on
+   chain.audit and nothing else — a till that could read its own trail could
+   edit its own story. This is the connection a support engineer uses. */
+function asOwner(sql, params) {
+  return db.owner().query(sql, params || []).then((q) => q.rows[0]);
+}
+
+// Every row, where a test needs more than the first.
+function all2(sql, params) {
+  return db.withOutlet({ outletId, rank: 5, actor: null },
+    (c) => c.query(sql, params || []).then((q) => q.rows));
+}
+
+function one(sql, params) {
+  return db.withOutlet({ outletId, rank: 5, actor: null },
+    (c) => c.query(sql, params || []).then((q) => q.rows[0]));
+}

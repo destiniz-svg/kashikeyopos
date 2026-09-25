@@ -195,7 +195,7 @@ async function checkEndpointAllowed(urlStr) {
     const allowHttp = process.env.NODE_ENV !== 'production' && process.env.PUSH_ALLOW_LOOPBACK === '1';
     if (!allowHttp) throw Object.assign(new Error('a push endpoint must be https'), { status: 400 });
   }
-  const { address } = await dns.promises.lookup(u.hostname);
+  const { address } = await dns.promises.lookup(u.hostname.replace(/^\[|\]$/g, ''));
   const flat = String(address).replace(/^::ffff:/i, '');
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(flat);
   const o = v4 ? v4.slice(1, 5).map(Number) : null;
