@@ -339,6 +339,7 @@ r.get('/pull', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
    it costs the client nothing and just keeps the socket looking alive to
    whatever sits between it and the browser. */
 const SSE_HEARTBEAT_MS = 25000;
+const SSE_LIFETIME_MS = 10 * 60 * 1000;
 
 r.get('/stream', sameOutlet, atLeast('kitchen'), function (req, res) {
   res.set({
@@ -355,8 +356,15 @@ r.get('/stream', sameOutlet, atLeast('kitchen'), function (req, res) {
     try { res.write(': heartbeat\n\n'); } catch (e) {}
   }, SSE_HEARTBEAT_MS);
 
+  /* A stream re-authenticates only when it reconnects, so none lives long:
+     a device signed out or demoted drops off within ten minutes, and no
+     connection outlives a proxy's request ceiling. The client reopens in
+     about a second after a clean close. */
+  const lifetime = setTimeout(function () { try { res.end(); } catch (e) {} }, SSE_LIFETIME_MS);
+
   req.on('close', function () {
     clearInterval(heartbeat);
+    clearTimeout(lifetime);
     remove();
   });
 });
