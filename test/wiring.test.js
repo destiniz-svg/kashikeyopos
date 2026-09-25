@@ -2460,6 +2460,62 @@ test('an unfired line from another device survives seed() with its attribution, 
   assert.strictEqual(v2.pickedUpFrom, '', 'sent — nothing left to pick up');
 });
 
+/* ═══ PER-TICKET VERSIONS (slice 2.2, Scenario G) ═══════════════════════════
+   Two waiters, two devices, both offline, both retype the covers on one
+   table. `H.covers_update` (and `move_table`, `ticket_status`) now guards its
+   UPDATE with `version < $lamport` — `ticket.version` (migration 058) holds
+   the lamport of whichever such edit last won, so the later lamport wins
+   regardless of which push reaches the outlet first. A client with no
+   lamport at all (an op queued by a build older than this) skips the guard
+   entirely and applies exactly as it always did. */
+test('a scalar ticket edit is guarded by lamport, not by arrival order', () => {
+  const APPLY = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+
+  // The entry point hands every handler the op's own lamport as a fourth
+  // argument — costing nothing to the other 110-odd handlers that ignore it.
+  assert.match(APPLY, /return fn\(c, op\.payload \|\| \{\}, ctx, op\.lamport\) \|\| \{\};/,
+    'applyOp passes the lamport through');
+
+  for (const kind of ['move_table', 'ticket_status', 'covers_update']) {
+    const i = APPLY.indexOf('H.' + kind + ' = async (c, p, ctx, lamport) =>');
+    assert.ok(i >= 0, kind + ' reads the lamport it was handed');
+    const body = APPLY.slice(i, APPLY.indexOf('\n};', i));
+    assert.match(body, /version < \$\d/, kind + ' only applies when its lamport beats the stored one');
+    assert.match(body, /conflict: \{ ticketId: id, field: /,
+      kind + ' answers a lost race with the field and the value that won, not an error');
+    // An op naming no lamport at all (`Number(lamport) || 0` is falsy) skips
+    // the guard and behaves exactly as before this slice.
+    assert.match(body, /const lam = Number\(lamport\) \|\| 0;/,
+      kind + ' falls back to unconditional last-write-wins for an old client');
+  }
+
+  // Migration 058: the column exists for outlets that already have the
+  // table, and provision_outlet() carries it for a brand-new one — the same
+  // two-places pattern 041/054 already used for an outlet-schema column.
+  const MIG = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'migrations', '058_a_later_covers_wins.sql'), 'utf8');
+  assert.match(MIG, /ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 0/,
+    'an existing outlet schema gets the column added');
+  assert.match(MIG, /pg_namespace WHERE nspname LIKE 'outlet\\_%'/,
+    'over every outlet schema, the same loop 041\\054 used');
+  const PROVISION = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'migrations', '003_outlet_provision.sql'), 'utf8');
+  assert.match(PROVISION, /version     bigint NOT NULL DEFAULT 0,/,
+    'and a brand-new outlet is provisioned with the column from birth');
+
+  // The loser is told once, on the ticket panel's own notice component —
+  // not a new one, and not silently dropped.
+  assert.match(SRC, /window\.addEventListener\("kpos-sync-done"/,
+    'the terminal listens for the push response, not just the tick');
+  assert.match(SRC, /x\.result && x\.result\.conflict/,
+    'and reads the conflict a lost race answers with');
+  assert.match(SRC, /Changed on the till: /,
+    'and says so in the words the spec names');
+  assert.match(SRC, /this\.toast\("Changed on the till: " \+ said, "warn"\)/,
+    'reusing the existing toast — the same notice every other'
+    + ' "the outlet already decided this" event on this screen uses');
+});
+
 test('a constraint refusal speaks English on the parked lane', () => {
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
   assert.match(sync, /out\.push\(\{ opId: op\.opId, error: opSays\(e\) \}\)/,

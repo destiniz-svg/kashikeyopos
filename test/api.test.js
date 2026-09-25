@@ -3022,6 +3022,130 @@ test('a replayed add_line updates the line it already made, not a second one', o
     'a line replayed under its own id updates the quantity, never orders twice');
 });
 
+/* ═══ PER-TICKET VERSIONS (slice 2.2, Scenario G) ═══════════════════════════
+   Two devices, both offline, both retype the covers on one ticket. On
+   reconnect the two pushes can reach the outlet in EITHER order — a flaky
+   link says nothing about which edit happened first — so the discriminating
+   case is the one where the LATER (higher-lamport) edit reaches the outlet
+   FIRST and the EARLIER edit arrives SECOND: plain last-write-wins-by-
+   arrival would let the stale edit clobber the fresher one on its way in.
+   `ticket.version` (migration 058) refuses it instead — the loser is
+   answered, not parked, and names the value that actually won. */
+test('the later lamport wins a ticket\'s covers, whichever push arrives first', opts, async () => {
+  const table = 'T81';
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185,
+    lid: uuid(), split: 0
+  } }]);
+  const before = await one("SELECT id, version FROM ticket WHERE table_no = $1"
+    + " AND status = 'open'", [table]);
+  assert.strictEqual(Number(before.version), 0,
+    'a ticket nobody has scalar-edited starts at version 0');
+
+  // Device B's edit is the causally LATER one (lamport 200) and reaches the
+  // outlet FIRST.
+  const winOp = { opId: uuid(), kind: 'covers_update', lamport: 200,
+    payload: { ticketId: before.id, party: 5 } };
+  const winPush = await push([winOp]);
+  assert.ok(!winPush.body.results[0].error, JSON.stringify(winPush.body));
+  assert.strictEqual(winPush.body.results[0].result.ok, true);
+
+  const afterWin = await one('SELECT party, covers, version FROM ticket WHERE id = $1', [before.id]);
+  assert.strictEqual(Number(afterWin.party), 5);
+  assert.strictEqual(Number(afterWin.version), 200,
+    'the version is the winning LAMPORT, not a counter of how many edits landed');
+
+  // Device A's edit is the causally EARLIER one (lamport 100) but its push
+  // reaches the outlet SECOND — a network delay, not a data race. It must
+  // still lose, because "last" means later lamport, not later arrival.
+  const loseOp = { opId: uuid(), kind: 'covers_update', lamport: 100,
+    payload: { ticketId: before.id, party: 3 } };
+  const losePush = await push([loseOp]);
+  assert.ok(!losePush.body.results[0].error,
+    'a lost race is answered, never an error — the outlet resolved it, this is not a network failure');
+  const res = losePush.body.results[0].result;
+  assert.strictEqual(res.ok, false);
+  assert.deepStrictEqual(res.conflict, { ticketId: before.id, field: 'covers', value: 5 },
+    'the loser is told the field and the value that actually won');
+
+  const afterLose = await one('SELECT party, covers, version FROM ticket WHERE id = $1', [before.id]);
+  assert.strictEqual(Number(afterLose.party), 5,
+    'the earlier edit never applied — nothing silently overwritten');
+  assert.strictEqual(Number(afterLose.version), 200,
+    'and the version the outlet holds is unchanged by the op that lost');
+
+  // A REPLAY OF THE LOSER IS STILL A NO-OP — the same opId, resent (a retry,
+  // or an outbox that has not yet learned its own op was acknowledged).
+  const replay = await push([loseOp]);
+  assert.ok(replay.body.results[0].replay, 'the server recognises its own op back');
+  assert.strictEqual(replay.body.results[0].result.ok, false,
+    'and hands back the SAME conflict it answered with the first time, not a fresh comparison');
+
+  // AN OLD CLIENT SENDING NO LAMPORT AT ALL gets the pre-058 behaviour
+  // exactly: applied unconditionally, whatever the ticket's version already
+  // is — a device naming no clock cannot lose a comparison against one.
+  const oldOp = { opId: uuid(), kind: 'covers_update',
+    payload: { ticketId: before.id, party: 9 } };
+  const oldPush = await push([oldOp]);
+  assert.ok(!oldPush.body.results[0].error, JSON.stringify(oldPush.body));
+  assert.strictEqual(oldPush.body.results[0].result.ok, true);
+  const afterOld = await one('SELECT party, version FROM ticket WHERE id = $1', [before.id]);
+  assert.strictEqual(Number(afterOld.party), 9,
+    'a client naming no lamport still writes');
+  assert.strictEqual(Number(afterOld.version), 200,
+    'and never advances the version, since it named no clock to advance it with');
+});
+
+test('a scalar edit with no conflict applies exactly as before', opts, async () => {
+  const table = 'T82';
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185,
+    lid: uuid(), split: 0
+  } }]);
+  const t = await one("SELECT id FROM ticket WHERE table_no = $1 AND status = 'open'", [table]);
+  const r = await push([{ opId: uuid(), kind: 'covers_update', lamport: 50,
+    payload: { ticketId: t.id, party: 4 } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body));
+  assert.strictEqual(r.body.results[0].result.ok, true);
+  assert.ok(!r.body.results[0].result.conflict, 'no race in play, so no conflict — the ordinary path');
+  const row = await one('SELECT party, version FROM ticket WHERE id = $1', [t.id]);
+  assert.strictEqual(Number(row.party), 4);
+  assert.strictEqual(Number(row.version), 50);
+});
+
+test('a second device is told which covers won, and only that device', opts, async () => {
+  const table = 'T83';
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: table, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185,
+    lid: uuid(), split: 0
+  } }]);
+  const t = await one("SELECT id FROM ticket WHERE table_no = $1 AND status = 'open'", [table]);
+
+  // An ENROLLED device — `chain.session.device_id` is a foreign key, so an
+  // id the outlet never issued is refused at sign-in.
+  const enrolB = await post('/api/auth/devices', { label: 'Phone B', kind: 'till' }, token);
+  assert.strictEqual(enrolB.status, 201, JSON.stringify(enrolB.body));
+  const cashier = await post('/api/auth/pin', { outletId, pin: '6520', deviceId: enrolB.body.id });
+  assert.strictEqual(cashier.status, 200, JSON.stringify(cashier.body));
+
+  // The till (device A, the token every other test uses) wins with the
+  // later lamport.
+  const win = await push([{ opId: uuid(), kind: 'covers_update', lamport: 400,
+    payload: { ticketId: t.id, party: 6 } }]);
+  assert.strictEqual(win.body.results[0].result.ok, true);
+
+  // The phone (device B) pushes its own, earlier edit — and is the one told
+  // it lost, on ITS OWN push response. The till, which won, hears nothing.
+  const lose = await post('/api/outlet/' + outletId + '/sync/push', { ops: [
+    { opId: uuid(), kind: 'covers_update', lamport: 300,
+      payload: { ticketId: t.id, party: 2 } }
+  ] }, cashier.body.token);
+  assert.strictEqual(lose.status, 200);
+  assert.strictEqual(lose.body.results[0].result.ok, false);
+  assert.strictEqual(lose.body.results[0].result.conflict.value, 6,
+    'device B is told the till\'s covers, by name — the current, true value');
+});
+
 /* ═══ A SETTING IS THE OUTLET'S, SO IT REACHES EVERY TERMINAL ═══════════════
    An owner sitting at home changes a policy — how long until a till locks,
    whether a void needs a PIN, what the acquirer charges, what a dollar is
