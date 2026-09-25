@@ -20603,11 +20603,11 @@ class Component extends DCLogic {
         },
         fields: [
           { k: "why", label: "Why", v: "", full: 1 },
-          { k: "confirm", label: "Type RESET to confirm", v: "", full: 1 }
+          { k: "confirm", label: "Type the word RESET here", v: "", full: 1 }
         ],
         onSave: async (v) => {
           if (this.rank() < 5) return this.toast("Clearing a store's trading is the owner's decision", "err");
-          if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("Type RESET exactly to confirm", "warn");
+          if (String(v.confirm).trim().toUpperCase() !== "RESET") return this.toast("The second box needs the word RESET, in capitals — not the reason", "warn");
           const B = window.KPOS_BRIDGE;
           if (!B || !B.resetTrade) return this.toast("This needs the outlet \u2014 the terminal is not connected to one", "warn");
           this.setState({ modal: null });
