@@ -942,7 +942,17 @@ the operator did the work in, which is the only tiebreak that means anything.
 This does not make concurrent scalar edits MERGE. Two waiters retyping the
 covers on one table still resolve last-write-wins; what changed is that "last"
 now means the later event rather than the luckier connection. Per-field
-versioning is the answer to the rest, and it is not here.
+versioning is the answer to the rest, and it landed in migration 058:
+`party_lamport`, `table_lamport` and `note_lamport` each hold the lamport of
+the edit (`covers_update`, `move_table`, `ticket_status`) that last won THAT
+field, so the same "later lamport wins" rule this section just described
+applies field by field. One stamp per field, not per ticket: a single stamp
+turned a covers change into a refusal of a table move nobody else made —
+a false conflict that drops a real edit — and the device whose edit lost is told, once, on the push that lost
+("Changed on the till: covers are now 4"), rather than the change vanishing
+with nothing on either screen to say so. A refusal here is not a network
+failure either: the outlet resolved the conflict and answered, so the losing
+op is never parked or retried.
 
 ### The tables a poll reads every five seconds
 
