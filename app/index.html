@@ -5418,7 +5418,12 @@ class Component extends DCLogic {
       return [
         card((this.taxAt().tax || "GST") + " collected", MVRc(gst), "Net of any credit note reversal", amber),
         card("Journal lines", String(J.length), "Every one posted by an event"),
-        card("Cost of sales", MVRc(cogsA), netA ? Math.round((cogsA / netA) * 100) + "% of net sales" : "Nothing sold yet"),
+        // The till's own claim per sale (sale.cogs) and the ledger's posted
+        // 5000/1200 balance below can genuinely differ — a store with no
+        // stock moves on a sale posts no COGS at all even though the till
+        // estimated one. Naming this card "the till's estimate" stops it
+        // reading as a second, disagreeing answer to the P&L directly under it.
+        card("Cost of sales · till estimate", MVRc(cogsA), netA ? Math.round((cogsA / netA) * 100) + "% of net sales" : "Nothing sold yet"),
         card("Unreconciled", String(openB.length), openB.length ? "Card batches not yet matched" : "Every card batch matched",
           openB.length ? big + ";color:var(--warn-bright)" : big + ";color:var(--green)")
       ];
@@ -5582,8 +5587,11 @@ class Component extends DCLogic {
       card("Open tables", openTables.length + " / " + this.floorTables().length, Math.round((openTables.length / (this.floorTables().length || 1)) * 100) + "% full · " + MVRc(openVal) + " on the floor"),
       // The average is SETTLED sales over SETTLED covers — the one definition
       // Analytics uses. Dividing settled money by covers still eating
-      // (openParty) made the same shop read 33.35 here and 51.55 there.
-      card("Covers", String(covers), "Avg cheque " + MVR(this.outletStats(o).avg)),
+      // (openParty) made the same shop read 33.35 here and 51.55 there. The
+      // headline number has to be the SAME covers the average is over, or
+      // this card reads two different guest counts one line apart (24 here,
+      // 16 on Analytics) with an average that only ever matched the second.
+      card("Covers", String(this.outletStats(o).covers), "Settled today · avg cheque " + MVR(this.outletStats(o).avg)),
       (() => {
         // Food cost is a margin, and a cashier never sees cost or margin (the
         // Cashier role's own description). The slot says what the till needs.
@@ -5849,9 +5857,25 @@ class Component extends DCLogic {
         // of the card. Past ~26 characters the row stops being two columns and
         // becomes a label with its value beneath, where it has the full width to
         // wrap in. Figures keep the aligned two-column form they need.
+        //
+        // The threshold only ever measured the VALUE. Two rows proved that is
+        // not the only way a row runs out of room: a long LABEL does the same
+        // thing, and when the label is what overflows, flexbox shrinks
+        // whichever side has room to give — here the label itself, so
+        // "Enrolled as" (11 chars) ellipsized to "Enrolled…" while the 25-char
+        // value beside it sat there in full ("not paired to this outlet" is
+        // one under the 26-char threshold, and renders wider than that in
+        // JetBrains Mono besides). A long ingredient name plus a short cost
+        // showed the opposite failure once the label was protected from ever
+        // shrinking: the label kept every character and "MVR 0.00" was what
+        // got eaten instead. Neither a label nor a value should ever be
+        // trimmed down to one or two characters — the row should stack
+        // before that happens, so it now stacks on the COMBINED length,
+        // which both of these rows cross and a short "App version: 4.2.1"
+        // row does not.
         rows: (c.rows || []).map((r) => {
           const val = r[1] === undefined || r[1] === null ? "" : String(r[1]);
-          const stack = val.length > 26;
+          const stack = val.length > 26 || (String(r[0] || "").length + val.length) > 34;
           return {
             k: r[0], v: r[1],
             rs: stack
