@@ -275,6 +275,6 @@ test('the guest plate is one background layer, not an extra element', () => {
 });
 
 test('the guest hero stays a dark field whether or not there is a photograph', () => {
-  assert.match(GUEST, /this\.artifact\(d\.cat, "26%", "#241f1c", "#ffffff", "6b"\)/,
+  assert.match(GUEST, /this\.artifact\(d\.cat, "26%", DEEP, "#ffffff", "6b"\)/,
     "the phone's own white status bar and back button sit on top of it");
 });
