@@ -355,8 +355,9 @@
           <div style="{{ tableGridStyle }}">
             <sc-for list="{{ tables }}" as="t" hint-placeholder-count="12">
               <button onClick="{{ t.go }}" onContextMenu="{{ t.ctx }}" onTouchStart="{{ t.press }}" onTouchEnd="{{ t.release }}" onTouchMove="{{ t.release }}" title="{{ t.hint }}" style="{{ t.style }}">
+                <span class="water" style="{{ t.water }}"></span>
                 <span style="display:flex;justify-content:space-between;align-items:flex-start;width:100%;gap:6px">
-                  <span style="font-size:20px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-family:'JetBrains Mono',monospace">{{ t.label }}</span>
+                  <span class="disp" style="font-size:22px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-family:var(--font-display,'JetBrains Mono',monospace)">{{ t.label }}</span>
                   <span style="{{ t.chip }}">{{ t.chipText }}</span>
                 </span>
                 <span style="display:flex;justify-content:space-between;align-items:flex-end;width:100%;gap:6px;margin-top:14px">
@@ -6487,7 +6488,20 @@ class Component extends DCLogic {
       ];
       const rw = rung >= 0 ? FLOOR[rung] : null;
       const accent = rw ? rw[1] : st === "reserved" ? "var(--blue)" : "var(--line-3)";
+      /* THE WATERLINE (PRODUCT.md, Lagoon): a seated table fills as it waits,
+         against the store's table-turn target, and turns coral past it — so the
+         longest wait in the room reads from across it. The tint follows the
+         rung; late overrides it, and says so in words for the colour-blind.
+         Standard draws the same measure as a thin bar along the foot. */
+      const target = this.prefs().tableTarget || 60;
+      const age = st === "occupied" ? this.tkAge(t) : 0;
+      const late = st === "occupied" && !edit && age >= target;
+      const fill = st === "occupied" && !edit ? Math.min(100, Math.max(6, Math.round(age / target * 100))) : 0;
+      const TINT = ["var(--amber-dim)", "var(--warn-dim)", "var(--ok-dim)", "var(--info-dim)"];
+      const water = "--fill:" + fill + "%;--wl-tint:" + (late ? "var(--danger-dim)" : TINT[rung] || "transparent")
+        + ";--wl-bar:" + (late ? "var(--danger)" : accent);
       tables.push({
+        water: water,
         label: tb.name,
         go: () => {
           if (this._lp) { this._lp = 0; return; }
@@ -6509,7 +6523,7 @@ class Component extends DCLogic {
         // picking a second table used to blank the first one's status colour.
         style: (() => {
           const side = (edit ? "1px dashed " : "1px solid ") + (on && !edit ? "var(--text-dim)" : "var(--line)");
-          return "display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:" + (on && !edit ? "var(--bg-3)" : "var(--bg-1)")
+          return "position:relative;overflow:hidden;isolation:isolate;display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:" + (on && !edit ? "var(--bg-3)" : "var(--bg-1)")
             + ";border-top:" + side + ";border-right:" + side + ";border-bottom:" + side
             + ";border-left:3px solid " + accent
             + ";box-shadow:" + (on && !edit ? "inset 0 0 0 1px var(--text-dim)" : "none") + ";transition:.12s";
@@ -6518,7 +6532,7 @@ class Component extends DCLogic {
         chipText: edit ? tb.seats + " seats" : rw ? rw[0] : st === "reserved" ? "Res" : "Free",
         meta: edit ? tb.zone
           : st === "reserved" ? t.resName + " · " + t.resAt
-          : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
+          : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m") + (late ? " · over target" : "")
           : tb.seats + " seats",
         total: edit || !tot || !this.can("pos", "a") ? "" : MVRc(tot),
         totalStyle: "font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap"
@@ -10656,7 +10670,7 @@ class Component extends DCLogic {
     autoLock: 5, voidPin: true, cashRound: true, kotPrint: true,
     kdsSound: true, showCost: true, blindClose: true,
     paper: 80, copies: 1, autoPrint: false, lang: "en",
-    pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false, qrBanners: false,
+    pointsPer: 10, lowStock: 50, kdsSla: 18, tableTarget: 60, tipLine: false, qrBanners: false,
     // The store's look (PRODUCT.md: one layout, two looks). A policy, so it
     // travels to every terminal; day or night stays per device.
     look: "lagoon"
@@ -23809,7 +23823,10 @@ class Component extends DCLogic {
           foot: "Credit limits are per customer; these are the chain defaults applied to a new account.",
           goLabel: "Open the loyalty programme", go: () => this.setState({ view: "loyalty" }) },
         { title: "Service targets", sub: "What counts as late",
-          picks: [{ label: "KDS ticket SLA", opts: [12, 18, 25].map((n) => ({ label: n + " min", on: P.kdsSla === n, go: () => set("kdsSla", n) })) }],
+          picks: [{ label: "KDS ticket SLA", opts: [12, 18, 25].map((n) => ({ label: n + " min", on: P.kdsSla === n, go: () => set("kdsSla", n) })) },
+            // How long a seated table may run before the floor calls it late — the
+            // waterline on each table tile fills against this.
+            { label: "Table turn", opts: [45, 60, 90].map((n) => ({ label: n + " min", on: P.tableTarget === n, go: () => set("tableTarget", n) })) }],
           rows: [["Applies to", "mains · the pass turns amber then red"], ["Measured from", "fire, not from order"]],
           foot: "A ticket past its SLA drives the KDS colour and the exception report." },
         { title: "Security", sub: "Applies to this terminal", chip: P.voidPin ? "Enforced" : "Relaxed", chipBg: P.voidPin ? "var(--ok-dim)" : "var(--bad-dim)", chipFg: P.voidPin ? "var(--green)" : "var(--red-bright)",
