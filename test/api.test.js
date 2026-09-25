@@ -7608,7 +7608,9 @@ test('web push: the VAPID public key is generated once and stays stable across c
 test('web push: a 404/410 from the push service deletes the subscription', opts, async () => {
   process.env.PUSH_ALLOW_LOOPBACK = '1';
   const stub = await pushStub(410);
-  await insertSub(stub.url, null);
+  // A till alert goes to rank >= 2 staff only, so the fixture needs one.
+  const cashier = await one("SELECT id FROM chain.staff WHERE outlet_id = $1 AND rank >= 2 LIMIT 1", [outletId]);
+  await insertSub(stub.url, cashier.id);
   const before = await one('SELECT endpoint FROM push_subscription WHERE endpoint = $1', [stub.url]);
   assert.ok(before, 'the fixture landed');
 
