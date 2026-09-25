@@ -1077,8 +1077,24 @@ H.price_override = async (c, p, ctx) => {
 // A refund is a REVERSING DOCUMENT with its own series, never an edit.
 H.refund = async (c, p, ctx) => {
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['CN']);
-  const net = r2(p.net), tax = r2(p.tax), svc = r2(p.svc);
+  let net = r2(p.net), tax = r2(p.tax), svc = r2(p.svc);
   const amount = r2(p.amt != null ? p.amt : net + tax + svc);
+  /* THE SALE SAYS WHAT WAS TAKEN, so the sale says what is given back. The
+     till sent its own split — tax extracted as if prices were tax-INCLUSIVE,
+     and no service at all — so a refunded bill reversed its GST and service
+     charge through revenue: output tax and 2300 stayed overstated, 4000
+     understated, while the credit note printed the right figures. Where the
+     sale is known the split is derived here, in proportion to what is refunded
+     (a partial refund carries a partial share); net takes the laari left over
+     so the three legs always sum to the amount paid out. */
+  if (p.saleId && amount > 0) {
+    const s = await one(c, 'SELECT service, tax, total FROM sale WHERE id = $1', [p.saleId]);
+    if (s && num(s.total) > 0) {
+      const f = Math.min(1, amount / num(s.total));
+      tax = r2(num(s.tax) * f); svc = r2(num(s.service) * f);
+      net = r2(amount - tax - svc);
+    }
+  }
   const cn = await one(c, 'INSERT INTO credit_note (cn_no, sale_id, business_date,'
     + ' lines, net, tax, service, amount, method, reason, raised_by, approved_by)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
