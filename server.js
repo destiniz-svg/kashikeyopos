@@ -129,7 +129,16 @@ app.use(function (req, res, next) {
   res.set('x-content-type-options', 'nosniff');
   res.set('referrer-policy', 'no-referrer');
   res.set('x-frame-options', 'SAMEORIGIN');
-  res.set('permissions-policy', 'geolocation=(), microphone=(), payment=()');
+  // Camera is off by default (the browser's own default is 'self', but this
+  // policy says so explicitly) and named ON only for the till: that is the
+  // one page with a control that opens getUserMedia — scanning a member card
+  // or a table's QR. Neither guest portal nor the member card, both served
+  // on a store's own subdomain, has any use for it. `req.storeHandle` is set
+  // by a later middleware, so the host is read directly here rather than
+  // waiting for it.
+  const onStore = hostHandle(req.hostname || req.get('host') || '');
+  res.set('permissions-policy', 'geolocation=(), microphone=(), payment=(), camera='
+    + (onStore ? '()' : '(self)'));
   if (process.env.NODE_ENV === 'production') {
     res.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
   }

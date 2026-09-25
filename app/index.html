@@ -174,6 +174,10 @@
           <input aria-label="Search…" value="{{ search }}" onChange="{{ onSearch }}" onBlur="{{ blurSearch }}" onKeyDown="{{ searchKey }}" placeholder="Search…" ref="{{ searchRef }}" style="{{ searchInputStyle }}"/>
         </div>
 
+        <button onClick="{{ openScan }}" title="Scan a member card or a table's QR" aria-label="Scan" style="{{ scanBtnStyle }}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M4 16v3a1 1 0 0 0 1 1h3M20 8V5a1 1 0 0 0-1-1h-3M20 16v3a1 1 0 0 1-1 1h-3M4 12h16"></path></svg>
+        </button>
+
         <button onClick="{{ toggleTheme }}" title="{{ themeTitle }}" style="{{ themeBtnStyle }}">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ themeIcon }}"></path></svg>
         </button>
@@ -2187,6 +2191,30 @@
             </div>
           </sc-if>
 
+          <sc-if value="{{ mScan }}">
+            <div style="display:flex;flex-direction:column;gap:14px;align-items:center">
+              <sc-if value="{{ scanShowVideo }}" hint-placeholder-val="{{ true }}">
+                <div style="position:relative;width:100%;max-width:340px;aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:#000">
+                  <video ref="{{ scanVideoRef }}" autoPlay="{{ true }}" playsInline="{{ true }}" muted="{{ true }}" style="width:100%;height:100%;object-fit:cover;display:block"></video>
+                  <div style="position:absolute;inset:14%;border:2px solid rgba(255,255,255,.7);border-radius:10px;pointer-events:none"></div>
+                </div>
+              </sc-if>
+              <div style="font-size:13px;color:var(--text-dim);text-align:center;line-height:1.5;text-wrap:pretty">{{ scanStatusMsg }}</div>
+              <sc-if value="{{ scanShowRetry }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ scanRetry }}" style="min-height:48px;padding:0 22px;border-radius:999px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:700">Try again</button>
+              </sc-if>
+              <sc-if value="{{ scanShowManual }}" hint-placeholder-val="{{ false }}">
+                <div style="width:100%;display:flex;flex-direction:column;gap:8px">
+                  <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Type the code instead</div>
+                  <div style="display:flex;gap:8px">
+                    <input value="{{ scanManual }}" onChange="{{ onScanManual }}" placeholder="Table number, or the guest's phone" aria-label="Code" style="flex:1;min-width:0;min-height:48px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:14px;color:var(--text)"/>
+                    <button onClick="{{ scanSubmit }}" style="min-height:48px;padding:0 20px;border-radius:10px;background:var(--text);color:var(--bg);font-size:13px;font-weight:700;flex-shrink:0">Go</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ mCount }}">
             <div>
               <div style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin-bottom:14px">{{ countIntro }}</div>
@@ -2440,6 +2468,7 @@ class Component extends DCLogic {
   _searchRef = React.createRef();
   _menuSearchRef = React.createRef();
   _palRef = React.createRef();
+  _videoRef = React.createRef();
   _saved = this.restore();
 
   state = {
@@ -3415,6 +3444,7 @@ class Component extends DCLogic {
     window.removeEventListener("resize", this._onResize);
     if (this._vis) window.removeEventListener("visibilitychange", this._vis);
     if (this._flush) window.removeEventListener("pagehide", this._flush);
+    this.stopScan();
   }
 
   // CustomColors from the Users table: re-points the --amber-* brand triad ONLY.
@@ -3485,6 +3515,18 @@ class Component extends DCLogic {
     if (this.state.activeTable !== this._lastActive) {
       this._lastActive = this.state.activeTable;
       if (this.state.activeTable && this.state.view === "pos" && this.state.pane === "floor") this.setState({ pane: "menu" });
+    }
+    // The scan sheet owns a camera stream, and a stream a closed sheet keeps
+    // holding is a light left on the till nobody is looking at. Start it the
+    // moment the sheet opens; stop it the moment it isn't the sheet any more —
+    // the X, the scrim, Escape, a successful scan, all set `modal` the same
+    // generic way, so this is the one place that has to notice.
+    const curModalKind = this.state.modal ? this.state.modal.kind : null;
+    if (curModalKind !== this._lastModalKind) {
+      const wasScan = this._lastModalKind === "scan";
+      this._lastModalKind = curModalKind;
+      if (wasScan && curModalKind !== "scan") this.stopScan();
+      if (curModalKind === "scan" && this.state.scanStatus === "starting" && !this._scanStream) this._scanStartPromise = this.startScanCamera();
     }
     const b = this.props.busyness === undefined ? 42 : this.props.busyness;
     if (b !== this._busy) { this._busy = b; this.seed(); return; }
@@ -4201,6 +4243,134 @@ class Component extends DCLogic {
     w.document.close();
     setTimeout(() => { try { w.focus(); w.print(); } catch (e) { /* the sheet is still on screen */ } }, 300);
   }
+
+  /* ── the camera scan ─────────────────────────────────────────────────────
+     Two things this build has real, scannable targets for: the guest table
+     QR, which `printQrCards()` composes as `tableUrl(n)` — a URL carrying
+     `?t=<the floor's own table label>` — and a customer, found the way the
+     till already finds one at the pay screen: by phone number. There is no
+     third kind of code here. The member portal has no printed card and no
+     QR of its own (it signs a guest in with a four-digit code sent to their
+     own phone or inbox) — so scanning a code this build does not recognise
+     says so, plainly, rather than guessing. */
+  openScan() {
+    if (this.rank() < 2) return;
+    this.setState({ modal: { kind: "scan" }, scanStatus: "starting", scanManual: "" });
+  }
+  async startScanCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.setState({ scanStatus: "unsupported" });
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch (e) {
+      const name = e && e.name;
+      this.setState({ scanStatus: name === "NotAllowedError" || name === "SecurityError" ? "denied"
+        : name === "NotFoundError" || name === "OverconstrainedError" ? "nocamera" : "error" });
+      return;
+    }
+    // The sheet may already be closed by the time permission answers — a slow
+    // prompt outlives the modal, and a stream nobody is looking at is a stream
+    // that should never have opened the light on the device.
+    if (!this.state.modal || this.state.modal.kind !== "scan") {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    this._scanStream = stream;
+    const v = this._videoRef.current;
+    if (v) { v.srcObject = stream; v.play().catch(() => {}); }
+    this.setState({ scanStatus: "live" });
+    this.startDetectLoop();
+  }
+  // BarcodeDetector (Chrome, Edge, Android WebView) is the whole decoder.
+  // Safari carries none — no `BarcodeDetector`, and a hand-written QR decoder
+  // that is subtly wrong is worse than not having one — so it falls straight
+  // to the manual field the sheet already offers, with the camera preview
+  // left running: seeing the code still helps somebody read it out.
+  startDetectLoop() {
+    if (!("BarcodeDetector" in window)) { this.setState({ scanStatus: "manual" }); return; }
+    let detector;
+    try { detector = new window.BarcodeDetector({ formats: ["qr_code"] }); }
+    catch (e) { this.setState({ scanStatus: "manual" }); return; }
+    const tick = () => {
+      if (!this.state.modal || this.state.modal.kind !== "scan") return;
+      const v = this._videoRef.current;
+      const ready = v && v.readyState >= 2;
+      (ready ? detector.detect(v) : Promise.resolve([]))
+        .then((codes) => {
+          if (!this.state.modal || this.state.modal.kind !== "scan") return;
+          const hit = codes && codes[0] && codes[0].rawValue;
+          if (hit) return this.handleScanned(hit);
+          this._scanRaf = requestAnimationFrame(tick);
+        })
+        .catch(() => { this._scanRaf = requestAnimationFrame(tick); });
+    };
+    this._scanRaf = requestAnimationFrame(tick);
+  }
+  stopScan() {
+    if (this._scanRaf) cancelAnimationFrame(this._scanRaf);
+    this._scanRaf = null;
+    if (this._scanStream) { this._scanStream.getTracks().forEach((t) => t.stop()); this._scanStream = null; }
+    const v = this._videoRef.current;
+    if (v) v.srcObject = null;
+  }
+  handleScanned(text) {
+    this.stopScan();
+    this.setState({ modal: null });
+    setTimeout(() => this.actOnScan(String(text || "").trim()), 0);
+  }
+  submitManualScan() {
+    const v = (this.state.scanManual || "").trim();
+    if (!v) return;
+    this.stopScan();
+    this.setState({ modal: null });
+    setTimeout(() => this.actOnScan(v), 0);
+  }
+  // Member card → select that customer's record. Guest table QR → open
+  // that table. Anything else → said plainly, never guessed at.
+  actOnScan(text) {
+    if (!text) return;
+    const n = this.matchTableFromScan(text);
+    if (n != null) {
+      this.openSlot(n);
+      this.setState({ view: "pos", pane: "menu" });
+      return this.toast("Opened " + this.slotName(n) + " from the scan");
+    }
+    const digits = text.replace(/\D+/g, "");
+    if (digits.length >= 7) {
+      // AMBIGUITY RESOLVES TO NOBODY — the rule member_resolve() and
+      // pin_match() keep: two customers sharing the last seven digits is a
+      // coin toss over whose record opens, so neither does.
+      const hits = (this.members() || []).filter((c) => {
+        const cd = String(c.phone || "").replace(/\D+/g, "");
+        return cd && cd.slice(-7) === digits.slice(-7);
+      });
+      if (hits.length > 1) return this.toast("Two customers share that number — find them in Guests & Credit", "warn");
+      const m = hits[0];
+      if (m) { this.setState({ modal: { kind: "customer", id: m.id } }); return this.toast("Found " + m.name); }
+    }
+    this.toast("That code isn't a table or a customer here", "warn");
+  }
+  // The guest QR encodes `tableUrl(n)` — this outlet's address with
+  // `?t=<the floor's own label>`. Compared by digits, the same fallback
+  // `ticketRef()` keeps server-side, for a QR printed as "T05" against a
+  // floor that has since relabelled the same table "5".
+  matchTableFromScan(text) {
+    let raw = "";
+    try { raw = new URL(text, window.location.origin).searchParams.get("t") || ""; }
+    catch (e) { return null; }
+    if (!raw) return null;
+    const tables = this.floorTables();
+    let t = tables.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
+    if (!t) {
+      const digits = raw.replace(/\D+/g, "").replace(/^0+/, "");
+      if (digits) t = tables.find((x) => String(x.name).replace(/\D+/g, "").replace(/^0+/, "") === digits || String(x.n) === digits);
+    }
+    return t ? t.n : null;
+  }
+
   // The card. On the store's own subdomain it is /member; where there is no
   // base domain the path form is /m/<handle> — a DIFFERENT shape, not /g/<h>
   // with /member glued on, which routes nowhere and drops a guest on the
@@ -5149,6 +5319,12 @@ class Component extends DCLogic {
         : "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
       themeBtnStyle: isM ? "display:none"
         : "width:32px;height:32px;flex-shrink:0;border-radius:8px;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)",
+      // Scan a member card or a guest table QR. Kitchen has no bill to attach
+      // a scan to, so the control is Till rank and above — the same floor
+      // this.rank() >= 2 already draws Guests & Credit and the pay screen on.
+      scanBtnStyle: this.rank() < 2 ? "display:none"
+        : "display:flex;align-items:center;justify-content:center;flex-shrink:0;min-height:" + (isM ? 44 : 32) + "px;min-width:" + (isM ? 44 : 32) + "px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim)",
+      openScan: () => this.openScan(),
       // The mark is a flat-shaded render on white; on the dark plate it needs
       // to burn through rather than sit in a white box.
       // The mark ships on an opaque white background, so it sits on a white
@@ -8072,6 +8248,7 @@ class Component extends DCLogic {
       detailActs: [], detailActsStyle: "display:none",
       mCount: m.kind === "count", mForm: m.kind === "form",
       mGuest: m.kind === "guest", mHeld: m.kind === "held",
+      mScan: m.kind === "scan",
       scrimStyle: "position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);display:flex;z-index:60;animation:kfade .14s;"
         + (this.effBp() === "m" ? "align-items:flex-end;justify-content:stretch;padding:0" : (m.kind === "pay" ? "align-items:flex-start;" : "align-items:center;") + "justify-content:center;padding:" + this.modalPad() + "px"),
       // Every popup is capped on both axes against the live viewport, not against
@@ -8113,6 +8290,31 @@ class Component extends DCLogic {
     const gAll = this.guestsOf(tk);
     const gIdx = Math.min(s.activeSplit, Math.max(0, gAll.length - 1));
     const T = tk ? this.totals(tk, gAll.length > 1 ? gIdx : undefined) : { sub: 0, svc: 0, tax: 0, total: 0 };
+
+    if (m.kind === "scan") {
+      const st = s.scanStatus || "starting";
+      const msg = {
+        starting: "Starting the camera…",
+        live: "Looking for a code…",
+        denied: "Camera permission was refused — allow it in the browser's site settings, then try again",
+        nocamera: "No camera was found on this device",
+        unsupported: "This browser can't use the camera here",
+        manual: "This browser can't scan — type the code instead",
+        error: "The camera could not start"
+      }[st] || "";
+      return {
+        modalTitle: "Scan a code", modalSub: "A member card, or a table's QR",
+        scanShowVideo: st === "starting" || st === "live",
+        scanVideoRef: this._videoRef,
+        scanStatusMsg: msg,
+        scanShowRetry: st === "denied" || st === "nocamera" || st === "error",
+        scanRetry: () => { this.setState({ scanStatus: "starting" }); this.startScanCamera(); },
+        scanShowManual: st === "denied" || st === "nocamera" || st === "unsupported" || st === "manual" || st === "error",
+        scanManual: s.scanManual || "",
+        onScanManual: (e) => this.setState({ scanManual: e.target.value }),
+        scanSubmit: () => this.submitManualScan()
+      };
+    }
 
     if (m.kind === "splitItems") {
       /* SPLIT BY ITEM. Tap a line, then tap the guest it belongs to — the
