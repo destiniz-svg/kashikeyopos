@@ -60,6 +60,11 @@ function forward(up, opt) {
     }, function (back) {
       state.online = true;
       if (back.statusCode < 300 && o.ok) o.ok(req);
+      if (back.statusCode < 300 && o.keep) {
+        const got = [];
+        back.on('data', (c) => got.push(c));
+        back.on('end', () => o.keep(req, Buffer.concat(got)));
+      }
       res.writeHead(back.statusCode, strip(back.headers));
       back.pipe(res);
     });
@@ -153,6 +158,100 @@ function hold(req, res) {
     + ' confirms it.' });
 }
 
+/* ═══ THE KITCHEN FOLD (BUILD-PLAN 2.5c, SPEC §9 rule 3) ════════════════════
+   During an outage the kitchen screen still pulls every few seconds, and the
+   cloud cannot answer. The hub answers instead, from two things it already
+   has: the last pull the cloud answered for that outlet (the whole floor —
+   `state.tickets` is always sent whole), and the ops it is holding. The five
+   kitchen kinds are folded onto the floor exactly as src/apply.js applies
+   them; everything else waits for the cloud. The answer carries NO ops[]: an
+   op in a pull is the device's acknowledgement, and nothing here is. */
+const snapshots = new Map();       // outletId -> the cloud's last pull answer
+const tkey = (s) => String(s == null ? '' : s).toUpperCase().replace(/^T0*/, '');
+
+function fold(tickets, held) {
+  const T = JSON.parse(JSON.stringify(tickets || {}));
+  const all = () => Object.keys(T).map((k) => T[k]);
+  // ticketRef(): by id, then the exact table, then the digits ("6" is "T06").
+  const find = (p) => {
+    if (p.ticketId) { const t = all().find((x) => x.id === p.ticketId); if (t) return t; }
+    if (p.table == null) return null;
+    const split = Number(p.split) || 0;
+    const same = all().filter((x) => (Number(x.split) || 0) === split);
+    return same.find((x) => String(x.table) === String(p.table))
+      || same.find((x) => tkey(x.table) === tkey(p.table)) || null;
+  };
+  const named = (t, p) => {
+    const lids = [].concat(p.lids || [], p.lid ? [p.lid] : [], p.lineIds || []).map(String);
+    return lids.length ? t.lines.filter((l) => lids.indexOf(String(l.lid)) >= 0
+      || lids.indexOf(String(l.serverId)) >= 0) : null;
+  };
+  // rungFromPass(): nothing fired 0, anything still cooking 1, else 2.
+  const rung = (t) => {
+    const fired = t.lines.filter((l) => l.fired);
+    return !fired.length ? 0 : fired.some((l) => !l.done) ? 1 : 2;
+  };
+  held.slice().sort((a, b) => (a.lamport || 0) - (b.lamport || 0) || a.heldAt - b.heldAt)
+    .forEach(function (op) {
+      const p = op.payload || {}, at = op.at || op.heldAt;
+      if (op.kind === 'add_line') {
+        if (!p.item) return;
+        let t = find(p);
+        if (!t) {
+          t = { id: null, table: String(p.table), split: Number(p.split) || 0, status: 'open',
+            stage: 0, opened: at, waiter: '', note: '', guests: [], lines: [], held: true };
+          T[t.table + ':' + t.split] = t;
+        }
+        const was = p.lid && t.lines.find((l) => l.lid === p.lid);
+        if (was) Object.assign(was, { qty: Number(p.qty) || 1, note: p.note || '', course: p.course || '' });
+        else {
+          t.lines.push({ lid: p.lid || op.opId, serverId: null, id: p.item, name: p.name || p.item,
+            qty: Number(p.qty) || 1, price: Number(p.price) || 0, addons: p.addons || [],
+            guest: p.guest, split: p.guest, note: p.note || '', course: p.course || '',
+            station: p.station || null, fired: false, firedAt: 0, since: 0, done: false,
+            doneAt: 0, sent: false, at: at, held: true });
+        }
+      } else if (op.kind === 'void_line') {
+        all().forEach((t) => { t.lines = t.lines.filter((l) => !((p.lid && l.lid === p.lid)
+          || (p.lineId && l.serverId === p.lineId))); });
+      } else if (op.kind === 'fire_course') {
+        const t = find(p);
+        if (!t) return;
+        (named(t, p) || []).forEach((l) => { if (!l.fired) Object.assign(l, { fired: true, sent: true, firedAt: at }); });
+        t.stage = 1;
+      } else if (op.kind === 'kds_bump' || op.kind === 'kds_bump_all') {
+        const t = find(p);
+        if (!t) return;
+        const which = op.kind === 'kds_bump' ? (named(t, p) || t.lines) : t.lines;
+        which.forEach((l) => { if (l.fired && !l.done) Object.assign(l, { done: true, doneAt: at }); });
+        t.stage = rung(t);
+      }
+    });
+  return T;
+}
+
+function keepPull(req, buf) {
+  allowed.set(who(req), Date.now());
+  try {
+    const b = JSON.parse(buf.toString('utf8'));
+    if (b && b.state && b.state.tickets) snapshots.set(String(req.params.id), b);
+  } catch (e) { /* a pull the hub cannot read is simply not kept */ }
+}
+
+function kitchenView(req, res) {
+  const snap = snapshots.get(String(req.params.id));
+  if (!cleared(req) || !snap) {
+    return res.status(503).json({ error: 'The cloud cannot be reached, and the'
+      + ' store hub has no copy of this outlet\'s floor to answer from.' });
+  }
+  const held = readHeld().filter((h) => String(h.outletId) === String(req.params.id));
+  res.set('cache-control', 'no-store').json(Object.assign({}, snap, {
+    ops: [],
+    hub: { offline: true, held: held.length, floorAt: snap.state.at || null },
+    state: Object.assign({}, snap.state, { tickets: fold(snap.state.tickets, held) })
+  }));
+}
+
 function endOutage(req) {
   allowed.set(who(req), Date.now());
   if (!heldIds.size) return;
@@ -180,8 +279,9 @@ function router(up) {
   });
   r.post('/api/outlet/:id/sync/push', express.raw({ type: '*/*', limit: '4mb' }),
     forward(up, { down: hold, ok: endOutage }));
+  r.get('/api/outlet/:id/sync/pull', forward(up, { keep: keepPull, down: kitchenView }));
   r.use('/api', forward(up));
   return r;
 }
 
-module.exports = { upstream, router, readHeld };
+module.exports = { upstream, router, readHeld, fold };
