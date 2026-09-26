@@ -1,0 +1,4 @@
+# Check out exactly the committed bytes on every OS. app/support.js pins the
+# vendored scripts by SRI hash, and a CRLF checkout (Windows autocrlf) changed
+# those bytes: no browser would load React from a Windows working copy.
+* text=auto eol=lf

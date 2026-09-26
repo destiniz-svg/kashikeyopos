@@ -7,3 +7,6 @@ npm-debug.log*
 !.env.example
 *.log
 .DS_Store
+
+# a store hub's held copy (src/hub.js)
+hub-data/

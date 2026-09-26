@@ -775,6 +775,9 @@
       });
     }
 
+    /* Which mode this address is in: the cloud, or a store hub (SPEC §9). */
+    hub() { return this._fetch("/api/hub", { anon: true }); }
+
     /* ── web push subscriptions ──────────────────────────────────────────
        Not an outbox op: subscribing is a fact about THIS browser's push
        registration, useless replayed against a different one, and a

@@ -136,7 +136,10 @@ install), and the SVG parse noise in the portals.
 | **2.2 Per-ticket versions** | A `version` on each ticket. A scalar edit against an old version is refused, and the device shows "Changed on the till: covers are now 4". | Scenario G passes |
 | **2.3 Web Push alerts** | Order ready, bill asked, QR order to accept, sold out, manager call. Sent only to the right person, with one action each. They reach the watch through the phone. | An alert arrives on a locked Android phone and an iPhone (home-screen app); the action works |
 | **2.4 Camera scan** | `BarcodeDetector`, with a small decoder fallback for Safari. Scans member cards and the guest QR. | A member card scans on an iPad and an Android phone |
-| **2.5 Store hub** | The same `server.js` running on a store PC, syncing up to the cloud. Devices use the hub first. Network printers work through it. | Scenario C with a hub: the KDS and a network printer keep working with the WAN unplugged; the data converges when it's back |
+| **2.5a Hub pass-through** | `server.js` in hub mode (`HUB_UPSTREAM`): proxies `/api/*` (SSE included) to the cloud with each device's own token, serves `app/`, keeps the print relay local. `GET /api/hub` says which mode; Printers and Sync & devices show it. | A till pointed at the hub trades exactly as against the cloud; a network printer prints through the hub |
+| **2.5b Held, not applied** | WAN down: the hub answers a push "held" and keeps a copy. The device keeps its outbox until the cloud acknowledges. | Scenario C: unplug the WAN, ring bills, plug it back; every op lands once, numbered by the cloud |
+| **2.5c Kitchen fold** | Held ops go to an append-only JSONL file (dedup by `opId`). A fold over held lines, fires, bumps and voids feeds the KDS pull during an outage. | With the WAN unplugged, an order fired on a tablet reaches the KDS through the hub |
+| **2.5d LAN HTTPS** *(owner-owed)* | A hub name on `kashikeyopos.com` pointing at a private IP, DNS-01 certificate, LAN DNS entry. See SPEC §9. | The PWA installs and works offline from the hub's address |
 
 **Alongside phase 2:** the accessibility sweep of every modal and a screen
 reader pass; batch draw-down (FEFO allocation); a third server route for the
