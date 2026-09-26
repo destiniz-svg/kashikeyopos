@@ -48,12 +48,17 @@ rules) and `SPEC.md` (what each device does and how sync works).
 - ~~Batches are never drawn down as stock is used.~~ **Done (060).** Outward
   moves draw lots earliest use-by first, and a void puts back exactly what it
   took. Allocation only: no money figure moves.
-- The Today briefing and CFO advisory still call a model helper that doesn't
-  exist in a real browser. They say so honestly, but they're dead.
+- ~~The Today briefing and CFO advisory still call a model helper that doesn't
+  exist in a real browser.~~ **Done (#76).** The stock question and the CFO
+  advisory ask the outlet (`POST /advise/stock`, `/advise/cfo`), and the Today
+  and CFO briefings are computed locally with no model call at all.
 - There's no rota, so lateness can't be measured.
 - The accessibility sweep covers landing screens, not every modal, and no
   screen reader has been run over the app.
-- The live S3 backup round trip has never been run; the file driver is proven.
+- ~~The live S3 backup round trip has never been run.~~ **Done (26 Sep 2026).**
+  The live install backs up to a Railway bucket in `sin` (#86 keeps the volume
+  as a fallback). A restore from the bucket was drilled on the live cluster:
+  the copy matched the live books up to the archive, then was dropped.
 - The portal templates log three harmless SVG parse errors per load.
 - Receipts print ASCII only, so Dhivehi can't be printed yet.
 
@@ -124,8 +129,8 @@ platform pieces.
 | **1.10 Guest + member portals** | Both portals in both looks. They take the store's brand colour. Lagoon's cover photo ends in a wave; points show as water rising to the next tier. | `app/guest.html`, `app/member.html` | `test/responsive.test.js` passes; a white-label store shows no Kashikeyo colour |
 | **1.11 Back office pass** | Tokens and targets only, no layout changes: stock, purchasing, people, reports, settings. | back-office gens | Every rail screen renders in all four combinations without layout breaks |
 
-**Alongside phase 1:** the S3 backup live check (a 10-minute run on the live
-install), and the SVG parse noise in the portals.
+**Alongside phase 1:** ~~the S3 backup live check~~ (done 26 Sep 2026), ~~the
+SVG parse noise in the portals~~ (done, #79).
 
 ---
 
@@ -143,8 +148,8 @@ install), and the SVG parse noise in the portals.
 | **2.5d LAN HTTPS** *(owner-owed)* | A hub name on `kashikeyopos.com` pointing at a private IP, DNS-01 certificate, LAN DNS entry. See SPEC §9. | The PWA installs and works offline from the hub's address |
 
 **Alongside phase 2:** the accessibility sweep of every modal and a screen
-reader pass; batch draw-down (FEFO allocation); a third server route for the
-two dead model features, or removing them.
+reader pass; batch draw-down (FEFO allocation). (The two dead model features
+were given server routes in #76.)
 
 ---
 
