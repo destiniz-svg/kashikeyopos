@@ -6,6 +6,10 @@ const { migrate, migrateControl, fleet } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
 const watch = require('./src/watch');
 const directory = require('./src/directory');
+const hub = require('./src/hub');
+
+// Set on a store hub (src/hub.js): the cloud this process forwards to.
+const HUB = hub.upstream();
 
 // Set when a migration could not finish, and reported by both health
 // endpoints so a half-migrated schema cannot pass for a healthy one.
@@ -18,6 +22,9 @@ let lastQuiet = 0;
 const app = express();
 app.set('trust proxy', 1);              // Railway terminates TLS at the edge
 app.set('x-powered-by', false);
+// A hub forwards /api/* before anything parses a body, so what reaches the
+// cloud is the bytes the device sent. Everything else below serves as usual.
+if (HUB) app.use(hub.router(HUB));
 app.use(express.json({ limit: '4mb' }));
 
 /* ── headers ────────────────────────────────────────────────────────────────
@@ -676,6 +683,13 @@ function registryNamed() {
 }
 
 async function boot() {
+  /* A hub has no database of its own: nothing to migrate, back up or watch.
+     The cloud does all of that, for the hub's shop included. */
+  if (HUB) {
+    return app.listen(port, function () {
+      console.log('KashikeyoPOS store hub listening on ' + port + ' · forwarding to ' + HUB);
+    });
+  }
   if (!registryNamed() && process.env.NODE_ENV === 'production') process.exit(1);
   if (process.env.SKIP_MIGRATE !== '1') {
     if (!(await awaitDatabase())) {

@@ -4005,10 +4005,17 @@ test('a PIN hash never leaves the database', () => {
 });
 
 test('the print relay dials the shop LAN and nothing else', () => {
-  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  const out = fs.readFileSync(path.join(__dirname, '..', 'src', 'printrelay.js'), 'utf8');
   const fence = out.slice(out.indexOf('AN ALLOW-LIST, NOT A DENY-LIST'),
     out.indexOf('port: 9100') + 40);
   assert.ok(fence.length > 400, 'found the fence');
+  // The relay has no gate of its own, so both doors to it must carry one.
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.match(route, /r\.post\('\/print', sameOutlet, atLeast\('kitchen'\), require\('\.\.\/printrelay'\)\)/,
+    'the cloud mounts it behind the session and the rank');
+  const hub = fs.readFileSync(path.join(__dirname, '..', 'src', 'hub.js'), 'utf8');
+  assert.match(hub, /const v = await mayPrint\(up, req\);\s+if \(!v\.ok\) return/,
+    'a hub asks the cloud before it dials');
 
   /* It blocked the addresses somebody had thought of and let everything else
      through — including 0.0.0.0, which on Linux reaches loopback, and every

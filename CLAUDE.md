@@ -31,6 +31,8 @@ src/routes/            auth · onboarding · outlet · sync · guest · estate �
 src/routes/doc.js      a receipt or a statement, read by whoever was handed the link
 src/setup.js           a store's setup, in a file its owner holds
 src/reset.js           clearing what a store traded, keeping what it is
+src/hub.js             store hub mode (HUB_UPSTREAM): forward /api, print locally
+src/printrelay.js      the LAN print relay and its SSRF fence, shared by both modes
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
@@ -7044,6 +7046,20 @@ pages, not UTF-8; Thaana cannot print yet and the screen stays the reference).
 - `spool` — the default. **No transport means state `spooled`, never `done`**:
   the old runJob marked every job printed on a 620ms timer, which is a claimed
   print no printer made.
+
+**A `net` printer needs a store hub.** The cloud is not on the shop's LAN, so
+from the cloud a `net` job can only time out; the Printers tab says "Needs a
+hub" rather than "Ready". A hub (`src/hub.js`, SPEC §9) is the same
+`server.js` on a shop PC with `HUB_UPSTREAM` set: it forwards `/api/*` to the
+cloud unparsed and streamed (the sync stream included) with each device's own
+token, serves `app/` from its disk, and runs `src/printrelay.js` itself. It
+holds no secret and no database, so it cannot verify a token: before a print
+it asks the cloud `GET /api/outlet/:id/print` (the POST's own gate). A yes is
+remembered for 12 h and used only while the cloud is unreachable, so the
+kitchen keeps printing through an outage for sessions that already printed.
+`GET /api/hub` answers `{mode:"cloud"}` from the cloud and
+`{mode:"hub", upstream, online}` from a hub; the Sync & devices screen shows
+it as "Store mode". Production refuses a plain-http `HUB_UPSTREAM`.
 
 **The drawer plugs into the receipt printer's RJ11, so opening it is a print**
 (`ESC p`). Only a CASH receipt kicks it — a card receipt popping the drawer is

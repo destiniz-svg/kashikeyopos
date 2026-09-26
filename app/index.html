@@ -5686,7 +5686,16 @@ class Component extends DCLogic {
         parked
           ? card("Parked operations", String(parked), "Refused repeatedly \u2014 decide on each", big + ";color:var(--red-bright)")
           : card("Last replay", lag === null ? "—" : lag + "s",
-            lag === null ? "Nothing has replayed on this device" : "Time from queue to acknowledged")
+            lag === null ? "Nothing has replayed on this device" : "Time from queue to acknowledged"),
+        // SPEC §9: the store knows its mode before an outage tells it.
+        (() => {
+          const h = this.hubMode();
+          if (!h) return card("Store mode", "—", "Asking the server");
+          if (h.mode !== "hub") return card("Store mode", "Cloud", "No hub · each device sells on its own offline");
+          return card("Store mode", "Store hub",
+            h.online ? "Kitchen and LAN printers keep working offline" : "Cloud unreachable · the hub keeps printing",
+            big + ";color:var(" + (h.online ? "--green" : "--warn-bright") + ")");
+        })()
       ];
     }
     if (v === "kds") {
@@ -23156,6 +23165,17 @@ class Component extends DCLogic {
      bumper hangs on the LAN. Default is "spool": no transport, jobs hold as
      documents, and the printers screen says so instead of claiming prints
      nobody made. */
+  /* Cloud or store hub, asked at most once a minute and only while a screen
+     that shows it is drawn. A failed ask keeps the last answer: a device that
+     cannot reach its server has not changed which server it has. */
+  hubMode() {
+    const api = window.KPOS_API, now = Date.now();
+    if (api && api.hub && !(this._hubAt > now - 60000)) {
+      this._hubAt = now;
+      api.hub().then((h) => this.setState({ hub: h }), () => {});
+    }
+    return this.state.hub || null;
+  }
   printConn(id) { return ((this.prefs().printConn || {})[id]) || { conn: "spool" }; }
   setPrintConn(id, cfg) {
     const all = Object.assign({}, this.prefs().printConn || {});
@@ -23413,11 +23433,15 @@ class Component extends DCLogic {
         cards: this.PRINTERS().map((pr) => {
           const mine = jobs.filter((j) => j.target === pr.id);
           const bad = mine.filter((j) => j.state === "failed");
+          // A LAN printer is reached by the server, and the cloud is not on
+          // the shop's LAN: without a store hub it can never print.
+          const noHub = this.printConn(pr.id).conn === "net" && (this.hubMode() || {}).mode === "cloud";
+          const warn = noHub || this.printConn(pr.id).conn === "spool";
           return {
             title: pr.name, sub: pr.role,
-            chip: pr.down ? "Not responding" : this.printConn(pr.id).conn === "spool" ? "Spool only" : "Ready",
-            chipBg: pr.down ? "var(--bad-dim)" : this.printConn(pr.id).conn === "spool" ? "var(--warn-dim)" : "var(--ok-dim)",
-            chipFg: pr.down ? "var(--red-bright)" : this.printConn(pr.id).conn === "spool" ? "var(--warn-bright)" : "var(--green)",
+            chip: pr.down ? "Not responding" : noHub ? "Needs a hub" : this.printConn(pr.id).conn === "spool" ? "Spool only" : "Ready",
+            chipBg: pr.down ? "var(--bad-dim)" : warn ? "var(--warn-dim)" : "var(--ok-dim)",
+            chipFg: pr.down ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)",
             big: String(mine.length), bigSize: 19,
             rows: [["Connection", this.connLabel(pr.id), this.printConn(pr.id).conn === "spool" ? "var(--warn-bright)" : "var(--green)"],
                    ["Jobs this session", String(mine.length)],
@@ -23425,6 +23449,8 @@ class Component extends DCLogic {
                    ["Last job", mine.length ? when(mine[0].at) + " · " + mine[0].state : "none yet"]],
             foot: pr.down
               ? "Everything sent here is failing. Reprint once it is back — the documents are still in the spool, so nothing has to be recreated from memory."
+              : noHub
+                ? "A network printer is reached through a store hub on the shop's own network. This till talks to the cloud, which cannot reach it. Tap to change the connection."
               : this.printConn(pr.id).conn === "spool"
                 ? "No transport is configured, so documents hold in the spool and nothing claims to have printed. Tap to connect a real printer."
                 : "Dockets go to the paper over " + this.connLabel(pr.id) + ". Tap to change the connection or rehearse an outage.",

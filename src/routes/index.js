@@ -20,6 +20,9 @@ r.use('/doc', require('./doc'));
 // The platform door authenticates with its own key, or does not exist at all.
 r.use('/platform', require('./platform'));
 
+// Which mode this address is in. A store hub answers this itself (src/hub.js).
+r.get('/hub', function (req, res) { res.json({ mode: 'cloud' }); });
+
 // Everything below needs a staff session.
 r.use(session, groupScope);
 r.use('/outlet/:outletId', require('./outlet'));
