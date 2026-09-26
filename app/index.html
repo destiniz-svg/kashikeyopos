@@ -1376,7 +1376,7 @@
                 <div style="{{ keypadWrap }}">
                   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px">
                     <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
-                      <button onClick="{{ k.press }}" style="{{ k.style }}">{{ k.label }}</button>
+                      <button onClick="{{ k.press }}" aria-label="{{ k.name }}" style="{{ k.style }}">{{ k.label }}</button>
                     </sc-for>
                   </div>
                 </div>
@@ -1407,7 +1407,7 @@
             <div style="display:flex;flex-direction:column;gap:8px">
               <sc-for list="{{ moreActions }}" as="a" hint-placeholder-count="4">
                 <span style="{{ a.headStyle }}">{{ a.head }}</span>
-                <button onClick="{{ a.go }}" style="{{ a.style }}">
+                <button class="ksheet-act" onClick="{{ a.go }}" style="{{ a.style }}">
                   <span style="display:block;font-size:13px;font-weight:700">{{ a.label }}</span>
                   <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px">{{ a.sub }}</span>
                 </button>
@@ -1961,7 +1961,7 @@
                 <div style="{{ lockErrStyle }}">{{ lockErr }}</div>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:236px">
                   <sc-for list="{{ lockKeys }}" as="k" hint-placeholder-count="12">
-                    <button onClick="{{ k.go }}" style="{{ k.style }}">{{ k.label }}</button>
+                    <button onClick="{{ k.go }}" aria-label="{{ k.name }}" style="{{ k.style }}">{{ k.label }}</button>
                   </sc-for>
                 </div>
               </div>
@@ -1982,7 +1982,7 @@
                 </div>
                 <div style="text-align:center;line-height:1.35">
                   <div style="font-size:13px;font-weight:800;color:#1f1c17;letter-spacing:-0.01em">{{ qrTable }}</div>
-                  <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px">Scan to order</div>
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6b6358;margin-top:2px">Scan to order</div>
                   <div style="font-size:11px;color:#6b6358;margin-top:4px">{{ qrOutlet }}</div>
                   <div style="{{ qrPoweredStyle }}">Powered by KashikeyoPOS™</div>
                 </div>
@@ -2260,7 +2260,7 @@
                     <input value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
-                    <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
+                    <select value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
                       <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="2">
                         <option value="{{ o.v }}" label="{{ o.l }}"></option>
                       </sc-for>
@@ -8305,7 +8305,8 @@ class Component extends DCLogic {
       // escape. Anything else makes the PIN decorative.
       closeModal: () => { if (s.modal && s.modal.kind === "lock") return; this.setState({ modal: null }); },
       modalXStyle: (s.modal && s.modal.kind === "lock") ? "display:none"
-        : "width:28px;height:28px;border-radius:999px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:15px;line-height:1",
+        // 44 × 44: every sheet's way out, and a thumb has to hit it first time.
+        : "width:44px;height:44px;margin:-6px -6px 0 0;border-radius:999px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:18px;line-height:1",
       stop: (e) => e.stopPropagation(),
       // Settling shows a keypad and the bill side by side, but only when there is
       // room for both. Short or narrow, the bill drops under the keypad and the
@@ -8534,6 +8535,8 @@ class Component extends DCLogic {
       const rowS = "display:flex;justify-content:space-between;font-size:11.5px;font-weight:500;color:var(--text-dim);padding:3px 0";
       const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map((k) => ({
         label: k,
+        // A screen reader reads "⌫" as nothing and "." as a pause.
+        name: k === "⌫" ? "Delete last digit" : k === "." ? "Decimal point" : k,
         style: "min-height:60px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px;font-weight:600;font-family:'JetBrains Mono',monospace;touch-action:manipulation;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
         press: () => this.payType(k === "⌫" ? "back" : k)
       }));
@@ -9129,7 +9132,7 @@ class Component extends DCLogic {
       const held = this.lockoutLeft();
       const entered = held ? "" : (m.pin || "");
       const key = (d) => ({
-        label: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
+        label: d, name: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
           + (held ? ";opacity:.35" : ""),
         go: () => held ? this.toast("Held for " + held + " more minute" + (held === 1 ? "" : "s"), "warn") : this.pinType(d)
       });
@@ -9151,9 +9154,9 @@ class Component extends DCLogic {
           : (m.err || (demoPin ? "Demo PIN " + demoPin : "Checked by the outlet — never stored on this terminal")),
         lockErrStyle: (held || m.err) ? "font-size:11.5px;color:var(--red-bright);text-align:center;text-wrap:pretty" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
-          { label: "", style: "visibility:hidden", go: () => {} },
+          { label: "", name: "", style: "visibility:hidden", go: () => {} },
           key("0"),
-          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
+          { label: "⌫", name: "Delete last digit", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
         ])
       };
     }
