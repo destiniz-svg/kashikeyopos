@@ -264,13 +264,36 @@ can't find or talk to the other devices on the Wi-Fi, so:
   unless the server is on the same network.
 
 **Build (phase 2): the store hub.** An optional small computer in the store (a
-mini PC or the counter PC) runs the same `server.js` against a local Postgres.
-Devices use it first, the cloud second, and the hub syncs up to the cloud.
-With a hub:
+mini PC or the counter PC) runs the same `server.js` in hub mode
+(`HUB_UPSTREAM=https://…`). Devices use it first. With a hub:
 - tablet → kitchen display and printing keep working through an outage;
 - sync inside the store drops under 250 ms;
 - network kitchen and bar printers work, through the `net` path the print
   module already has.
+
+**The cloud stays the one book; the hub is store-and-forward.** Four rules:
+1. **Online, the hub is a pass-through.** It forwards each device's request
+   upstream with that device's own token. It never issues an id, a document
+   number or a clock value.
+2. **Offline, the hub holds a copy and the device keeps custody.** A push the
+   hub cannot forward is answered "held". The device keeps the op in its
+   outbox until the cloud acknowledges it. Attribution, the install fence,
+   document numbering and side effects (push, credit, stock) all stay correct,
+   because nothing ever moves custody.
+3. **The kitchen reads a small fold during an outage.** The hub folds the held
+   `add_line`, `fire_course`, `kds_bump`, `kds_bump_all` and `void_line` ops,
+   keyed by table/split and line ids, into what the KDS pull reads.
+4. **No Postgres on the hub.** Held ops go to an append-only JSONL file,
+   deduplicated by `opId`. This replaces the earlier "local Postgres" plan: a
+   second book would issue ids and document numbers twice, attribute every op
+   to the forwarder, run on a second clock, trip the install fence, and run
+   side effects twice when it synced up.
+
+**Owner-owed: a secure origin on the LAN.** Offline mode, the camera and push
+need HTTPS. The hub needs a name such as `seaside.hub.kashikeyopos.com` that
+points at its private IP, a Let's Encrypt certificate issued by DNS-01 (DNS API
+access for `kashikeyopos.com`), and a LAN DNS or router entry so the name still
+resolves with the WAN down. Offline receipts on the hub depend on 1.7.
 
 Without a hub, a store gets what it has today. Every device keeps selling on
 its own, the kitchen uses the till's USB printer, and everything converges
