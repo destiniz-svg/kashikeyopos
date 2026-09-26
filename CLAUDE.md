@@ -67,7 +67,14 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        053 a delivery lands somewhere
                        054 a punch the till can name
                        055 a decline names its lines
+                       056 a void moves stock back
+                       057 a revoked card is closed
+                       058 a later covers wins
+                       059 a device asks to be woken
                        control/004 the archive shelf
+                       control/005 the keys nobody hands over
+src/push.js            Web Push by hand: RFC 8291 encryption, VAPID keys
+src/notify.js          who an alert wakes, sent after the commit, never awaited
 src/ai.js              the one model seam — Gemini, honest when it has none
 src/build.js           what the browser is running, so a stale page can say so
 src/backup.js          taking a copy, and putting it back
@@ -7082,6 +7089,11 @@ receipt), keyed by the push service's own endpoint URL. `staff_id` says who
 to wake; "till devices, rank ≥ 2" is answered by joining `chain.staff` at
 **send** time, never cached at subscribe time, so a promotion or a demotion
 takes effect on the next alert rather than needing a re-subscribe.
+That join carries **no `outlet_id` filter**: the subscription table is
+already this outlet's own, and RLS (`staff_scoped`) already limits the staff
+rows to those homed here or granted this outlet through `staff.outlets`. An
+earlier `s.outlet_id = $1` silently dropped an owner granted the outlet but
+homed elsewhere, so they subscribed and were never woken (PR #83).
 
 **Sending happens after the triggering op's own transaction has committed**,
 never inside it and never awaited by the response that triggered it —
