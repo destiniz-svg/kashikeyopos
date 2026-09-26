@@ -833,6 +833,7 @@ async function boot() {
           + ' \u2014 scheduled runs are OFF (BACKUP_EVERY_HOURS=0); `npm run'
           + ' backup` still works');
       }
+      if (h.warn) console.error('[backup] ' + h.warn);
       console.log('[backup] ' + h.driver + ' \u2192 ' + h.where + ' \u00b7 every '
         + hours + 'h \u00b7 keeping ' + (process.env.BACKUP_RETAIN_DAYS || 30)
         + ' days \u00b7 ' + h.tool);

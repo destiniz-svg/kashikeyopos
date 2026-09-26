@@ -107,6 +107,29 @@ test('with no destination configured it refuses by name rather than pretending',
     } finally { process.env.BACKUP_DIR = dir; }
   });
 
+test('a half-set bucket keeps the volume\'s copies coming, and says why', () => {
+  const backup = require('../src/backup');   // driver() reads only the environment
+  const was = { dir: process.env.BACKUP_DIR, b: process.env.BACKUP_S3_BUCKET,
+    k: process.env.BACKUP_S3_KEY, s: process.env.BACKUP_S3_SECRET };
+  const put = (k, v) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
+  try {
+    // What the live install had: the bucket resolved, the key did not.
+    process.env.BACKUP_DIR = '/backups';
+    process.env.BACKUP_S3_BUCKET = 'kashikeyopos-backups-x';
+    process.env.BACKUP_S3_KEY = '${{kashikeyopos-backups.AWS_ACCESS_KEY_ID}}';
+    process.env.BACKUP_S3_SECRET = '${{kashikeyopos-backups.AWS_SECRET_ACCESS_KEY}}';
+    const d = backup.driver();
+    assert.strictEqual(d.name, 'file', 'not "no backups at all"');
+    assert.strictEqual(d.where, '/backups');
+    assert.match(d.warn, /BACKUP_S3_KEY/, 'the boot says which half is missing');
+    delete process.env.BACKUP_DIR;
+    assert.strictEqual(backup.driver().name, null, 'with no volume either, it still refuses by name');
+  } finally {
+    put('BACKUP_DIR', was.dir); put('BACKUP_S3_BUCKET', was.b);
+    put('BACKUP_S3_KEY', was.k); put('BACKUP_S3_SECRET', was.s);
+  }
+});
+
 test('a store trades, and every figure is written down', opts, async () => {
   const { createBusiness } = require('../src/business');
   const { provisionOutlet } = require('../src/provision');

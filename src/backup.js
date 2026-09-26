@@ -78,9 +78,18 @@ function driver() {
   const s = s3cfg();
   if (s.bucket && !unresolved(s.bucket)) {
     if (!s.key || !s.secret || unresolved(s.key) || unresolved(s.secret)) {
-      return { name: null, why: 'BACKUP_S3_BUCKET is set but BACKUP_S3_KEY /'
+      const why = 'BACKUP_S3_BUCKET is set but BACKUP_S3_KEY /'
         + ' BACKUP_S3_SECRET are missing or unresolved — a bucket nothing can'
-        + ' sign for is not a destination' };
+        + ' sign for is not a destination';
+      /* A HALF-SET BUCKET MUST NOT SWITCH BACKUPS OFF. Moving the live install
+         to a bucket, two references named the wrong variable, and an install
+         that had backed up to its volume every night took no copies at all
+         until it was noticed. Where a volume is still configured it keeps
+         the copies coming, and the boot line says why it is not the bucket. */
+      if (DIR() && !unresolved(DIR())) {
+        return { name: 'file', where: DIR(), warn: why + ' — backing up to BACKUP_DIR instead' };
+      }
+      return { name: null, why: why };
     }
     return { name: 's3', where: 's3://' + s.bucket + '/' + s.prefix };
   }
@@ -175,6 +184,7 @@ async function health() {
     driver: d.name, where: d.name ? d.where : null,
     tool: t.ok ? t.version : null,
     reason: d.name ? (t.ok ? null : t.why) : d.why,
+    warn: d.warn || null,
     last: last, lastGood: lastGood, recentFailures: fails
   };
 }
