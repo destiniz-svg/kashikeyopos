@@ -1254,18 +1254,26 @@
   </sc-if>
 
   <sc-if value="{{ hasToast }}">
-    <div style="{{ toastStyle }}">{{ toastMsg }}</div>
+    <!-- role="status": a toast is how the till says a thing happened
+         ("Every job printed"), and without a live region a screen reader
+         never hears it. Polite, so it waits for the current sentence. -->
+    <div role="status" aria-live="polite" style="{{ toastStyle }}">{{ toastMsg }}</div>
   </sc-if>
 
   <sc-if value="{{ hasModal }}">
     <div onClick="{{ closeModal }}" style="{{ scrimStyle }}">
-      <div onClick="{{ stop }}" style="{{ modalStyle }}">
+      <!-- ONE FRAME FOR EVERY SHEET (all 39 kinds), so the dialog semantics
+           live here once: announced as a dialog by its title, the page behind
+           it out of reach, and focus moved in and handed back (the
+           MutationObserver beside keyRoute). tabIndex -1 lets the frame itself
+           take focus, so a screen reader starts at the title. -->
+      <div onClick="{{ stop }}" role="dialog" aria-modal="true" aria-labelledby="kpos-dlg-title" aria-describedby="kpos-dlg-sub" tabIndex="-1" style="{{ modalStyle }}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:16px 18px;border-bottom:1px solid var(--line);flex-shrink:0">
           <div style="min-width:0">
-            <div style="font-size:16px;font-weight:700;letter-spacing:-0.02em">{{ modalTitle }}</div>
-            <div style="font-size:11.5px;color:var(--text-dim);margin-top:3px">{{ modalSub }}</div>
+            <div id="kpos-dlg-title" style="font-size:16px;font-weight:700;letter-spacing:-0.02em">{{ modalTitle }}</div>
+            <div id="kpos-dlg-sub" style="font-size:11.5px;color:var(--text-dim);margin-top:3px">{{ modalSub }}</div>
           </div>
-          <button onClick="{{ closeModal }}" style="{{ modalXStyle }}">×</button>
+          <button onClick="{{ closeModal }}" aria-label="Close" style="{{ modalXStyle }}">×</button>
         </div>
 
         <div style="padding:16px 18px;overflow-y:auto;overflow-x:hidden;flex:1;min-height:0;overscroll-behavior:contain">
@@ -3190,6 +3198,22 @@ class Component extends DCLogic {
   // the way the moment the operator is typing into a field.
   keyRoute(e) {
     if (e.defaultPrevented || e.altKey) return;
+    // Tab stays inside an open dialog: the page behind the scrim is not there.
+    if (e.key === "Tab") {
+      const d = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (!d) return;
+      const f = Array.prototype.filter.call(d.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      (x) => !x.disabled && x.offsetParent !== null);
+      if (!f.length) { e.preventDefault(); d.focus(); return; }
+      const a = document.activeElement, first = f[0], last = f[f.length - 1];
+      const out = !d.contains(a);
+      if (out || (e.shiftKey ? (a === first || a === d) : a === last)) {
+        e.preventDefault();
+        (e.shiftKey && !out ? last : first).focus();
+      }
+      return;
+    }
     const t = e.target || {}, tag = (t.tagName || "").toLowerCase();
     const typing = tag === "input" || tag === "select" || tag === "textarea" || t.isContentEditable;
     const m = this.state.modal;
@@ -3444,6 +3468,29 @@ class Component extends DCLogic {
     ["pointerdown", "keydown"].forEach((e) => window.addEventListener(e, this._touch, { passive: true }));
     this._key = (e) => this.keyRoute(e);
     window.addEventListener("keydown", this._key);
+    /* A DIALOG TAKES THE FOCUS AND GIVES IT BACK. Every sheet opened with the
+       keyboard's focus left on the page behind it, so the next Tab walked the
+       floor under the scrim and a screen reader never announced the sheet;
+       closing it dropped focus on <body>. Watched rather than wired into 39
+       openers: whenever the one dialog frame appears, focus moves into it
+       (unless something inside already has it), and when it goes, focus goes
+       back to whatever opened it. Tab is kept inside by keyRoute(). */
+    this._dlgOpener = null;
+    this._dlgOpen = null;
+    this._dlg = new MutationObserver(() => {
+      const d = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (d && d !== this._dlgOpen) {
+        if (!this._dlgOpen) this._dlgOpener = document.activeElement;
+        this._dlgOpen = d;
+        if (!d.contains(document.activeElement)) d.focus({ preventScroll: true });
+      } else if (!d && this._dlgOpen) {
+        this._dlgOpen = null;
+        const o = this._dlgOpener;
+        this._dlgOpener = null;
+        if (o && o.isConnected && o.focus && !document.querySelector('[role="dialog"]')) o.focus({ preventScroll: true });
+      }
+    });
+    this._dlg.observe(document.body, { childList: true, subtree: true });
     this._flush = () => { clearTimeout(this._ps); this.writeSession(); };
     /* GOING AWAY IS A WRITE; COMING BACK IS A CHECK. A phone that backgrounds
        this app freezes its timers, so the fifteen-second sweep is not running
@@ -3469,6 +3516,7 @@ class Component extends DCLogic {
     if (this._onSig) window.removeEventListener("storage", this._onSig);
     if (this._touch) ["pointerdown", "keydown"].forEach((e) => window.removeEventListener(e, this._touch));
     if (this._key) window.removeEventListener("keydown", this._key);
+    if (this._dlg) this._dlg.disconnect();
     window.removeEventListener("resize", this._onResize);
     if (this._vis) window.removeEventListener("visibilitychange", this._vis);
     if (this._flush) window.removeEventListener("pagehide", this._flush);
