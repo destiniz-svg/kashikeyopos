@@ -37,7 +37,7 @@
 /* Everything trading produced. In one TRUNCATE, so the classification is
    checked by the database rather than trusted. */
 const TRADE = [
-  'bank_line', 'bank_opening', 'batch', 'clock_entry', 'count_line', 'credit_note',
+  'bank_line', 'bank_opening', 'batch', 'batch_draw', 'clock_entry', 'count_line', 'credit_note',
   'delivery', 'depreciation_run', 'dispatch', 'dispatch_line', 'document',
   'door_line', 'door_receipt', 'drawer_session', 'grn_line', 'guest_order',
   'guest_request', 'indent', 'indent_line', 'journal', 'journal_line',
