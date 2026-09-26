@@ -73,6 +73,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        057 a revoked card is closed
                        058 a later covers wins
                        059 a device asks to be woken
+                       060 a lot is drawn down
                        control/004 the archive shelf
                        control/005 the keys nobody hands over
 src/push.js            Web Push by hand: RFC 8291 encryption, VAPID keys
@@ -3776,9 +3777,20 @@ shelf draws its lots wearing USED and WASTED and a derived date as `≈ 03 Sept 
 a lot closed through the sheet lands `LIVE-LOT-1 | 0.0000 | used` with the
 reason on the trail.
 
-**Still stated rather than fixed.** Nothing draws a batch DOWN as stock is
-consumed — FEFO picking at the point of sale is a subsystem, not a fix, and the
-shelf is an ORDER a kitchen works in rather than an allocation. `chain.outlet`
+**A lot is drawn down (060).** Every move that takes stock OUT and names no lot
+of its own (sale, prep, waste, a dispatch, a count's shortfall) is spread by
+`drawDown()` in `moveStock()` across the item's `holding`/`open` lots, earliest
+`use_by` first (undated last), then oldest `received_at`; each piece is a
+`batch_draw` row. A lot drawn to nothing is `used`, partly drawn `open`. Stock
+beyond what the lots hold is unbatched, as before. **Allocation only**: the
+move's `value` is still `avg_cost × qty`, so no journal, COGS or valuation
+figure moves. Three moves do NOT draw: a lot write-off (it passes `batchId`,
+and would otherwise take its quantity from the earliest lots as well), a
+`transfer` between two places in the outlet (`keepLots` — the stock never
+left), and anything inward. A void or restocking refund passes `undoes: <move
+id>` and `undraw()` puts exactly that move's draws back, marking them
+`undone_by` so a replay returns nothing twice; a lot thrown away since keeps
+its write-off. `test/fefo.test.js`. `chain.outlet`
 is scoped by RLS to the signed-in outlet at bootstrap, so `K().OUTLETS` carries
 one row and a dispatch's destination renders as its id where the till cannot
 name it — `locName()`'s documented last resort. And an indent's PRIORITY has no

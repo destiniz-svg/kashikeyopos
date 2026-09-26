@@ -1102,6 +1102,19 @@ BEGIN
       last_ok_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS push_subscription_staff ON %1$I.push_subscription(staff_id);
+
+    -- WHICH LOT A MOVE CAME OUT OF (060): every outward move that names no lot
+    -- of its own is spread across open lots, earliest use-by first. Where the
+    -- stock came from, never what it was worth. `undone_by` marks a draw a
+    -- void or restocking refund put back; nothing here is deleted.
+    CREATE TABLE IF NOT EXISTS %1$I.batch_draw (
+      move_id   bigint NOT NULL REFERENCES %1$I.stock_move(id),
+      batch_id  uuid NOT NULL REFERENCES %1$I.batch(id),
+      qty       numeric(14,4) NOT NULL CHECK (qty > 0),
+      undone_by bigint,
+      PRIMARY KEY (move_id, batch_id)
+    );
+    CREATE INDEX IF NOT EXISTS batch_draw_batch ON %1$I.batch_draw(batch_id);
   $ddl$, s);
 
   -- ══ GRANTS ══════════════════════════════════════════════════════════════

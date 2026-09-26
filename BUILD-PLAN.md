@@ -45,8 +45,9 @@ rules) and `SPEC.md` (what each device does and how sync works).
 
 ### Known open items (already recorded in `CLAUDE.md`), in this plan as "alongside"
 
-- Batches are never drawn down as stock is used (FEFO is an order, not an
-  allocation).
+- ~~Batches are never drawn down as stock is used.~~ **Done (060).** Outward
+  moves draw lots earliest use-by first, and a void puts back exactly what it
+  took. Allocation only: no money figure moves.
 - The Today briefing and CFO advisory still call a model helper that doesn't
   exist in a real browser. They say so honestly, but they're dead.
 - There's no rota, so lateness can't be measured.

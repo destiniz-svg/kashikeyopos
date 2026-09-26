@@ -825,6 +825,10 @@ async function moveStock(c, ctx, m) {
      every path through stock passes. What a manager needs is not a refusal
      three hours later; it is to be told which ingredient the books now believe
      they have less than none of. */
+  // Which lot it came from (060). Never what it was worth: `value` is above.
+  if (qty < 0 && !m.batchId && !m.keepLots) await drawDown(c, row.id, m.ing, -qty);
+  if (qty > 0 && m.undoes) await undraw(c, m.undoes, row.id);
+
   const left = after ? num(after.on_hand) : 0;
   const short = left < -0.0001
     ? { ing: m.ing, name: (after && after.name) || '', onHand: r2(left), took: r2(qty) }
@@ -834,6 +838,52 @@ async function moveStock(c, ctx, m) {
       Object.assign({ reason: m.reason }, short));
   }
   return { id: row.id, value: value, short: short };
+}
+
+/* ═══ A LOT IS DRAWN DOWN (060) ═════════════════════════════════════════════
+   Every move that takes stock OUT and names no lot of its own — a sale, prep,
+   waste, a transfer out, a count's shortfall — is spread across the item's
+   open lots, earliest use-by first, then oldest delivery. A lot with nothing
+   left is `used`; one partly drawn is `open`. Stock beyond what the lots hold
+   is simply unbatched, as all stock was before this. A move that NAMES its lot
+   (throwing a lot away) has already said where it came from and is not drawn
+   again, and a transfer between two places in this outlet (`keepLots`) never
+   left it.
+
+   Allocation only. The move's value is avg_cost × qty whichever lot it came
+   from, so nothing in the journal, COGS or the valuation moves because of
+   this: FEFO decides which box is opened first, not what the plate cost. */
+const q4 = (n) => Math.round(num(n) * 1e4) / 1e4;
+
+async function drawDown(c, moveId, ing, want) {
+  const lots = await c.query("SELECT id, qty FROM batch WHERE ingredient_id = $1"
+    + " AND state IN ('holding','open') AND qty > 0"
+    + ' ORDER BY use_by NULLS LAST, received_at, id FOR UPDATE', [ing]);
+  let left = q4(want);
+  for (const b of lots.rows) {
+    if (left <= 0) break;
+    const take = q4(Math.min(left, num(b.qty)));
+    if (take <= 0) continue;
+    await c.query("UPDATE batch SET qty = greatest(qty - $2, 0),"
+      + " state = CASE WHEN qty - $2 <= 0 THEN 'used' ELSE 'open' END WHERE id = $1",
+    [b.id, take]);
+    await c.query('INSERT INTO batch_draw (move_id, batch_id, qty) VALUES ($1,$2,$3)',
+      [moveId, b.id, take]);
+    left = q4(left - take);
+  }
+}
+
+/* A void or a restocking refund puts back exactly what that move drew, onto
+   the lots it came from — once: the draw is marked with the move that undid
+   it, so a replayed void finds nothing left to return. A lot thrown away
+   since keeps its write-off; what comes back to the shelf is unbatched. */
+async function undraw(c, undoes, byMove) {
+  const d = await c.query('UPDATE batch_draw SET undone_by = $2'
+    + ' WHERE move_id = $1 AND undone_by IS NULL RETURNING batch_id, qty', [undoes, byMove]);
+  for (const r of d.rows) {
+    await c.query("UPDATE batch SET qty = qty + $2, state = 'open'"
+      + " WHERE id = $1 AND state <> 'wasted'", [r.batch_id, num(r.qty)]);
+  }
 }
 
 /* ── the handler table ──────────────────────────────────────────────────── */
@@ -1186,13 +1236,13 @@ H.refund = async (c, p, ctx) => {
         value: r2(m.value), reason: 'refund' });
     }
   } else if (p.restock && p.saleId) {
-    const moves = await c.query('SELECT ingredient_id, qty, unit_cost, value,'
+    const moves = await c.query('SELECT id, ingredient_id, qty, unit_cost, value,'
       + ' location_id FROM stock_move WHERE sale_id = $1 AND reason = $2',
     [p.saleId, 'sale']);
     for (const m of moves.rows) {
       await moveStock(c, ctx, { ing: m.ingredient_id, qty: Math.abs(num(m.qty)),
         cost: num(m.unit_cost), value: r2(Math.abs(num(m.value))), reason: 'refund',
-        saleId: p.saleId, loc: m.location_id });
+        saleId: p.saleId, loc: m.location_id, undoes: m.id });
     }
   }
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
@@ -1260,13 +1310,13 @@ H.void_sale = async (c, p, ctx) => {
   /* The stock, returned from the ledger's own rows rather than from a list the
      till composed. Whatever the sale consumed comes back, at the cost it left
      at, against the same location. */
-  const moves = await c.query('SELECT ingredient_id, qty, unit_cost, value,'
+  const moves = await c.query('SELECT id, ingredient_id, qty, unit_cost, value,'
     + ' location_id FROM stock_move WHERE sale_id = $1 AND reason = $2',
   [sale.id, 'sale']);
   for (const m of moves.rows) {
     await moveStock(c, ctx, { ing: m.ingredient_id, qty: -num(m.qty),
       cost: num(m.unit_cost), value: r2(-num(m.value)), reason: 'void',
-      saleId: sale.id, loc: m.location_id, date: p.bizDate || null });
+      saleId: sale.id, loc: m.location_id, date: p.bizDate || null, undoes: m.id });
   }
 
   /* Loyalty, both directions: the points the visit granted are taken back and
@@ -1353,8 +1403,11 @@ H.stock_writeoff = H.stock_adjust;
 H.stock_return = H.stock_adjust;
 
 H.transfer = async (c, p, ctx) => {
+  // Between two places in THIS outlet: the stock never left, so no lot is
+  // drawn. (A dispatch to another outlet does leave, and does draw.)
   await moveStock(c, ctx, { ing: p.ing, qty: -Math.abs(num(p.qty)), cost: num(p.cost),
-    value: r2(p.value), reason: 'transfer', loc: p.from, note: 'to ' + (p.to || '') });
+    value: r2(p.value), reason: 'transfer', loc: p.from, note: 'to ' + (p.to || ''),
+    keepLots: true });
   await moveStock(c, ctx, { ing: p.ing, qty: Math.abs(num(p.qty)), cost: num(p.cost),
     value: r2(p.value), reason: 'transfer', loc: p.to, note: 'from ' + (p.from || '') });
   return { ok: true };
@@ -1955,6 +2008,8 @@ H.batch_close = async (c, p, ctx) => {
     const value = r2(left * num(b.unit_cost));
     const mv = await moveStock(c, ctx, { ing: b.ingredient_id, qty: -left,
       cost: num(b.unit_cost), value: value, reason: 'waste', loc: b.location_id,
+      // Names its lot, so drawDown() does not take it from the others as well.
+      batchId: b.id,
       note: 'Lot ' + (b.lot || String(b.id).slice(0, 6)) + ' thrown away'
         + (p.note ? ' \u2014 ' + String(p.note).slice(0, 120) : '') });
     moveId = mv && mv.id;

@@ -15814,7 +15814,7 @@ class Component extends DCLogic {
         }
       ],
       cols: [{ label: "Batch", w: "1.2fr", mono: 1 }, { label: "Item", w: "1.8fr" }, { label: "Location", w: "1.2fr" }, { label: "Source", w: ".8fr" }, { label: "Received", w: ".9fr", a: "right", mono: 1 }, { label: "Use by", w: ".9fr", a: "right", mono: 1 }, { label: "Shelf life", w: ".9fr", a: "right", mono: 1 }, { label: "Remaining", w: ".9fr", a: "right", mono: 1 }, { label: "Tier", w: ".9fr", a: "right" }],
-      guideTitle: "First expiry, first out", guide: ["The table is the pick order \u2014 earliest use-by at the top", "Tap a tier to work only that shelf, or a row to close the lot", "A date marked \u2248 was worked out from the item's shelf life, not read off the box", "Finishing a lot moves no stock \u2014 it already left through the sales that used it. Throwing one away does, and books it"],
+      guideTitle: "First expiry, first out", guide: ["The table is the pick order \u2014 earliest use-by at the top, and sales, prep and waste draw Remaining down in that order","Tap a tier to work only that shelf, or a row to close the lot", "A date marked \u2248 was worked out from the item's shelf life, not read off the box", "Finishing a lot moves no stock \u2014 it already left through the sales that used it. Throwing one away does, and books it"],
       rows: (raw.batches || [])
         .filter((b) => !sel || tierOf(b) === sel)
         // FEFO is an ordering, so the table IS the pick order: earliest use-by
