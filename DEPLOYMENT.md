@@ -361,6 +361,24 @@ npm run backup -- --business 3
 npm run backup -- --list      what is on the shelf
 ```
 
+**A Railway bucket, by reference** (the live install since 2026-09-26: bucket
+`kashikeyopos-backups` in `sin`, app and database in `sfo`), so no secret is
+ever pasted anywhere:
+
+```
+BACKUP_S3_BUCKET=${{kashikeyopos-backups.BUCKET}}
+BACKUP_S3_KEY=${{kashikeyopos-backups.ACCESS_KEY_ID}}
+BACKUP_S3_SECRET=${{kashikeyopos-backups.SECRET_ACCESS_KEY}}
+BACKUP_S3_REGION=${{kashikeyopos-backups.REGION}}
+BACKUP_S3_ENDPOINT=${{kashikeyopos-backups.ENDPOINT}}
+```
+
+The names are the bucket's own (`ACCESS_KEY_ID`, not the AWS-CLI preset's
+`AWS_ACCESS_KEY_ID`). The first attempt used the preset names: the bucket
+resolved, the key did not, and until this build that switched backups OFF
+rather than leaving them on the volume. A bucket set with no usable key now
+falls back to `BACKUP_DIR` when one is set, and the boot log says why.
+
 With no destination set the install takes **no copies at all** and says so at
 boot, in `--check`, and on the Settings card. It never implies otherwise. With
 one set, an in-process schedule runs every `BACKUP_EVERY_HOURS` (24), keeps
