@@ -65,9 +65,9 @@ async function notifyStaff(outletId, staffId, payload) {
 
 // Bill asked, a QR order to accept, sold out — every till device, rank >= 2.
 // Read at SEND time from chain.staff, never cached at subscribe time, so a
-// promotion or a demotion takes effect on the next alert. No outlet filter on
-// the staff row: push_subscription already lives in THIS outlet's schema, and
-// a group owner (outlet_id NULL) subscribed here must be woken too.
+// promotion or a demotion takes effect on the next alert. No outlet_id filter:
+// push_subscription already lives in THIS outlet's schema, and someone granted
+// this outlet through staff.outlets (homed elsewhere) must be woken too.
 async function notifyTill(outletId, payload) {
   try {
     const subs = await withOutletRead({ outletId, rank: 5, actor: null }, (c) =>

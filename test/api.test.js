@@ -7675,14 +7675,15 @@ test('web push: order ready wakes the one staff member who owns the ticket, and 
   await stub.close();
 });
 
-test('web push: a group owner (no outlet of their own) subscribed here gets till alerts', opts, async () => {
+test('web push: an owner granted this outlet, not homed here, gets till alerts', opts, async () => {
   process.env.PUSH_ALLOW_LOOPBACK = '1';
   const stub = await pushStub(201);
-  // Hash and salt are unusable on purpose: this row must never sign in by PIN.
+  // Reach comes from staff.outlets, the way RLS reads it. Hash and salt are
+  // unusable on purpose: this row must never sign in by PIN.
   const groupOwner = (await db.owner().query(
-    'INSERT INTO chain.staff (name, rank, role_key, outlet_id, pin_hash, pin_salt)'
-    + ' VALUES ($1, 5, $2, NULL, $3, $3) RETURNING id',
-    ['Group Owner', 'SuperAdmin', 'x-' + uuid()])).rows[0];
+    'INSERT INTO chain.staff (name, rank, role_key, outlet_id, outlets, pin_hash, pin_salt)'
+    + ' VALUES ($1, 5, $2, NULL, ARRAY[$3::int], $4, $4) RETURNING id',
+    ['Group Owner', 'SuperAdmin', outletId, 'x-' + uuid()])).rows[0];
   await insertSub(stub.url, groupOwner.id);
 
   const notify = require('../src/notify');
