@@ -9356,6 +9356,23 @@ class Component extends DCLogic {
       };
     }
 
+    /* THE SAME DEFECT, NINE MORE TIMES. Printers, payment runs, a failed
+       print job, a refused op, a device, a card batch and a supplier invoice
+       all open `actions` with their own title and acts — and every one of
+       them got "Table actions" for whatever table was last touched, so no
+       printer could be connected over the network from the screen. A caller
+       that brings its own acts is the caller's sheet; only the bare kind is
+       the table's. */
+    if (m.kind === "actions" && m.acts) {
+      return {
+        modalTitle: m.title || "Actions", modalSub: m.sub || "",
+        moreActions: m.acts.map((a) => ({
+          head: a.head, label: a.label, sub: a.sub, style: a.style,
+          go: () => { this.setState({ modal: null }); setTimeout(a.go, 0); }
+        }))
+      };
+    }
+
     if (m.kind === "actions") {
       const p = this.posVals();
       const btn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px";
