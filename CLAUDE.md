@@ -7061,6 +7061,26 @@ kitchen keeps printing through an outage for sessions that already printed.
 `{mode:"hub", upstream, online}` from a hub; the Sync & devices screen shows
 it as "Store mode". Production refuses a plain-http `HUB_UPSTREAM`.
 
+**During an outage the hub holds, and never applies** (2.5b, 2.5c). A
+push the cloud cannot take, from a session the cloud cleared through this hub
+(a 2xx on a push, a pull or GET print — all one gate), is copied to
+`HUB_DATA_DIR/held.jsonl` (dedup by opId) and answered **503 held, with no
+`results[]`**. The till deletes from its outbox exactly what a `results[]`
+acknowledges, so custody never moves; its retry lands once through `op_log`.
+A pull in the outage is answered from the cloud's last pull for that outlet
+with the held kitchen ops folded onto `state.tickets` (`fold()` mirrors
+`ticketRef`/`linesOf`/`rungFromPass`), `ops: []`, and `hub.offline`. Both the fold and the end of the outage go in
+**arrival order, not lamport**: a kitchen bumps a tablet's dish only after the
+fold showed it, and the fold advances nobody's clock, so the bump can carry a
+lower lamport than the dish. When the cloud answers again, the hub first
+delivers everything it held, in arrival order, each run under its own
+device's token (held in RAM, never on disk), before any device's own push
+goes through; those pushes are then replays. Without that, a kitchen that
+reconnected 2.4 s before the tablet had its `kds_bump_all` applied as "no open
+ticket" and the bump was lost (found driving two real devices). Cleared
+sessions and tokens live in the hub's RAM: a hub rebooted mid-outage holds and
+prints for nobody, and replays nothing, until the cloud is back.
+
 **The drawer plugs into the receipt printer's RJ11, so opening it is a print**
 (`ESC p`). Only a CASH receipt kicks it — a card receipt popping the drawer is
 how cash walks. KOT dockets carry their station's lines in double-size type;

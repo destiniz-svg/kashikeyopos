@@ -128,6 +128,8 @@ const fs = require('fs');
 const path = require('path');
 const HELD = path.join(process.env.HUB_DATA_DIR || path.join(__dirname, '..', 'hub-data'), 'held.jsonl');
 const heldIds = new Set();
+// Whose op each held one is. RAM only: a bearer token never goes to disk.
+const tokens = new Map();
 function readHeld() {
   try {
     return fs.readFileSync(HELD, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -149,8 +151,10 @@ function hold(req, res) {
   for (const op of ops) {
     if (!op || !op.opId || heldIds.has(op.opId)) continue;
     heldIds.add(op.opId);
+    tokens.set(op.opId, req.get('authorization') || '');
     fs.appendFileSync(HELD, JSON.stringify({ outletId: req.params.id, heldAt: Date.now(),
-      opId: op.opId, kind: op.kind, payload: op.payload, lamport: op.lamport, at: op.at }) + '\n');
+      opId: op.opId, kind: op.kind, label: op.label, entity: op.entity,
+      payload: op.payload, lamport: op.lamport, at: op.at }) + '\n');
     kept++;
   }
   res.status(503).json({ held: kept, error: 'The cloud cannot be reached. The store'
@@ -191,8 +195,11 @@ function fold(tickets, held) {
     const fired = t.lines.filter((l) => l.fired);
     return !fired.length ? 0 : fired.some((l) => !l.done) ? 1 : 2;
   };
-  held.slice().sort((a, b) => (a.lamport || 0) - (b.lamport || 0) || a.heldAt - b.heldAt)
-    .forEach(function (op) {
+  // In ARRIVAL order, not lamport: a device can only act on another device's
+  // held op after this fold showed it, and the fold never advances anybody's
+  // clock — so a kitchen's bump can carry a LOWER lamport than the line it
+  // bumps. Arrival at the hub is the order that respects cause.
+  held.forEach(function (op) {
       const p = op.payload || {}, at = op.at || op.heldAt;
       if (op.kind === 'add_line') {
         if (!p.item) return;
@@ -252,11 +259,58 @@ function kitchenView(req, res) {
   }));
 }
 
-function endOutage(req) {
-  allowed.set(who(req), Date.now());
-  if (!heldIds.size) return;
+/* ═══ THE OUTAGE ENDS IN THE ORDER IT HAPPENED ══════════════════════════════
+   Found by driving it: a kitchen bumped, through the fold, a dish a tablet
+   had rung during the outage. The kitchen came back online 2.4 s before the
+   tablet, its bump reached the cloud before the dish did, `kds_bump_all`
+   answered "no open ticket" — and the kitchen's work was gone, recorded as
+   applied. Without a hub that cannot happen (the kitchen never sees the
+   tablet's dish); the fold is what made it possible, so the hub closes it.
+
+   Before any device's push goes through after an outage, the hub delivers
+   what it holds, in arrival order, each run under its OWN device's token:
+   the cloud attributes, fences and numbers every op exactly as if the device
+   had sent it, and the device's own retry that follows is a replay op_log
+   answers from its record. Custody never moved; only the ORDER is the hub's.
+   An op whose token the hub no longer has (it was restarted) is left to its
+   device, which is exactly the no-hub behaviour. */
+let draining = null;
+async function drain(up) {
+  const held = readHeld();
+  for (let i = 0; i < held.length;) {
+    const h = held[i], auth = tokens.get(h.opId);
+    if (!auth) { i++; continue; }
+    const run = [h];
+    while (i + run.length < held.length && run.length < 200) {
+      const n = held[i + run.length];
+      if (tokens.get(n.opId) !== auth || n.outletId !== h.outletId) break;
+      run.push(n);
+    }
+    // Throws while the cloud is still unreachable, which keeps everything held.
+    // Any ANSWER is the cloud's to give: a refusal reaches the device on its own retry.
+    await fetch(up + '/api/outlet/' + encodeURIComponent(h.outletId) + '/sync/push', {
+      method: 'POST', signal: AbortSignal.timeout(5000),
+      headers: { authorization: auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ops: run.map((o) => ({ opId: o.opId, kind: o.kind, label: o.label,
+        entity: o.entity, payload: o.payload, lamport: o.lamport, at: o.at })) })
+    });
+    i += run.length;
+  }
   heldIds.clear();
+  tokens.clear();
   try { fs.unlinkSync(HELD); } catch (e) { /* already gone */ }
+}
+
+function pushThrough(up) {
+  const pass = forward(up, { down: hold, ok: (req) => allowed.set(who(req), Date.now()) });
+  return async function (req, res) {
+    if (heldIds.size) {
+      try {
+        await (draining || (draining = drain(up).finally(() => { draining = null; })));
+      } catch (e) { state.online = false; return hold(req, res); }
+    }
+    pass(req, res);
+  };
 }
 
 function router(up) {
@@ -278,7 +332,7 @@ function router(up) {
     return relay(req, res);
   });
   r.post('/api/outlet/:id/sync/push', express.raw({ type: '*/*', limit: '4mb' }),
-    forward(up, { down: hold, ok: endOutage }));
+    pushThrough(up));
   r.get('/api/outlet/:id/sync/pull', forward(up, { keep: keepPull, down: kitchenView }));
   r.use('/api', forward(up));
   return r;

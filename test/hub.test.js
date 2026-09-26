@@ -82,6 +82,9 @@ test('a pull passes through untouched while the cloud answers', async function (
     { headers: { authorization: 'Bearer device-7' } })).json();
   assert.deepStrictEqual(b.ops, [{ op_id: 'done-before' }]);
   assert.ok(!b.hub, 'the cloud\'s answer, not the hub\'s');
+  // The kitchen screen polls too, so the cloud clears it here as well.
+  assert.strictEqual((await fetch(base + '/api/outlet/1/sync/pull?since=0',
+    { headers: { authorization: 'Bearer kds' } })).status, 200);
 });
 
 test('the sync stream arrives while it is still open', async function () {
@@ -149,6 +152,11 @@ test('with the cloud gone, a push is held: a copy here, custody on the till', as
   const s = await push('Bearer stranger', [{ opId: 'x-1', kind: 'add_line' }]);
   assert.strictEqual(s.status, 503);
   assert.strictEqual(heldLines().length, 2, 'a session the cloud never cleared here holds nothing');
+
+  // The kitchen, which saw the dish only through the fold, calls the table away.
+  const k = await (await push('Bearer kds', [{ opId: 'o-3', kind: 'kds_bump_all', lamport: 1,
+    payload: { table: 'T06' } }])).json();
+  assert.strictEqual(k.held, 1);
 });
 
 test('with the cloud gone, the kitchen reads the last floor with the held ops folded on', async function () {
@@ -161,7 +169,9 @@ test('with the cloud gone, the kitchen reads the last floor with the held ops fo
   const t = b.state.tickets['T06:0'];
   assert.deepStrictEqual(t.lines.map((l) => l.lid), ['a', 'L2'], 'the tablet\'s line joined the floor\'s table');
   assert.strictEqual(t.lines[1].fired, true);
-  assert.strictEqual(t.stage, 1, 'fired, so it is in the kitchen');
+  assert.strictEqual(t.lines[1].done, true,
+    'the bump folds AFTER the dish although its lamport is lower: arrival order');
+  assert.strictEqual(t.lines[0].done, false, 'an unfired line is never finished');
 
   const s = await fetch(base + '/api/outlet/1/sync/pull', { headers: { authorization: 'Bearer stranger' } });
   assert.strictEqual(s.status, 503, 'the floor is not handed to a session the cloud never cleared');
@@ -187,11 +197,18 @@ test('the fold: bumps, voids and a table nobody had open yet', function () {
   assert.deepStrictEqual(floor['T06:0'].lines[0].done, false, 'the snapshot itself is never changed');
 });
 
-test('the cloud back: the push goes through, and the copy is done with', async function () {
+test('the cloud back: the outage lands in the order it happened, whoever reconnects first', async function () {
   await new Promise((r) => cloud.listen(cloudPort, '127.0.0.1', r));
-  const r = await push('Bearer device-7', bill);
+  const mark = seen.length;
+  // The KITCHEN reconnects first — the order that lost the bump on a real till.
+  const r = await push('Bearer kds', [{ opId: 'o-3', kind: 'kds_bump_all', lamport: 1, payload: { table: 'T06' } }]);
   assert.strictEqual(r.status, 200);
-  assert.deepStrictEqual(JSON.parse(seen[seen.length - 1].body).ops.map((o) => o.opId), ['o-1', 'o-2'],
-    'the till\'s own retry is what reaches the cloud');
+  const pushes = seen.slice(mark).filter((s) => s.url === '/api/outlet/1/sync/push')
+    .map((s) => s.auth + ' ' + JSON.parse(s.body).ops.map((o) => o.opId).join(','));
+  assert.deepStrictEqual(pushes, [
+    'Bearer device-7 o-1,o-2',   // the dish, under the tablet's own token
+    'Bearer kds o-3',            // the bump, under the kitchen's
+    'Bearer kds o-3'             // the kitchen's own push: a replay op_log answers
+  ]);
   assert.strictEqual(heldLines().length, 0);
 });
