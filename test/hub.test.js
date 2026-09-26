@@ -27,11 +27,20 @@ const cloud = http.createServer(function (req, res) {
   });
 });
 
-let hub, base, up;
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'kpos-hub-'));
+const HELD = path.join(DATA, 'held.jsonl');
+const heldLines = () => (fs.existsSync(HELD) ? fs.readFileSync(HELD, 'utf8').split('\n').filter(Boolean) : []);
+
+let hub, base, up, cloudPort;
 test.before(async function () {
   await new Promise((r) => cloud.listen(0, '127.0.0.1', r));
-  up = 'http://127.0.0.1:' + cloud.address().port;
+  cloudPort = cloud.address().port;
+  up = 'http://127.0.0.1:' + cloudPort;
   process.env.HUB_UPSTREAM = up;
+  process.env.HUB_DATA_DIR = DATA;
   const { app } = require('../server');
   hub = app.listen(0, '127.0.0.1');
   await new Promise((r) => hub.on('listening', r));
@@ -101,4 +110,38 @@ test('with the cloud gone: forwarding says so, a known session still prints', as
   assert.strictEqual((await (await fetch(base + '/api/hub')).json()).online, false);
   assert.strictEqual((await printJob('Bearer good')).status, 400);     // relay reached
   assert.strictEqual((await printJob('Bearer stranger')).status, 503); // never allowed
+});
+
+const push = (auth, ops) => fetch(base + '/api/outlet/1/sync/push', {
+  method: 'POST', body: JSON.stringify({ ops }),
+  headers: { authorization: auth, 'content-type': 'application/json' }
+});
+const bill = [{ opId: 'o-1', kind: 'add_line', payload: { n: 4 }, lamport: 7 },
+  { opId: 'o-2', kind: 'fire_course', payload: { n: 4 }, lamport: 8 }];
+
+test('with the cloud gone, a push is held: a copy here, custody on the till', async function () {
+  // device-7 pushed through the hub while the cloud was up (the test above).
+  const r = await push('Bearer device-7', bill);
+  assert.strictEqual(r.status, 503, 'a failure, so the till keeps every op');
+  const b = await r.json();
+  assert.strictEqual(b.held, 2);
+  assert.ok(!('results' in b), 'no results[]: nothing may leave the outbox');
+  assert.strictEqual(heldLines().length, 2);
+
+  const again = await (await push('Bearer device-7', bill)).json();
+  assert.strictEqual(again.held, 0, 'the retry every five seconds adds nothing');
+  assert.strictEqual(heldLines().length, 2);
+
+  const s = await push('Bearer stranger', [{ opId: 'x-1', kind: 'add_line' }]);
+  assert.strictEqual(s.status, 503);
+  assert.strictEqual(heldLines().length, 2, 'a session the cloud never cleared here holds nothing');
+});
+
+test('the cloud back: the push goes through, and the copy is done with', async function () {
+  await new Promise((r) => cloud.listen(cloudPort, '127.0.0.1', r));
+  const r = await push('Bearer device-7', bill);
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(JSON.parse(seen[seen.length - 1].body).ops.map((o) => o.opId), ['o-1', 'o-2'],
+    'the till\'s own retry is what reaches the cloud');
+  assert.strictEqual(heldLines().length, 0);
 });
