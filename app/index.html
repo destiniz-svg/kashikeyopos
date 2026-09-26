@@ -23182,12 +23182,14 @@ class Component extends DCLogic {
      bumper hangs on the LAN. Default is "spool": no transport, jobs hold as
      documents, and the printers screen says so instead of claiming prints
      nobody made. */
-  /* Cloud or store hub, asked at most once a minute and only while a screen
-     that shows it is drawn. A failed ask keeps the last answer: a device that
-     cannot reach its server has not changed which server it has. */
+  /* Cloud or store hub, asked at most every 15 s and only while a screen
+     that shows it is drawn. Once a minute was too slow: a 20 s outage came
+     and went with the card still green, which is the one moment it exists
+     for. A failed ask keeps the last answer: a device that cannot reach its
+     server has not changed which server it has. */
   hubMode() {
     const api = window.KPOS_API, now = Date.now();
-    if (api && api.hub && !(this._hubAt > now - 60000)) {
+    if (api && api.hub && !(this._hubAt > now - 15000)) {
       this._hubAt = now;
       api.hub().then((h) => this.setState({ hub: h }), () => {});
     }
