@@ -32,6 +32,7 @@
 <script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./guest-bridge.js"></script>
+<script src="./kashikeyo-dialog.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
 :root{--ink-on-dark:#fff}
@@ -106,7 +107,7 @@ a:hover{color:var(--amber-deep)}
             <span style="width:54px;height:54px;border-radius:16px;background:var(--amber);display:grid;place-items:center;box-shadow:0 8px 20px rgba(20,20,24,.16)">
               <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
             </span>
-            <div style="font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
+            <h1 style="margin:20px 0 0;font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</h1>
             <div style="font-size:14px;color:var(--text-muted);margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
           </div>
 

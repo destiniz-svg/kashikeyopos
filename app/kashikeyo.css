@@ -403,3 +403,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
 .paid-change-big{font-size:clamp(72px,14vw,188px)}
 .pay-tenders{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 @media (min-width:760px){.pay-tenders{grid-template-columns:repeat(3,1fr)}}
+
+/* A sheet's action rows are chosen with a thumb. Every caller brings its own
+   style, so the floor is set here once: 48px, the till's own minimum. */
+.ksheet-act{min-height:48px!important}

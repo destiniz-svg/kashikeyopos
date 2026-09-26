@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html data-theme="light" data-look="lagoon">
+<html lang="en" data-theme="light" data-look="lagoon">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1495,7 +1495,14 @@ button.go.ok{background:var(--go);color:var(--on-go);
       // A toggle and a logo have already put their own furniture in the wrap;
       // what they hand back is the element carrying the VALUE, which is what
       // showIf reads and what nothing else needs to see.
-      if (f.type !== "toggle" && f.type !== "logo") wrap.appendChild(input);
+      if (f.type !== "toggle" && f.type !== "logo") {
+        wrap.appendChild(input);
+        /* THE LABEL NAMES ITS FIELD. They were sibling elements and nothing
+           more, so a field with no placeholder — every select, and both PIN
+           boxes — was announced as nothing at all. */
+        input.id = "ob-f-" + f.k;
+        lab.htmlFor = input.id;
+      }
       inputs[f.k] = input;
       if (f.type === "handle") derived.push({ wrap: wrap, input: input, f: f });
       if (f.showIf) conditional.push({ wrap: wrap, input: input, f: f });

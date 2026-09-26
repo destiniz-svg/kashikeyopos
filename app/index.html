@@ -1254,18 +1254,26 @@
   </sc-if>
 
   <sc-if value="{{ hasToast }}">
-    <div style="{{ toastStyle }}">{{ toastMsg }}</div>
+    <!-- role="status": a toast is how the till says a thing happened
+         ("Every job printed"), and without a live region a screen reader
+         never hears it. Polite, so it waits for the current sentence. -->
+    <div role="status" aria-live="polite" style="{{ toastStyle }}">{{ toastMsg }}</div>
   </sc-if>
 
   <sc-if value="{{ hasModal }}">
     <div onClick="{{ closeModal }}" style="{{ scrimStyle }}">
-      <div onClick="{{ stop }}" style="{{ modalStyle }}">
+      <!-- ONE FRAME FOR EVERY SHEET (all 39 kinds), so the dialog semantics
+           live here once: announced as a dialog by its title, the page behind
+           it out of reach, and focus moved in and handed back (the
+           MutationObserver beside keyRoute). tabIndex -1 lets the frame itself
+           take focus, so a screen reader starts at the title. -->
+      <div onClick="{{ stop }}" role="dialog" aria-modal="true" aria-labelledby="kpos-dlg-title" aria-describedby="kpos-dlg-sub" tabIndex="-1" style="{{ modalStyle }}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:16px 18px;border-bottom:1px solid var(--line);flex-shrink:0">
           <div style="min-width:0">
-            <div style="font-size:16px;font-weight:700;letter-spacing:-0.02em">{{ modalTitle }}</div>
-            <div style="font-size:11.5px;color:var(--text-dim);margin-top:3px">{{ modalSub }}</div>
+            <div id="kpos-dlg-title" style="font-size:16px;font-weight:700;letter-spacing:-0.02em">{{ modalTitle }}</div>
+            <div id="kpos-dlg-sub" style="font-size:11.5px;color:var(--text-dim);margin-top:3px">{{ modalSub }}</div>
           </div>
-          <button onClick="{{ closeModal }}" style="{{ modalXStyle }}">×</button>
+          <button onClick="{{ closeModal }}" aria-label="Close" style="{{ modalXStyle }}">×</button>
         </div>
 
         <div style="padding:16px 18px;overflow-y:auto;overflow-x:hidden;flex:1;min-height:0;overscroll-behavior:contain">
@@ -1368,7 +1376,7 @@
                 <div style="{{ keypadWrap }}">
                   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px">
                     <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
-                      <button onClick="{{ k.press }}" style="{{ k.style }}">{{ k.label }}</button>
+                      <button onClick="{{ k.press }}" aria-label="{{ k.name }}" style="{{ k.style }}">{{ k.label }}</button>
                     </sc-for>
                   </div>
                 </div>
@@ -1399,7 +1407,7 @@
             <div style="display:flex;flex-direction:column;gap:8px">
               <sc-for list="{{ moreActions }}" as="a" hint-placeholder-count="4">
                 <span style="{{ a.headStyle }}">{{ a.head }}</span>
-                <button onClick="{{ a.go }}" style="{{ a.style }}">
+                <button class="ksheet-act" onClick="{{ a.go }}" style="{{ a.style }}">
                   <span style="display:block;font-size:13px;font-weight:700">{{ a.label }}</span>
                   <span style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px">{{ a.sub }}</span>
                 </button>
@@ -1953,7 +1961,7 @@
                 <div style="{{ lockErrStyle }}">{{ lockErr }}</div>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:236px">
                   <sc-for list="{{ lockKeys }}" as="k" hint-placeholder-count="12">
-                    <button onClick="{{ k.go }}" style="{{ k.style }}">{{ k.label }}</button>
+                    <button onClick="{{ k.go }}" aria-label="{{ k.name }}" style="{{ k.style }}">{{ k.label }}</button>
                   </sc-for>
                 </div>
               </div>
@@ -1974,7 +1982,7 @@
                 </div>
                 <div style="text-align:center;line-height:1.35">
                   <div style="font-size:13px;font-weight:800;color:#1f1c17;letter-spacing:-0.01em">{{ qrTable }}</div>
-                  <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a8378;margin-top:2px">Scan to order</div>
+                  <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6b6358;margin-top:2px">Scan to order</div>
                   <div style="font-size:11px;color:#6b6358;margin-top:4px">{{ qrOutlet }}</div>
                   <div style="{{ qrPoweredStyle }}">Powered by KashikeyoPOS™</div>
                 </div>
@@ -2252,7 +2260,7 @@
                     <input value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
-                    <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
+                    <select value="{{ f.value }}" onChange="{{ f.onChange }}" aria-label="{{ f.label }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
                       <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="2">
                         <option value="{{ o.v }}" label="{{ o.l }}"></option>
                       </sc-for>
@@ -3190,6 +3198,22 @@ class Component extends DCLogic {
   // the way the moment the operator is typing into a field.
   keyRoute(e) {
     if (e.defaultPrevented || e.altKey) return;
+    // Tab stays inside an open dialog: the page behind the scrim is not there.
+    if (e.key === "Tab") {
+      const d = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (!d) return;
+      const f = Array.prototype.filter.call(d.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      (x) => !x.disabled && x.offsetParent !== null);
+      if (!f.length) { e.preventDefault(); d.focus(); return; }
+      const a = document.activeElement, first = f[0], last = f[f.length - 1];
+      const out = !d.contains(a);
+      if (out || (e.shiftKey ? (a === first || a === d) : a === last)) {
+        e.preventDefault();
+        (e.shiftKey && !out ? last : first).focus();
+      }
+      return;
+    }
     const t = e.target || {}, tag = (t.tagName || "").toLowerCase();
     const typing = tag === "input" || tag === "select" || tag === "textarea" || t.isContentEditable;
     const m = this.state.modal;
@@ -3444,6 +3468,29 @@ class Component extends DCLogic {
     ["pointerdown", "keydown"].forEach((e) => window.addEventListener(e, this._touch, { passive: true }));
     this._key = (e) => this.keyRoute(e);
     window.addEventListener("keydown", this._key);
+    /* A DIALOG TAKES THE FOCUS AND GIVES IT BACK. Every sheet opened with the
+       keyboard's focus left on the page behind it, so the next Tab walked the
+       floor under the scrim and a screen reader never announced the sheet;
+       closing it dropped focus on <body>. Watched rather than wired into 39
+       openers: whenever the one dialog frame appears, focus moves into it
+       (unless something inside already has it), and when it goes, focus goes
+       back to whatever opened it. Tab is kept inside by keyRoute(). */
+    this._dlgOpener = null;
+    this._dlgOpen = null;
+    this._dlg = new MutationObserver(() => {
+      const d = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (d && d !== this._dlgOpen) {
+        if (!this._dlgOpen) this._dlgOpener = document.activeElement;
+        this._dlgOpen = d;
+        if (!d.contains(document.activeElement)) d.focus({ preventScroll: true });
+      } else if (!d && this._dlgOpen) {
+        this._dlgOpen = null;
+        const o = this._dlgOpener;
+        this._dlgOpener = null;
+        if (o && o.isConnected && o.focus && !document.querySelector('[role="dialog"]')) o.focus({ preventScroll: true });
+      }
+    });
+    this._dlg.observe(document.body, { childList: true, subtree: true });
     this._flush = () => { clearTimeout(this._ps); this.writeSession(); };
     /* GOING AWAY IS A WRITE; COMING BACK IS A CHECK. A phone that backgrounds
        this app freezes its timers, so the fifteen-second sweep is not running
@@ -3469,6 +3516,7 @@ class Component extends DCLogic {
     if (this._onSig) window.removeEventListener("storage", this._onSig);
     if (this._touch) ["pointerdown", "keydown"].forEach((e) => window.removeEventListener(e, this._touch));
     if (this._key) window.removeEventListener("keydown", this._key);
+    if (this._dlg) this._dlg.disconnect();
     window.removeEventListener("resize", this._onResize);
     if (this._vis) window.removeEventListener("visibilitychange", this._vis);
     if (this._flush) window.removeEventListener("pagehide", this._flush);
@@ -8257,7 +8305,8 @@ class Component extends DCLogic {
       // escape. Anything else makes the PIN decorative.
       closeModal: () => { if (s.modal && s.modal.kind === "lock") return; this.setState({ modal: null }); },
       modalXStyle: (s.modal && s.modal.kind === "lock") ? "display:none"
-        : "width:28px;height:28px;border-radius:999px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:15px;line-height:1",
+        // 44 × 44: every sheet's way out, and a thumb has to hit it first time.
+        : "width:44px;height:44px;margin:-6px -6px 0 0;border-radius:999px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:18px;line-height:1",
       stop: (e) => e.stopPropagation(),
       // Settling shows a keypad and the bill side by side, but only when there is
       // room for both. Short or narrow, the bill drops under the keypad and the
@@ -8486,6 +8535,8 @@ class Component extends DCLogic {
       const rowS = "display:flex;justify-content:space-between;font-size:11.5px;font-weight:500;color:var(--text-dim);padding:3px 0";
       const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map((k) => ({
         label: k,
+        // A screen reader reads "⌫" as nothing and "." as a pause.
+        name: k === "⌫" ? "Delete last digit" : k === "." ? "Decimal point" : k,
         style: "min-height:60px;display:grid;place-items:center;padding:0;border-radius:10px;text-align:center;font-size:17px;font-weight:600;font-family:'JetBrains Mono',monospace;touch-action:manipulation;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
         press: () => this.payType(k === "⌫" ? "back" : k)
       }));
@@ -9081,7 +9132,7 @@ class Component extends DCLogic {
       const held = this.lockoutLeft();
       const entered = held ? "" : (m.pin || "");
       const key = (d) => ({
-        label: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
+        label: d, name: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1"
           + (held ? ";opacity:.35" : ""),
         go: () => held ? this.toast("Held for " + held + " more minute" + (held === 1 ? "" : "s"), "warn") : this.pinType(d)
       });
@@ -9103,9 +9154,9 @@ class Component extends DCLogic {
           : (m.err || (demoPin ? "Demo PIN " + demoPin : "Checked by the outlet — never stored on this terminal")),
         lockErrStyle: (held || m.err) ? "font-size:11.5px;color:var(--red-bright);text-align:center;text-wrap:pretty" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
-          { label: "", style: "visibility:hidden", go: () => {} },
+          { label: "", name: "", style: "visibility:hidden", go: () => {} },
           key("0"),
-          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
+          { label: "⌫", name: "Delete last digit", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.pinType("back") }
         ])
       };
     }
